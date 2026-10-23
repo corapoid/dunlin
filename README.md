@@ -6,7 +6,7 @@ No Electron. No webview. No Monaco. The entire UI is GPUI, the data layer is SQL
 
 ## Status
 
-Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Projects, sessions and transcripts persist across launches.
+Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Projects, sessions and transcripts persist across launches, and settings, theme, and the last open project and session are restored on startup.
 
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
@@ -72,7 +72,7 @@ crates/storage      SQLite persistence (WAL, foreign keys, migrations)
 
 The ACP worker owns all protocol I/O. The UI sends commands and receives events over channels, so a slow model or child process never blocks the render thread. Permission handlers respond from a spawned task to keep the ACP dispatch loop moving.
 
-Data lives in SQLite with WAL enabled. Projects and sessions are upserted as they change; transcripts are saved when a turn finishes, when a permission is resolved, when switching sessions and on shutdown.
+Data lives in SQLite with WAL enabled. Projects and sessions are upserted as they change; transcripts are saved when a turn finishes, when a permission is resolved, when switching sessions and on shutdown. Settings are stored as JSON in the same database, so new options can be added without a schema migration.
 
 ## Development
 

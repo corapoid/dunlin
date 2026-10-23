@@ -303,8 +303,8 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                     "Reopen the most recent conversation and its project.",
                     toggle_switch(
                         "restore-session",
-                        this.auto_connect,
-                        |this| this.auto_connect = !this.auto_connect,
+                        this.restore_session,
+                        |this| this.restore_session = !this.restore_session,
                         cx,
                         &p,
                     ),
@@ -331,6 +331,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                                 .cursor_pointer()
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.view = candidate;
+                                    this.persist_settings(cx);
                                     cx.notify();
                                 }))
                                 .child(
@@ -483,8 +484,9 @@ fn theme_card(
         .bg(p.card)
         .overflow_hidden()
         .cursor_pointer()
-        .on_click(cx.listener(move |_, _, window, cx| {
+        .on_click(cx.listener(move |this, _, window, cx| {
             set_mode(mode, Some(window), cx);
+            this.persist_settings(cx);
             cx.notify();
         }))
         .child(
@@ -660,6 +662,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let changed = this.default_harness != name_owned;
                     this.default_harness = name_owned.clone();
+                    this.persist_settings(cx);
                     if changed && this.auto_connect {
                         this.restart_harness(cx);
                     } else {
@@ -1034,6 +1037,7 @@ fn permissions(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.permission_mode = mode;
+                    this.persist_settings(cx);
                     this.set_notice(format!("Permission mode · {}", mode.label()), cx);
                 }))
                 .child(
@@ -1726,6 +1730,7 @@ fn toggle_switch(
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| {
             action(this);
+            this.persist_settings(cx);
             cx.notify();
         }))
         .child(

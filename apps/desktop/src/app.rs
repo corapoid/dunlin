@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 use kestrel_domain::*;
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::input::{InputEvent, InputState, TextareaState};
+use kestrel_ui::component::{ActiveTheme, ThemeMode};
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
+use serde::{Deserialize, Serialize};
 
 use crate::tree::FileTree;
 use crate::{demo, git, harness, search, views};
@@ -53,7 +55,7 @@ impl SettingsTab {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum PermissionMode {
     Ask,
     ReadOnly,
@@ -66,6 +68,46 @@ impl PermissionMode {
             PermissionMode::Ask => "Ask every time",
             PermissionMode::ReadOnly => "Read-only",
             PermissionMode::AutoApprove => "Auto-approve",
+        }
+    }
+}
+
+/// Everything Kestrel remembers between launches. Stored as one JSON value in
+/// SQLite so new fields can be added without another migration.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub(crate) struct StoredSettings {
+    pub default_harness: String,
+    pub custom_harness_command: String,
+    pub permission_mode: PermissionMode,
+    pub auto_connect: bool,
+    pub restart_harness: bool,
+    pub restore_session: bool,
+    pub word_wrap: bool,
+    pub allow_network: bool,
+    pub reasoning_open: bool,
+    pub dark: bool,
+    pub view: MainView,
+    pub last_project_id: Option<String>,
+    pub last_session_id: Option<String>,
+}
+
+impl Default for StoredSettings {
+    fn default() -> Self {
+        Self {
+            default_harness: "OpenCode".into(),
+            custom_harness_command: "your-agent --acp".into(),
+            permission_mode: PermissionMode::Ask,
+            auto_connect: true,
+            restart_harness: true,
+            restore_session: true,
+            word_wrap: false,
+            allow_network: false,
+            reasoning_open: false,
+            dark: true,
+            view: MainView::Chat,
+            last_project_id: None,
+            last_session_id: None,
         }
     }
 }
@@ -188,6 +230,7 @@ pub(crate) struct KestrelApp {
     pub project_menu_open: bool,
     pub auto_connect: bool,
     pub restart_harness: bool,
+    pub restore_session: bool,
     pub word_wrap: bool,
     pub allow_network: bool,
 
@@ -218,6 +261,10 @@ impl KestrelApp {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let root = workspace_root();
         let store = open_store();
+        let stored = store
+            .as_ref()
+            .and_then(|store| store.load_setting::<StoredSettings>("app").ok().flatten())
+            .unwrap_or_default();
         let (projects, mut all_sessions) = match store.as_ref() {
             Some(store) => {
                 let mut projects = store.projects().unwrap_or_default();
@@ -310,7 +357,7 @@ impl KestrelApp {
         let custom_command_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("your-agent --acp")
-                .default_value("your-agent --acp")
+                .default_value(stored.custom_harness_command.clone())
         });
         let custom_command_subscription = cx.subscribe_in(
             &custom_command_input,
@@ -319,6 +366,7 @@ impl KestrelApp {
                 if matches!(event, InputEvent::Change) {
                     this.custom_harness_command =
                         this.custom_command_input.read(cx).value().to_string();
+                    this.persist_settings(cx);
                     cx.notify();
                 }
             },
@@ -331,17 +379,21 @@ impl KestrelApp {
             .cloned()
             .collect();
         if sessions.is_empty() {
-            let session = blank_session(&first_project, "OpenCode", projects[0].branch.clone());
+            let session = blank_session(
+                &first_project,
+                &stored.default_harness,
+                projects[0].branch.clone(),
+            );
             if let Some(store) = &store {
                 let _ = store.upsert_session(&session);
             }
             all_sessions.push(session.clone());
             sessions.push(session);
         }
-        let fallback_session = blank_session("none", "OpenCode", None);
+        let fallback_session = blank_session("none", &stored.default_harness, None);
 
         let mut app = Self {
-            view: MainView::Chat,
+            view: stored.view,
             section: SidebarSection::Files,
             projects,
             selected_project: 0,
@@ -362,20 +414,21 @@ impl KestrelApp {
             _command_subscription: command_subscription,
             settings_open: false,
             settings_tab: SettingsTab::Harnesses,
-            default_harness: "OpenCode".into(),
-            custom_harness_command: "your-agent --acp".into(),
+            default_harness: stored.default_harness.clone(),
+            custom_harness_command: stored.custom_harness_command.clone(),
             custom_command_input,
             _custom_command_subscription: custom_command_subscription,
-            permission_mode: PermissionMode::Ask,
+            permission_mode: stored.permission_mode,
             project_menu_open: false,
-            auto_connect: true,
-            restart_harness: true,
-            word_wrap: false,
-            allow_network: false,
+            auto_connect: stored.auto_connect,
+            restart_harness: stored.restart_harness,
+            restore_session: stored.restore_session,
+            word_wrap: stored.word_wrap,
+            allow_network: stored.allow_network,
             inspector: None,
             selected_span: None,
             selected_node: None,
-            reasoning_open: false,
+            reasoning_open: stored.reasoning_open,
             expanded_tool: None,
             follow_running: true,
             graph_zoom: 1.0,
@@ -392,12 +445,45 @@ impl KestrelApp {
             harness: harness::HarnessState::default(),
         };
 
+        kestrel_ui::theme::set_mode(
+            if stored.dark {
+                ThemeMode::Dark
+            } else {
+                ThemeMode::Light
+            },
+            Some(window),
+            cx,
+        );
+
         let first_session = app.session().id.clone();
         app.load_transcript(&first_session);
-        if app.auto_connect {
+
+        let mut restored_project = false;
+        if app.restore_session {
+            if let Some(index) = stored
+                .last_project_id
+                .as_deref()
+                .and_then(|id| app.projects.iter().position(|project| project.id == id))
+            {
+                app.select_project(index, cx);
+                restored_project = true;
+            }
+            if let Some(index) = stored
+                .last_session_id
+                .as_deref()
+                .and_then(|id| app.sessions.iter().position(|session| session.id == id))
+            {
+                app.select_session(index, cx);
+            }
+        }
+
+        if app.auto_connect && !app.harness.status.is_busy() {
             app.connect_harness(cx);
         }
-        app.refresh_git_status(cx);
+        if !restored_project {
+            app.refresh_git_status(cx);
+        }
+        app.persist_settings(cx);
 
         app
     }
@@ -624,6 +710,7 @@ impl KestrelApp {
             Command::OpenFolder => self.open_folder(cx),
             Command::ToggleTheme => {
                 toggle_mode(window, cx);
+                self.persist_settings(cx);
             }
             Command::NewSession => self.new_session(cx),
             Command::RestartHarness => self.restart_harness(cx),
@@ -732,6 +819,7 @@ impl KestrelApp {
         self.view = MainView::Chat;
         self.settings_open = false;
         self.notice = Some("Created a new session".into());
+        self.persist_settings(cx);
         cx.notify();
     }
 
@@ -820,6 +908,7 @@ impl KestrelApp {
                 }
                 "l" if shift => {
                     toggle_mode(window, cx);
+                    self.persist_settings(cx);
                     cx.notify();
                     true
                 }
@@ -916,6 +1005,7 @@ impl KestrelApp {
             self.notice = Some(format!("Switched to {}", self.projects[index].name));
         }
         self.refresh_git_status(cx);
+        self.persist_settings(cx);
         cx.notify();
     }
 
@@ -971,6 +1061,37 @@ impl KestrelApp {
                 self.notice = Some(error);
                 cx.notify();
             }
+        }
+    }
+
+    /// Snapshot the settings that survive a restart.
+    pub(crate) fn stored_settings(&self, cx: &App) -> StoredSettings {
+        StoredSettings {
+            default_harness: self.default_harness.clone(),
+            custom_harness_command: self.custom_harness_command.clone(),
+            permission_mode: self.permission_mode,
+            auto_connect: self.auto_connect,
+            restart_harness: self.restart_harness,
+            restore_session: self.restore_session,
+            word_wrap: self.word_wrap,
+            allow_network: self.allow_network,
+            reasoning_open: self.reasoning_open,
+            dark: cx.theme().is_dark(),
+            view: self.view,
+            last_project_id: self
+                .projects
+                .get(self.selected_project)
+                .map(|project| project.id.clone()),
+            last_session_id: self
+                .sessions
+                .get(self.selected_session)
+                .map(|session| session.id.clone()),
+        }
+    }
+
+    pub(crate) fn persist_settings(&self, cx: &App) {
+        if let Some(store) = &self.store {
+            let _ = store.save_setting("app", &self.stored_settings(cx));
         }
     }
 
@@ -1855,7 +1976,7 @@ pub(crate) fn format_ms(ms: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CommandItem, command_matches};
+    use super::{Command, CommandItem, PermissionMode, StoredSettings, command_matches};
     use kestrel_domain::MainView;
     use kestrel_ui::assets::IconName;
 
@@ -1890,5 +2011,17 @@ mod tests {
         let item = item("New session", "chat conversation", Some("⌘N"));
         assert!(command_matches(&item, &["new", "session"]));
         assert!(!command_matches(&item, &["new", "theme"]));
+    }
+
+    #[test]
+    fn stored_settings_fill_defaults_for_missing_fields() {
+        let settings: StoredSettings =
+            serde_json::from_str(r#"{"default_harness":"Claude Code"}"#).unwrap();
+        assert_eq!(settings.default_harness, "Claude Code");
+        assert_eq!(settings.permission_mode, PermissionMode::Ask);
+        assert!(settings.auto_connect);
+        assert!(settings.restore_session);
+        assert_eq!(settings.view, MainView::Chat);
+        assert_eq!(settings.last_project_id, None);
     }
 }

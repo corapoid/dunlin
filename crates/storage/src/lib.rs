@@ -55,50 +55,61 @@ impl Store {
         let version: i64 = self
             .connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version >= 1 {
-            return Ok(());
+        if version < 1 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS projects (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    path        TEXT NOT NULL UNIQUE,
+                    branch      TEXT,
+                    tone        TEXT NOT NULL,
+                    pinned      INTEGER NOT NULL DEFAULT 0,
+                    trusted     INTEGER NOT NULL DEFAULT 1,
+                    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id            TEXT PRIMARY KEY,
+                    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    title         TEXT NOT NULL,
+                    status        TEXT NOT NULL,
+                    harness       TEXT NOT NULL,
+                    model         TEXT NOT NULL,
+                    branch        TEXT,
+                    updated_at    TEXT NOT NULL,
+                    cost_usd      REAL NOT NULL DEFAULT 0,
+                    duration_secs INTEGER NOT NULL DEFAULT 0,
+                    tokens        INTEGER NOT NULL DEFAULT 0,
+                    summary       TEXT NOT NULL DEFAULT '',
+                    created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+                CREATE INDEX IF NOT EXISTS sessions_project_idx
+                    ON sessions(project_id, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS transcripts (
+                    session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+                    payload     TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+
+                PRAGMA user_version = 1;
+                "#,
+            )?;
         }
+        if version < 2 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS settings (
+                    key         TEXT PRIMARY KEY,
+                    value       TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
 
-        self.connection.execute_batch(
-            r#"
-            CREATE TABLE IF NOT EXISTS projects (
-                id          TEXT PRIMARY KEY,
-                name        TEXT NOT NULL,
-                path        TEXT NOT NULL UNIQUE,
-                branch      TEXT,
-                tone        TEXT NOT NULL,
-                pinned      INTEGER NOT NULL DEFAULT 0,
-                trusted     INTEGER NOT NULL DEFAULT 1,
-                created_at  INTEGER NOT NULL DEFAULT (unixepoch())
-            );
-
-            CREATE TABLE IF NOT EXISTS sessions (
-                id            TEXT PRIMARY KEY,
-                project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                title         TEXT NOT NULL,
-                status        TEXT NOT NULL,
-                harness       TEXT NOT NULL,
-                model         TEXT NOT NULL,
-                branch        TEXT,
-                updated_at    TEXT NOT NULL,
-                cost_usd      REAL NOT NULL DEFAULT 0,
-                duration_secs INTEGER NOT NULL DEFAULT 0,
-                tokens        INTEGER NOT NULL DEFAULT 0,
-                summary       TEXT NOT NULL DEFAULT '',
-                created_at    INTEGER NOT NULL DEFAULT (unixepoch())
-            );
-            CREATE INDEX IF NOT EXISTS sessions_project_idx
-                ON sessions(project_id, created_at DESC);
-
-            CREATE TABLE IF NOT EXISTS transcripts (
-                session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-                payload     TEXT NOT NULL,
-                updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
-            );
-
-            PRAGMA user_version = 1;
-            "#,
-        )?;
+                PRAGMA user_version = 2;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
@@ -263,6 +274,35 @@ impl Store {
             .execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
         Ok(())
     }
+
+    /// Store an application setting as JSON under a stable key.
+    pub fn save_setting<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        let value = serde_json::to_string(value)?;
+        self.connection.execute(
+            r#"
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?1, ?2, unixepoch())
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            "#,
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_setting<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        let value: Option<String> = self
+            .connection
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        match value {
+            Some(value) => Ok(Some(serde_json::from_str(&value)?)),
+            None => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -362,5 +402,26 @@ mod tests {
         assert!(store.sessions(None).unwrap().is_empty());
         let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
         assert_eq!(transcript, None);
+    }
+
+    #[test]
+    fn round_trips_settings_and_migrates_existing_databases() {
+        let store = Store::open_in_memory().unwrap();
+        let settings = serde_json::json!({
+            "default_harness": "Claude Code",
+            "dark": true,
+            "auto_connect": false,
+        });
+        store.save_setting("app", &settings).unwrap();
+        let loaded: Option<serde_json::Value> = store.load_setting("app").unwrap();
+        assert_eq!(loaded, Some(settings));
+
+        let updated = serde_json::json!({ "default_harness": "OpenCode" });
+        store.save_setting("app", &updated).unwrap();
+        let loaded: Option<serde_json::Value> = store.load_setting("app").unwrap();
+        assert_eq!(loaded, Some(updated));
+
+        let missing: Option<serde_json::Value> = store.load_setting("missing").unwrap();
+        assert_eq!(missing, None);
     }
 }

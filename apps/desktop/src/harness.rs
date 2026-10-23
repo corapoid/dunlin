@@ -370,6 +370,7 @@ impl KestrelApp {
         }
 
         self.notice = Some(format!("Opened “{title}”"));
+        self.persist_settings(cx);
         cx.notify();
     }
 
