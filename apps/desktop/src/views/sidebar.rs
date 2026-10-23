@@ -597,6 +597,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
     let root = this.project().path.clone();
     let query = this.search_query.clone();
     let hits = this.search_hits.clone();
+    let loading = this.search_loading;
 
     let input = Input::new(&this.search_input)
         .appearance(false)
@@ -760,7 +761,14 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
         );
     }
 
-    if hits.is_empty() {
+    if loading && hits.is_empty() {
+        root_el = root_el.child(empty_state(
+            IconName::LoaderCircle,
+            "Searching…",
+            "Scanning the project in the background.",
+            &p,
+        ));
+    } else if hits.is_empty() {
         root_el = root_el.child(empty_state(
             IconName::SearchX,
             "No matches yet",

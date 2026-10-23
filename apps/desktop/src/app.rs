@@ -280,6 +280,7 @@ pub(crate) struct KestrelApp {
     pub file_tree: FileTree,
     pub search_hits: Vec<(String, u32, String)>,
     pub search_query: String,
+    pub search_loading: bool,
     pub notice: Option<String>,
 
     pub git: git::GitStatus,
@@ -360,6 +361,7 @@ impl KestrelApp {
             |this, _, event: &InputEvent, _, cx| match event {
                 InputEvent::Change => {
                     this.search_query = this.search_input.read(cx).value().to_string();
+                    this.search_loading = false;
                     cx.notify();
                 }
                 InputEvent::PressEnter { .. } => this.run_search(cx),
@@ -505,6 +507,7 @@ impl KestrelApp {
             file_tree,
             search_hits,
             search_query: String::new(),
+            search_loading: false,
             notice: None,
             git: git::GitStatus::default(),
             git_loading: false,
@@ -1100,6 +1103,7 @@ impl KestrelApp {
             self.load_transcript(&session_id);
             self.file_tree = FileTree::load(path.clone());
             self.search_query.clear();
+            self.search_loading = false;
             self.search_hits = if path == workspace_root() {
                 demo::search_hits(&path)
             } else {
@@ -1258,17 +1262,37 @@ impl KestrelApp {
         let query = self.search_query.trim().to_string();
         if query.is_empty() {
             self.search_hits = demo::search_hits(&root);
+            self.search_loading = false;
             self.notice = Some("Showing recent matches. Type a query and press Enter.".into());
-        } else {
-            let hits = search::search_project(&root, &query, 80);
-            let count = hits.len();
-            self.search_hits = hits;
-            self.notice = Some(if count == 0 {
-                format!("No matches for “{query}”")
-            } else {
-                format!("{count} matches for “{query}”")
-            });
+            cx.notify();
+            return;
         }
+
+        self.search_loading = true;
+        self.notice = Some(format!("Searching for “{query}”…"));
+        cx.spawn(async move |this, cx| {
+            let match_query = query.clone();
+            let hits = cx
+                .background_executor()
+                .spawn(async move { search::search_project(&root, &query, 80) })
+                .await;
+            this.update(cx, |this, cx| {
+                if this.search_query.trim() != match_query {
+                    return;
+                }
+                let count = hits.len();
+                this.search_hits = hits;
+                this.search_loading = false;
+                this.notice = Some(if count == 0 {
+                    format!("No matches for “{match_query}”")
+                } else {
+                    format!("{count} matches for “{match_query}”")
+                });
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -1287,6 +1311,7 @@ impl KestrelApp {
             Vec::new()
         };
         self.search_query.clear();
+        self.search_loading = false;
         self.close_inspector();
 
         let project_id = self.projects[index].id.clone();

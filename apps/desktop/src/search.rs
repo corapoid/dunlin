@@ -1,10 +1,10 @@
 //! Lightweight project-wide text search.
 //!
-//! The UI-thread MVP keeps search synchronous but bounded: it walks the
-//! project once, skips build/VCS directories, only reads text files below
-//! 256 KiB and stops after `limit` matches. The result shape already matches
-//! the future streaming `grep-searcher` implementation, so the sidebar does
-//! not need to change when search moves off the main thread.
+//! The UI hands the walk to GPUI's background executor, so large repositories
+//! never block a frame. A search walks the project once, skips build/VCS
+//! directories, only reads text files below 256 KiB and stops after `limit`
+//! matches. The result shape already matches a future streaming search, so the
+//! sidebar does not need to change when search moves to a worker thread.
 
 use std::fs;
 use std::path::Path;
