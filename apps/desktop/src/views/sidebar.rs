@@ -198,8 +198,8 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
                     .justify_center()
                     .cursor_pointer()
                     .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.set_notice("New file · choose a folder first", cx);
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.new_file(window, cx);
                     }))
                     .child(
                         Icon::new(IconName::Plus)
@@ -237,7 +237,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .cursor_pointer()
             .hover(move |style| style.bg(p.hover))
             .on_click(cx.listener(|this, _, _, cx| {
-                this.set_notice("New session · pick a harness to begin", cx);
+                this.new_session(cx);
             }))
             .child(
                 Icon::new(IconName::Plus)

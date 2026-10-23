@@ -361,7 +361,7 @@ impl KestrelApp {
         self.harness.session_id = None;
         self.update_active_session(|session| {
             if session.status == SessionStatus::Running {
-                session.status = SessionStatus::Waiting;
+                session.status = SessionStatus::Interrupted;
             }
         });
 
@@ -444,6 +444,7 @@ impl KestrelApp {
                     "Turn complete".into()
                 });
                 self.save_current_transcript();
+                self.refresh_git_status(cx);
             }
             HarnessEvent::Error { message } => {
                 let was_running = self.harness.running;
@@ -465,6 +466,7 @@ impl KestrelApp {
                 }
                 self.save_current_transcript();
                 self.notice = Some(message);
+                self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {
                 self.harness.harness = None;

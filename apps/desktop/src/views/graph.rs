@@ -1,7 +1,7 @@
 //! Agent graph: the orchestrator tree, subagent fan-out, handoffs and live
 //! status painted on a quiet dot grid.
 
-use kestrel_domain::{AgentKind, AgentNode, AgentStatus, SessionStatus, ToolKind};
+use kestrel_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::Icon;
 use kestrel_ui::*;
@@ -755,7 +755,9 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_notice("Opening the agent transcript is next", cx);
+                            this.view = MainView::Chat;
+                            this.settings_open = false;
+                            this.set_notice("Opened the live transcript", cx);
                         }))
                         .child(
                             div()

@@ -189,6 +189,7 @@ pub(crate) enum Command {
     OpenFolder,
     ToggleTheme,
     NewSession,
+    NewFile,
     DeleteSession,
     RemoveProject,
     RestartHarness,
@@ -313,6 +314,18 @@ impl KestrelApp {
             }
             None => (demo::projects(&root), demo::sessions()),
         };
+        // A live turn cannot survive a restart, so clear statuses that imply one.
+        for session in &mut all_sessions {
+            if matches!(
+                session.status,
+                SessionStatus::Running | SessionStatus::Waiting
+            ) {
+                session.status = SessionStatus::Interrupted;
+                if let Some(store) = &store {
+                    let _ = store.upsert_session(session);
+                }
+            }
+        }
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .placeholder("Ask Kestrel to build, fix, or explain…")
@@ -612,6 +625,13 @@ impl KestrelApp {
                 keywords: "start chat conversation".into(),
             },
             CommandItem {
+                command: Command::NewFile,
+                label: "New File…".into(),
+                hint: None,
+                icon: IconName::FilePlus,
+                keywords: "create add file explorer".into(),
+            },
+            CommandItem {
                 command: Command::DeleteSession,
                 label: "Delete Current Session".into(),
                 hint: None,
@@ -777,6 +797,7 @@ impl KestrelApp {
                 self.persist_settings(cx);
             }
             Command::NewSession => self.new_session(cx),
+            Command::NewFile => self.new_file(window, cx),
             Command::DeleteSession => self.request_delete_session(self.selected_session, cx),
             Command::RemoveProject => self.request_delete_project(self.selected_project, cx),
             Command::RestartHarness => self.restart_harness(cx),
@@ -791,6 +812,44 @@ impl KestrelApp {
             }
         }
         self.focus_handle.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Ask macOS for a path inside the project, then create or open it.
+    pub(crate) fn new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let root = self.project().path.clone();
+        let receiver = cx.prompt_for_new_path(Path::new(&root), Some("untitled.txt"));
+        cx.spawn_in(window, async move |this, cx| {
+            if let Ok(Ok(Some(path))) = receiver.await {
+                this.update_in(cx, |this, window, cx| this.create_file(path, window, cx))
+                    .ok();
+            }
+        })
+        .detach();
+    }
+
+    fn create_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let root = self.project().path.clone();
+        if !path_inside(Path::new(&root), &path) {
+            self.set_notice("Choose a location inside the current project", cx);
+            return;
+        }
+
+        let existed = path.exists();
+        if !existed && let Err(error) = fs::write(&path, "") {
+            self.set_notice(format!("Could not create the file: {error}"), cx);
+            return;
+        }
+
+        let file = path.to_string_lossy().to_string();
+        self.file_tree = FileTree::load(root);
+        self.open_file(&file, window, cx);
+        self.notice = Some(if existed {
+            format!("Opened {file}")
+        } else {
+            format!("Created {file}")
+        });
+        self.refresh_git_status(cx);
         cx.notify();
     }
 
@@ -2715,6 +2774,15 @@ pub(crate) fn session_index_after_delete(
     }
 }
 
+/// Whether a new file sits inside `root`, resolving symlinks on its parent.
+pub(crate) fn path_inside(root: &Path, path: &Path) -> bool {
+    let parent = path.parent().unwrap_or(root);
+    match (parent.canonicalize(), root.canonicalize()) {
+        (Ok(parent), Ok(root)) => parent.starts_with(root),
+        _ => false,
+    }
+}
+
 pub(crate) fn format_bytes(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes} B")
@@ -2739,7 +2807,7 @@ pub(crate) fn format_ms(ms: u64) -> String {
 mod tests {
     use super::{
         Command, CommandItem, PermissionMode, StoredSettings, command_matches, editor_language,
-        format_bytes, session_index_after_delete,
+        format_bytes, path_inside, session_index_after_delete,
     };
     use kestrel_domain::MainView;
     use kestrel_ui::assets::IconName;
@@ -2816,5 +2884,22 @@ mod tests {
         assert_eq!(session_index_after_delete(3, 1, 3), 1);
         // A fresh session is created when the list becomes empty.
         assert_eq!(session_index_after_delete(0, 0, 1), 0);
+    }
+
+    #[test]
+    fn new_files_must_stay_inside_the_project() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kestrel-paths-{unique}"));
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let outside = std::env::temp_dir().join(format!("kestrel-outside-{unique}.txt"));
+
+        assert!(path_inside(&root, &root.join("src/main.rs")));
+        assert!(path_inside(&root, &root.join("README.md")));
+        assert!(!path_inside(&root, &outside));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
