@@ -1166,8 +1166,8 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 .child(divider(&p))
                 .child(setting_row(
                     "Font size",
-                    "Applies to the editor and trace labels.",
-                    stepper("13 px", cx, &p),
+                    "Applies to the editor, diffs and code metadata.",
+                    stepper(this, cx, &p),
                     &p,
                 ))
                 .child(divider(&p))
@@ -1732,8 +1732,9 @@ fn toggle_switch(
         .flex()
         .items_center()
         .cursor_pointer()
-        .on_click(cx.listener(move |this, _, _, cx| {
+        .on_click(cx.listener(move |this, _, window, cx| {
             action(this);
+            this.apply_editor_preferences(window, cx);
             this.persist_settings(cx);
             cx.notify();
         }))
@@ -1787,7 +1788,8 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn stepper(label: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn stepper(this: &mut KestrelApp, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+    let size = this.code_font_size;
     div()
         .h(px(21.))
         .rounded(px(4.))
@@ -1806,7 +1808,7 @@ fn stepper(label: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.set_notice("Editor font size · 12 px", cx);
+                    this.adjust_code_font_size(-1.0, cx);
                 }))
                 .child(
                     Icon::new(IconName::Minus)
@@ -1820,7 +1822,7 @@ fn stepper(label: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement
                 .text_size(px(8.5))
                 .font_family("Geist Mono")
                 .text_color(p.fg.opacity(0.8))
-                .child(label.to_string()),
+                .child(format!("{size:.0} px")),
         )
         .child(
             div()
@@ -1833,7 +1835,7 @@ fn stepper(label: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.set_notice("Editor font size · 14 px", cx);
+                    this.adjust_code_font_size(1.0, cx);
                 }))
                 .child(
                     Icon::new(IconName::Plus)

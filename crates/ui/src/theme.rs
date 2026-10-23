@@ -5,9 +5,13 @@
 //! here so the application never reaches for hard-coded colours.
 
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
 use gpui_kit::*;
+
+/// Monospaced text size shared by editors, diffs and code chips.
+static CODE_FONT_SIZE: AtomicU32 = AtomicU32::new(13.0f32.to_bits());
 
 /// Semantic colours used across Kestrel, in addition to the GPUI Kit theme.
 #[derive(Clone, Copy)]
@@ -164,7 +168,7 @@ pub fn apply(cx: &mut App) {
         theme.font_family = "Geist".into();
         theme.mono_font_family = "Geist Mono".into();
         theme.font_size = px(13.);
-        theme.mono_font_size = px(12.);
+        theme.mono_font_size = px(f32::from_bits(CODE_FONT_SIZE.load(Ordering::Relaxed)));
         theme.radius = px(10.);
         theme.radius_lg = px(14.);
         theme.focus_ring = false;
@@ -250,6 +254,15 @@ pub fn apply(cx: &mut App) {
 pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
     Theme::change(mode, window, cx);
     apply(cx);
+}
+
+/// Set the monospaced text size used by editors, diffs and code metadata.
+pub fn set_code_font_size(size: f32, cx: &mut App) {
+    let size = size.clamp(10.0, 20.0);
+    CODE_FONT_SIZE.store(size.to_bits(), Ordering::Relaxed);
+    Theme::update(cx, |theme| {
+        theme.mono_font_size = px(size);
+    });
 }
 
 pub fn toggle_mode(window: &mut Window, cx: &mut App) {

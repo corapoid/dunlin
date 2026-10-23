@@ -87,6 +87,7 @@ pub(crate) struct StoredSettings {
     pub restart_harness: bool,
     pub restore_session: bool,
     pub word_wrap: bool,
+    pub code_font_size: f32,
     pub allow_network: bool,
     pub reasoning_open: bool,
     pub dark: bool,
@@ -105,6 +106,7 @@ impl Default for StoredSettings {
             restart_harness: true,
             restore_session: true,
             word_wrap: false,
+            code_font_size: 13.0,
             allow_network: false,
             reasoning_open: false,
             dark: true,
@@ -257,6 +259,7 @@ pub(crate) struct KestrelApp {
     pub restart_harness: bool,
     pub restore_session: bool,
     pub word_wrap: bool,
+    pub code_font_size: f32,
     pub allow_network: bool,
 
     pub inspector: Option<Inspector>,
@@ -394,7 +397,11 @@ impl KestrelApp {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
-        let editor = cx.new(|cx| EditorState::new(window, cx).language("plaintext"));
+        let editor = cx.new(|cx| {
+            EditorState::new(window, cx)
+                .language("plaintext")
+                .soft_wrap(stored.word_wrap)
+        });
         let editor_subscription =
             cx.subscribe_in(&editor, window, |this, _, event: &InputEvent, _, cx| {
                 if matches!(event, InputEvent::Change) {
@@ -479,6 +486,7 @@ impl KestrelApp {
             restart_harness: stored.restart_harness,
             restore_session: stored.restore_session,
             word_wrap: stored.word_wrap,
+            code_font_size: stored.code_font_size,
             allow_network: stored.allow_network,
             inspector: None,
             editor,
@@ -514,6 +522,7 @@ impl KestrelApp {
             Some(window),
             cx,
         );
+        kestrel_ui::theme::set_code_font_size(stored.code_font_size, cx);
 
         let first_session = app.session().id.clone();
         app.load_transcript(&first_session);
@@ -1450,6 +1459,7 @@ impl KestrelApp {
             restart_harness: self.restart_harness,
             restore_session: self.restore_session,
             word_wrap: self.word_wrap,
+            code_font_size: self.code_font_size,
             allow_network: self.allow_network,
             reasoning_open: self.reasoning_open,
             dark: cx.theme().is_dark(),
@@ -1537,6 +1547,7 @@ impl KestrelApp {
         self.editor.update(cx, |state, cx| {
             state.set_value(contents, window, cx);
             state.set_highlighter(language.clone(), cx);
+            state.set_soft_wrap(self.word_wrap, window, cx);
             state.focus(window, cx);
         });
         self.editor_readonly = readonly;
@@ -1549,6 +1560,21 @@ impl KestrelApp {
             bytes,
             snippet: None,
         });
+        cx.notify();
+    }
+
+    /// Apply editor preferences that live in the GPUI Kit input state.
+    pub(crate) fn apply_editor_preferences(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let wrap = self.word_wrap;
+        self.editor
+            .update(cx, |state, cx| state.set_soft_wrap(wrap, window, cx));
+    }
+
+    /// Step the code font size and apply it to editors and diffs immediately.
+    pub(crate) fn adjust_code_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
+        self.code_font_size = (self.code_font_size + delta).clamp(10.0, 20.0);
+        kestrel_ui::theme::set_code_font_size(self.code_font_size, cx);
+        self.persist_settings(cx);
         cx.notify();
     }
 
@@ -2853,6 +2879,7 @@ mod tests {
         assert_eq!(settings.permission_mode, PermissionMode::Ask);
         assert!(settings.auto_connect);
         assert!(settings.restore_session);
+        assert_eq!(settings.code_font_size, 13.0);
         assert_eq!(settings.view, MainView::Chat);
         assert_eq!(settings.last_project_id, None);
     }
