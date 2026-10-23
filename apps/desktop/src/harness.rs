@@ -72,6 +72,65 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Render a conversation as Markdown for the clipboard.
+pub(crate) fn transcript_markdown(items: &[ChatItem]) -> String {
+    let mut out = String::new();
+    for item in items {
+        match item {
+            ChatItem::User { text, .. } => {
+                out.push_str("## You\n\n");
+                out.push_str(text);
+                out.push_str("\n\n");
+            }
+            ChatItem::AgentText { text, .. } => {
+                out.push_str("## Agent\n\n");
+                out.push_str(text);
+                out.push_str("\n\n");
+            }
+            ChatItem::Thought { text, .. } => {
+                out.push_str("### Reasoning\n\n");
+                out.push_str(text);
+                out.push_str("\n\n");
+            }
+            ChatItem::Tool {
+                view, duration_ms, ..
+            } => {
+                out.push_str(&format!(
+                    "- **{}** · {} · {} ms\n",
+                    view.title,
+                    view.status.label(),
+                    duration_ms
+                ));
+            }
+            ChatItem::Plan { items, .. } => {
+                out.push_str("### Plan\n\n");
+                for step in items {
+                    let mark = match step.status {
+                        PlanStatus::Pending => "[ ]",
+                        PlanStatus::InProgress => "[~]",
+                        PlanStatus::Completed => "[x]",
+                    };
+                    out.push_str(&format!("{} {}\n", mark, step.content));
+                }
+                out.push('\n');
+            }
+            ChatItem::Permission {
+                title, resolved, ..
+            } => {
+                out.push_str(&format!(
+                    "- **Permission** · {} · {}\n",
+                    title,
+                    resolved.as_deref().unwrap_or("pending")
+                ));
+            }
+            ChatItem::Error { message, .. } => {
+                out.push_str(&format!("> **Error:** {message}\n\n"));
+            }
+        }
+    }
+    out.trim_end().to_string()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HarnessStatus {
     Offline,
@@ -377,6 +436,7 @@ impl KestrelApp {
         if index >= self.sessions.len() || index == self.selected_session {
             return;
         }
+        self.session_menu_open = false;
         self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_session = index;
@@ -883,7 +943,7 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChatItem, command_available, harness_command, session_title};
+    use super::{ChatItem, command_available, harness_command, session_title, transcript_markdown};
 
     #[test]
     fn title_uses_the_first_line() {
@@ -942,6 +1002,37 @@ mod tests {
         assert!(matches!(&items[0], ChatItem::User { at_ms: 0, .. }));
         assert!(matches!(&items[1], ChatItem::AgentText { at_ms: 0, .. }));
         assert!(matches!(&items[2], ChatItem::Tool { at_ms: 0, .. }));
+    }
+
+    #[test]
+    fn transcripts_export_as_markdown() {
+        let items = vec![
+            ChatItem::User {
+                text: "Fix it".into(),
+                at_ms: 1,
+            },
+            ChatItem::AgentText {
+                text: "Done".into(),
+                streaming: false,
+                at_ms: 2,
+            },
+            ChatItem::Plan {
+                items: vec![kestrel_agent::PlanItem {
+                    content: "Read files".into(),
+                    status: kestrel_agent::PlanStatus::Completed,
+                }],
+                at_ms: 3,
+            },
+            ChatItem::Error {
+                message: "boom".into(),
+                at_ms: 4,
+            },
+        ];
+        let markdown = transcript_markdown(&items);
+        assert!(markdown.contains("## You\n\nFix it"));
+        assert!(markdown.contains("## Agent\n\nDone"));
+        assert!(markdown.contains("[x] Read files"));
+        assert!(markdown.contains("**Error:** boom"));
     }
 
     #[test]

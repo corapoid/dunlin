@@ -257,6 +257,7 @@ pub(crate) struct KestrelApp {
     _custom_command_subscription: Subscription,
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
+    pub session_menu_open: bool,
     pub pending_delete: Option<PendingDelete>,
     pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
@@ -488,6 +489,7 @@ impl KestrelApp {
             _custom_command_subscription: custom_command_subscription,
             permission_mode: stored.permission_mode,
             project_menu_open: false,
+            session_menu_open: false,
             pending_delete: None,
             diff_view: None,
             auto_connect: stored.auto_connect,
@@ -782,6 +784,7 @@ impl KestrelApp {
         self.command_index = 0;
         self.settings_open = false;
         self.project_menu_open = false;
+        self.session_menu_open = false;
         self.command_query
             .update(cx, |state, cx| state.set_value("", window, cx));
         let handle = self.command_query.read(cx).focus_handle(cx);
@@ -816,6 +819,7 @@ impl KestrelApp {
         cx: &mut Context<Self>,
     ) {
         self.command_open = false;
+        self.session_menu_open = false;
         match command {
             Command::View(view) => {
                 self.view = view;
@@ -996,6 +1000,7 @@ impl KestrelApp {
 
         self.view = self.default_view;
         self.settings_open = false;
+        self.session_menu_open = false;
         self.notice = Some("Created a new session".into());
         self.persist_settings(cx);
         cx.notify();
@@ -1006,6 +1011,7 @@ impl KestrelApp {
         let Some(session) = self.sessions.get(index) else {
             return;
         };
+        self.session_menu_open = false;
         self.pending_delete = Some(PendingDelete::Session {
             id: session.id.clone(),
             title: session.title.clone(),
@@ -1284,6 +1290,10 @@ impl KestrelApp {
                 self.project_menu_open = false;
                 cx.stop_propagation();
                 cx.notify();
+            } else if self.session_menu_open {
+                self.session_menu_open = false;
+                cx.stop_propagation();
+                cx.notify();
             } else if self.diff_view.is_some() {
                 self.close_diff(window, cx);
                 cx.stop_propagation();
@@ -1342,6 +1352,7 @@ impl KestrelApp {
         self.stash_transcript();
         self.selected_project = index;
         self.project_menu_open = false;
+        self.session_menu_open = false;
         let path = self.projects[index].path.clone();
         self.file_tree = FileTree::load(path.clone());
         self.search_hits = if path == workspace_root() {
@@ -2087,21 +2098,6 @@ impl KestrelApp {
                     )
                     .child(
                         div()
-                            .id("header-fork")
-                            .size(px(28.))
-                            .rounded(px(7.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .hover(move |style| style.bg(p.hover))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.set_notice("Session forked into a new draft", cx);
-                            }))
-                            .child(icon(IconName::GitFork, 14.0, p.muted_fg)),
-                    )
-                    .child(
-                        div()
                             .id("header-more")
                             .size(px(28.))
                             .rounded(px(7.))
@@ -2109,9 +2105,135 @@ impl KestrelApp {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
+                            .when(self.session_menu_open, |this| this.bg(p.accent))
                             .hover(move |style| style.bg(p.hover))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.session_menu_open = !this.session_menu_open;
+                                cx.notify();
+                            }))
                             .child(icon(IconName::Ellipsis, 15.0, p.muted_fg)),
                     ),
+            )
+            .into_any_element()
+    }
+
+    fn session_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+
+        fn item(
+            id: &'static str,
+            icon_name: IconName,
+            label: &'static str,
+            hint: Option<&'static str>,
+            danger: bool,
+            cx: &mut Context<KestrelApp>,
+            action: fn(&mut KestrelApp, &mut Window, &mut Context<KestrelApp>),
+        ) -> AnyElement {
+            let p = palette(cx);
+            div()
+                .id(id)
+                .h(px(30.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(if danger { p.red_soft } else { p.hover }))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    action(this, window, cx);
+                }))
+                .child(icon(
+                    icon_name,
+                    12.5,
+                    if danger { p.red } else { p.muted_fg },
+                ))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.5))
+                        .text_color(if danger { p.red } else { p.fg })
+                        .child(label),
+                )
+                .children(hint.map(|hint| {
+                    div()
+                        .text_size(px(8.5))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.7))
+                        .child(hint)
+                }))
+                .into_any_element()
+        }
+
+        div()
+            .id("session-menu-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.session_menu_open = false;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("session-menu")
+                    .absolute()
+                    .top(px(100.))
+                    .right(px(14.))
+                    .w(px(190.))
+                    .p(px(5.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(item(
+                        "session-menu-new",
+                        IconName::Plus,
+                        "New session",
+                        Some("⌘N"),
+                        false,
+                        cx,
+                        |this, _, cx| {
+                            this.session_menu_open = false;
+                            this.new_session(cx);
+                        },
+                    ))
+                    .child(item(
+                        "session-menu-copy",
+                        IconName::Copy,
+                        "Copy transcript",
+                        Some("MD"),
+                        false,
+                        cx,
+                        |this, _, cx| {
+                            this.session_menu_open = false;
+                            if this.harness.transcript.is_empty() {
+                                this.set_notice("Nothing to copy yet", cx);
+                                return;
+                            }
+                            let markdown = harness::transcript_markdown(&this.harness.transcript);
+                            cx.write_to_clipboard(ClipboardItem::new_string(markdown));
+                            this.set_notice("Copied the transcript as Markdown", cx);
+                        },
+                    ))
+                    .child(div().h(px(1.)).my(px(3.)).bg(p.border))
+                    .child(item(
+                        "session-menu-delete",
+                        IconName::Trash,
+                        "Delete session…",
+                        None,
+                        true,
+                        cx,
+                        |this, _, cx| {
+                            this.session_menu_open = false;
+                            this.request_delete_session(this.selected_session, cx);
+                        },
+                    )),
             )
             .into_any_element()
     }
@@ -2762,6 +2884,7 @@ impl Render for KestrelApp {
             .then(|| views::palette::render(self, window, cx));
         let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
         let diff = self.diff_view.as_ref().map(|_| self.diff_modal(cx));
+        let session_menu = self.session_menu_open.then(|| self.session_menu(cx));
 
         div()
             .relative()
@@ -2796,6 +2919,7 @@ impl Render for KestrelApp {
                     ),
             )
             .child(status_bar)
+            .children(session_menu)
             .children(settings)
             .children(palette)
             .children(confirm)
