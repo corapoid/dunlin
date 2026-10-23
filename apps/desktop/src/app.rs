@@ -560,6 +560,14 @@ impl KestrelApp {
         }
         app.persist_settings(cx);
 
+        if let Ok(prompt) = std::env::var("KESTREL_AUTOPROMPT")
+            && !prompt.trim().is_empty()
+        {
+            app.composer
+                .update(cx, |state, cx| state.set_value(prompt, window, cx));
+            app.send_prompt(window, cx);
+        }
+
         app
     }
 

@@ -102,6 +102,7 @@ Useful diagnostics:
 - `KESTREL_TRACE_HARNESS=1` logs every harness event to stderr.
 - `KESTREL_HARNESS_COMMAND="..."` overrides the configured harness command for one run.
 - `KESTREL_DATA_DIR=/path` redirects the SQLite database.
+- `KESTREL_AUTOPROMPT="..."` sends a prompt once the harness connects; useful for smoke tests.
 
 ## License
 
