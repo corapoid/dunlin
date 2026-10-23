@@ -92,6 +92,7 @@ pub(crate) struct StoredSettings {
     pub reasoning_open: bool,
     pub dark: bool,
     pub view: MainView,
+    pub default_view: MainView,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
 }
@@ -111,6 +112,7 @@ impl Default for StoredSettings {
             reasoning_open: false,
             dark: true,
             view: MainView::Chat,
+            default_view: MainView::Chat,
             last_project_id: None,
             last_session_id: None,
         }
@@ -226,6 +228,7 @@ pub(crate) fn command_matches(item: &CommandItem, terms: &[&str]) -> bool {
 
 pub(crate) struct KestrelApp {
     pub view: MainView,
+    pub default_view: MainView,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
     pub selected_project: usize,
@@ -458,6 +461,7 @@ impl KestrelApp {
 
         let mut app = Self {
             view: stored.view,
+            default_view: stored.default_view,
             section: SidebarSection::Files,
             projects,
             selected_project: 0,
@@ -980,7 +984,7 @@ impl KestrelApp {
             self.connect_harness(cx);
         }
 
-        self.view = MainView::Chat;
+        self.view = self.default_view;
         self.settings_open = false;
         self.notice = Some("Created a new session".into());
         self.persist_settings(cx);
@@ -1615,6 +1619,7 @@ impl KestrelApp {
             reasoning_open: self.reasoning_open,
             dark: cx.theme().is_dark(),
             view: self.view,
+            default_view: self.default_view,
             last_project_id: self
                 .projects
                 .get(self.selected_project)
@@ -3076,6 +3081,7 @@ mod tests {
         assert!(settings.restore_session);
         assert_eq!(settings.code_font_size, 13.0);
         assert_eq!(settings.view, MainView::Chat);
+        assert_eq!(settings.default_view, MainView::Chat);
         assert_eq!(settings.last_project_id, None);
     }
 

@@ -274,7 +274,7 @@ fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
 fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
     let dark = cx.theme().is_dark();
-    let view = this.view;
+    let view = this.default_view;
     let harness = this.default_harness.clone();
 
     let mut body = div()
@@ -330,7 +330,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                                 .items_center()
                                 .cursor_pointer()
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.view = candidate;
+                                    this.default_view = candidate;
                                     this.persist_settings(cx);
                                     cx.notify();
                                 }))
