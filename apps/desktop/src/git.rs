@@ -228,4 +228,56 @@ mod tests {
         assert_eq!(counts.get("src/main.rs"), Some(&(12, 3)));
         assert_eq!(counts.get("image.png"), Some(&(0, 0)));
     }
+
+    #[test]
+    fn reads_stages_and_commits_a_real_repository() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("kestrel-git-{}-{unique}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let root = root.to_string_lossy().to_string();
+
+        let run = |args: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "git {:?}: {}",
+                args,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        run(&["init", "-q"]);
+        run(&["config", "user.name", "Kestrel Test"]);
+        run(&["config", "user.email", "test@kestrel.invalid"]);
+        run(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(std::path::Path::new(&root).join("hello.txt"), "one\ntwo\n").unwrap();
+
+        let status = load(&root);
+        assert_eq!(status.error, None);
+        assert!(!status.branch.is_empty());
+        assert_eq!(status.changes.len(), 1);
+        assert_eq!(status.changes[0].path, "hello.txt");
+        assert_eq!(status.changes[0].status, 'U');
+        assert_eq!(status.changes[0].additions, 2);
+        assert_eq!(status.changes[0].deletions, 0);
+
+        stage_all(&root).unwrap();
+        commit(&root, "initial commit").unwrap();
+
+        let status = load(&root);
+        assert_eq!(status.error, None);
+        assert!(status.changes.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -166,8 +166,6 @@ pub(crate) struct KestrelApp {
     pub fallback_session: SessionSummary,
     pub selected_session: usize,
     pub usages: Vec<ProviderUsage>,
-    pub nodes: Vec<AgentNode>,
-    pub spans: Vec<TraceSpan>,
     pub composer: Entity<TextareaState>,
     _composer_subscription: Subscription,
     pub search_input: Entity<InputState>,
@@ -352,8 +350,6 @@ impl KestrelApp {
             fallback_session,
             selected_session: 0,
             usages: demo::usage(),
-            nodes: demo::agent_nodes(),
-            spans: demo::trace_spans(),
             composer,
             _composer_subscription: composer_subscription,
             search_input,
@@ -652,10 +648,10 @@ impl KestrelApp {
         });
 
         cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(paths))) = receiver.await {
-                if let Some(path) = paths.into_iter().next() {
-                    this.update(cx, |this, cx| this.add_project(path, cx)).ok();
-                }
+            if let Ok(Ok(Some(paths))) = receiver.await
+                && let Some(path) = paths.into_iter().next()
+            {
+                this.update(cx, |this, cx| this.add_project(path, cx)).ok();
             }
         })
         .detach();

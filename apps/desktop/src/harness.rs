@@ -23,31 +23,53 @@ use crate::app::KestrelApp;
 pub(crate) enum ChatItem {
     User {
         text: String,
+        #[serde(default)]
+        at_ms: u64,
     },
     AgentText {
         text: String,
         streaming: bool,
+        #[serde(default)]
+        at_ms: u64,
     },
     Thought {
         text: String,
         streaming: bool,
+        #[serde(default)]
+        at_ms: u64,
     },
     Tool {
         view: ToolCallView,
         duration_ms: u64,
+        #[serde(default)]
+        at_ms: u64,
     },
     Plan {
         items: Vec<PlanItem>,
+        #[serde(default)]
+        at_ms: u64,
     },
     Permission {
         request_id: String,
         title: String,
         options: Vec<PermissionChoice>,
         resolved: Option<String>,
+        #[serde(default)]
+        at_ms: u64,
     },
     Error {
         message: String,
+        #[serde(default)]
+        at_ms: u64,
     },
+}
+
+/// Wall-clock timestamp used to project transcripts into traces.
+pub(crate) fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -232,9 +254,10 @@ impl KestrelApp {
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
         let title = session_title(&text);
-        self.harness
-            .transcript
-            .push(ChatItem::User { text: text.clone() });
+        self.harness.transcript.push(ChatItem::User {
+            text: text.clone(),
+            at_ms: now_ms(),
+        });
         self.harness.running = true;
         self.harness.pending_prompt = Some(text);
         self.update_active_session(|session| {
@@ -280,11 +303,10 @@ impl KestrelApp {
                 resolved,
                 ..
             } = item
+                && id == request_id
             {
-                if id == request_id {
-                    *resolved = Some(label.clone());
-                    break;
-                }
+                *resolved = Some(label.clone());
+                break;
             }
         }
         self.harness.running = true;
@@ -364,6 +386,7 @@ impl KestrelApp {
         if !sent {
             self.harness.transcript.push(ChatItem::Error {
                 message: "Could not send the prompt: the harness is not running.".into(),
+                at_ms: now_ms(),
             });
             self.harness.running = false;
         }
@@ -422,6 +445,7 @@ impl KestrelApp {
                 self.finish_streaming();
                 self.harness.transcript.push(ChatItem::Error {
                     message: message.clone(),
+                    at_ms: now_ms(),
                 });
                 if matches!(self.harness.status, HarnessStatus::Starting) {
                     self.harness.status = HarnessStatus::Failed(message.clone());
@@ -466,10 +490,20 @@ impl KestrelApp {
     fn apply_update(&mut self, update: HarnessUpdate) {
         match update {
             HarnessUpdate::AgentMessage(text) => {
-                append_stream(&mut self.harness.transcript, StreamKind::Message, text);
+                append_stream(
+                    &mut self.harness.transcript,
+                    StreamKind::Message,
+                    text,
+                    now_ms(),
+                );
             }
             HarnessUpdate::AgentThought(text) => {
-                append_stream(&mut self.harness.transcript, StreamKind::Thought, text);
+                append_stream(
+                    &mut self.harness.transcript,
+                    StreamKind::Thought,
+                    text,
+                    now_ms(),
+                );
             }
             HarnessUpdate::ToolCall(view) => {
                 self.harness
@@ -478,15 +512,21 @@ impl KestrelApp {
                 self.harness.transcript.push(ChatItem::Tool {
                     view,
                     duration_ms: 0,
+                    at_ms: now_ms(),
                 });
             }
             HarnessUpdate::ToolCallUpdate(delta) => self.apply_tool_delta(delta),
             HarnessUpdate::Plan(items) => {
-                if let Some(ChatItem::Plan { items: existing }) = self.harness.transcript.last_mut()
+                if let Some(ChatItem::Plan {
+                    items: existing, ..
+                }) = self.harness.transcript.last_mut()
                 {
                     *existing = items;
                 } else {
-                    self.harness.transcript.push(ChatItem::Plan { items });
+                    self.harness.transcript.push(ChatItem::Plan {
+                        items,
+                        at_ms: now_ms(),
+                    });
                 }
             }
             HarnessUpdate::Usage {
@@ -515,7 +555,10 @@ impl KestrelApp {
             .unwrap_or(false);
 
         for item in self.harness.transcript.iter_mut().rev() {
-            let ChatItem::Tool { view, duration_ms } = item else {
+            let ChatItem::Tool {
+                view, duration_ms, ..
+            } = item
+            else {
                 continue;
             };
             if view.id != delta.id {
@@ -539,10 +582,8 @@ impl KestrelApp {
             if let Some(deletions) = delta.deletions {
                 view.deletions = deletions;
             }
-            if finished {
-                if let Some(started) = self.harness.started_tools.remove(&delta.id) {
-                    *duration_ms = started.elapsed().as_millis() as u64;
-                }
+            if finished && let Some(started) = self.harness.started_tools.remove(&delta.id) {
+                *duration_ms = started.elapsed().as_millis() as u64;
             }
             return;
         }
@@ -593,6 +634,7 @@ impl KestrelApp {
                 title,
                 options,
                 resolved: Some(label.clone()),
+                at_ms: now_ms(),
             });
             self.save_current_transcript();
             self.notice = Some(label);
@@ -604,6 +646,7 @@ impl KestrelApp {
             title,
             options,
             resolved: None,
+            at_ms: now_ms(),
         });
         self.update_active_session(|session| {
             session.status = SessionStatus::Waiting;
@@ -669,13 +712,14 @@ enum StreamKind {
     Thought,
 }
 
-fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String) {
+fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String, at_ms: u64) {
     match (kind, transcript.last_mut()) {
         (
             StreamKind::Message,
             Some(ChatItem::AgentText {
                 text: body,
                 streaming,
+                ..
             }),
         ) if *streaming => {
             body.push_str(&text);
@@ -686,6 +730,7 @@ fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String)
             Some(ChatItem::Thought {
                 text: body,
                 streaming,
+                ..
             }),
         ) if *streaming => {
             body.push_str(&text);
@@ -698,10 +743,12 @@ fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String)
         StreamKind::Message => transcript.push(ChatItem::AgentText {
             text,
             streaming: true,
+            at_ms,
         }),
         StreamKind::Thought => transcript.push(ChatItem::Thought {
             text,
             streaming: true,
+            at_ms,
         }),
     }
 }
@@ -772,7 +819,7 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_available, harness_command, session_title};
+    use super::{ChatItem, command_available, harness_command, session_title};
 
     #[test]
     fn title_uses_the_first_line() {
@@ -816,5 +863,41 @@ mod tests {
     fn detects_executables_on_path() {
         assert!(command_available("sh"));
         assert!(!command_available("kestrel-definitely-not-installed"));
+    }
+
+    #[test]
+    fn transcripts_without_timestamps_still_deserialize() {
+        let json = r#"[
+            {"User":{"text":"hello"}},
+            {"AgentText":{"text":"hi","streaming":false}},
+            {"Tool":{"view":{"id":"t1","title":"Read","kind":"Read","status":"Done","detail":"","locations":[],"additions":0,"deletions":0},"duration_ms":12}}
+        ]"#;
+        let items: Vec<ChatItem> = serde_json::from_str(json).unwrap();
+        assert_eq!(items.len(), 3);
+        assert!(super::now_ms() > 0);
+        assert!(matches!(&items[0], ChatItem::User { at_ms: 0, .. }));
+        assert!(matches!(&items[1], ChatItem::AgentText { at_ms: 0, .. }));
+        assert!(matches!(&items[2], ChatItem::Tool { at_ms: 0, .. }));
+    }
+
+    #[test]
+    fn streaming_chunks_keep_the_first_timestamp() {
+        let mut transcript = Vec::new();
+        super::append_stream(
+            &mut transcript,
+            super::StreamKind::Message,
+            "hel".into(),
+            10,
+        );
+        super::append_stream(&mut transcript, super::StreamKind::Message, "lo".into(), 20);
+        assert_eq!(transcript.len(), 1);
+        assert!(matches!(
+            &transcript[0],
+            ChatItem::AgentText {
+                text,
+                at_ms: 10,
+                ..
+            } if text == "hello"
+        ));
     }
 }

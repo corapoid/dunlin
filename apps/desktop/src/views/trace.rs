@@ -2,7 +2,7 @@
 //! details. Designed for long agent runs where the interesting work is nested
 //! three levels deep.
 
-use kestrel_domain::{SpanKind, SpanStatus, TraceSpan};
+use kestrel_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::Icon;
 use kestrel_ui::prelude::FluentBuilder as _;
@@ -11,7 +11,6 @@ use kestrel_ui::*;
 use crate::app::{KestrelApp, TraceFilter, format_ms, format_tokens, span_color};
 
 const LABEL_WIDTH: f32 = 296.0;
-const TOTAL_MS: f32 = 252_000.0;
 
 pub(crate) fn render(
     this: &mut KestrelApp,
@@ -19,7 +18,21 @@ pub(crate) fn render(
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let spans = this.spans.clone();
+    let preview = this.harness.transcript.is_empty();
+    let session = this.session().clone();
+    let spans = if preview {
+        crate::demo::trace_spans()
+    } else {
+        crate::projection::spans(&this.harness.transcript, &session)
+    };
+    let total_ms = spans
+        .iter()
+        .map(TraceSpan::end_ms)
+        .max()
+        .unwrap_or(1)
+        .max(1) as f32;
+    let tokens = session.tokens;
+    let total_duration = format_ms(total_ms as u64);
     let filter = this.trace_filter;
     let selected = this.selected_span;
     let following = this.follow_running;
@@ -59,6 +72,49 @@ pub(crate) fn render(
         )
         .child(
             div()
+                .h(px(17.))
+                .px(px(5.))
+                .rounded_full()
+                .bg(if preview {
+                    p.amber_soft
+                } else {
+                    match session.status {
+                        SessionStatus::Running => p.green_soft,
+                        SessionStatus::Waiting => p.amber_soft,
+                        SessionStatus::Failed => p.red_soft,
+                        _ => p.muted,
+                    }
+                })
+                .flex()
+                .items_center()
+                .child(
+                    div()
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(if preview {
+                            p.amber
+                        } else {
+                            match session.status {
+                                SessionStatus::Running => p.green,
+                                SessionStatus::Waiting => p.amber,
+                                SessionStatus::Failed => p.red,
+                                _ => p.muted_fg,
+                            }
+                        })
+                        .child(if preview {
+                            "PREVIEW"
+                        } else {
+                            match session.status {
+                                SessionStatus::Running => "LIVE",
+                                SessionStatus::Waiting => "WAITING",
+                                SessionStatus::Failed => "FAILED",
+                                _ => "IDLE",
+                            }
+                        }),
+                ),
+        )
+        .child(
+            div()
                 .text_size(px(9.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
@@ -71,8 +127,9 @@ pub(crate) fn render(
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!(
-                    "4m 12s · ${total_cost:.2} · {}",
-                    format_tokens(184_200)
+                    "{} · ${total_cost:.2} · {}",
+                    total_duration,
+                    format_tokens(tokens)
                 )),
         )
         .child(div().flex_1());
@@ -228,10 +285,7 @@ pub(crate) fn render(
                         .text_size(px(8.))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.75))
-                        .child(format!(
-                            "{}s",
-                            (TOTAL_MS / 1000.0 * pct as f32 / 100.0) as u32
-                        ))
+                        .child(axis_label(total_ms * pct as f32 / 100.0))
                         .into_any_element()
                 })),
         );
@@ -242,7 +296,7 @@ pub(crate) fn render(
             .iter()
             .position(|candidate| candidate.id == span.id)
             .unwrap_or(0);
-        rows = rows.child(span_row(span, index, selected, row_h, &p, cx));
+        rows = rows.child(span_row(span, index, selected, row_h, total_ms, &p, cx));
     }
 
     let timeline = div()
@@ -314,19 +368,28 @@ fn zoom_button(
         .into_any_element()
 }
 
+fn axis_label(ms: f32) -> String {
+    if ms < 1_000.0 {
+        format!("{}ms", ms as u32)
+    } else {
+        format!("{:.1}s", ms / 1_000.0)
+    }
+}
+
 fn span_row(
     span: &TraceSpan,
     index: usize,
     selected: Option<usize>,
     row_h: f32,
+    total_ms: f32,
     p: &Palette,
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let active = selected == Some(index);
     let color = span_color(p, span.kind);
     let (status_color, _status_soft) = status_palette(p, span.status);
-    let start = (span.start_ms as f32 / TOTAL_MS).clamp(0.0, 1.0);
-    let width = (span.duration_ms as f32 / TOTAL_MS).clamp(0.001, 1.0 - start.min(0.999));
+    let start = (span.start_ms as f32 / total_ms).clamp(0.0, 1.0);
+    let width = (span.duration_ms as f32 / total_ms).clamp(0.001, 1.0 - start.min(0.999));
     let indent = 10.0 + span.depth as f32 * 10.0;
 
     div()
@@ -592,22 +655,22 @@ fn span_detail(
             div()
                 .flex()
                 .gap(px(6.))
-                .child(metric("Duration", format_ms(span.duration_ms), &p))
-                .child(metric("Start", format_ms(span.start_ms), &p)),
+                .child(metric("Duration", format_ms(span.duration_ms), p))
+                .child(metric("Start", format_ms(span.start_ms), p)),
         )
         .child(
             div()
                 .flex()
                 .gap(px(6.))
-                .child(metric("Cost", format!("${:.2}", span.cost_usd), &p))
-                .child(metric("Tokens", format_tokens(span.tokens), &p)),
+                .child(metric("Cost", format!("${:.2}", span.cost_usd), p))
+                .child(metric("Tokens", format_tokens(span.tokens), p)),
         )
         .child(
             div()
                 .flex()
                 .gap(px(6.))
-                .child(metric("Depth", span.depth.to_string(), &p))
-                .child(metric("Children", children.len().to_string(), &p)),
+                .child(metric("Depth", span.depth.to_string(), p))
+                .child(metric("Children", children.len().to_string(), p)),
         );
 
     if let Some(parent) = parent {

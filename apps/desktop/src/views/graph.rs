@@ -1,7 +1,7 @@
 //! Agent graph: the orchestrator tree, subagent fan-out, handoffs and live
 //! status painted on a quiet dot grid.
 
-use kestrel_domain::{AgentKind, AgentNode, AgentStatus, ToolKind};
+use kestrel_domain::{AgentKind, AgentNode, AgentStatus, SessionStatus, ToolKind};
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::Icon;
 use kestrel_ui::*;
@@ -14,7 +14,24 @@ pub(crate) fn render(
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let nodes = this.nodes.clone();
+    let preview = this.harness.transcript.is_empty();
+    let session = this.session().clone();
+    let project = this.project().clone();
+    let nodes = if preview {
+        crate::demo::agent_nodes()
+    } else {
+        crate::projection::nodes(&this.harness.transcript, &project, &session)
+    };
+    let (badge_bg, badge_fg, badge_label) = if preview {
+        (p.amber_soft, p.amber, "PREVIEW")
+    } else {
+        match session.status {
+            SessionStatus::Running => (p.green_soft, p.green, "LIVE"),
+            SessionStatus::Waiting => (p.amber_soft, p.amber, "WAITING"),
+            SessionStatus::Failed => (p.red_soft, p.red, "FAILED"),
+            _ => (p.muted, p.muted_fg, "IDLE"),
+        }
+    };
     let selected = this.selected_node;
     let following = this.follow_running;
     let zoom = this.graph_zoom;
@@ -50,17 +67,17 @@ pub(crate) fn render(
                 .h(px(17.))
                 .px(px(5.))
                 .rounded_full()
-                .bg(p.green_soft)
+                .bg(badge_bg)
                 .flex()
                 .items_center()
                 .gap(px(4.))
-                .child(dot(p.green, 4.5))
+                .child(dot(badge_fg, 4.5))
                 .child(
                     div()
                         .text_size(px(8.))
                         .font_family("Geist Mono")
-                        .text_color(p.green)
-                        .child("LIVE"),
+                        .text_color(badge_fg)
+                        .child(badge_label),
                 ),
         )
         .child(
@@ -702,8 +719,8 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                 .flex()
                 .items_center()
                 .gap(px(7.))
-                .child(meta_chip(&node.model, &p))
-                .child(meta_chip(&node.harness, &p))
+                .child(meta_chip(&node.model, p))
+                .child(meta_chip(&node.harness, p))
                 .child(div().flex_1())
                 .child(
                     div()

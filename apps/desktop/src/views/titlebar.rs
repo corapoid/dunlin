@@ -17,8 +17,12 @@ pub(crate) fn render(
     let p = palette(cx);
     let project = this.project().clone();
     let session = this.session().clone();
-    let running = this
-        .nodes
+    let nodes = if this.harness.transcript.is_empty() {
+        crate::demo::agent_nodes()
+    } else {
+        crate::projection::nodes(&this.harness.transcript, &project, &session)
+    };
+    let running = nodes
         .iter()
         .filter(|node| node.status == kestrel_domain::AgentStatus::Running)
         .count();

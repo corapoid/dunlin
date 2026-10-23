@@ -4,6 +4,7 @@ mod app;
 mod demo;
 mod git;
 mod harness;
+mod projection;
 mod search;
 mod tree;
 mod views;

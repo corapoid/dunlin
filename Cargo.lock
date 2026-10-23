@@ -3552,6 +3552,7 @@ dependencies = [
  "kestrel-storage",
  "kestrel-ui",
  "serde",
+ "serde_json",
  "uuid",
 ]
 

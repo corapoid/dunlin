@@ -21,10 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut output = String::new();
     let mut saw_session = false;
 
-    loop {
-        let Ok(event) = async_io::block_on(events.recv()) else {
-            break;
-        };
+    while let Ok(event) = async_io::block_on(events.recv()) {
         if handle(
             event,
             &mut sent,

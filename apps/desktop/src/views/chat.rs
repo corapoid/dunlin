@@ -267,7 +267,7 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
     } else {
         let mut index = 0;
         while index < items.len() {
-            if let ChatItem::User { text } = &items[index] {
+            if let ChatItem::User { text, .. } = &items[index] {
                 inner = inner.child(user_message(text, &p));
                 index += 1;
                 continue;
@@ -513,6 +513,7 @@ fn starter_row(
         .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn agent_group(
     items: &[ChatItem],
     base: usize,
@@ -529,7 +530,9 @@ fn agent_group(
     for (offset, item) in items.iter().enumerate() {
         let index = base + offset;
         match item {
-            ChatItem::AgentText { text, streaming } => {
+            ChatItem::AgentText {
+                text, streaming, ..
+            } => {
                 let content = if *streaming {
                     format!("{text} ▍")
                 } else {
@@ -546,10 +549,12 @@ fn agent_group(
             ChatItem::Thought { text, .. } => {
                 body = body.child(thought_card(text, reasoning_open, cx, p));
             }
-            ChatItem::Tool { view, duration_ms } => {
+            ChatItem::Tool {
+                view, duration_ms, ..
+            } => {
                 body = body.child(tool_card(index, view, *duration_ms, expanded, cx, p));
             }
-            ChatItem::Plan { items } => {
+            ChatItem::Plan { items, .. } => {
                 body = body.child(plan_card(items, p));
             }
             ChatItem::Permission {
@@ -557,6 +562,7 @@ fn agent_group(
                 title,
                 options,
                 resolved,
+                ..
             } => {
                 body = body.child(permission_card(
                     request_id,
@@ -567,7 +573,7 @@ fn agent_group(
                     p,
                 ));
             }
-            ChatItem::Error { message } => {
+            ChatItem::Error { message, .. } => {
                 body = body.child(error_card(message, p));
             }
             ChatItem::User { .. } => {}
@@ -1554,11 +1560,7 @@ fn composer(
                                 IconName::ArrowUp
                             })
                             .size(px(14.))
-                            .text_color(if running {
-                                p.bg
-                            } else {
-                                p.bg
-                            }),
+                            .text_color(p.bg),
                         ),
                 ),
         );
