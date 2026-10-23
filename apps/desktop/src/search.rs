@@ -126,8 +126,19 @@ fn is_skipped_file(name: &str) -> bool {
     let lower = name.to_lowercase();
     matches!(
         lower.as_str(),
-        ".ds_store" | "cargo.lock" | "package-lock.json" | "pnpm-lock.yaml" | "yarn.lock"
-    ) || lower.ends_with(".png")
+        ".ds_store"
+            | ".env"
+            | ".netrc"
+            | ".npmrc"
+            | ".pypirc"
+            | "id_rsa"
+            | "id_ed25519"
+            | "cargo.lock"
+            | "package-lock.json"
+            | "pnpm-lock.yaml"
+            | "yarn.lock"
+    ) || lower.starts_with(".env.")
+        || lower.ends_with(".png")
         || lower.ends_with(".jpg")
         || lower.ends_with(".jpeg")
         || lower.ends_with(".gif")
@@ -138,4 +149,31 @@ fn is_skipped_file(name: &str) -> bool {
         || lower.ends_with(".woff")
         || lower.ends_with(".woff2")
         || lower.ends_with(".zip")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::search_project;
+    use std::fs;
+
+    #[test]
+    fn search_skips_secret_files() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kestrel-search-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".env"), "SECRET=1\n").unwrap();
+        fs::write(root.join("main.rs"), "let secret = 1;\n").unwrap();
+
+        let hits = search_project(&root.to_string_lossy(), "secret", 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(
+            hits[0].0,
+            root.join("main.rs").to_string_lossy().to_string()
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }
