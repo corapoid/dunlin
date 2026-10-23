@@ -1,0 +1,25 @@
+[package]
+name = "kestrel-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+agent-client-protocol = { version = "3.5", features = ["process", "stdio"] }
+async-channel = "2"
+async-io = "2"
+kestrel-domain.workspace = true
+serde.workspace = true
+
+[[bin]]
+name = "acp_smoke"
+path = "src/bin/acp_smoke.rs"
+
+[[bin]]
+name = "mock_acp_agent"
+path = "src/bin/mock_acp_agent.rs"
+
+[[bin]]
+name = "permission_smoke"
+path = "src/bin/permission_smoke.rs"

@@ -1,0 +1,19 @@
+[package]
+name = "kestrel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kestrel"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+kestrel-ui.workspace = true
+kestrel-domain.workspace = true
+kestrel-agent.workspace = true
+kestrel-storage.workspace = true
+uuid.workspace = true
+serde.workspace = true

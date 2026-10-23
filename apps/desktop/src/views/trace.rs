@@ -1,0 +1,869 @@
+//! Trace waterfall: span hierarchy, timings, cost and the selected span's
+//! details. Designed for long agent runs where the interesting work is nested
+//! three levels deep.
+
+use kestrel_domain::{SpanKind, SpanStatus, TraceSpan};
+use kestrel_ui::assets::IconName;
+use kestrel_ui::component::Icon;
+use kestrel_ui::prelude::FluentBuilder as _;
+use kestrel_ui::*;
+
+use crate::app::{KestrelApp, TraceFilter, format_ms, format_tokens, span_color};
+
+const LABEL_WIDTH: f32 = 296.0;
+const TOTAL_MS: f32 = 252_000.0;
+
+pub(crate) fn render(
+    this: &mut KestrelApp,
+    _window: &mut Window,
+    cx: &mut Context<KestrelApp>,
+) -> AnyElement {
+    let p = palette(cx);
+    let spans = this.spans.clone();
+    let filter = this.trace_filter;
+    let selected = this.selected_span;
+    let following = this.follow_running;
+    let zoom = this.trace_zoom;
+    let row_h = (28.0 + (zoom - 1.0) * 10.0).clamp(24.0, 36.0);
+    let filtered: Vec<TraceSpan> = spans
+        .iter()
+        .filter(|span| filter.matches(span.kind))
+        .cloned()
+        .collect();
+    let total_cost: f64 = spans.iter().map(|span| span.cost_usd).sum();
+    let running = spans
+        .iter()
+        .filter(|span| span.status == SpanStatus::Running)
+        .count();
+
+    let toolbar = div()
+        .h(px(40.))
+        .flex_shrink_0()
+        .px(px(14.))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .border_b_1()
+        .border_color(p.border)
+        .child(
+            Icon::new(IconName::ChartNoAxesGantt)
+                .size(px(14.))
+                .text_color(p.teal),
+        )
+        .child(
+            div()
+                .text_size(px(11.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(p.fg)
+                .child("Trace waterfall"),
+        )
+        .child(
+            div()
+                .text_size(px(9.5))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg)
+                .child(format!("{} spans · {running} running", spans.len())),
+        )
+        .child(div().w(px(1.)).h(px(13.)).bg(p.border))
+        .child(
+            div()
+                .text_size(px(9.5))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg)
+                .child(format!(
+                    "4m 12s · ${total_cost:.2} · {}",
+                    format_tokens(184_200)
+                )),
+        )
+        .child(div().flex_1());
+
+    let mut toolbar = toolbar;
+    for chip in TraceFilter::ALL {
+        let active = filter == chip;
+        let count = spans.iter().filter(|span| chip.matches(span.kind)).count();
+        toolbar = toolbar.child(
+            div()
+                .id(format!("trace-filter:{}", chip.label()))
+                .h(px(22.))
+                .px(px(6.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(if active {
+                    p.border_strong
+                } else {
+                    p.border.opacity(0.0)
+                })
+                .bg(if active { p.card } else { p.bg.opacity(0.0) })
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.trace_filter = chip;
+                    this.selected_span = None;
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .text_size(px(9.))
+                        .font_weight(if active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .text_color(if active { p.fg } else { p.muted_fg })
+                        .child(chip.label()),
+                )
+                .child(
+                    div()
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.7))
+                        .child(count.to_string()),
+                ),
+        );
+    }
+
+    toolbar = toolbar
+        .child(div().w(px(1.)).h(px(13.)).bg(p.border))
+        .child(
+            div()
+                .id("trace-follow")
+                .h(px(23.))
+                .px(px(7.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(if following {
+                    p.blue.opacity(0.3)
+                } else {
+                    p.border
+                })
+                .bg(if following { p.blue_soft } else { p.card })
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.follow_running = !this.follow_running;
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(IconName::Crosshair)
+                        .size(px(11.))
+                        .text_color(if following { p.blue } else { p.muted_fg }),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.))
+                        .text_color(if following { p.blue } else { p.muted_fg })
+                        .child("Follow"),
+                ),
+        )
+        .child(
+            div()
+                .h(px(23.))
+                .px(px(5.))
+                .rounded(px(5.))
+                .flex()
+                .items_center()
+                .gap(px(2.))
+                .child(zoom_button(IconName::ZoomOut, -0.1, cx, &p))
+                .child(
+                    div()
+                        .min_w(px(32.))
+                        .text_center()
+                        .text_size(px(9.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child(format!("{:.0}%", zoom * 100.)),
+                )
+                .child(zoom_button(IconName::ZoomIn, 0.1, cx, &p)),
+        );
+
+    let header = div()
+        .h(px(26.))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .border_b_1()
+        .border_color(p.border)
+        .bg(p.subtle)
+        .child(
+            div()
+                .w(px(LABEL_WIDTH))
+                .flex_shrink_0()
+                .pl(px(12.))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .child(
+                    div()
+                        .text_size(px(8.5))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child("SPAN"),
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .pr(px(10.))
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.65))
+                        .child(format!("{} shown", filtered.len())),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .relative()
+                .flex()
+                .items_center()
+                .justify_between()
+                .px(px(4.))
+                .children([0, 25, 50, 75, 100].map(|pct| {
+                    div()
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.75))
+                        .child(format!(
+                            "{}s",
+                            (TOTAL_MS / 1000.0 * pct as f32 / 100.0) as u32
+                        ))
+                        .into_any_element()
+                })),
+        );
+
+    let mut rows = div().flex().flex_col();
+    for span in &filtered {
+        let index = spans
+            .iter()
+            .position(|candidate| candidate.id == span.id)
+            .unwrap_or(0);
+        rows = rows.child(span_row(span, index, selected, row_h, &p, cx));
+    }
+
+    let timeline = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .child(header)
+        .child(
+            div()
+                .id("trace-rows")
+                .flex_1()
+                .min_h(px(0.))
+                .overflow_y_scroll()
+                .child(rows),
+        );
+
+    let detail = selected
+        .and_then(|index| spans.get(index))
+        .map(|span| span_detail(span, &spans, cx, &p));
+
+    let mut body = div()
+        .flex()
+        .flex_1()
+        .min_h(px(0.))
+        .min_w(px(0.))
+        .child(timeline);
+    if let Some(detail) = detail {
+        body = body.child(detail);
+    }
+
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .bg(p.bg)
+        .child(toolbar)
+        .child(body)
+        .into_any_element()
+}
+
+fn zoom_button(
+    icon_name: IconName,
+    delta: f32,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    div()
+        .id(if delta > 0.0 {
+            "trace-zoom-in"
+        } else {
+            "trace-zoom-out"
+        })
+        .size(px(19.))
+        .rounded(px(4.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .hover(move |style| style.bg(p.hover))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.trace_zoom = (this.trace_zoom + delta).clamp(0.7, 1.5);
+            cx.notify();
+        }))
+        .child(Icon::new(icon_name).size(px(11.)).text_color(p.muted_fg))
+        .into_any_element()
+}
+
+fn span_row(
+    span: &TraceSpan,
+    index: usize,
+    selected: Option<usize>,
+    row_h: f32,
+    p: &Palette,
+    cx: &mut Context<KestrelApp>,
+) -> AnyElement {
+    let active = selected == Some(index);
+    let color = span_color(p, span.kind);
+    let (status_color, _status_soft) = status_palette(p, span.status);
+    let start = (span.start_ms as f32 / TOTAL_MS).clamp(0.0, 1.0);
+    let width = (span.duration_ms as f32 / TOTAL_MS).clamp(0.001, 1.0 - start.min(0.999));
+    let indent = 10.0 + span.depth as f32 * 10.0;
+
+    div()
+        .id(("span-row", index))
+        .h(px(row_h))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .border_b_1()
+        .border_color(p.border.opacity(0.55))
+        .when(active, |this| this.bg(p.accent))
+        .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+        .cursor_pointer()
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.selected_span = if this.selected_span == Some(index) {
+                None
+            } else {
+                Some(index)
+            };
+            cx.notify();
+        }))
+        .child(
+            div()
+                .w(px(LABEL_WIDTH))
+                .h_full()
+                .flex_shrink_0()
+                .pl(px(indent))
+                .pr(px(8.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .size(px(18.))
+                        .flex_shrink_0()
+                        .rounded(px(5.))
+                        .bg(color.opacity(0.12))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            Icon::new(span_icon(span.kind))
+                                .size(px(10.5))
+                                .text_color(color),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(0.))
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .font_weight(
+                                    if span.kind == SpanKind::Agent || span.kind == SpanKind::Turn {
+                                        FontWeight::MEDIUM
+                                    } else {
+                                        FontWeight::NORMAL
+                                    },
+                                )
+                                .text_color(if active { p.fg } else { p.fg.opacity(0.85) })
+                                .truncate()
+                                .child(span.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(8.))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg.opacity(0.75))
+                                .truncate()
+                                .child(format!("{} · {}", span.agent, span.kind.label())),
+                        ),
+                )
+                .when(
+                    span.status == SpanStatus::Waiting || span.status == SpanStatus::Running,
+                    |this| this.child(div().size(px(5.)).rounded_full().bg(status_color)),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .relative()
+                .child(grid_lines(p))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px((row_h - 15.0) / 2.0))
+                        .left(relative(start))
+                        .w(relative(width))
+                        .min_w(px(2.))
+                        .h(px(15.))
+                        .rounded(px(3.))
+                        .bg(if span.status == SpanStatus::Done {
+                            color.opacity(0.72)
+                        } else {
+                            color
+                        })
+                        .when(span.status == SpanStatus::Running, |this| {
+                            this.border_1().border_color(color)
+                        })
+                        .when(active, |this| {
+                            this.border_1().border_color(p.fg.opacity(0.45))
+                        }),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .top(px((row_h - 15.0) / 2.0 + 15.5))
+                        .left(relative(start))
+                        .pl(px(3.))
+                        .text_size(px(7.5))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.0))
+                        .child(format_ms(span.duration_ms)),
+                ),
+        )
+        .into_any_element()
+}
+
+fn grid_lines(p: &Palette) -> AnyElement {
+    let mut lines = div().absolute().top_0().left_0().size_full();
+    for pct in [0.25f32, 0.5, 0.75] {
+        lines = lines.child(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left(relative(pct))
+                .w(px(1.))
+                .bg(p.border.opacity(0.4)),
+        );
+    }
+    lines.into_any_element()
+}
+
+fn span_detail(
+    span: &TraceSpan,
+    spans: &[TraceSpan],
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    let color = span_color(p, span.kind);
+    let (status_color, status_soft) = status_palette(p, span.status);
+    let parent = span
+        .parent
+        .as_ref()
+        .and_then(|id| spans.iter().find(|candidate| &candidate.id == id));
+    let children: Vec<&TraceSpan> = spans
+        .iter()
+        .filter(|candidate| candidate.parent.as_ref() == Some(&span.id))
+        .collect();
+
+    let mut content = div()
+        .flex()
+        .flex_col()
+        .gap(px(11.))
+        .px(px(12.))
+        .py(px(11.))
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .gap(px(7.))
+                .child(
+                    div()
+                        .size(px(24.))
+                        .flex_shrink_0()
+                        .rounded(px(6.))
+                        .bg(color.opacity(0.12))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            Icon::new(span_icon(span.kind))
+                                .size(px(13.))
+                                .text_color(color),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(3.))
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(p.fg)
+                                .child(span.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(4.))
+                                .child(
+                                    div()
+                                        .h(px(16.))
+                                        .px(px(5.))
+                                        .rounded(px(3.))
+                                        .bg(status_soft)
+                                        .flex()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_size(px(7.5))
+                                                .font_family("Geist Mono")
+                                                .text_color(status_color)
+                                                .child(span.status.label().to_uppercase()),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(8.5))
+                                        .font_family("Geist Mono")
+                                        .text_color(p.muted_fg)
+                                        .child(format!("{} · {}", span.kind.label(), span.agent)),
+                                ),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("close-span-detail")
+                        .size(px(19.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.hover))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.selected_span = None;
+                            cx.notify();
+                        }))
+                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                ),
+        )
+        .child(
+            div()
+                .rounded(px(7.))
+                .border_1()
+                .border_color(p.border)
+                .bg(p.subtle)
+                .p(px(8.))
+                .flex()
+                .flex_col()
+                .gap(px(5.))
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .line_height(relative(1.5))
+                        .text_color(p.muted_fg)
+                        .child(span.detail.clone()),
+                ),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(metric("Duration", format_ms(span.duration_ms), &p))
+                .child(metric("Start", format_ms(span.start_ms), &p)),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(metric("Cost", format!("${:.2}", span.cost_usd), &p))
+                .child(metric("Tokens", format_tokens(span.tokens), &p)),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(metric("Depth", span.depth.to_string(), &p))
+                .child(metric("Children", children.len().to_string(), &p)),
+        );
+
+    if let Some(parent) = parent {
+        content = content.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(3.))
+                .child(
+                    div()
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child("PARENT"),
+                )
+                .child(
+                    div()
+                        .id("trace-parent")
+                        .h(px(26.))
+                        .px(px(6.))
+                        .rounded(px(5.))
+                        .border_1()
+                        .border_color(p.border)
+                        .bg(p.card)
+                        .flex()
+                        .items_center()
+                        .gap(px(5.))
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.hover))
+                        .child(
+                            Icon::new(span_icon(parent.kind))
+                                .size(px(10.5))
+                                .text_color(span_color(p, parent.kind)),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(px(9.5))
+                                .text_color(p.fg.opacity(0.85))
+                                .truncate()
+                                .child(parent.name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(8.))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg)
+                                .child(format_ms(parent.duration_ms)),
+                        ),
+                ),
+        );
+    }
+
+    if !children.is_empty() {
+        let mut child_list = div().flex().flex_col().gap(px(2.)).child(
+            div()
+                .text_size(px(8.))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg)
+                .child(format!("CHILDREN · {}", children.len())),
+        );
+        for child in children.iter().take(5) {
+            child_list = child_list.child(
+                div()
+                    .h(px(23.))
+                    .px(px(5.))
+                    .rounded(px(4.))
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .child(
+                        Icon::new(span_icon(child.kind))
+                            .size(px(9.5))
+                            .text_color(span_color(p, child.kind)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(9.))
+                            .text_color(p.muted_fg)
+                            .truncate()
+                            .child(child.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(8.))
+                            .font_family("Geist Mono")
+                            .text_color(p.muted_fg.opacity(0.7))
+                            .child(format_ms(child.duration_ms)),
+                    ),
+            );
+        }
+        content = content.child(child_list);
+    }
+
+    content = content.child(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(5.))
+            .child(
+                div()
+                    .id("span-open-chat")
+                    .h(px(23.))
+                    .px(px(7.))
+                    .rounded(px(5.))
+                    .bg(p.fg)
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_notice("Span linked into the conversation", cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::MessageSquare)
+                            .size(px(10.))
+                            .text_color(p.bg),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(8.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(p.bg)
+                            .child("Open in chat"),
+                    ),
+            )
+            .child(
+                div()
+                    .id("span-copy-json")
+                    .h(px(23.))
+                    .px(px(7.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(p.border)
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.set_notice("Span JSON copied to the clipboard", cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::Copy)
+                            .size(px(9.5))
+                            .text_color(p.muted_fg),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(8.5))
+                            .text_color(p.muted_fg)
+                            .child("Copy JSON"),
+                    ),
+            ),
+    );
+
+    div()
+        .w(px(324.))
+        .h_full()
+        .flex_shrink_0()
+        .border_l_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .h(px(34.))
+                .flex_shrink_0()
+                .px(px(12.))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .border_b_1()
+                .border_color(p.border)
+                .child(
+                    Icon::new(IconName::ChartSpline)
+                        .size(px(12.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.fg)
+                        .child("Span detail"),
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .text_size(px(8.))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child(span.id.clone()),
+                ),
+        )
+        .child(
+            div()
+                .id("trace-detail-scroll")
+                .flex_1()
+                .min_h(px(0.))
+                .overflow_y_scroll()
+                .child(content),
+        )
+        .into_any_element()
+}
+
+fn metric(label: &str, value: String, p: &Palette) -> AnyElement {
+    div()
+        .flex_1()
+        .rounded(px(6.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .px(px(7.))
+        .py(px(5.))
+        .flex()
+        .flex_col()
+        .gap(px(2.))
+        .child(
+            div()
+                .text_size(px(7.5))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg)
+                .child(label.to_uppercase()),
+        )
+        .child(
+            div()
+                .text_size(px(10.))
+                .font_family("Geist Mono")
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.fg)
+                .child(value),
+        )
+        .into_any_element()
+}
+
+fn status_palette(p: &Palette, status: SpanStatus) -> (Hsla, Hsla) {
+    match status {
+        SpanStatus::Running => (p.blue, p.blue_soft),
+        SpanStatus::Done => (p.green, p.green_soft),
+        SpanStatus::Failed => (p.red, p.red_soft),
+        SpanStatus::Waiting => (p.amber, p.amber_soft),
+    }
+}
+
+fn span_icon(kind: SpanKind) -> IconName {
+    match kind {
+        SpanKind::Agent => IconName::Bot,
+        SpanKind::Turn => IconName::MessageSquare,
+        SpanKind::Llm => IconName::Sparkles,
+        SpanKind::Tool => IconName::Wrench,
+        SpanKind::Permission => IconName::ShieldCheck,
+        SpanKind::Waiting => IconName::Clock3,
+        SpanKind::Handoff => IconName::GitFork,
+        SpanKind::Compaction => IconName::Minimize2,
+    }
+}

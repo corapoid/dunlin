@@ -1,0 +1,366 @@
+//! Local persistence for Kestrel.
+//!
+//! SQLite in WAL mode keeps writes cheap and crash-safe. Projects, sessions and
+//! the rendered transcript are persisted; graph and trace projections will be
+//! derived from the same session log in a later migration.
+
+use std::path::Path;
+
+use kestrel_domain::{Project, SessionSummary};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    #[error("sqlite: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+pub type Result<T> = std::result::Result<T, StoreError>;
+
+pub struct Store {
+    connection: Connection,
+}
+
+impl Store {
+    /// Open (or create) a database, enabling WAL and foreign keys.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let connection = Connection::open(path)?;
+        connection.pragma_update(None, "journal_mode", "WAL")?;
+        connection.pragma_update(None, "synchronous", "NORMAL")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        let store = Self { connection };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    pub fn open_in_memory() -> Result<Self> {
+        let connection = Connection::open_in_memory()?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        let store = Self { connection };
+        store.migrate()?;
+        Ok(store)
+    }
+
+    fn migrate(&self) -> Result<()> {
+        let version: i64 = self
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version >= 1 {
+            return Ok(());
+        }
+
+        self.connection.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS projects (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                path        TEXT NOT NULL UNIQUE,
+                branch      TEXT,
+                tone        TEXT NOT NULL,
+                pinned      INTEGER NOT NULL DEFAULT 0,
+                trusted     INTEGER NOT NULL DEFAULT 1,
+                created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                id            TEXT PRIMARY KEY,
+                project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                title         TEXT NOT NULL,
+                status        TEXT NOT NULL,
+                harness       TEXT NOT NULL,
+                model         TEXT NOT NULL,
+                branch        TEXT,
+                updated_at    TEXT NOT NULL,
+                cost_usd      REAL NOT NULL DEFAULT 0,
+                duration_secs INTEGER NOT NULL DEFAULT 0,
+                tokens        INTEGER NOT NULL DEFAULT 0,
+                summary       TEXT NOT NULL DEFAULT '',
+                created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+            CREATE INDEX IF NOT EXISTS sessions_project_idx
+                ON sessions(project_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS transcripts (
+                session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+                payload     TEXT NOT NULL,
+                updated_at  INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+
+            PRAGMA user_version = 1;
+            "#,
+        )?;
+        Ok(())
+    }
+
+    pub fn upsert_project(&self, project: &Project) -> Result<()> {
+        let tone = serde_json::to_string(&project.tone)?;
+        self.connection.execute(
+            r#"
+            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                path = excluded.path,
+                branch = excluded.branch,
+                tone = excluded.tone,
+                pinned = excluded.pinned,
+                trusted = excluded.trusted
+            "#,
+            params![
+                project.id,
+                project.name,
+                project.path,
+                project.branch,
+                tone,
+                project.pinned as i64,
+                project.trusted as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn projects(&self) -> Result<Vec<Project>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, path, branch, tone, pinned, trusted FROM projects ORDER BY created_at",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let tone: String = row.get(4)?;
+            Ok(Project {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                path: row.get(2)?,
+                branch: row.get(3)?,
+                tone: serde_json::from_str(&tone).unwrap_or(kestrel_domain::ProjectTone::Blue),
+                pinned: row.get::<_, i64>(5)? != 0,
+                trusted: row.get::<_, i64>(6)? != 0,
+                running_sessions: 0,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_session(&self, session: &SessionSummary) -> Result<()> {
+        let status = serde_json::to_string(&session.status)?;
+        self.connection.execute(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, title, status, harness, model, branch,
+                updated_at, cost_usd, duration_secs, tokens, summary
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                status = excluded.status,
+                harness = excluded.harness,
+                model = excluded.model,
+                branch = excluded.branch,
+                updated_at = excluded.updated_at,
+                cost_usd = excluded.cost_usd,
+                duration_secs = excluded.duration_secs,
+                tokens = excluded.tokens,
+                summary = excluded.summary
+            "#,
+            params![
+                session.id,
+                session.project_id,
+                session.title,
+                status,
+                session.harness,
+                session.model,
+                session.branch,
+                session.updated_at,
+                session.cost_usd,
+                session.duration_secs as i64,
+                session.tokens as i64,
+                session.summary,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn sessions(&self, project_id: Option<&str>) -> Result<Vec<SessionSummary>> {
+        let sql = match project_id {
+            Some(_) => {
+                "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
+                 cost_usd, duration_secs, tokens, summary FROM sessions \
+                 WHERE project_id = ?1 ORDER BY created_at DESC"
+            }
+            None => {
+                "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
+                 cost_usd, duration_secs, tokens, summary FROM sessions \
+                 ORDER BY created_at DESC"
+            }
+        };
+        let mut statement = self.connection.prepare(sql)?;
+        let map = |row: &rusqlite::Row<'_>| {
+            let status: String = row.get(3)?;
+            Ok(SessionSummary {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                title: row.get(2)?,
+                status: serde_json::from_str(&status)
+                    .unwrap_or(kestrel_domain::SessionStatus::Done),
+                harness: row.get(4)?,
+                model: row.get(5)?,
+                branch: row.get(6)?,
+                updated_at: row.get(7)?,
+                cost_usd: row.get(8)?,
+                duration_secs: row.get::<_, i64>(9)? as u64,
+                tokens: row.get::<_, i64>(10)? as u64,
+                summary: row.get(11)?,
+            })
+        };
+        let rows = match project_id {
+            Some(project_id) => statement.query_map([project_id], map)?,
+            None => statement.query_map([], map)?,
+        };
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Replace the rendered transcript for a session.
+    pub fn save_transcript<T: Serialize>(&self, session_id: &str, transcript: &T) -> Result<()> {
+        let payload = serde_json::to_string(transcript)?;
+        self.connection.execute(
+            r#"
+            INSERT INTO transcripts (session_id, payload, updated_at)
+            VALUES (?1, ?2, unixepoch())
+            ON CONFLICT(session_id) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            "#,
+            params![session_id, payload],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_transcript<T: DeserializeOwned>(&self, session_id: &str) -> Result<Option<T>> {
+        let payload: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT payload FROM transcripts WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match payload {
+            Some(payload) => Ok(Some(serde_json::from_str(&payload)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kestrel_domain::{ProjectTone, SessionStatus};
+
+    fn project() -> Project {
+        Project {
+            id: "kestrel".into(),
+            name: "Kestrel".into(),
+            path: "/tmp/kestrel".into(),
+            branch: Some("main".into()),
+            tone: ProjectTone::Teal,
+            pinned: true,
+            trusted: true,
+            running_sessions: 0,
+        }
+    }
+
+    fn session() -> SessionSummary {
+        SessionSummary {
+            id: "ses-1".into(),
+            project_id: "kestrel".into(),
+            title: "Verify permissions".into(),
+            status: SessionStatus::Waiting,
+            harness: "OpenCode".into(),
+            model: "Auto".into(),
+            branch: Some("main".into()),
+            updated_at: "now".into(),
+            cost_usd: 0.12,
+            duration_secs: 42,
+            tokens: 1_024,
+            summary: "Round-trip a permission request.".into(),
+        }
+    }
+
+    #[test]
+    fn round_trips_projects_and_sessions() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+
+        let projects = store.projects().unwrap();
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].name, "Kestrel");
+        assert_eq!(projects[0].tone, ProjectTone::Teal);
+
+        let sessions = store.sessions(Some("kestrel")).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].status, SessionStatus::Waiting);
+        assert_eq!(sessions[0].tokens, 1_024);
+
+        assert!(store.sessions(Some("missing")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn upserts_keep_one_row() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+
+        let mut updated = session();
+        updated.status = SessionStatus::Done;
+        updated.tokens = 2_048;
+        store.upsert_session(&updated).unwrap();
+
+        let sessions = store.sessions(None).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].status, SessionStatus::Done);
+        assert_eq!(sessions[0].tokens, 2_048);
+    }
+
+    #[test]
+    fn round_trips_transcripts() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+
+        let transcript = vec!["hello", "world"];
+        store.save_transcript("ses-1", &transcript).unwrap();
+        let loaded: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
+        assert_eq!(loaded, Some(vec!["hello".into(), "world".into()]));
+
+        let missing: Option<Vec<String>> = store.load_transcript("missing").unwrap();
+        assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn deleting_a_session_cascades_to_transcripts() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_transcript("ses-1", &vec!["x"]).unwrap();
+
+        store.delete_session("ses-1").unwrap();
+        assert!(store.sessions(None).unwrap().is_empty());
+        let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
+        assert_eq!(transcript, None);
+    }
+}

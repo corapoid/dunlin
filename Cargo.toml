@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["apps/desktop", "crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+gpui-kit = "0.8.0"
+kestrel-ui = { path = "crates/ui" }
+kestrel-domain = { path = "crates/domain" }
+kestrel-agent = { path = "crates/agent" }
+kestrel-storage = { path = "crates/storage" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v7", "serde"] }
+
+# GPUI is slow in debug builds. Keep our own code debuggable while making the
+# framework fast enough to use during development. Debug info is limited to our
+# own crates so the artifact footprint stays reasonable on small disks.
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.dev.package]
+gpui-pre = { opt-level = 3 }
+gpui-component = { opt-level = 3 }
+gpui-kit = { opt-level = 3 }
+gpui-kit-assets = { opt-level = 3 }
+gpui-pre-platform = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+kestrel = { debug = 2 }
+kestrel-ui = { debug = 2 }
+kestrel-domain = { debug = 2 }
+kestrel-agent = { debug = 2 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
