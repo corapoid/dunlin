@@ -1523,9 +1523,27 @@ fn composer(
                 .flex()
                 .items_center()
                 .gap(px(3.))
-                .child(attachment_button(IconName::Paperclip, "Attach", cx, &p))
-                .child(attachment_button(IconName::AtSign, "Mention", cx, &p))
-                .child(attachment_button(IconName::SquareTerminal, "Tools", cx, &p))
+                .child(attachment_button(
+                    IconName::Paperclip,
+                    "Attach",
+                    cx,
+                    &p,
+                    |this, window, cx| this.attach_files(window, cx),
+                ))
+                .child(attachment_button(
+                    IconName::AtSign,
+                    "Mention",
+                    cx,
+                    &p,
+                    |this, window, cx| this.mention_file(window, cx),
+                ))
+                .child(attachment_button(
+                    IconName::SquareTerminal,
+                    "Tools",
+                    cx,
+                    &p,
+                    |this, window, cx| this.open_composer_tools(window, cx),
+                ))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1623,6 +1641,7 @@ fn attachment_button(
     label: &str,
     cx: &mut Context<KestrelApp>,
     p: &Palette,
+    action: fn(&mut KestrelApp, &mut Window, &mut Context<KestrelApp>),
 ) -> AnyElement {
     let label_owned = label.to_string();
     div()
@@ -1635,15 +1654,15 @@ fn attachment_button(
         .gap(px(4.))
         .cursor_pointer()
         .hover(move |style| style.bg(p.hover))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.set_notice(format!("{label_owned} · composer action"), cx);
+        .on_click(cx.listener(move |this, _, window, cx| {
+            action(this, window, cx);
         }))
         .child(Icon::new(icon_name).size(px(11.5)).text_color(p.muted_fg))
         .child(
             div()
                 .text_size(px(8.5))
                 .text_color(p.muted_fg)
-                .child(label.to_string()),
+                .child(label_owned),
         )
         .into_any_element()
 }

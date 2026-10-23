@@ -1425,6 +1425,91 @@ impl KestrelApp {
         }
     }
 
+    /// Ask macOS for files to reference in the next prompt.
+    pub(crate) fn attach_files(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.insert_picked_paths(false, window, cx);
+    }
+
+    /// Pick one file and insert an @mention into the composer.
+    pub(crate) fn mention_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.insert_picked_paths(true, window, cx);
+    }
+
+    fn insert_picked_paths(&mut self, mention: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let root = self.project().path.clone();
+        let options = PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: !mention,
+            prompt: Some(if mention {
+                "Mention a file".into()
+            } else {
+                "Attach files".into()
+            }),
+        };
+        let receiver = cx.prompt_for_paths(options);
+        cx.spawn_in(window, async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = receiver.await
+                && !paths.is_empty()
+            {
+                this.update_in(cx, |this, window, cx| {
+                    let mut text = this.composer.read(cx).value().to_string();
+                    if mention {
+                        if !text.is_empty() && !text.ends_with(char::is_whitespace) {
+                            text.push(' ');
+                        }
+                        for path in &paths {
+                            text.push('@');
+                            text.push_str(&display_path(&root, path));
+                            text.push(' ');
+                        }
+                    } else {
+                        if !text.is_empty() && !text.ends_with('\n') {
+                            text.push('\n');
+                        }
+                        text.push_str("Attached files:\n");
+                        for path in &paths {
+                            text.push_str("- ");
+                            text.push_str(&display_path(&root, path));
+                            text.push('\n');
+                        }
+                    }
+                    this.composer.update(cx, |state, cx| {
+                        state.set_value(text, window, cx);
+                        state.focus(window, cx);
+                    });
+                    this.notice = Some(format!(
+                        "{} {}",
+                        if mention { "Mentioned" } else { "Attached" },
+                        paths.len()
+                    ));
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Start a slash command, using the commands advertised over ACP.
+    pub(crate) fn open_composer_tools(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.harness.commands.is_empty() {
+            self.set_notice("This harness has not advertised any slash commands", cx);
+            return;
+        }
+        let mut text = self.composer.read(cx).value().to_string();
+        if !text.is_empty() && !text.ends_with(char::is_whitespace) {
+            text.push(' ');
+        }
+        text.push('/');
+        self.composer.update(cx, |state, cx| {
+            state.set_value(text, window, cx);
+            state.focus(window, cx);
+        });
+        self.notice = Some(format!("Commands: {}", self.harness.commands.join(" · ")));
+        cx.notify();
+    }
+
     /// Jump from a trace span to the transcript entry that produced it.
     pub(crate) fn open_span_in_chat(&mut self, span_id: &str, cx: &mut Context<Self>) {
         self.view = MainView::Chat;
@@ -2816,6 +2901,13 @@ pub(crate) fn session_index_after_delete(
     }
 }
 
+/// Prefer a project-relative path in prompts; keep absolute paths outside it.
+pub(crate) fn display_path(root: &str, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|relative| relative.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.to_string_lossy().to_string())
+}
+
 /// Whether a new file sits inside `root`, resolving symlinks on its parent.
 pub(crate) fn path_inside(root: &Path, path: &Path) -> bool {
     let parent = path.parent().unwrap_or(root);
@@ -2848,11 +2940,12 @@ pub(crate) fn format_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, CommandItem, PermissionMode, StoredSettings, command_matches, editor_language,
-        format_bytes, path_inside, session_index_after_delete,
+        Command, CommandItem, PermissionMode, StoredSettings, command_matches, display_path,
+        editor_language, format_bytes, path_inside, session_index_after_delete,
     };
     use kestrel_domain::MainView;
     use kestrel_ui::assets::IconName;
+    use std::path::Path;
 
     fn item(label: &str, keywords: &str, hint: Option<&str>) -> CommandItem {
         CommandItem {
@@ -2927,6 +3020,18 @@ mod tests {
         assert_eq!(session_index_after_delete(3, 1, 3), 1);
         // A fresh session is created when the list becomes empty.
         assert_eq!(session_index_after_delete(0, 0, 1), 0);
+    }
+
+    #[test]
+    fn prompts_use_relative_paths_inside_the_project() {
+        assert_eq!(
+            display_path("/work/kestrel", Path::new("/work/kestrel/src/main.rs")),
+            "src/main.rs"
+        );
+        assert_eq!(
+            display_path("/work/kestrel", Path::new("/tmp/notes.md")),
+            "/tmp/notes.md"
+        );
     }
 
     #[test]
