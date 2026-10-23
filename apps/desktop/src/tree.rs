@@ -61,6 +61,32 @@ impl FileTree {
         }
         visit(&mut self.entries);
     }
+
+    /// Rescan the tree while keeping the folders the user opened.
+    pub fn reload(&mut self, root: impl Into<String>) {
+        use std::collections::HashSet;
+
+        fn collect(entries: &[FileEntry], expanded: &mut HashSet<String>) {
+            for entry in entries {
+                if entry.expanded {
+                    expanded.insert(entry.path.clone());
+                }
+                collect(&entry.children, expanded);
+            }
+        }
+        fn apply(entries: &mut [FileEntry], expanded: &HashSet<String>) {
+            for entry in entries {
+                entry.expanded = expanded.contains(&entry.path);
+                apply(&mut entry.children, expanded);
+            }
+        }
+
+        let mut expanded = HashSet::new();
+        collect(&self.entries, &mut expanded);
+        let mut next = Self::load(root);
+        apply(&mut next.entries, &expanded);
+        *self = next;
+    }
 }
 
 fn is_skipped(name: &str) -> bool {
@@ -123,4 +149,43 @@ fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
         });
     }
     entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileTree;
+    use std::fs;
+
+    #[test]
+    fn reload_keeps_open_folders_and_sees_new_files() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kestrel-tree-{unique}"));
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/main.rs"), "").unwrap();
+
+        let path = root.to_string_lossy().to_string();
+        let mut tree = FileTree::load(path.clone());
+        for entry in &mut tree.entries {
+            if entry.name == "src" {
+                entry.expanded = true;
+            }
+        }
+
+        fs::write(root.join("new.txt"), "").unwrap();
+        tree.reload(path);
+
+        assert!(tree.entries.iter().any(|entry| entry.name == "new.txt"));
+        assert!(
+            tree.entries
+                .iter()
+                .find(|entry| entry.name == "src")
+                .unwrap()
+                .expanded
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

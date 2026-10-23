@@ -170,6 +170,26 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .gap(px(2.))
             .child(
                 div()
+                    .id("refresh-explorer")
+                    .size(px(22.))
+                    .rounded(px(5.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.file_tree.reload(this.project().path.clone());
+                        this.set_notice("Refreshed the explorer", cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::RefreshCw)
+                            .size(px(11.5))
+                            .text_color(p.muted_fg),
+                    ),
+            )
+            .child(
+                div()
                     .id("collapse-all")
                     .size(px(22.))
                     .rounded(px(5.))

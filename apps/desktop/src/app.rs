@@ -196,6 +196,7 @@ pub(crate) enum Command {
     RemoveProject,
     RestartHarness,
     RefreshGit,
+    RefreshExplorer,
     SwitchProject(usize),
     CloseInspector,
 }
@@ -267,6 +268,7 @@ pub(crate) struct KestrelApp {
     _editor_subscription: Subscription,
     pub diff_state: Entity<DiffState>,
     pub editor_dirty: bool,
+    pub editor_stale: bool,
     pub editor_readonly: bool,
     pub selected_span: Option<usize>,
     pub selected_node: Option<usize>,
@@ -495,6 +497,7 @@ impl KestrelApp {
             _editor_subscription: editor_subscription,
             diff_state,
             editor_dirty: false,
+            editor_stale: false,
             editor_readonly: false,
             selected_span: None,
             selected_node: None,
@@ -658,6 +661,13 @@ impl KestrelApp {
                 keywords: "git status changes reload".into(),
             },
             CommandItem {
+                command: Command::RefreshExplorer,
+                label: "Refresh Explorer".into(),
+                hint: None,
+                icon: IconName::RefreshCw,
+                keywords: "files tree reload rescan".into(),
+            },
+            CommandItem {
                 command: Command::OpenFolder,
                 label: "Open Folder…".into(),
                 hint: Some("⌘O".into()),
@@ -814,6 +824,11 @@ impl KestrelApp {
             Command::RemoveProject => self.request_delete_project(self.selected_project, cx),
             Command::RestartHarness => self.restart_harness(cx),
             Command::RefreshGit => self.refresh_git_status(cx),
+            Command::RefreshExplorer => {
+                self.file_tree.reload(self.project().path.clone());
+                self.notice = Some("Refreshed the explorer".into());
+                cx.notify();
+            }
             Command::SwitchProject(index) => self.select_project(index, cx),
             Command::CloseInspector => {
                 let dirty = self.editor_dirty;
@@ -1689,6 +1704,38 @@ impl KestrelApp {
             snippet: None,
         });
         cx.notify();
+    }
+
+    /// Re-read the open file after the agent finishes a turn.
+    ///
+    /// Skipped while the buffer has unsaved edits so local work is never lost.
+    fn reload_open_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editor_dirty {
+            return;
+        }
+        let Some(inspector) = self.inspector.as_ref() else {
+            return;
+        };
+        let path = inspector.path.clone();
+        let Ok(contents) = fs::read_to_string(&path) else {
+            return;
+        };
+        if contents.contains('\0') {
+            return;
+        }
+
+        let language = editor_language(&path).to_string();
+        let bytes = contents.len();
+        let wrap = self.word_wrap;
+        self.editor.update(cx, |state, cx| {
+            state.set_value(contents, window, cx);
+            state.set_highlighter(language.clone(), cx);
+            state.set_soft_wrap(wrap, window, cx);
+        });
+        if let Some(inspector) = self.inspector.as_mut() {
+            inspector.bytes = bytes;
+            inspector.language = language;
+        }
     }
 
     /// Apply editor preferences that live in the GPUI Kit input state.
@@ -2673,6 +2720,10 @@ impl KestrelApp {
 
 impl Render for KestrelApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.editor_stale {
+            self.editor_stale = false;
+            self.reload_open_editor(window, cx);
+        }
         let p = palette(cx);
         let titlebar = views::titlebar::render(self, window, cx);
         let rail = self.rail(cx);

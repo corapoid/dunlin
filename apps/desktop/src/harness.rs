@@ -408,6 +408,12 @@ impl KestrelApp {
         self.harness.session_id.as_deref() == Some(session_id)
     }
 
+    /// Rescan the explorer and flag a clean editor for reload after a turn.
+    fn refresh_workspace_after_turn(&mut self) {
+        self.file_tree.reload(self.project().path.clone());
+        self.editor_stale = self.inspector.is_some() && !self.editor_dirty;
+    }
+
     fn dispatch_pending_prompt(&mut self) {
         let Some(text) = self.harness.pending_prompt.take() else {
             return;
@@ -491,6 +497,7 @@ impl KestrelApp {
                         "Turn complete".into()
                     });
                     self.save_current_transcript();
+                    self.refresh_workspace_after_turn();
                     self.refresh_git_status(cx);
                 }
             }
@@ -514,6 +521,7 @@ impl KestrelApp {
                 }
                 self.save_current_transcript();
                 self.notice = Some(message);
+                self.refresh_workspace_after_turn();
                 self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {
