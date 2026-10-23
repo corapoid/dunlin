@@ -12,6 +12,7 @@ use agent_client_protocol::schema::v1::{
     NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest,
     PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionNotification,
     SessionUpdate, StopReason, TextContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
+    UsageUpdate,
 };
 use agent_client_protocol::{Agent, Result, Stdio};
 
@@ -60,6 +61,10 @@ fn main() -> Result<()> {
                         SessionUpdate::AgentThoughtChunk(ContentChunk::new(ContentBlock::Text(
                             TextContent::new("The mock agent needs permission to write a file."),
                         ))),
+                    ))?;
+                    connection.send_notification(SessionNotification::new(
+                        session_id.clone(),
+                        SessionUpdate::UsageUpdate(UsageUpdate::new(1_200, 200_000)),
                     ))?;
 
                     let tool_call = ToolCallUpdate::new(

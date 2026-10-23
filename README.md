@@ -6,7 +6,7 @@ No Electron. No webview. No Monaco. The entire UI is GPUI, the data layer is SQL
 
 ## Status
 
-Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Projects, sessions and transcripts persist across launches, and settings, theme, and the last open project and session are restored on startup.
+Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Files open in a lightweight syntax-highlighted editor with dirty tracking and `⌘S` save. Projects, sessions and transcripts persist across launches, and settings, theme, and the last open project and session are restored on startup.
 
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
@@ -57,6 +57,7 @@ Permission requests are surfaced as cards in the chat. The permissions tab contr
 | `⌘N` | New session |
 | `⌘⇧F` | Project search |
 | `⌘⇧L` | Toggle light and dark theme |
+| `⌘S` | Save the open file |
 | `⌘↵` | Send prompt |
 | `Esc` | Close palette, settings, inspector or project menu |
 

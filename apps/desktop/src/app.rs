@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use kestrel_domain::*;
 use kestrel_ui::assets::IconName;
-use kestrel_ui::component::input::{InputEvent, InputState, TextareaState};
+use kestrel_ui::component::input::{
+    Editor, EditorState, InputEvent, InputState, Position, TextareaState,
+};
 use kestrel_ui::component::{ActiveTheme, ThemeMode};
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
@@ -151,13 +153,14 @@ impl TraceFilter {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Inspector {
     pub path: String,
     pub name: String,
     pub directory: String,
-    pub lines: Vec<String>,
+    pub language: String,
+    pub bytes: usize,
     pub snippet: Option<(u32, u32)>,
-    pub truncated: bool,
 }
 
 /// A single executable entry in the command palette.
@@ -235,6 +238,10 @@ pub(crate) struct KestrelApp {
     pub allow_network: bool,
 
     pub inspector: Option<Inspector>,
+    pub editor: Entity<EditorState>,
+    _editor_subscription: Subscription,
+    pub editor_dirty: bool,
+    pub editor_readonly: bool,
     pub selected_span: Option<usize>,
     pub selected_node: Option<usize>,
     pub reasoning_open: bool,
@@ -352,6 +359,15 @@ impl KestrelApp {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
+        let editor = cx.new(|cx| EditorState::new(window, cx).language("plaintext"));
+        let editor_subscription =
+            cx.subscribe_in(&editor, window, |this, _, event: &InputEvent, _, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.editor_dirty = true;
+                    cx.notify();
+                }
+            });
+
         let commit_input = cx.new(|cx| InputState::new(window, cx).placeholder("Commit message"));
 
         let custom_command_input = cx.new(|cx| {
@@ -426,6 +442,10 @@ impl KestrelApp {
             word_wrap: stored.word_wrap,
             allow_network: stored.allow_network,
             inspector: None,
+            editor,
+            _editor_subscription: editor_subscription,
+            editor_dirty: false,
+            editor_readonly: false,
             selected_span: None,
             selected_node: None,
             reasoning_open: stored.reasoning_open,
@@ -717,8 +737,11 @@ impl KestrelApp {
             Command::RefreshGit => self.refresh_git_status(cx),
             Command::SwitchProject(index) => self.select_project(index, cx),
             Command::CloseInspector => {
-                self.inspector = None;
-                self.notice = Some("Closed file inspector".into());
+                let dirty = self.editor_dirty;
+                self.close_inspector();
+                if !dirty {
+                    self.notice = Some("Closed file inspector".into());
+                }
             }
         }
         self.focus_handle.focus(window, cx);
@@ -894,6 +917,10 @@ impl KestrelApp {
                     self.open_folder(cx);
                     true
                 }
+                "s" if self.inspector.is_some() => {
+                    self.save_editor(cx);
+                    true
+                }
                 "n" => {
                     self.new_session(cx);
                     true
@@ -931,7 +958,7 @@ impl KestrelApp {
                 cx.stop_propagation();
                 cx.notify();
             } else if self.inspector.is_some() {
-                self.inspector = None;
+                self.close_inspector();
                 cx.stop_propagation();
                 cx.notify();
             }
@@ -972,7 +999,7 @@ impl KestrelApp {
             Vec::new()
         };
         self.search_query.clear();
-        self.inspector = None;
+        self.close_inspector();
 
         let project_id = self.projects[index].id.clone();
         self.sessions = self
@@ -1095,7 +1122,38 @@ impl KestrelApp {
         }
     }
 
-    pub(crate) fn open_file(&mut self, path: &str) {
+    /// Live context-window usage reported by the active ACP session.
+    pub(crate) fn session_usage(&self) -> Option<ProviderUsage> {
+        let usage = self.harness.usage?;
+        let session = self.session();
+        let harness = if session.harness.is_empty() {
+            self.default_harness.clone()
+        } else {
+            session.harness.clone()
+        };
+        Some(ProviderUsage {
+            provider: harness,
+            plan: "ACP".into(),
+            accent: ProjectTone::Teal,
+            detail: format!(
+                "{} of {} tokens · ${:.2} this session",
+                format_tokens(usage.used),
+                format_tokens(usage.size),
+                session.cost_usd
+            ),
+            windows: vec![UsageWindow {
+                label: "Context".into(),
+                used_percent: usage.percent() * 100.0,
+                resets_in: "current turn".into(),
+                source: UsageSource::Live,
+            }],
+        })
+    }
+
+    pub(crate) fn open_file(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editor_dirty {
+            self.notice = Some("Unsaved changes discarded".into());
+        }
         let root = self.project().path.clone();
         let path_buf = Path::new(path);
         let name = path_buf
@@ -1115,49 +1173,84 @@ impl KestrelApp {
             })
             .unwrap_or_else(|| ".".to_string());
 
-        let (lines, truncated, snippet) = match fs::read_to_string(path) {
-            Ok(contents) => {
-                if contents.contains('\0') {
-                    (
-                        vec!["Binary file — preview is not available.".to_string()],
-                        false,
-                        None,
-                    )
-                } else {
-                    let total = contents.lines().count();
-                    let lines = contents
-                        .lines()
-                        .take(600)
-                        .map(|line| line.replace('\t', "    "))
-                        .collect();
-                    (lines, total > 600, None)
-                }
+        let language = editor_language(path).to_string();
+        let bytes = fs::metadata(path)
+            .map(|metadata| metadata.len() as usize)
+            .unwrap_or(0);
+        let (contents, readonly) = match fs::read_to_string(path) {
+            Ok(contents) if contents.contains('\0') => {
+                ("Binary file — editing is disabled.".to_string(), true)
             }
-            Err(error) => (
-                vec![format!("Unable to read this file: {error}")],
-                false,
-                None,
-            ),
+            Ok(contents) => (contents, false),
+            Err(error) => (format!("Unable to read this file: {error}"), true),
         };
 
+        self.editor.update(cx, |state, cx| {
+            state.set_value(contents, window, cx);
+            state.set_highlighter(language.clone(), cx);
+            state.focus(window, cx);
+        });
+        self.editor_readonly = readonly;
+        self.editor_dirty = false;
         self.inspector = Some(Inspector {
             path: path.to_string(),
             name,
             directory,
-            lines,
-            snippet,
-            truncated,
+            language,
+            bytes,
+            snippet: None,
         });
+        cx.notify();
     }
 
-    pub(crate) fn open_search_hit(&mut self, path: &str, line: u32, preview: &str) {
-        self.open_file(path);
-        if let Some(inspector) = self.inspector.as_mut() {
-            inspector.snippet = Some((line, line));
-            if inspector.lines.len() < line as usize {
-                inspector.lines.push(preview.to_string());
+    /// Close the inspector, discarding any unsaved editor buffer.
+    pub(crate) fn close_inspector(&mut self) {
+        if self.editor_dirty {
+            self.notice = Some("Unsaved changes discarded".into());
+        }
+        self.inspector = None;
+        self.editor_dirty = false;
+        self.editor_readonly = false;
+    }
+
+    pub(crate) fn save_editor(&mut self, cx: &mut Context<Self>) {
+        let Some(inspector) = self.inspector.clone() else {
+            return;
+        };
+        if self.editor_readonly {
+            self.notice = Some(format!("{} is read-only", inspector.name));
+            cx.notify();
+            return;
+        }
+        let value = self.editor.read(cx).value().to_string();
+        match fs::write(&inspector.path, value) {
+            Ok(()) => {
+                self.editor_dirty = false;
+                self.notice = Some(format!("Saved {}", inspector.name));
+                self.refresh_git_status(cx);
+            }
+            Err(error) => {
+                self.notice = Some(format!("Could not save {}: {error}", inspector.name));
             }
         }
+        cx.notify();
+    }
+
+    pub(crate) fn open_search_hit(
+        &mut self,
+        path: &str,
+        line: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_file(path, window, cx);
+        if let Some(inspector) = self.inspector.as_mut() {
+            inspector.snippet = Some((line, line));
+        }
+        self.editor.update(cx, |state, cx| {
+            state.set_cursor_position(Position::new(line.saturating_sub(1), 0), window, cx);
+        });
+        cx.notify();
     }
 
     pub(crate) fn toggle_folder(&mut self, path: &str, cx: &mut Context<Self>) {
@@ -1476,68 +1569,12 @@ impl KestrelApp {
 
     fn inspector_panel(&self, inspector: &Inspector, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
-        let mut code = div()
-            .id("inspector-scroll")
-            .flex_1()
-            .min_h(px(0.))
-            .overflow_y_scroll()
-            .py(px(10.));
-
-        for (ix, line) in inspector.lines.iter().enumerate() {
-            let number = ix + 1;
-            let highlighted = inspector
-                .snippet
-                .map(|(start, end)| number >= start as usize && number <= end as usize)
-                .unwrap_or(false);
-            let trimmed = line.trim_start();
-            let color = if trimmed.starts_with("//") || trimmed.starts_with('#') {
-                p.muted_fg
-            } else if highlighted {
-                p.fg
-            } else {
-                p.fg.opacity(0.86)
-            };
-
-            code = code.child(
-                div()
-                    .flex()
-                    .items_start()
-                    .when(highlighted, |this| this.bg(p.blue_soft))
-                    .child(
-                        div()
-                            .w(px(46.))
-                            .flex_shrink_0()
-                            .pr(px(10.))
-                            .text_right()
-                            .text_size(px(10.))
-                            .font_family("Geist Mono")
-                            .text_color(if highlighted {
-                                p.blue
-                            } else {
-                                p.muted_fg.opacity(0.65)
-                            })
-                            .child(number.to_string()),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .pr(px(12.))
-                            .text_size(px(11.))
-                            .line_height(relative(1.6))
-                            .font_family("Geist Mono")
-                            .text_color(color)
-                            .child(if line.is_empty() {
-                                " ".into()
-                            } else {
-                                line.clone()
-                            }),
-                    ),
-            );
-        }
+        let dirty = self.editor_dirty;
+        let readonly = self.editor_readonly;
+        let snippet = inspector.snippet;
 
         div()
-            .w(px(420.))
+            .w(px(560.))
             .h_full()
             .flex_shrink_0()
             .flex()
@@ -1573,11 +1610,20 @@ impl KestrelApp {
                             .min_w(px(0.))
                             .child(
                                 div()
-                                    .text_size(px(11.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(p.fg)
-                                    .truncate()
-                                    .child(inspector.name.clone()),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.fg)
+                                            .truncate()
+                                            .child(inspector.name.clone()),
+                                    )
+                                    .when(dirty, |this| {
+                                        this.child(div().size(px(5.)).rounded_full().bg(p.amber))
+                                    }),
                             )
                             .child(
                                 div()
@@ -1586,6 +1632,34 @@ impl KestrelApp {
                                     .text_color(p.muted_fg)
                                     .truncate()
                                     .child(inspector.directory.clone()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("inspector-save")
+                            .h(px(24.))
+                            .px(px(7.))
+                            .rounded(px(5.))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.bg)
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .cursor_pointer()
+                            .when(readonly, |this| this.opacity(0.5))
+                            .hover(move |style| style.bg(p.hover))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.save_editor(cx);
+                            }))
+                            .child(icon(IconName::Save, 11.5, p.muted_fg))
+                            .child(div().text_size(px(9.5)).text_color(p.fg).child("Save"))
+                            .child(
+                                div()
+                                    .text_size(px(8.5))
+                                    .font_family("Geist Mono")
+                                    .text_color(p.muted_fg.opacity(0.7))
+                                    .child("⌘S"),
                             ),
                     )
                     .child(
@@ -1599,7 +1673,7 @@ impl KestrelApp {
                             .cursor_pointer()
                             .hover(move |style| style.bg(p.hover))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.inspector = None;
+                                this.close_inspector();
                                 cx.notify();
                             }))
                             .child(icon(IconName::X, 13.0, p.muted_fg)),
@@ -1625,31 +1699,66 @@ impl KestrelApp {
                             .text_size(px(10.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.fg)
-                            .child("Preview"),
+                            .child("Editor"),
                     )
                     .child(
                         div()
-                            .h_full()
+                            .h(px(16.))
+                            .px(px(5.))
+                            .rounded(px(3.))
+                            .bg(p.muted)
                             .flex()
                             .items_center()
-                            .text_size(px(10.5))
-                            .text_color(p.muted_fg)
-                            .child("Outline"),
+                            .child(
+                                div()
+                                    .text_size(px(8.))
+                                    .font_family("Geist Mono")
+                                    .text_color(p.muted_fg)
+                                    .child(inspector.language.clone()),
+                            ),
                     )
+                    .when_some(snippet, |this, (line, _)| {
+                        this.child(
+                            div()
+                                .h(px(16.))
+                                .px(px(5.))
+                                .rounded(px(3.))
+                                .bg(p.blue_soft)
+                                .flex()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_size(px(8.))
+                                        .font_family("Geist Mono")
+                                        .text_color(p.blue)
+                                        .child(format!("line {line}")),
+                                ),
+                        )
+                    })
                     .child(div().flex_1())
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(px(9.))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg)
-                            .child(format!(
-                                "{}{}",
-                                inspector.lines.len(),
-                                if inspector.truncated { "+" } else { "" }
-                            )),
+                            .child(if dirty {
+                                "unsaved changes".to_string()
+                            } else if readonly {
+                                "read-only".to_string()
+                            } else {
+                                format_bytes(inspector.bytes)
+                            }),
                     ),
             )
-            .child(code)
+            .child(
+                div().flex_1().min_h(px(0.)).overflow_hidden().child(
+                    Editor::new(&self.editor)
+                        .appearance(false)
+                        .bordered(false)
+                        .readonly(readonly)
+                        .h_full(),
+                ),
+            )
             .into_any_element()
     }
 
@@ -1825,6 +1934,34 @@ fn workspace_root() -> String {
         .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").to_string())
 }
 
+fn editor_language(path: &str) -> &'static str {
+    match Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+    {
+        "rs" => "rust",
+        "toml" => "toml",
+        "json" => "json",
+        "md" | "markdown" => "markdown",
+        "js" | "mjs" | "cjs" => "javascript",
+        "ts" | "mts" | "cts" => "typescript",
+        "tsx" => "tsx",
+        "jsx" => "jsx",
+        "py" => "python",
+        "go" => "go",
+        "c" | "h" => "c",
+        "cc" | "cpp" | "hpp" => "cpp",
+        "css" => "css",
+        "html" | "htm" => "html",
+        "sh" | "bash" | "zsh" => "bash",
+        "yml" | "yaml" => "yaml",
+        "sql" => "sql",
+        "swift" => "swift",
+        _ => "plaintext",
+    }
+}
+
 fn open_store() -> Option<kestrel_storage::Store> {
     let base = std::env::var_os("KESTREL_DATA_DIR")
         .map(PathBuf::from)
@@ -1964,6 +2101,16 @@ pub(crate) fn format_tokens(tokens: u64) -> String {
     }
 }
 
+pub(crate) fn format_bytes(bytes: usize) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
 pub(crate) fn format_ms(ms: u64) -> String {
     if ms < 1000 {
         format!("{ms}ms")
@@ -1976,7 +2123,10 @@ pub(crate) fn format_ms(ms: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, CommandItem, PermissionMode, StoredSettings, command_matches};
+    use super::{
+        Command, CommandItem, PermissionMode, StoredSettings, command_matches, editor_language,
+        format_bytes,
+    };
     use kestrel_domain::MainView;
     use kestrel_ui::assets::IconName;
 
@@ -2023,5 +2173,21 @@ mod tests {
         assert!(settings.restore_session);
         assert_eq!(settings.view, MainView::Chat);
         assert_eq!(settings.last_project_id, None);
+    }
+
+    #[test]
+    fn editor_language_uses_known_extensions() {
+        assert_eq!(editor_language("src/main.rs"), "rust");
+        assert_eq!(editor_language("README.md"), "markdown");
+        assert_eq!(editor_language("ui/theme.tsx"), "tsx");
+        assert_eq!(editor_language("Cargo.toml"), "toml");
+        assert_eq!(editor_language("LICENSE"), "plaintext");
+    }
+
+    #[test]
+    fn byte_sizes_are_human_readable() {
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(2048), "2.0 KB");
+        assert_eq!(format_bytes(3 * 1024 * 1024), "3.0 MB");
     }
 }

@@ -1268,7 +1268,11 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
 
 fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
-    let usages = this.usages.clone();
+    let mut usages = Vec::new();
+    if let Some(live) = this.session_usage() {
+        usages.push(live);
+    }
+    usages.extend(this.usages.iter().cloned());
 
     let mut body = div()
         .px(px(16.))
@@ -1298,7 +1302,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.set_notice(
-                                "Usage refreshed · Codex live, Claude and OpenCode estimated",
+                                "Context usage is live · provider windows are estimates",
                                 cx,
                             );
                         }))
@@ -1465,7 +1469,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .text_size(px(9.))
                             .line_height(relative(1.5))
                             .text_color(p.amber.opacity(0.9))
-                            .child("Codex is exact, read from account/rateLimits/read. Claude Code windows are estimated from local session transcripts unless an OAuth probe is configured. OpenCode Go has no public usage API yet, so Kestrel estimates from token counts and the selected plan."),
+                            .child("Context usage is reported live by the active ACP session. Subscription windows for Codex, Claude Code and OpenCode Go are estimates until a provider-specific probe is configured; Kestrel never uploads project data to obtain them."),
                     ),
             ),
     );

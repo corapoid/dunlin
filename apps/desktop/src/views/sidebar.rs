@@ -11,6 +11,7 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 
 use crate::app::{KestrelApp, SettingsTab, status_palette, tone_color, tone_soft};
+use crate::harness::HarnessStatus;
 use crate::tree::FileEntry;
 
 pub(crate) fn render(
@@ -217,8 +218,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .cursor_pointer()
             .hover(move |style| style.bg(p.hover))
             .on_click(cx.listener(|this, _, _, cx| {
-                this.project_menu_open = true;
-                cx.notify();
+                this.open_folder(cx);
             }))
             .child(
                 Icon::new(IconName::Plus)
@@ -552,11 +552,11 @@ fn file_rows(
             .cursor_pointer()
             .when(active, |this| this.bg(p.accent))
             .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-            .on_click(cx.listener(move |this, _, _, cx| {
+            .on_click(cx.listener(move |this, _, window, cx| {
                 if is_dir {
                     this.toggle_folder(&path, cx);
                 } else {
-                    this.open_file(&path);
+                    this.open_file(&path, window, cx);
                     cx.notify();
                 }
             }));
@@ -699,7 +699,6 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
             .unwrap_or_default();
         let hit_path = path.clone();
         let hit_line = *line;
-        let hit_preview = preview.clone();
 
         root_el = root_el.child(
             div()
@@ -713,8 +712,8 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .gap(px(3.))
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.open_search_hit(&hit_path, hit_line, &hit_preview);
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_search_hit(&hit_path, hit_line, window, cx);
                     cx.notify();
                 }))
                 .child(
@@ -1012,8 +1011,8 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 .gap(px(6.))
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.open_file(&path);
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_file(&path, window, cx);
                     cx.notify();
                 }))
                 .child(
@@ -1233,7 +1232,18 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
 
 fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
-    let usages = this.usages.clone();
+    let mut usages = Vec::new();
+    if let Some(live) = this.session_usage() {
+        usages.push(live);
+    }
+    usages.extend(this.usages.iter().cloned());
+    let (status_dot, status_label) = match &this.harness.status {
+        HarnessStatus::Ready { agent, version } => (p.green, format!("{agent} {version} · ACP")),
+        HarnessStatus::Starting => (p.amber, "Connecting harness…".to_string()),
+        HarnessStatus::Failed(_) => (p.red, "Harness failed".to_string()),
+        HarnessStatus::Exited(_) => (p.red, "Harness exited".to_string()),
+        HarnessStatus::Offline => (p.muted_fg, "Harness offline".to_string()),
+    };
 
     let mut footer = div()
         .flex_shrink_0()
@@ -1371,13 +1381,13 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .flex()
                 .items_center()
                 .gap(px(5.))
-                .child(dot(p.green, 4.5))
+                .child(dot(status_dot, 4.5))
                 .child(
                     div()
                         .text_size(px(8.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
-                        .child("OpenCode · ACP ready"),
+                        .child(status_label),
                 )
                 .child(div().flex_1())
                 .child(
@@ -1493,10 +1503,7 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.project_menu_open = false;
-                    this.set_notice(
-                        "Open Folder · native picker lands in the workspace pass",
-                        cx,
-                    );
+                    this.open_folder(cx);
                 }))
                 .child(
                     Icon::new(IconName::FolderPlus)
@@ -1520,11 +1527,21 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
         )
         .child(
             div()
+                .id("project-settings")
                 .h(px(28.))
                 .px(px(7.))
+                .rounded(px(6.))
                 .flex()
                 .items_center()
                 .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.settings_open = true;
+                    this.settings_tab = SettingsTab::General;
+                    cx.notify();
+                }))
                 .child(
                     Icon::new(IconName::Settings)
                         .size(px(12.))
@@ -1533,7 +1550,7 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 .child(
                     div()
                         .text_size(px(10.))
-                        .text_color(p.muted_fg)
+                        .text_color(p.fg)
                         .child("Project settings"),
                 ),
         )
