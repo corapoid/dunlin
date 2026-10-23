@@ -65,6 +65,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
     let tone = tone_color(&p, project.tone);
     let soft = tone_soft(&p, project.tone);
     let monogram = monogram(&project.name);
+    let running = this.running_sessions_for(&project.id);
 
     div()
         .id("project-switcher")
@@ -141,7 +142,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .text_size(px(8.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
-                        .child(format!("{} live", project.running_sessions)),
+                        .child(format!("{running} live")),
                 ),
         )
         .child(
@@ -310,7 +311,7 @@ fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
         let name = project.name.clone();
         let tail = project.path_tail().to_string();
         let branch = project.branch.clone().unwrap_or_else(|| "no branch".into());
-        let running = project.running_sessions;
+        let running = this.running_sessions_for(&project.id);
         let pinned = project.pinned;
 
         list = list.child(

@@ -585,6 +585,16 @@ impl KestrelApp {
             .unwrap_or(&self.fallback_session)
     }
 
+    /// Number of live turns in a project, derived from session state.
+    pub(crate) fn running_sessions_for(&self, project_id: &str) -> usize {
+        self.all_sessions
+            .iter()
+            .filter(|session| {
+                session.project_id == project_id && session.status == SessionStatus::Running
+            })
+            .count()
+    }
+
     /// Every command currently available to the palette, before filtering.
     pub(crate) fn commands(&self) -> Vec<CommandItem> {
         let mut items = vec![
@@ -939,7 +949,7 @@ impl KestrelApp {
             4 => ProjectTone::Rose,
             _ => ProjectTone::Teal,
         };
-        let id = format!("project-{}", self.projects.len() + 1);
+        let id = format!("project-{}", uuid::Uuid::now_v7());
 
         let project = Project {
             id,
