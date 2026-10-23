@@ -1425,6 +1425,22 @@ impl KestrelApp {
         }
     }
 
+    /// Jump from a trace span to the transcript entry that produced it.
+    pub(crate) fn open_span_in_chat(&mut self, span_id: &str, cx: &mut Context<Self>) {
+        self.view = MainView::Chat;
+        self.settings_open = false;
+        self.expanded_tool = span_id
+            .strip_prefix("item-")
+            .and_then(|index| index.parse::<usize>().ok())
+            .filter(|index| {
+                matches!(
+                    self.harness.transcript.get(*index),
+                    Some(harness::ChatItem::Tool { .. })
+                )
+            });
+        self.set_notice("Opened the trace in chat", cx);
+    }
+
     pub(crate) fn close_diff(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.diff_view.take().is_some() {
             self.focus_handle.focus(window, cx);

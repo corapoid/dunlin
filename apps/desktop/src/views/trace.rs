@@ -545,6 +545,8 @@ fn span_detail(
         .iter()
         .filter(|candidate| candidate.parent.as_ref() == Some(&span.id))
         .collect();
+    let span_id = span.id.clone();
+    let span_json = serde_json::to_string_pretty(span).unwrap_or_default();
 
     let mut content = div()
         .flex()
@@ -782,8 +784,8 @@ fn span_detail(
                     .items_center()
                     .gap(px(4.))
                     .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.set_notice("Span linked into the conversation", cx);
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.open_span_in_chat(&span_id, cx);
                     }))
                     .child(
                         Icon::new(IconName::MessageSquare)
@@ -811,7 +813,10 @@ fn span_detail(
                     .gap(px(4.))
                     .cursor_pointer()
                     .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| {
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !span_json.is_empty() {
+                            cx.write_to_clipboard(ClipboardItem::new_string(span_json.clone()));
+                        }
                         this.set_notice("Span JSON copied to the clipboard", cx);
                     }))
                     .child(

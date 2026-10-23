@@ -1643,6 +1643,66 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .child("Project settings"),
                 ),
         )
+        .child(
+            div()
+                .id("project-reveal")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    let path = this.project().path.clone();
+                    cx.reveal_path(Path::new(&path));
+                    this.set_notice("Revealed the project in Finder", cx);
+                }))
+                .child(
+                    Icon::new(IconName::FolderOpen)
+                        .size(px(12.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.))
+                        .text_color(p.fg)
+                        .child("Reveal in Finder"),
+                ),
+        )
+        .child(
+            div()
+                .id("project-copy-path")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    let path = this.project().path.clone();
+                    cx.write_to_clipboard(ClipboardItem::new_string(path));
+                    this.set_notice("Copied the project path", cx);
+                }))
+                .child(
+                    Icon::new(IconName::Copy)
+                        .size(px(12.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.))
+                        .text_color(p.fg)
+                        .child("Copy path"),
+                ),
+        )
         .child(div().h(px(1.)).my(px(3.)).bg(p.border))
         .child(
             div()
