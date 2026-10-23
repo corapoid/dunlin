@@ -217,6 +217,7 @@ impl KestrelApp {
     }
 
     pub(crate) fn disconnect_harness(&mut self, cx: &mut Context<Self>) {
+        self.interrupt_live_turn(cx);
         self.harness.generation += 1;
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
@@ -229,6 +230,7 @@ impl KestrelApp {
     }
 
     pub(crate) fn restart_harness(&mut self, cx: &mut Context<Self>) {
+        self.interrupt_live_turn(cx);
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
         }
@@ -276,14 +278,36 @@ impl KestrelApp {
     }
 
     pub(crate) fn cancel_turn(&mut self, cx: &mut Context<Self>) {
-        if let Some(harness) = self.harness.harness.as_ref() {
+        self.interrupt_live_turn(cx);
+        self.notice = Some("Cancellation requested".into());
+        cx.notify();
+    }
+
+    /// Stop any in-flight turn and clear the session's live status.
+    ///
+    /// Called before switching projects, sessions or harnesses so the previous
+    /// conversation is not left marked as running forever.
+    pub(crate) fn interrupt_live_turn(&mut self, cx: &mut Context<Self>) {
+        let live = self.harness.running || self.harness.pending_prompt.is_some();
+        if !live {
+            return;
+        }
+        if self.harness.running
+            && self.harness.session_id.is_some()
+            && let Some(harness) = self.harness.harness.as_ref()
+        {
             harness.cancel();
         }
         self.harness.running = false;
+        self.harness.pending_prompt = None;
         self.update_active_session(|session| {
-            session.status = SessionStatus::Interrupted;
+            if matches!(
+                session.status,
+                SessionStatus::Running | SessionStatus::Waiting
+            ) {
+                session.status = SessionStatus::Interrupted;
+            }
         });
-        self.notice = Some("Cancellation requested".into());
         cx.notify();
     }
 
@@ -353,6 +377,7 @@ impl KestrelApp {
         if index >= self.sessions.len() || index == self.selected_session {
             return;
         }
+        self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_session = index;
         let session_id = self.session().id.clone();
@@ -377,6 +402,10 @@ impl KestrelApp {
         self.notice = Some(format!("Opened “{title}”"));
         self.persist_settings(cx);
         cx.notify();
+    }
+
+    fn is_current_session(&self, session_id: &str) -> bool {
+        self.harness.session_id.as_deref() == Some(session_id)
     }
 
     fn dispatch_pending_prompt(&mut self) {
@@ -420,31 +449,50 @@ impl KestrelApp {
                     self.dispatch_pending_prompt();
                 }
             }
-            HarnessEvent::Update { update, .. } => self.apply_update(update),
+            HarnessEvent::Update {
+                session_id, update, ..
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.apply_update(update);
+                }
+            }
             HarnessEvent::PermissionRequested {
                 request_id,
+                session_id,
                 title,
                 options,
-                ..
-            } => self.handle_permission(request_id, title, options),
-            HarnessEvent::PromptFinished { stop_reason, .. } => {
-                self.harness.running = false;
-                self.finish_streaming();
-                let cancelled = stop_reason == "cancelled";
-                self.update_active_session(|session| {
-                    session.status = if cancelled {
-                        SessionStatus::Interrupted
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.handle_permission(request_id, title, options);
+                } else if let Some(harness) = self.harness.harness.as_ref() {
+                    // A prompt from a session we left behind must not block the
+                    // agent forever; decline it and let the cancellation settle.
+                    harness.respond_permission(request_id, None);
+                }
+            }
+            HarnessEvent::PromptFinished {
+                session_id,
+                stop_reason,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.running = false;
+                    self.finish_streaming();
+                    let cancelled = stop_reason == "cancelled";
+                    self.update_active_session(|session| {
+                        session.status = if cancelled {
+                            SessionStatus::Interrupted
+                        } else {
+                            SessionStatus::Done
+                        };
+                    });
+                    self.notice = Some(if cancelled {
+                        "Turn cancelled".into()
                     } else {
-                        SessionStatus::Done
-                    };
-                });
-                self.notice = Some(if cancelled {
-                    "Turn cancelled".into()
-                } else {
-                    "Turn complete".into()
-                });
-                self.save_current_transcript();
-                self.refresh_git_status(cx);
+                        "Turn complete".into()
+                    });
+                    self.save_current_transcript();
+                    self.refresh_git_status(cx);
+                }
             }
             HarnessEvent::Error { message } => {
                 let was_running = self.harness.running;

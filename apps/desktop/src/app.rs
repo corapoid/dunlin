@@ -938,6 +938,7 @@ impl KestrelApp {
         let project_id = self.project().id.clone();
         let branch = self.project().branch.clone();
         let session = blank_session(&project_id, &self.default_harness, branch);
+        self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.persist_session(&session);
         self.all_sessions.push(session.clone());
@@ -1300,6 +1301,7 @@ impl KestrelApp {
         if index >= self.projects.len() {
             return;
         }
+        self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_project = index;
         self.project_menu_open = false;
