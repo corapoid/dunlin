@@ -422,10 +422,7 @@ fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
             .cursor_pointer()
             .hover(move |style| style.bg(p.hover))
             .on_click(cx.listener(|this, _, _, cx| {
-                this.set_notice(
-                    "Open Folder · native picker lands in the workspace pass",
-                    cx,
-                );
+                this.open_folder(cx);
             }))
             .child(
                 Icon::new(IconName::FolderPlus)
@@ -1111,10 +1108,12 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
         let updated = session.updated_at.clone();
         let cost = session.cost_usd;
         let duration = session.duration_secs;
+        let group = format!("session-row-{index}");
 
         list = list.child(
             div()
                 .id(("session-row", index))
+                .group(group.clone())
                 .mx(px(6.))
                 .px(px(8.))
                 .py(px(7.))
@@ -1189,6 +1188,8 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                         )
                         .child(
                             div()
+                                .min_w(px(0.))
+                                .truncate()
                                 .text_size(px(9.))
                                 .text_color(p.muted_fg)
                                 .child(format!("{harness} · {model}")),
@@ -1196,6 +1197,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                         .child(div().flex_1())
                         .child(
                             div()
+                                .flex_shrink_0()
                                 .text_size(px(8.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
@@ -1203,6 +1205,29 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                                     "${cost:.2} · {}",
                                     crate::app::format_duration(duration)
                                 )),
+                        )
+                        .child(
+                            div()
+                                .id(("session-delete", index))
+                                .size(px(18.))
+                                .flex_shrink_0()
+                                .rounded(px(4.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .opacity(0.35)
+                                .group_hover(group, move |style| style.opacity(1.))
+                                .hover(move |style| style.bg(p.red_soft))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.request_delete_session(index, cx);
+                                }))
+                                .child(
+                                    Icon::new(IconName::Trash)
+                                        .size(px(10.5))
+                                        .text_color(p.muted_fg),
+                                ),
                         ),
                 ),
         );
@@ -1552,6 +1577,30 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .text_size(px(10.))
                         .text_color(p.fg)
                         .child("Project settings"),
+                ),
+        )
+        .child(div().h(px(1.)).my(px(3.)).bg(p.border))
+        .child(
+            div()
+                .id("project-remove")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.red_soft))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.request_delete_project(this.selected_project, cx);
+                }))
+                .child(Icon::new(IconName::Trash).size(px(12.)).text_color(p.red))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(p.red)
+                        .child("Remove project…"),
                 ),
         )
         .into_any_element()

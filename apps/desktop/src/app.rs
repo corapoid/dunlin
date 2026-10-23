@@ -163,6 +163,13 @@ pub(crate) struct Inspector {
     pub snippet: Option<(u32, u32)>,
 }
 
+/// A destructive action waiting for confirmation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PendingDelete {
+    Session { id: String, title: String },
+    Project { id: String, name: String },
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -172,6 +179,8 @@ pub(crate) enum Command {
     OpenFolder,
     ToggleTheme,
     NewSession,
+    DeleteSession,
+    RemoveProject,
     RestartHarness,
     RefreshGit,
     SwitchProject(usize),
@@ -231,6 +240,7 @@ pub(crate) struct KestrelApp {
     _custom_command_subscription: Subscription,
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
+    pub pending_delete: Option<PendingDelete>,
     pub auto_connect: bool,
     pub restart_harness: bool,
     pub restore_session: bool,
@@ -436,6 +446,7 @@ impl KestrelApp {
             _custom_command_subscription: custom_command_subscription,
             permission_mode: stored.permission_mode,
             project_menu_open: false,
+            pending_delete: None,
             auto_connect: stored.auto_connect,
             restart_harness: stored.restart_harness,
             restore_session: stored.restore_session,
@@ -585,6 +596,13 @@ impl KestrelApp {
                 keywords: "start chat conversation".into(),
             },
             CommandItem {
+                command: Command::DeleteSession,
+                label: "Delete Current Session".into(),
+                hint: None,
+                icon: IconName::Trash,
+                keywords: "remove delete conversation history".into(),
+            },
+            CommandItem {
                 command: Command::RefreshGit,
                 label: "Refresh Source Control".into(),
                 hint: None,
@@ -641,6 +659,16 @@ impl KestrelApp {
                 keywords: "hide panel editor".into(),
             },
         ];
+
+        if self.projects.len() > 1 {
+            items.push(CommandItem {
+                command: Command::RemoveProject,
+                label: "Remove Current Project".into(),
+                hint: None,
+                icon: IconName::Trash,
+                keywords: "delete remove workspace folder".into(),
+            });
+        }
 
         for (index, project) in self.projects.iter().enumerate() {
             items.push(CommandItem {
@@ -733,6 +761,8 @@ impl KestrelApp {
                 self.persist_settings(cx);
             }
             Command::NewSession => self.new_session(cx),
+            Command::DeleteSession => self.request_delete_session(self.selected_session, cx),
+            Command::RemoveProject => self.request_delete_project(self.selected_project, cx),
             Command::RestartHarness => self.restart_harness(cx),
             Command::RefreshGit => self.refresh_git_status(cx),
             Command::SwitchProject(index) => self.select_project(index, cx),
@@ -846,10 +876,181 @@ impl KestrelApp {
         cx.notify();
     }
 
+    /// Ask for confirmation before deleting a session.
+    pub(crate) fn request_delete_session(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(session) = self.sessions.get(index) else {
+            return;
+        };
+        self.pending_delete = Some(PendingDelete::Session {
+            id: session.id.clone(),
+            title: session.title.clone(),
+        });
+        cx.notify();
+    }
+
+    /// Ask for confirmation before removing a project.
+    pub(crate) fn request_delete_project(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.projects.len() <= 1 {
+            self.set_notice("Keep at least one project in Kestrel", cx);
+            return;
+        }
+        let Some(project) = self.projects.get(index) else {
+            return;
+        };
+        self.pending_delete = Some(PendingDelete::Project {
+            id: project.id.clone(),
+            name: project.name.clone(),
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.pending_delete = None;
+        cx.notify();
+    }
+
+    pub(crate) fn confirm_delete(&mut self, cx: &mut Context<Self>) {
+        match self.pending_delete.take() {
+            Some(PendingDelete::Session { id, .. }) => self.delete_session(&id, cx),
+            Some(PendingDelete::Project { id, .. }) => self.delete_project(&id, cx),
+            None => {}
+        }
+    }
+
+    fn delete_session(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(index) = self.sessions.iter().position(|session| session.id == id) else {
+            return;
+        };
+        let active = index == self.selected_session;
+        if active && self.harness.running {
+            self.cancel_turn(cx);
+        }
+        self.sessions.remove(index);
+        self.all_sessions.retain(|session| session.id != id);
+        if let Some(store) = &self.store {
+            let _ = store.delete_session(id);
+        }
+        self.forget_transcript(id);
+        if self.sessions.is_empty() {
+            let project_id = self.project().id.clone();
+            let branch = self.project().branch.clone();
+            let session = blank_session(&project_id, &self.default_harness, branch);
+            self.persist_session(&session);
+            self.all_sessions.push(session.clone());
+            self.sessions.push(session);
+        }
+        self.selected_session =
+            session_index_after_delete(index, self.selected_session, self.sessions.len());
+
+        if active {
+            let session_id = self.session().id.clone();
+            self.harness.session_id = None;
+            self.load_transcript(&session_id);
+            if self.harness.status.is_ready() {
+                let path = PathBuf::from(&self.project().path);
+                if let Some(harness) = self.harness.harness.as_ref() {
+                    harness.new_session(path);
+                }
+            } else if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            }
+        }
+
+        self.notice = Some("Deleted session".into());
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
+    fn delete_project(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.projects.len() <= 1 {
+            self.set_notice("Keep at least one project in Kestrel", cx);
+            return;
+        }
+        let Some(index) = self.projects.iter().position(|project| project.id == id) else {
+            return;
+        };
+        let active = index == self.selected_project;
+        if active {
+            if self.harness.running {
+                self.cancel_turn(cx);
+            }
+            self.stash_transcript();
+        }
+
+        let removed_sessions: Vec<String> = self
+            .all_sessions
+            .iter()
+            .filter(|session| session.project_id == id)
+            .map(|session| session.id.clone())
+            .collect();
+        self.all_sessions.retain(|session| session.project_id != id);
+        for session_id in &removed_sessions {
+            self.forget_transcript(session_id);
+        }
+        if let Some(store) = &self.store {
+            let _ = store.delete_project(id);
+        }
+        let removed = self.projects.remove(index);
+
+        if active {
+            self.selected_project = index.min(self.projects.len() - 1);
+            let project_id = self.project().id.clone();
+            self.sessions = self
+                .all_sessions
+                .iter()
+                .filter(|session| session.project_id == project_id)
+                .cloned()
+                .collect();
+            if self.sessions.is_empty() {
+                let branch = self.project().branch.clone();
+                let session = blank_session(&project_id, &self.default_harness, branch);
+                self.persist_session(&session);
+                self.all_sessions.push(session.clone());
+                self.sessions.push(session);
+            }
+            self.selected_session = 0;
+            let session_id = self.sessions[0].id.clone();
+            let path = self.project().path.clone();
+            self.harness.session_id = None;
+            self.harness.commands.clear();
+            self.load_transcript(&session_id);
+            self.file_tree = FileTree::load(path.clone());
+            self.search_query.clear();
+            self.search_hits = if path == workspace_root() {
+                demo::search_hits(&path)
+            } else {
+                Vec::new()
+            };
+            self.close_inspector();
+            if self.auto_connect {
+                self.connect_harness(cx);
+            } else {
+                self.disconnect_harness(cx);
+            }
+            self.refresh_git_status(cx);
+        } else if index < self.selected_project {
+            self.selected_project -= 1;
+        }
+
+        self.notice = Some(format!("Removed {}", removed.name));
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         let platform = keystroke.modifiers.platform;
         let shift = keystroke.modifiers.shift;
+
+        if self.pending_delete.is_some() {
+            match keystroke.key.as_str() {
+                "escape" => self.cancel_delete(cx),
+                "enter" => self.confirm_delete(cx),
+                _ => {}
+            }
+            cx.stop_propagation();
+            return;
+        }
 
         if self.command_open {
             match keystroke.key.as_str() {
@@ -1567,6 +1768,138 @@ impl KestrelApp {
         row.into_any_element()
     }
 
+    fn delete_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(pending) = self.pending_delete.clone() else {
+            return div().into_any_element();
+        };
+        let (title, body, action) = match &pending {
+            PendingDelete::Session { title, .. } => (
+                "Delete session?".to_string(),
+                format!(
+                    "“{title}” and its transcript will be removed from this Mac. This cannot be undone."
+                ),
+                "Delete session",
+            ),
+            PendingDelete::Project { name, .. } => (
+                "Remove project?".to_string(),
+                format!(
+                    "“{name}” will be removed from Kestrel. The folder stays on disk, but its sessions and transcripts will be deleted."
+                ),
+                "Remove project",
+            ),
+        };
+
+        div()
+            .id("delete-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
+            .child(
+                div()
+                    .id("delete-dialog")
+                    .w(px(392.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(16.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(10.))
+                            .child(
+                                div()
+                                    .size(px(30.))
+                                    .flex_shrink_0()
+                                    .rounded(px(8.))
+                                    .bg(p.red_soft)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(IconName::Trash, 14.0, p.red)),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(3.))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(p.fg)
+                                            .child(title),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .line_height(relative(1.5))
+                                            .text_color(p.muted_fg)
+                                            .child(body),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .id("delete-cancel")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
+                                    .child(
+                                        div().text_size(px(10.5)).text_color(p.fg).child("Cancel"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("delete-confirm")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .bg(p.red)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.opacity(0.88))
+                                    .on_click(cx.listener(|this, _, _, cx| this.confirm_delete(cx)))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(white())
+                                            .child(action),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn inspector_panel(&self, inspector: &Inspector, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let dirty = self.editor_dirty;
@@ -1880,6 +2213,7 @@ impl Render for KestrelApp {
         let palette = self
             .command_open
             .then(|| views::palette::render(self, window, cx));
+        let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
 
         div()
             .relative()
@@ -1916,6 +2250,7 @@ impl Render for KestrelApp {
             .child(status_bar)
             .children(settings)
             .children(palette)
+            .children(confirm)
     }
 }
 
@@ -2101,6 +2436,23 @@ pub(crate) fn format_tokens(tokens: u64) -> String {
     }
 }
 
+/// Pick the session to show after one has been removed at `removed`.
+pub(crate) fn session_index_after_delete(
+    removed: usize,
+    selected: usize,
+    len_after: usize,
+) -> usize {
+    if len_after == 0 {
+        0
+    } else if removed < selected {
+        selected - 1
+    } else if removed == selected {
+        removed.min(len_after - 1)
+    } else {
+        selected
+    }
+}
+
 pub(crate) fn format_bytes(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes} B")
@@ -2125,7 +2477,7 @@ pub(crate) fn format_ms(ms: u64) -> String {
 mod tests {
     use super::{
         Command, CommandItem, PermissionMode, StoredSettings, command_matches, editor_language,
-        format_bytes,
+        format_bytes, session_index_after_delete,
     };
     use kestrel_domain::MainView;
     use kestrel_ui::assets::IconName;
@@ -2189,5 +2541,18 @@ mod tests {
         assert_eq!(format_bytes(512), "512 B");
         assert_eq!(format_bytes(2048), "2.0 KB");
         assert_eq!(format_bytes(3 * 1024 * 1024), "3.0 MB");
+    }
+
+    #[test]
+    fn deleting_a_session_keeps_a_sensible_selection() {
+        // Removing the active session selects the next one, or the last one.
+        assert_eq!(session_index_after_delete(1, 1, 3), 1);
+        assert_eq!(session_index_after_delete(2, 2, 2), 1);
+        // Removing an earlier session shifts the selection down.
+        assert_eq!(session_index_after_delete(0, 2, 2), 1);
+        // Removing a later session leaves the selection alone.
+        assert_eq!(session_index_after_delete(3, 1, 3), 1);
+        // A fresh session is created when the list becomes empty.
+        assert_eq!(session_index_after_delete(0, 0, 1), 0);
     }
 }

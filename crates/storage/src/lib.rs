@@ -275,6 +275,13 @@ impl Store {
         Ok(())
     }
 
+    /// Remove a project. Sessions and transcripts cascade with foreign keys.
+    pub fn delete_project(&self, project_id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM projects WHERE id = ?1", [project_id])?;
+        Ok(())
+    }
+
     /// Store an application setting as JSON under a stable key.
     pub fn save_setting<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let value = serde_json::to_string(value)?;
@@ -399,6 +406,20 @@ mod tests {
         store.save_transcript("ses-1", &vec!["x"]).unwrap();
 
         store.delete_session("ses-1").unwrap();
+        assert!(store.sessions(None).unwrap().is_empty());
+        let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
+        assert_eq!(transcript, None);
+    }
+
+    #[test]
+    fn deleting_a_project_cascades_to_sessions_and_transcripts() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_transcript("ses-1", &vec!["x"]).unwrap();
+
+        store.delete_project("kestrel").unwrap();
+        assert!(store.projects().unwrap().is_empty());
         assert!(store.sessions(None).unwrap().is_empty());
         let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
         assert_eq!(transcript, None);

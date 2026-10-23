@@ -327,6 +327,11 @@ impl KestrelApp {
         self.harness.transcripts.insert(current_id, current);
     }
 
+    /// Drop a cached transcript without touching the store.
+    pub(crate) fn forget_transcript(&mut self, session_id: &str) {
+        self.harness.transcripts.remove(session_id);
+    }
+
     pub(crate) fn load_transcript(&mut self, session_id: &str) {
         let loaded = self.harness.transcripts.remove(session_id).or_else(|| {
             self.store.as_ref().and_then(|store| {
