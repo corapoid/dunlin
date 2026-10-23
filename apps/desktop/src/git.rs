@@ -153,6 +153,8 @@ pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
 
 fn git(path: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
+        .arg("-c")
+        .arg("core.quotePath=false")
         .arg("-C")
         .arg(path)
         .args(args)
@@ -356,6 +358,11 @@ mod tests {
         let status = load(&root);
         assert_eq!(status.error, None);
         assert!(status.changes.is_empty());
+
+        std::fs::write(std::path::Path::new(&root).join("ünïcode.txt"), "hi").unwrap();
+        let status = load(&root);
+        assert_eq!(status.changes.len(), 1);
+        assert_eq!(status.changes[0].path, "ünïcode.txt");
 
         std::fs::write(
             std::path::Path::new(&root).join("hello.txt"),
