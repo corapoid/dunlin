@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use kestrel_domain::*;
 use kestrel_ui::assets::IconName;
+use kestrel_ui::component::diff::{Diff, DiffFile, DiffState};
 use kestrel_ui::component::input::{
     Editor, EditorState, InputEvent, InputState, Position, TextareaState,
 };
@@ -170,6 +171,15 @@ pub(crate) enum PendingDelete {
     Project { id: String, name: String },
 }
 
+/// The read-only unified patch shown for one source-control change.
+pub(crate) struct DiffView {
+    pub path: String,
+    pub name: String,
+    pub staged: bool,
+    pub state: Entity<DiffState>,
+    pub error: Option<String>,
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -241,6 +251,7 @@ pub(crate) struct KestrelApp {
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
     pub pending_delete: Option<PendingDelete>,
+    pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
     pub restart_harness: bool,
     pub restore_session: bool,
@@ -250,6 +261,7 @@ pub(crate) struct KestrelApp {
     pub inspector: Option<Inspector>,
     pub editor: Entity<EditorState>,
     _editor_subscription: Subscription,
+    pub diff_state: Entity<DiffState>,
     pub editor_dirty: bool,
     pub editor_readonly: bool,
     pub selected_span: Option<usize>,
@@ -380,6 +392,8 @@ impl KestrelApp {
 
         let commit_input = cx.new(|cx| InputState::new(window, cx).placeholder("Commit message"));
 
+        let diff_state = cx.new(|cx| DiffState::new(Vec::new(), cx));
+
         let custom_command_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("your-agent --acp")
@@ -447,6 +461,7 @@ impl KestrelApp {
             permission_mode: stored.permission_mode,
             project_menu_open: false,
             pending_delete: None,
+            diff_view: None,
             auto_connect: stored.auto_connect,
             restart_harness: stored.restart_harness,
             restore_session: stored.restore_session,
@@ -455,6 +470,7 @@ impl KestrelApp {
             inspector: None,
             editor,
             _editor_subscription: editor_subscription,
+            diff_state,
             editor_dirty: false,
             editor_readonly: false,
             selected_span: None,
@@ -1158,6 +1174,9 @@ impl KestrelApp {
                 self.project_menu_open = false;
                 cx.stop_propagation();
                 cx.notify();
+            } else if self.diff_view.is_some() {
+                self.close_diff(window, cx);
+                cx.stop_propagation();
             } else if self.inspector.is_some() {
                 self.close_inspector();
                 cx.stop_propagation();
@@ -1294,6 +1313,54 @@ impl KestrelApp {
                 self.refresh_git_status(cx);
             }
             Err(error) => self.set_notice(error, cx),
+        }
+    }
+
+    /// Show the read-only unified patch for one source-control change.
+    pub(crate) fn open_diff(&mut self, path: &str, staged: bool, cx: &mut Context<Self>) {
+        let root = self.project().path.clone();
+        let name = Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_string();
+
+        match git::file_diff(&root, path, staged) {
+            Ok(patch) => match DiffFile::parse(&patch) {
+                Ok(files) if !files.is_empty() => {
+                    self.diff_state
+                        .update(cx, |state, cx| state.set_files(files, cx));
+                    self.diff_view = Some(DiffView {
+                        path: path.to_string(),
+                        name,
+                        staged,
+                        state: self.diff_state.clone(),
+                        error: None,
+                    });
+                    cx.notify();
+                }
+                Ok(_) => self.set_notice("No changes to show", cx),
+                Err(error) => self.set_notice(format!("Could not read the patch: {error}"), cx),
+            },
+            Err(error) => {
+                self.diff_state
+                    .update(cx, |state, cx| state.set_files(Vec::new(), cx));
+                self.diff_view = Some(DiffView {
+                    path: path.to_string(),
+                    name,
+                    staged,
+                    state: self.diff_state.clone(),
+                    error: Some(error),
+                });
+                cx.notify();
+            }
+        }
+    }
+
+    pub(crate) fn close_diff(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.diff_view.take().is_some() {
+            self.focus_handle.focus(window, cx);
+            cx.notify();
         }
     }
 
@@ -1790,6 +1857,177 @@ impl KestrelApp {
         row.into_any_element()
     }
 
+    fn diff_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(view) = self.diff_view.as_ref() else {
+            return div().into_any_element();
+        };
+        let path = view.path.clone();
+        let open_path = path.clone();
+        let name = view.name.clone();
+        let staged = view.staged;
+        let error = view.error.clone();
+
+        let body = match error {
+            Some(error) => div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap(px(7.))
+                .child(icon(IconName::FileDiff, 24.0, p.muted_fg))
+                .child(div().text_size(px(11.5)).text_color(p.fg).child(error))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(p.muted_fg)
+                        .child("This file cannot be previewed as a patch."),
+                )
+                .into_any_element(),
+            None => div()
+                .flex_1()
+                .min_h(px(0.))
+                .overflow_hidden()
+                .child(Diff::new(&view.state).line_number(true).soft_wrap(false))
+                .into_any_element(),
+        };
+
+        div()
+            .id("diff-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, window, cx| this.close_diff(window, cx)))
+            .child(
+                div()
+                    .id("diff-dialog")
+                    .w(px(880.))
+                    .h(px(560.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .overflow_hidden()
+                    .flex()
+                    .flex_col()
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .h(px(52.))
+                            .px(px(14.))
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .border_b_1()
+                            .border_color(p.border)
+                            .child(
+                                div()
+                                    .size(px(28.))
+                                    .flex_shrink_0()
+                                    .rounded(px(7.))
+                                    .bg(if staged { p.green_soft } else { p.amber_soft })
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(
+                                        IconName::FileDiff,
+                                        14.0,
+                                        if staged { p.green } else { p.amber },
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(2.))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(p.fg)
+                                            .truncate()
+                                            .child(name),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(9.5))
+                                            .font_family("Geist Mono")
+                                            .text_color(p.muted_fg)
+                                            .truncate()
+                                            .child(path.clone()),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .h(px(19.))
+                                    .px(px(6.))
+                                    .rounded(px(4.))
+                                    .bg(if staged { p.green_soft } else { p.amber_soft })
+                                    .flex()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(8.5))
+                                            .font_family("Geist Mono")
+                                            .text_color(if staged { p.green } else { p.amber })
+                                            .child(if staged { "STAGED" } else { "WORKTREE" }),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("diff-open-file")
+                                    .h(px(26.))
+                                    .px(px(9.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(5.))
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.close_diff(window, cx);
+                                        this.open_file(&open_path, window, cx);
+                                    }))
+                                    .child(icon(IconName::ExternalLink, 10.5, p.muted_fg))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(p.fg)
+                                            .child("Open file"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("diff-close")
+                                    .size(px(26.))
+                                    .rounded(px(6.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.close_diff(window, cx)
+                                    }))
+                                    .child(icon(IconName::X, 12.0, p.muted_fg)),
+                            ),
+                    )
+                    .child(body),
+            )
+            .into_any_element()
+    }
+
     fn delete_modal(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let Some(pending) = self.pending_delete.clone() else {
@@ -2236,6 +2474,7 @@ impl Render for KestrelApp {
             .command_open
             .then(|| views::palette::render(self, window, cx));
         let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
+        let diff = self.diff_view.as_ref().map(|_| self.diff_modal(cx));
 
         div()
             .relative()
@@ -2273,6 +2512,7 @@ impl Render for KestrelApp {
             .children(settings)
             .children(palette)
             .children(confirm)
+            .children(diff)
     }
 }
 

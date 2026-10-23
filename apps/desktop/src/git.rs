@@ -101,6 +101,48 @@ pub(crate) fn unstage_file(path: &str, file: &str) -> Result<(), String> {
     }
 }
 
+/// A unified patch for one path, including an untracked file.
+pub(crate) fn file_diff(path: &str, file: &str, staged: bool) -> Result<String, String> {
+    const MAX_PATCH_BYTES: usize = 2 * 1024 * 1024;
+    let args: &[&str] = if staged {
+        &["diff", "--cached", "--no-color", "--", file]
+    } else {
+        &["diff", "--no-color", "--", file]
+    };
+    let patch = git(path, args)?;
+    if patch.len() > MAX_PATCH_BYTES {
+        return Err("This patch is too large to display".into());
+    }
+    if !patch.trim().is_empty() {
+        return Ok(patch);
+    }
+    if git(path, &["ls-files", "--error-unmatch", "--", file]).is_ok() {
+        return Ok(patch);
+    }
+
+    let full = Path::new(path).join(file);
+    let metadata =
+        std::fs::metadata(&full).map_err(|error| format!("Could not read {file}: {error}"))?;
+    if metadata.len() > MAX_PATCH_BYTES as u64 {
+        return Err("This file is too large to preview".into());
+    }
+    let bytes = std::fs::read(&full).map_err(|error| format!("Could not read {file}: {error}"))?;
+    if bytes.contains(&0) {
+        return Err("Binary file — diff is not available".into());
+    }
+    let contents = String::from_utf8_lossy(&bytes);
+    let lines = contents.lines().count();
+    let mut patch = format!(
+        "diff --git a/{file} b/{file}\nnew file mode 100644\n--- /dev/null\n+++ b/{file}\n@@ -0,0 +1,{lines} @@\n"
+    );
+    for line in contents.lines() {
+        patch.push('+');
+        patch.push_str(line);
+        patch.push('\n');
+    }
+    Ok(patch)
+}
+
 pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
@@ -291,9 +333,18 @@ mod tests {
         assert_eq!(status.changes[0].additions, 2);
         assert_eq!(status.changes[0].deletions, 0);
 
+        let patch = file_diff(&root, "hello.txt", false).unwrap();
+        assert!(patch.contains("new file mode 100644"), "{patch}");
+        assert!(patch.contains("+one\n+two"), "{patch}");
+        let files = kestrel_ui::component::diff::DiffFile::parse(&patch).unwrap();
+        assert_eq!(files.len(), 1);
+
         stage_file(&root, "hello.txt").unwrap();
         let status = load(&root);
         assert!(status.changes[0].staged);
+
+        let patch = file_diff(&root, "hello.txt", true).unwrap();
+        assert!(patch.contains("new file mode 100644"), "{patch}");
 
         unstage_file(&root, "hello.txt").unwrap();
         let status = load(&root);
@@ -305,6 +356,24 @@ mod tests {
         let status = load(&root);
         assert_eq!(status.error, None);
         assert!(status.changes.is_empty());
+
+        std::fs::write(
+            std::path::Path::new(&root).join("hello.txt"),
+            "one\ntwo\nthree\n",
+        )
+        .unwrap();
+        let patch = file_diff(&root, "hello.txt", false).unwrap();
+        assert!(patch.contains("+three"), "{patch}");
+
+        stage_file(&root, "hello.txt").unwrap();
+        let staged = file_diff(&root, "hello.txt", true).unwrap();
+        assert!(staged.contains("+three"), "{staged}");
+        let worktree = file_diff(&root, "hello.txt", false).unwrap();
+        assert!(worktree.is_empty(), "{worktree}");
+
+        std::fs::write(std::path::Path::new(&root).join("logo.bin"), [0, 1, 2]).unwrap();
+        let error = file_diff(&root, "logo.bin", false).unwrap_err();
+        assert!(error.contains("Binary"), "{error}");
 
         let _ = std::fs::remove_dir_all(&root);
     }

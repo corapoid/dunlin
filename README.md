@@ -10,7 +10,7 @@ Kestrel is an early MVP that runs natively on macOS. The chat surface is wired t
 
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
-Source control reads the system `git` CLI: branch, changed files, per-file line counts, per-file staging, stage all, and commits. Nothing leaves the machine.
+Source control reads the system `git` CLI: branch, changed files, per-file line counts, per-file staging, stage all, commits, and a read-only unified diff for any change. Nothing leaves the machine.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ Permission requests are surfaced as cards in the chat. The permissions tab contr
 | `⌘⇧L` | Toggle light and dark theme |
 | `⌘S` | Save the open file |
 | `⌘↵` | Send prompt |
-| `Esc` | Close palette, settings, inspector or project menu |
+| `Esc` | Close palette, settings, diff, inspector or project menu |
 
 ## Architecture
 

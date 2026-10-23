@@ -997,6 +997,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
         let staged = change.staged;
         let group = format!("change-row:{path}");
         let action_path = path.clone();
+        let diff_path = path.clone();
 
         list = list.child(
             div()
@@ -1063,6 +1064,29 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                             .child(format!("−{deletions}")),
                     )
                 })
+                .child(
+                    div()
+                        .id(format!("change-diff:{diff_path}"))
+                        .size(px(18.))
+                        .flex_shrink_0()
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .opacity(0.35)
+                        .group_hover(group.clone(), move |style| style.opacity(1.))
+                        .hover(move |style| style.bg(p.blue_soft))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.open_diff(&diff_path, staged, cx);
+                        }))
+                        .child(
+                            Icon::new(IconName::Diff)
+                                .size(px(10.5))
+                                .text_color(p.muted_fg),
+                        ),
+                )
                 .child(
                     div()
                         .id(format!("change-stage:{action_path}"))
