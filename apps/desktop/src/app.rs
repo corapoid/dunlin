@@ -833,6 +833,7 @@ impl KestrelApp {
             Command::View(view) => {
                 self.view = view;
                 self.settings_open = false;
+                self.persist_settings(cx);
             }
             Command::Section(section) => {
                 self.section = section;
@@ -1286,18 +1287,21 @@ impl KestrelApp {
                 "1" => {
                     self.view = MainView::Chat;
                     self.settings_open = false;
+                    self.persist_settings(cx);
                     cx.notify();
                     true
                 }
                 "2" => {
                     self.view = MainView::Graph;
                     self.settings_open = false;
+                    self.persist_settings(cx);
                     cx.notify();
                     true
                 }
                 "3" => {
                     self.view = MainView::Trace;
                     self.settings_open = false;
+                    self.persist_settings(cx);
                     cx.notify();
                     true
                 }

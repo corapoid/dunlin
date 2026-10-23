@@ -229,6 +229,7 @@ fn suggestion_chip(
         .on_click(cx.listener(move |this, _, window, cx| {
             this.composer.update(cx, |state, cx| {
                 state.set_value(prompt.clone(), window, cx);
+                state.focus(window, cx);
             });
             cx.notify();
         }))
@@ -469,6 +470,7 @@ fn starter_row(
         .on_click(cx.listener(move |this, _, window, cx| {
             this.composer.update(cx, |state, cx| {
                 state.set_value(prompt.clone(), window, cx);
+                state.focus(window, cx);
             });
             cx.notify();
         }))

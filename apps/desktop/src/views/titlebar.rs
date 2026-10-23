@@ -114,6 +114,7 @@ pub(crate) fn render(
             .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.view = view;
+                this.persist_settings(cx);
                 cx.notify();
             }))
             .child(Icon::new(icon_name).size(px(12.5)).text_color(color))
@@ -205,8 +206,9 @@ pub(crate) fn render(
                 .justify_center()
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(|_, _, window, cx| {
+                .on_click(cx.listener(|this, _, window, cx| {
                     toggle_mode(window, cx);
+                    this.persist_settings(cx);
                     cx.notify();
                 }))
                 .child(
