@@ -1580,18 +1580,18 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                                 .text_size(px(10.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.red)
-                                .child("Reset local data"),
+                                .child("Clear conversation history"),
                         )
                         .child(
                             div()
                                 .text_size(px(9.))
                                 .text_color(p.red.opacity(0.8))
-                                .child("Delete sessions, traces and settings. Projects on disk are untouched."),
+                                .child("Delete every session and transcript on this Mac. Projects and settings stay."),
                         ),
                 )
                 .child(
                     div()
-                        .id("reset-data")
+                        .id("clear-history")
                         .h(px(23.))
                         .px(px(8.))
                         .rounded(px(5.))
@@ -1603,14 +1603,14 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .gap(px(4.))
                         .cursor_pointer()
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_notice("Reset cancelled · this action needs a confirmation sheet", cx);
+                            this.request_clear_history(cx);
                         }))
-                        .child(Icon::new(IconName::RotateCcw).size(px(10.)).text_color(p.red))
+                        .child(Icon::new(IconName::Trash).size(px(10.)).text_color(p.red))
                         .child(
                             div()
                                 .text_size(px(9.))
                                 .text_color(p.red)
-                                .child("Reset…"),
+                                .child("Clear…"),
                         ),
                 ),
         )

@@ -275,6 +275,12 @@ impl Store {
         Ok(())
     }
 
+    /// Remove every conversation. Projects and settings stay.
+    pub fn clear_sessions(&self) -> Result<()> {
+        self.connection.execute("DELETE FROM sessions", [])?;
+        Ok(())
+    }
+
     /// Remove a project. Sessions and transcripts cascade with foreign keys.
     pub fn delete_project(&self, project_id: &str) -> Result<()> {
         self.connection
@@ -409,6 +415,23 @@ mod tests {
         assert!(store.sessions(None).unwrap().is_empty());
         let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
         assert_eq!(transcript, None);
+    }
+
+    #[test]
+    fn clearing_sessions_keeps_projects_and_settings() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_transcript("ses-1", &vec!["x"]).unwrap();
+        store.save_setting("app", &"kept").unwrap();
+
+        store.clear_sessions().unwrap();
+        assert_eq!(store.projects().unwrap().len(), 1);
+        assert!(store.sessions(None).unwrap().is_empty());
+        let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();
+        assert_eq!(transcript, None);
+        let setting: Option<String> = store.load_setting("app").unwrap();
+        assert_eq!(setting.as_deref(), Some("kept"));
     }
 
     #[test]

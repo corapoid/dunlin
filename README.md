@@ -75,7 +75,7 @@ crates/storage      SQLite persistence (WAL, foreign keys, migrations)
 
 The ACP worker owns all protocol I/O. The UI sends commands and receives events over channels, so a slow model or child process never blocks the render thread. Permission handlers respond from a spawned task to keep the ACP dispatch loop moving.
 
-Data lives in SQLite with WAL enabled. Projects and sessions are upserted as they change; transcripts are saved when a turn finishes, when a permission is resolved, when switching sessions and on shutdown. Settings are stored as JSON in the same database, so new options can be added without a schema migration.
+Data lives in SQLite with WAL enabled. Projects and sessions are upserted as they change; transcripts are saved when a turn finishes, when a permission is resolved, when switching sessions and on shutdown. Settings are stored as JSON in the same database, so new options can be added without a schema migration. Settings → Advanced can clear every conversation while keeping projects and settings.
 
 ## Development
 

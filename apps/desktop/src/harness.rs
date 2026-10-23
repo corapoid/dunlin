@@ -415,6 +415,11 @@ impl KestrelApp {
         self.harness.transcripts.remove(session_id);
     }
 
+    /// Drop every cached transcript, for a full history reset.
+    pub(crate) fn forget_all_transcripts(&mut self) {
+        self.harness.transcripts.clear();
+    }
+
     pub(crate) fn load_transcript(&mut self, session_id: &str) {
         let loaded = self.harness.transcripts.remove(session_id).or_else(|| {
             self.store.as_ref().and_then(|store| {

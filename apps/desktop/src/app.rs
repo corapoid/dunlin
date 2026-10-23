@@ -173,6 +173,7 @@ pub(crate) struct Inspector {
 pub(crate) enum PendingDelete {
     Session { id: String, title: String },
     Project { id: String, name: String },
+    History { count: usize },
 }
 
 /// The read-only unified patch shown for one source-control change.
@@ -195,6 +196,7 @@ pub(crate) enum Command {
     NewSession,
     NewFile,
     DeleteSession,
+    ClearHistory,
     RemoveProject,
     RestartHarness,
     RefreshGit,
@@ -678,6 +680,13 @@ impl KestrelApp {
                 keywords: "remove delete conversation history".into(),
             },
             CommandItem {
+                command: Command::ClearHistory,
+                label: "Clear Conversation History…".into(),
+                hint: None,
+                icon: IconName::Trash,
+                keywords: "remove delete all sessions transcripts reset".into(),
+            },
+            CommandItem {
                 command: Command::RefreshGit,
                 label: "Refresh Source Control".into(),
                 hint: None,
@@ -847,6 +856,7 @@ impl KestrelApp {
             Command::NewSession => self.new_session(cx),
             Command::NewFile => self.new_file(window, cx),
             Command::DeleteSession => self.request_delete_session(self.selected_session, cx),
+            Command::ClearHistory => self.request_clear_history(cx),
             Command::RemoveProject => self.request_delete_project(self.selected_project, cx),
             Command::RestartHarness => self.restart_harness(cx),
             Command::RefreshGit => self.refresh_git_status(cx),
@@ -1035,6 +1045,15 @@ impl KestrelApp {
         cx.notify();
     }
 
+    /// Ask for confirmation before clearing all conversations.
+    pub(crate) fn request_clear_history(&mut self, cx: &mut Context<Self>) {
+        self.session_menu_open = false;
+        self.pending_delete = Some(PendingDelete::History {
+            count: self.all_sessions.len(),
+        });
+        cx.notify();
+    }
+
     pub(crate) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
         self.pending_delete = None;
         cx.notify();
@@ -1044,8 +1063,50 @@ impl KestrelApp {
         match self.pending_delete.take() {
             Some(PendingDelete::Session { id, .. }) => self.delete_session(&id, cx),
             Some(PendingDelete::Project { id, .. }) => self.delete_project(&id, cx),
+            Some(PendingDelete::History { .. }) => self.clear_history(cx),
             None => {}
         }
+    }
+
+    fn clear_history(&mut self, cx: &mut Context<Self>) {
+        if self.all_sessions.is_empty() {
+            self.set_notice("No conversation history to clear", cx);
+            return;
+        }
+        self.interrupt_live_turn(cx);
+        if let Some(store) = &self.store {
+            let _ = store.clear_sessions();
+        }
+        self.forget_all_transcripts();
+        self.all_sessions.clear();
+        self.sessions.clear();
+        self.selected_span = None;
+        self.selected_node = None;
+        self.expanded_tool = None;
+
+        let project_id = self.project().id.clone();
+        let branch = self.project().branch.clone();
+        let session = blank_session(&project_id, &self.default_harness, branch);
+        self.persist_session(&session);
+        self.all_sessions.push(session.clone());
+        self.sessions.push(session.clone());
+        self.selected_session = 0;
+        self.harness.session_id = None;
+        self.load_transcript(&session.id);
+
+        if self.harness.status.is_ready() {
+            let path = PathBuf::from(&self.project().path);
+            if let Some(harness) = self.harness.harness.as_ref() {
+                harness.new_session(path);
+            }
+        } else if self.auto_connect && !self.harness.status.is_busy() {
+            self.connect_harness(cx);
+        }
+
+        self.settings_open = false;
+        self.notice = Some("Cleared conversation history".into());
+        self.persist_settings(cx);
+        cx.notify();
     }
 
     fn delete_session(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -2452,6 +2513,13 @@ impl KestrelApp {
                     "“{name}” will be removed from Kestrel. The folder stays on disk, but its sessions and transcripts will be deleted."
                 ),
                 "Remove project",
+            ),
+            PendingDelete::History { count } => (
+                "Clear conversation history?".to_string(),
+                format!(
+                    "{count} sessions and their transcripts will be deleted from this Mac. Projects and settings stay. This cannot be undone."
+                ),
+                "Clear history",
             ),
         };
 
