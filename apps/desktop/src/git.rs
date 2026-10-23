@@ -81,6 +81,26 @@ pub(crate) fn stage_all(path: &str) -> Result<(), String> {
     git(path, &["add", "-A"]).map(|_| ())
 }
 
+/// Stage one path, including deletions and renames.
+pub(crate) fn stage_file(path: &str, file: &str) -> Result<(), String> {
+    git(path, &["add", "-A", "--", file]).map(|_| ())
+}
+
+/// Move one path back out of the index without touching the working tree.
+pub(crate) fn unstage_file(path: &str, file: &str) -> Result<(), String> {
+    match git(path, &["restore", "--staged", "--", file]) {
+        Ok(_) => Ok(()),
+        // A repository without a commit has no HEAD to restore from, so drop
+        // the entry from the index directly.
+        Err(error)
+            if error.contains("could not resolve") || error.contains("ambiguous argument") =>
+        {
+            git(path, &["rm", "--cached", "-q", "--", file]).map(|_| ())
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
@@ -270,6 +290,14 @@ mod tests {
         assert_eq!(status.changes[0].status, 'U');
         assert_eq!(status.changes[0].additions, 2);
         assert_eq!(status.changes[0].deletions, 0);
+
+        stage_file(&root, "hello.txt").unwrap();
+        let status = load(&root);
+        assert!(status.changes[0].staged);
+
+        unstage_file(&root, "hello.txt").unwrap();
+        let status = load(&root);
+        assert!(!status.changes[0].staged);
 
         stage_all(&root).unwrap();
         commit(&root, "initial commit").unwrap();

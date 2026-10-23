@@ -1275,6 +1275,28 @@ impl KestrelApp {
         }
     }
 
+    pub(crate) fn stage_file(&mut self, file: &str, cx: &mut Context<Self>) {
+        let path = self.project().path.clone();
+        match git::stage_file(&path, file) {
+            Ok(()) => {
+                self.notice = Some(format!("Staged {file}"));
+                self.refresh_git_status(cx);
+            }
+            Err(error) => self.set_notice(error, cx),
+        }
+    }
+
+    pub(crate) fn unstage_file(&mut self, file: &str, cx: &mut Context<Self>) {
+        let path = self.project().path.clone();
+        match git::unstage_file(&path, file) {
+            Ok(()) => {
+                self.notice = Some(format!("Unstaged {file}"));
+                self.refresh_git_status(cx);
+            }
+            Err(error) => self.set_notice(error, cx),
+        }
+    }
+
     pub(crate) fn commit_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let message = self.commit_input.read(cx).value().to_string();
         let path = self.project().path.clone();

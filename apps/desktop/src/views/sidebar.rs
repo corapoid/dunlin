@@ -995,10 +995,13 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
         let additions = change.additions;
         let deletions = change.deletions;
         let staged = change.staged;
+        let group = format!("change-row:{path}");
+        let action_path = path.clone();
 
         list = list.child(
             div()
                 .id(format!("change:{path}"))
+                .group(group.clone())
                 .mx(px(6.))
                 .px(px(7.))
                 .h(px(29.))
@@ -1059,7 +1062,44 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                             .text_color(p.red)
                             .child(format!("−{deletions}")),
                     )
-                }),
+                })
+                .child(
+                    div()
+                        .id(format!("change-stage:{action_path}"))
+                        .size(px(18.))
+                        .flex_shrink_0()
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .opacity(0.35)
+                        .group_hover(group, move |style| style.opacity(1.))
+                        .hover(move |style| {
+                            style.bg(if staged { p.amber_soft } else { p.green_soft })
+                        })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            if staged {
+                                this.unstage_file(&action_path, cx);
+                            } else {
+                                this.stage_file(&action_path, cx);
+                            }
+                        }))
+                        .child(
+                            Icon::new(if staged {
+                                IconName::Minus
+                            } else {
+                                IconName::Plus
+                            })
+                            .size(px(10.5))
+                            .text_color(if staged {
+                                p.amber
+                            } else {
+                                p.green
+                            }),
+                        ),
+                ),
         );
     }
 

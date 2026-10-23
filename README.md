@@ -10,6 +10,8 @@ Kestrel is an early MVP that runs natively on macOS. The chat surface is wired t
 
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
+Source control reads the system `git` CLI: branch, changed files, per-file line counts, per-file staging, stage all, and commits. Nothing leaves the machine.
+
 ## Requirements
 
 - macOS 15 or newer
