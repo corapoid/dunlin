@@ -7,8 +7,10 @@
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GitChange {
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitChange {
     pub path: String,
     pub status: char,
     pub additions: u32,
@@ -16,15 +18,15 @@ pub(crate) struct GitChange {
     pub staged: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GitStatus {
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitStatus {
     pub branch: String,
     pub changes: Vec<GitChange>,
     pub error: Option<String>,
 }
 
 /// Read branch, working-tree status and line counts for `path`.
-pub(crate) fn load(path: &str) -> GitStatus {
+pub fn load(path: &str) -> GitStatus {
     if !Path::new(path).is_dir() {
         return GitStatus {
             error: Some("Folder is not available".into()),
@@ -81,17 +83,17 @@ pub(crate) fn load(path: &str) -> GitStatus {
     }
 }
 
-pub(crate) fn stage_all(path: &str) -> Result<(), String> {
+pub fn stage_all(path: &str) -> Result<(), String> {
     git(path, &["add", "-A"]).map(|_| ())
 }
 
 /// Stage one path, including deletions and renames.
-pub(crate) fn stage_file(path: &str, file: &str) -> Result<(), String> {
+pub fn stage_file(path: &str, file: &str) -> Result<(), String> {
     git(path, &["add", "-A", "--", file]).map(|_| ())
 }
 
 /// Move one path back out of the index without touching the working tree.
-pub(crate) fn unstage_file(path: &str, file: &str) -> Result<(), String> {
+pub fn unstage_file(path: &str, file: &str) -> Result<(), String> {
     match git(path, &["restore", "--staged", "--", file]) {
         Ok(_) => Ok(()),
         // A repository without a commit has no HEAD to restore from, so drop
@@ -106,7 +108,7 @@ pub(crate) fn unstage_file(path: &str, file: &str) -> Result<(), String> {
 }
 
 /// A unified patch for one path, including an untracked file.
-pub(crate) fn file_diff(path: &str, file: &str, staged: bool) -> Result<String, String> {
+pub fn file_diff(path: &str, file: &str, staged: bool) -> Result<String, String> {
     const MAX_PATCH_BYTES: usize = 2 * 1024 * 1024;
     let args: &[&str] = if staged {
         &["diff", "--cached", "--no-color", "--", file]
@@ -147,7 +149,7 @@ pub(crate) fn file_diff(path: &str, file: &str, staged: bool) -> Result<String, 
     Ok(patch)
 }
 
-pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
+pub fn commit(path: &str, message: &str) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("Write a commit message first".into());
@@ -156,7 +158,7 @@ pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
 }
 
 /// Replace the last commit with the current index and a new message.
-pub(crate) fn amend(path: &str, message: &str) -> Result<(), String> {
+pub fn amend(path: &str, message: &str) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("Write a commit message first".into());
@@ -164,7 +166,7 @@ pub(crate) fn amend(path: &str, message: &str) -> Result<(), String> {
     git(path, &["commit", "--amend", "-m", message]).map(|_| ())
 }
 
-pub(crate) fn branches(path: &str) -> Result<Vec<String>, String> {
+pub fn branches(path: &str) -> Result<Vec<String>, String> {
     let output = git(path, &["branch", "--format=%(refname:short)"])?;
     Ok(output
         .lines()
@@ -174,20 +176,20 @@ pub(crate) fn branches(path: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub(crate) fn switch_branch(path: &str, branch: &str) -> Result<(), String> {
+pub fn switch_branch(path: &str, branch: &str) -> Result<(), String> {
     git(path, &["switch", branch]).map(|_| ())
 }
 
-pub(crate) fn pull(path: &str) -> Result<(), String> {
+pub fn pull(path: &str) -> Result<(), String> {
     git(path, &["pull", "--ff-only"]).map(|_| ())
 }
 
-pub(crate) fn push(path: &str) -> Result<(), String> {
+pub fn push(path: &str) -> Result<(), String> {
     git(path, &["push"]).map(|_| ())
 }
 
 /// Restore one tracked file in the working tree, leaving the index alone.
-pub(crate) fn discard_file(path: &str, file: &str) -> Result<(), String> {
+pub fn discard_file(path: &str, file: &str) -> Result<(), String> {
     git(path, &["restore", "--worktree", "--", file]).map(|_| ())
 }
 
@@ -404,8 +406,6 @@ mod tests {
         let patch = file_diff(&root, "hello.txt", false).unwrap();
         assert!(patch.contains("new file mode 100644"), "{patch}");
         assert!(patch.contains("+one\n+two"), "{patch}");
-        let files = kestrel_ui::component::diff::DiffFile::parse(&patch).unwrap();
-        assert_eq!(files.len(), 1);
 
         stage_file(&root, "hello.txt").unwrap();
         let status = load(&root);

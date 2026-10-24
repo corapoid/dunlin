@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileEntry {
     pub name: String,
     pub path: String,
@@ -11,9 +13,8 @@ pub struct FileEntry {
     pub children: Vec<FileEntry>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileTree {
-    #[allow(dead_code)]
     pub root: String,
     pub entries: Vec<FileEntry>,
     pub error: Option<String>,

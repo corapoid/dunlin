@@ -3551,6 +3551,7 @@ dependencies = [
  "kestrel-domain",
  "kestrel-storage",
  "kestrel-ui",
+ "kestrel-workspace",
  "serde",
  "serde_json",
  "uuid",
@@ -3591,6 +3592,14 @@ name = "kestrel-ui"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+]
+
+[[package]]
+name = "kestrel-workspace"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

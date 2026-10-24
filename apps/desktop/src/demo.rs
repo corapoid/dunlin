@@ -636,23 +636,28 @@ pub fn trace_spans() -> Vec<TraceSpan> {
     ]
 }
 
-pub fn search_hits(root: &str) -> Vec<(String, u32, String)> {
+pub fn search_hits(root: &str) -> Vec<kestrel_workspace::search::SearchHit> {
+    use kestrel_workspace::search::SearchHit;
     vec![
-        (
-            format!("{root}/crates/ui/src/theme.rs"),
-            1,
-            "//! Kestrel design system.".into(),
-        ),
-        (
-            format!("{root}/crates/ui/src/theme.rs"),
-            13,
-            "//! here so the application never reaches for hard-coded colours.".into(),
-        ),
-        (
-            format!("{root}/apps/desktop/src/app.rs"),
-            1,
-            "use kestrel_domain::*;".into(),
-        ),
-        (format!("{root}/Cargo.toml"), 1, "[workspace]".into()),
+        SearchHit {
+            path: format!("{root}/crates/ui/src/theme.rs"),
+            line: 1,
+            preview: "//! Kestrel design system.".into(),
+        },
+        SearchHit {
+            path: format!("{root}/crates/ui/src/theme.rs"),
+            line: 13,
+            preview: "//! here so the application never reaches for hard-coded colours.".into(),
+        },
+        SearchHit {
+            path: format!("{root}/apps/desktop/src/app.rs"),
+            line: 1,
+            preview: "use kestrel_domain::*;".into(),
+        },
+        SearchHit {
+            path: format!("{root}/Cargo.toml"),
+            line: 1,
+            preview: "[workspace]".into(),
+        },
     ]
 }

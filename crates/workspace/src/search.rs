@@ -3,20 +3,27 @@
 //! The UI hands the walk to GPUI's background executor, so large repositories
 //! never block a frame. A search walks the project once, skips build/VCS
 //! directories, only reads text files below 256 KiB and stops after `limit`
-//! matches. The result shape already matches a future streaming search, so the
-//! sidebar does not need to change when search moves to a worker thread.
+//! matches. The same implementation runs inside the relay, so remote search
+//! behaves exactly like local search.
 
 use std::fs;
 use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 const MAX_DEPTH: usize = 12;
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 const MAX_FILES: usize = 6_000;
 const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 
-pub type Hit = (String, u32, String);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchHit {
+    pub path: String,
+    pub line: u32,
+    pub preview: String,
+}
 
-pub fn search_project(root: &str, query: &str, limit: usize) -> Vec<Hit> {
+pub fn search_project(root: &str, query: &str, limit: usize) -> Vec<SearchHit> {
     let query = query.trim();
     if query.is_empty() || limit == 0 {
         return Vec::new();
@@ -44,7 +51,7 @@ fn walk(
     scanned: &mut usize,
     bytes_scanned: &mut u64,
     depth: usize,
-    hits: &mut Vec<Hit>,
+    hits: &mut Vec<SearchHit>,
 ) {
     if depth > MAX_DEPTH
         || hits.len() >= limit
@@ -119,11 +126,11 @@ fn walk(
             } else {
                 preview.to_string()
             };
-            hits.push((
-                path.to_string_lossy().to_string(),
-                index as u32 + 1,
+            hits.push(SearchHit {
+                path: path.to_string_lossy().to_string(),
+                line: index as u32 + 1,
                 preview,
-            ));
+            });
             if hits.len() >= limit {
                 return;
             }
@@ -197,7 +204,7 @@ mod tests {
         let hits = search_project(&root.to_string_lossy(), "secret", 10);
         assert_eq!(hits.len(), 1);
         assert_eq!(
-            hits[0].0,
+            hits[0].path,
             root.join("main.rs").to_string_lossy().to_string()
         );
 

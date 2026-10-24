@@ -12,8 +12,9 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::tree::FileTree;
-use crate::{demo, git, harness, logging, projection, search, usage, views, window_state};
+use crate::{demo, harness, logging, projection, usage, views, window_state};
+use kestrel_workspace::tree::FileTree;
+use kestrel_workspace::{git, search};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SettingsTab {
@@ -308,7 +309,7 @@ pub(crate) struct KestrelApp {
     pub trace_filter: TraceFilter,
 
     pub file_tree: FileTree,
-    pub search_hits: Vec<(String, u32, String)>,
+    pub search_hits: Vec<search::SearchHit>,
     pub search_query: String,
     pub search_loading: bool,
     pub notice: Option<String>,

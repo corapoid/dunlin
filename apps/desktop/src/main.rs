@@ -2,12 +2,9 @@
 
 mod app;
 mod demo;
-mod git;
 mod harness;
 mod logging;
 mod projection;
-mod search;
-mod tree;
 mod usage;
 mod views;
 mod window_state;

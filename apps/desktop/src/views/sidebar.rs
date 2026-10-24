@@ -12,7 +12,7 @@ use kestrel_ui::*;
 
 use crate::app::{KestrelApp, SettingsTab, status_palette, tone_color, tone_soft};
 use crate::harness::HarnessStatus;
-use crate::tree::FileEntry;
+use kestrel_workspace::tree::FileEntry;
 
 pub(crate) fn render(
     this: &mut KestrelApp,
@@ -705,7 +705,10 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 ),
         );
 
-    for (path, line, preview) in &hits {
+    for hit in &hits {
+        let path = &hit.path;
+        let line = hit.line;
+        let preview = &hit.preview;
         let display = Path::new(path)
             .strip_prefix(&root)
             .map(|path| path.to_string_lossy().to_string())
@@ -720,7 +723,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
             .map(|parent| parent.to_string_lossy().to_string())
             .unwrap_or_default();
         let hit_path = path.clone();
-        let hit_line = *line;
+        let hit_line = line;
 
         root_el = root_el.child(
             div()

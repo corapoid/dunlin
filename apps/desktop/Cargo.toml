@@ -15,6 +15,7 @@ kestrel-ui.workspace = true
 kestrel-domain.workspace = true
 kestrel-agent.workspace = true
 kestrel-storage.workspace = true
+kestrel-workspace.workspace = true
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
