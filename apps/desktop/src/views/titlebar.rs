@@ -1,6 +1,8 @@
 //! Custom window title bar: brand, project breadcrumb, primary view switcher
 //! and the quiet utility cluster on the right.
 
+use std::time::Duration;
+
 use kestrel_domain::MainView;
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::{ActiveTheme, Icon, TitleBar};
@@ -29,9 +31,14 @@ pub(crate) fn render(
         (p.amber_soft, p.amber, "preview".to_string())
     } else {
         match session.status {
-            kestrel_domain::SessionStatus::Running if running > 0 => {
-                (p.green_soft, p.green, format!("{running} agents"))
-            }
+            kestrel_domain::SessionStatus::Running if running > 0 => (
+                p.green_soft,
+                p.green,
+                format!(
+                    "{running} {}",
+                    if running == 1 { "agent" } else { "agents" }
+                ),
+            ),
             kestrel_domain::SessionStatus::Running => {
                 (p.green_soft, p.green, "running".to_string())
             }
@@ -62,20 +69,20 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(px(13.0))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
                 .child("Kestrel"),
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .text_color(p.border_strong)
                 .child("/"),
         )
         .child(
             div()
-                .text_size(px(11.5))
+                .text_size(px(12.5))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.muted_fg)
                 .truncate()
@@ -83,13 +90,13 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .text_color(p.border_strong)
                 .child("/"),
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .text_color(p.muted_fg.opacity(0.85))
                 .truncate()
                 .child(session.title),
@@ -107,6 +114,7 @@ pub(crate) fn render(
         .items_center()
         .gap(px(2.));
 
+    let epoch = this.view_epoch;
     for view in MainView::ALL {
         let active = this.view == view;
         let (icon_name, hint) = match view {
@@ -131,14 +139,12 @@ pub(crate) fn render(
             })
             .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.view = view;
-                this.persist_settings(cx);
-                cx.notify();
+                this.set_view(view, cx);
             }))
             .child(Icon::new(icon_name).size(px(12.5)).text_color(color))
             .child(
                 div()
-                    .text_size(px(10.5))
+                    .text_size(px(12.0))
                     .font_weight(if active {
                         FontWeight::MEDIUM
                     } else {
@@ -149,7 +155,7 @@ pub(crate) fn render(
             )
             .child(
                 div()
-                    .text_size(px(8.5))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(if active {
                         p.muted_fg
@@ -158,6 +164,23 @@ pub(crate) fn render(
                     })
                     .child(hint),
             );
+
+        let tab = if active {
+            let card = p.card;
+            let border = p.border;
+            tab.with_animation(
+                ElementId::NamedInteger("view-tab-active".into(), epoch),
+                Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
+                move |this, t| {
+                    this.bg(card.opacity(t))
+                        .border_color(border.opacity(t))
+                        .opacity(0.68 + 0.32 * t)
+                },
+            )
+            .into_any_element()
+        } else {
+            tab.into_any_element()
+        };
 
         center = center.child(tab);
     }
@@ -181,7 +204,7 @@ pub(crate) fn render(
                 .child(dot(badge_fg, 5.0))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(badge_fg)
                         .child(badge_label),
@@ -209,7 +232,7 @@ pub(crate) fn render(
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(p.muted_fg)
                         .child("Search"),
                 )

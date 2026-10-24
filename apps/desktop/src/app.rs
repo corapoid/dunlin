@@ -8,7 +8,7 @@ use kestrel_ui::component::diff::{Diff, DiffFile, DiffState};
 use kestrel_ui::component::input::{
     Editor, EditorState, Input, InputEvent, InputState, Position, TextareaState,
 };
-use kestrel_ui::component::{ActiveTheme, ThemeMode};
+use kestrel_ui::component::{ActiveTheme, Icon, ThemeMode};
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
@@ -100,9 +100,11 @@ pub(crate) struct StoredSettings {
     pub dark: bool,
     pub view: MainView,
     pub default_view: MainView,
+    pub section: SidebarSection,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
     pub remote_hosts: Vec<remote::RemoteHost>,
+    pub collapsed_project_groups: Vec<String>,
 }
 
 impl Default for StoredSettings {
@@ -122,9 +124,11 @@ impl Default for StoredSettings {
             dark: true,
             view: MainView::Chat,
             default_view: MainView::Chat,
+            section: SidebarSection::Files,
             last_project_id: None,
             last_session_id: None,
             remote_hosts: Vec::new(),
+            collapsed_project_groups: Vec::new(),
         }
     }
 }
@@ -209,6 +213,13 @@ pub(crate) struct EditorConflict {
     pub message: String,
 }
 
+/// The create/rename dialog for a project group. `assign_project` is set when
+/// the dialog was opened from a project's "Move to group" picker.
+pub(crate) struct GroupPrompt {
+    pub id: Option<String>,
+    pub assign_project: Option<usize>,
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -217,6 +228,7 @@ pub(crate) enum Command {
     Settings(SettingsTab),
     OpenFolder,
     AddRemoteProject,
+    NewProjectGroup,
     ToggleTheme,
     NewSession,
     NewFile,
@@ -275,9 +287,16 @@ pub(crate) struct RemotePicker {
 
 pub(crate) struct KestrelApp {
     pub view: MainView,
+    pub view_epoch: u64,
     pub default_view: MainView,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
+    pub project_groups: Vec<ProjectGroup>,
+    pub collapsed_project_groups: Vec<String>,
+    pub project_group_editor: Option<usize>,
+    pub group_prompt: Option<GroupPrompt>,
+    pub group_input: Entity<InputState>,
+    _group_subscription: Subscription,
     pub selected_project: usize,
     pub sessions: Vec<SessionSummary>,
     pub all_sessions: Vec<SessionSummary>,
@@ -376,6 +395,10 @@ impl KestrelApp {
             .as_ref()
             .and_then(|store| store.load_setting::<StoredSettings>("app").ok().flatten())
             .unwrap_or_default();
+        let project_groups = store
+            .as_ref()
+            .and_then(|store| store.project_groups().ok())
+            .unwrap_or_default();
         let (projects, mut all_sessions) = match store.as_ref() {
             Some(store) => {
                 let mut projects = store.projects().unwrap_or_default();
@@ -470,6 +493,20 @@ impl KestrelApp {
         let remote_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Server name"));
         let new_file_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("src/new-file.rs"));
+        let group_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Group name")
+                .clean_on_escape()
+        });
+        let group_subscription = cx.subscribe_in(
+            &group_input,
+            window,
+            |this, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.submit_group_prompt(window, cx);
+                }
+            },
+        );
         let new_file_subscription = cx.subscribe_in(
             &new_file_input,
             window,
@@ -568,9 +605,16 @@ impl KestrelApp {
 
         let mut app = Self {
             view: stored.view,
+            view_epoch: 0,
             default_view: stored.default_view,
-            section: SidebarSection::Files,
+            section: stored.section,
             projects,
+            project_groups,
+            collapsed_project_groups: stored.collapsed_project_groups.clone(),
+            project_group_editor: None,
+            group_prompt: None,
+            group_input,
+            _group_subscription: group_subscription,
             selected_project: 0,
             sessions,
             all_sessions,
@@ -1139,6 +1183,13 @@ impl KestrelApp {
                 keywords: "relay server remote project tailscale".into(),
             },
             CommandItem {
+                command: Command::NewProjectGroup,
+                label: "New Project Group…".into(),
+                hint: None,
+                icon: IconName::FolderTree,
+                keywords: "section folder private work group projects".into(),
+            },
+            CommandItem {
                 command: Command::Settings(SettingsTab::General),
                 label: "Open Settings".into(),
                 hint: Some("⌘,".into()),
@@ -1284,13 +1335,12 @@ impl KestrelApp {
         self.session_menu_open = false;
         match command {
             Command::View(view) => {
-                self.view = view;
-                self.settings_open = false;
-                self.persist_settings(cx);
+                self.set_view(view, cx);
             }
             Command::Section(section) => {
                 self.section = section;
                 self.settings_open = false;
+                self.persist_settings(cx);
                 if section == SidebarSection::Search {
                     let handle = self.search_input.read(cx).focus_handle(cx);
                     window.focus(&handle, cx);
@@ -1304,6 +1354,7 @@ impl KestrelApp {
             }
             Command::OpenFolder => self.open_folder(cx),
             Command::AddRemoteProject => self.open_remote_picker(cx),
+            Command::NewProjectGroup => self.open_new_group_prompt(None, window, cx),
             Command::ToggleTheme => {
                 toggle_mode(window, cx);
                 self.persist_settings(cx);
@@ -1509,6 +1560,7 @@ impl KestrelApp {
             trusted: true,
             running_sessions: 0,
             remote: None,
+            group_id: None,
         };
         if let Some(store) = &self.store {
             let _ = store.upsert_project(&project);
@@ -1517,6 +1569,178 @@ impl KestrelApp {
         let index = self.projects.len() - 1;
         self.select_project(index, cx);
         self.notice = Some(format!("Added {name}"));
+        cx.notify();
+    }
+
+    /// Open the small create/rename dialog for a project section.
+    pub(crate) fn open_new_group_prompt(
+        &mut self,
+        assign_project: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_group_editor = None;
+        self.group_prompt = Some(GroupPrompt {
+            id: None,
+            assign_project,
+        });
+        self.group_input.update(cx, |state, cx| {
+            state.set_value("", window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn open_rename_group_prompt(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(group) = self
+            .project_groups
+            .iter()
+            .find(|group| group.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        self.project_group_editor = None;
+        self.group_prompt = Some(GroupPrompt {
+            id: Some(group.id),
+            assign_project: None,
+        });
+        self.group_input.update(cx, |state, cx| {
+            state.set_value(group.name, window, cx);
+            state.focus(window, cx);
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_group_prompt(&mut self, cx: &mut Context<Self>) {
+        self.group_prompt = None;
+        cx.notify();
+    }
+
+    pub(crate) fn submit_group_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(prompt) = self.group_prompt.take() else {
+            return;
+        };
+        let name = self.group_input.read(cx).value().trim().to_string();
+        if name.is_empty() {
+            self.group_prompt = Some(prompt);
+            self.set_notice("Give the group a name", cx);
+            return;
+        }
+        let editing_id = prompt.id.as_deref();
+        if self.project_groups.iter().any(|group| {
+            Some(group.id.as_str()) != editing_id && group.name.eq_ignore_ascii_case(&name)
+        }) {
+            self.group_prompt = Some(prompt);
+            self.set_notice(format!("A group named {name} already exists"), cx);
+            return;
+        }
+
+        if let Some(id) = prompt.id {
+            if let Some(group) = self.project_groups.iter_mut().find(|group| group.id == id) {
+                group.name = name.clone();
+                let group = group.clone();
+                if let Some(store) = &self.store {
+                    let _ = store.upsert_project_group(&group);
+                }
+            }
+            self.notice = Some(format!("Renamed the group to {name}"));
+        } else {
+            let tone = match self.project_groups.len() % 6 {
+                0 => ProjectTone::Blue,
+                1 => ProjectTone::Green,
+                2 => ProjectTone::Violet,
+                3 => ProjectTone::Amber,
+                4 => ProjectTone::Rose,
+                _ => ProjectTone::Teal,
+            };
+            let group = ProjectGroup {
+                id: format!("group-{}", uuid::Uuid::now_v7()),
+                name: name.clone(),
+                tone,
+            };
+            if let Some(store) = &self.store {
+                let _ = store.upsert_project_group(&group);
+            }
+            self.project_groups.push(group.clone());
+            if let Some(index) = prompt.assign_project {
+                self.assign_project_group(index, Some(group.id), cx);
+            }
+            self.notice = Some(format!("Created the group {name}"));
+        }
+
+        self.group_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.group_prompt = None;
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn delete_project_group(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(store) = &self.store {
+            let _ = store.delete_project_group(id);
+        }
+        for project in &mut self.projects {
+            if project.group_id.as_deref() == Some(id) {
+                project.group_id = None;
+                if let Some(store) = &self.store {
+                    let _ = store.upsert_project(&*project);
+                }
+            }
+        }
+        self.project_groups.retain(|group| group.id != id);
+        self.collapsed_project_groups.retain(|group| group != id);
+        self.group_prompt = None;
+        self.persist_settings(cx);
+        self.notice = Some("Deleted the group · projects are now ungrouped".into());
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_project_group(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(index) = self
+            .collapsed_project_groups
+            .iter()
+            .position(|group| group == id)
+        {
+            self.collapsed_project_groups.remove(index);
+        } else {
+            self.collapsed_project_groups.push(id.to_string());
+        }
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn assign_project_group(
+        &mut self,
+        index: usize,
+        group_id: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.projects.get_mut(index) else {
+            return;
+        };
+        project.group_id = group_id;
+        let project = project.clone();
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&project);
+        }
+        self.project_group_editor = None;
+        self.persist_settings(cx);
+        self.notice = Some(format!(
+            "Moved {} to {}",
+            project.name,
+            project
+                .group_id
+                .as_ref()
+                .and_then(|id| self.project_groups.iter().find(|group| &group.id == id))
+                .map(|group| group.name.as_str())
+                .unwrap_or("No group")
+        ));
         cx.notify();
     }
 
@@ -1702,6 +1926,7 @@ impl KestrelApp {
                 project_id: info.id.clone(),
                 path: info.path.clone(),
             }),
+            group_id: None,
         };
         if let Some(store) = &self.store {
             let _ = store.upsert_project(&project);
@@ -1759,10 +1984,8 @@ impl KestrelApp {
                 self.notice = Some("Connect to the relay to start a session".into());
             }
 
-            self.view = self.default_view;
-            self.settings_open = false;
+            self.set_view(self.default_view, cx);
             self.session_menu_open = false;
-            self.persist_settings(cx);
             cx.notify();
             return;
         }
@@ -1788,11 +2011,9 @@ impl KestrelApp {
             self.connect_harness(cx);
         }
 
-        self.view = self.default_view;
-        self.settings_open = false;
+        self.set_view(self.default_view, cx);
         self.session_menu_open = false;
         self.notice = Some("Created a new session".into());
-        self.persist_settings(cx);
         cx.notify();
     }
 
@@ -2043,6 +2264,7 @@ impl KestrelApp {
         if let Some(store) = &self.store {
             let _ = store.delete_project(id);
         }
+        self.project_group_editor = None;
         let removed = self.projects.remove(index);
 
         if active {
@@ -2078,6 +2300,22 @@ impl KestrelApp {
             }
             cx.stop_propagation();
             return;
+        }
+
+        if self.group_prompt.is_some() {
+            match keystroke.key.as_str() {
+                "escape" => {
+                    self.cancel_group_prompt(cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                "enter" => {
+                    self.submit_group_prompt(window, cx);
+                    cx.stop_propagation();
+                    return;
+                }
+                _ => {}
+            }
         }
 
         if self.pending_delete.is_some() {
@@ -2129,24 +2367,15 @@ impl KestrelApp {
                     true
                 }
                 "1" => {
-                    self.view = MainView::Chat;
-                    self.settings_open = false;
-                    self.persist_settings(cx);
-                    cx.notify();
+                    self.set_view(MainView::Chat, cx);
                     true
                 }
                 "2" => {
-                    self.view = MainView::Graph;
-                    self.settings_open = false;
-                    self.persist_settings(cx);
-                    cx.notify();
+                    self.set_view(MainView::Graph, cx);
                     true
                 }
                 "3" => {
-                    self.view = MainView::Trace;
-                    self.settings_open = false;
-                    self.persist_settings(cx);
-                    cx.notify();
+                    self.set_view(MainView::Trace, cx);
                     true
                 }
                 "," => {
@@ -2268,6 +2497,26 @@ impl KestrelApp {
             .ok();
         })
         .detach();
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_project_pin(&mut self, cx: &mut Context<Self>) {
+        let index = self.selected_project;
+        let Some(project) = self.projects.get_mut(index) else {
+            return;
+        };
+        project.pinned = !project.pinned;
+        let pinned = project.pinned;
+        let name = project.name.clone();
+        let stored = project.clone();
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&stored);
+        }
+        self.notice = Some(if pinned {
+            format!("Pinned {name}")
+        } else {
+            format!("Unpinned {name}")
+        });
         cx.notify();
     }
 
@@ -2714,8 +2963,7 @@ impl KestrelApp {
 
     /// Jump from a trace span to the transcript entry that produced it.
     pub(crate) fn open_span_in_chat(&mut self, span_id: &str, cx: &mut Context<Self>) {
-        self.view = MainView::Chat;
-        self.settings_open = false;
+        self.set_view(MainView::Chat, cx);
         self.expanded_tool = span_id
             .strip_prefix("item-")
             .and_then(|index| index.parse::<usize>().ok())
@@ -2873,6 +3121,18 @@ impl KestrelApp {
         }
     }
 
+    /// Switch the primary surface, restarting the title-bar animation so the
+    /// active tab visibly settles into place.
+    pub(crate) fn set_view(&mut self, view: MainView, cx: &mut Context<Self>) {
+        if self.view != view {
+            self.view = view;
+            self.view_epoch = self.view_epoch.wrapping_add(1);
+            self.persist_settings(cx);
+        }
+        self.settings_open = false;
+        cx.notify();
+    }
+
     /// Snapshot the settings that survive a restart.
     pub(crate) fn stored_settings(&self, cx: &App) -> StoredSettings {
         StoredSettings {
@@ -2890,6 +3150,7 @@ impl KestrelApp {
             dark: cx.theme().is_dark(),
             view: self.view,
             default_view: self.default_view,
+            section: self.section,
             last_project_id: self
                 .projects
                 .get(self.selected_project)
@@ -2899,6 +3160,7 @@ impl KestrelApp {
                 .get(self.selected_session)
                 .map(|session| session.id.clone()),
             remote_hosts: self.remote_hosts.clone(),
+            collapsed_project_groups: self.collapsed_project_groups.clone(),
         }
     }
 
@@ -3580,6 +3842,7 @@ impl KestrelApp {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.section = section;
                     this.settings_open = false;
+                    this.persist_settings(cx);
                     cx.notify();
                 }))
                 .child(icon(icon_name, 17.0, color));
@@ -3641,7 +3904,7 @@ impl KestrelApp {
                     )
                     .child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg)
                             .child("62%"),
@@ -3716,7 +3979,7 @@ impl KestrelApp {
                             .gap_2()
                             .child(
                                 div()
-                                    .text_size(px(13.5))
+                                    .text_size(px(14.0))
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(p.fg)
                                     .truncate()
@@ -3734,7 +3997,7 @@ impl KestrelApp {
                                     .child(dot(status.0, 5.0))
                                     .child(
                                         div()
-                                            .text_size(px(10.))
+                                            .text_size(px(11.5))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(status.0)
                                             .child(session.status.label()),
@@ -3746,7 +4009,7 @@ impl KestrelApp {
                             .flex()
                             .items_center()
                             .gap(px(6.))
-                            .text_size(px(10.5))
+                            .text_size(px(12.0))
                             .text_color(p.muted_fg)
                             .child(project.name.clone())
                             .child(div().text_color(p.border_strong).child("·"))
@@ -3781,14 +4044,14 @@ impl KestrelApp {
                             .child(icon(IconName::Sparkles, 12.0, p.violet))
                             .child(
                                 div()
-                                    .text_size(px(10.5))
+                                    .text_size(px(12.0))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(p.fg)
                                     .child(session.model.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(9.5))
+                                    .text_size(px(11.5))
                                     .font_family("Geist Mono")
                                     .text_color(p.muted_fg)
                                     .child(session.harness.to_uppercase()),
@@ -3902,13 +4165,13 @@ impl KestrelApp {
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(if danger { p.red } else { p.fg })
                         .child(label),
                 )
                 .children(hint.map(|hint| {
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(hint)
@@ -4097,14 +4360,14 @@ impl KestrelApp {
                                     .gap(px(3.))
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(13.5))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(p.fg)
                                             .child("Unsaved changes"),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .line_height(relative(1.5))
                                             .text_color(p.muted_fg)
                                             .child(format!(
@@ -4136,7 +4399,7 @@ impl KestrelApp {
                                         this.cancel_pending_editor(cx);
                                     }))
                                     .child(
-                                        div().text_size(px(10.5)).text_color(p.fg).child("Cancel"),
+                                        div().text_size(px(12.0)).text_color(p.fg).child("Cancel"),
                                     ),
                             )
                             .child(
@@ -4157,7 +4420,7 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .text_color(p.red)
                                             .child("Discard"),
                                     ),
@@ -4178,7 +4441,7 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(p.bg)
                                             .child("Save"),
@@ -4209,10 +4472,10 @@ impl KestrelApp {
                 .justify_center()
                 .gap(px(7.))
                 .child(icon(IconName::FileDiff, 24.0, p.muted_fg))
-                .child(div().text_size(px(11.5)).text_color(p.fg).child(error))
+                .child(div().text_size(px(12.5)).text_color(p.fg).child(error))
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .child("This file cannot be previewed as a patch."),
                 )
@@ -4282,7 +4545,7 @@ impl KestrelApp {
                                     .gap(px(2.))
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(13.0))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(p.fg)
                                             .truncate()
@@ -4290,7 +4553,7 @@ impl KestrelApp {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(9.5))
+                                            .text_size(px(11.5))
                                             .font_family("Geist Mono")
                                             .text_color(p.muted_fg)
                                             .truncate()
@@ -4307,7 +4570,7 @@ impl KestrelApp {
                                     .items_center()
                                     .child(
                                         div()
-                                            .text_size(px(8.5))
+                                            .text_size(px(11.0))
                                             .font_family("Geist Mono")
                                             .text_color(if staged { p.green } else { p.amber })
                                             .child(if staged { "STAGED" } else { "WORKTREE" }),
@@ -4334,7 +4597,7 @@ impl KestrelApp {
                                     .child(icon(IconName::ExternalLink, 10.5, p.muted_fg))
                                     .child(
                                         div()
-                                            .text_size(px(10.))
+                                            .text_size(px(11.5))
                                             .text_color(p.fg)
                                             .child("Open file"),
                                     ),
@@ -4383,7 +4646,7 @@ impl KestrelApp {
                     .child(icon(IconName::LoaderCircle, 13.0, p.muted_fg))
                     .child(
                         div()
-                            .text_size(px(10.))
+                            .text_size(px(11.5))
                             .text_color(p.muted_fg)
                             .child("Loading projects…"),
                     ),
@@ -4395,7 +4658,7 @@ impl KestrelApp {
                     .px(px(10.))
                     .rounded(px(6.))
                     .bg(p.red_soft)
-                    .text_size(px(10.))
+                    .text_size(px(11.5))
                     .text_color(p.red)
                     .child(error),
             );
@@ -4409,13 +4672,13 @@ impl KestrelApp {
                     .gap(px(4.))
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(px(12.0))
                             .text_color(p.fg)
                             .child("No projects on this relay"),
                     )
                     .child(
                         div()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .text_color(p.muted_fg)
                             .child("Add one with `kestrel-relay project add`."),
                     ),
@@ -4458,14 +4721,14 @@ impl KestrelApp {
                                 .gap(px(1.))
                                 .child(
                                     div()
-                                        .text_size(px(10.5))
+                                        .text_size(px(12.0))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(p.fg)
                                         .child(info.name.clone()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(8.5))
+                                        .text_size(px(11.0))
                                         .font_family("Geist Mono")
                                         .text_color(p.muted_fg)
                                         .truncate()
@@ -4526,14 +4789,14 @@ impl KestrelApp {
                                     .gap(px(1.))
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(13.0))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(p.fg)
                                             .child("Add remote project"),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(9.))
+                                            .text_size(px(11.0))
                                             .text_color(p.muted_fg)
                                             .child(host_name),
                                     ),
@@ -4598,14 +4861,14 @@ impl KestrelApp {
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(13.0))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(p.fg)
                             .child("New remote file"),
                     )
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(px(11.5))
                             .text_color(p.muted_fg)
                             .child("Path relative to the project root."),
                     )
@@ -4649,7 +4912,7 @@ impl KestrelApp {
                                         cx.notify();
                                     }))
                                     .child(
-                                        div().text_size(px(10.)).text_color(p.fg).child("Cancel"),
+                                        div().text_size(px(11.5)).text_color(p.fg).child("Cancel"),
                                     ),
                             )
                             .child(
@@ -4667,7 +4930,7 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.))
+                                            .text_size(px(11.5))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(p.bg)
                                             .child("Create"),
@@ -4741,14 +5004,14 @@ impl KestrelApp {
                                     .gap(px(3.))
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(13.5))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(p.fg)
                                             .child("File changed elsewhere"),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .line_height(relative(1.5))
                                             .text_color(p.muted_fg)
                                             .child(format!(
@@ -4781,7 +5044,7 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .text_color(p.fg)
                                             .child("Cancel"),
                                     ),
@@ -4804,7 +5067,7 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .text_color(p.fg)
                                             .child("Reload"),
                                     ),
@@ -4825,10 +5088,172 @@ impl KestrelApp {
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(p.bg)
                                             .child("Overwrite"),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn group_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(prompt) = self.group_prompt.as_ref() else {
+            return div().into_any_element();
+        };
+        let editing = prompt.id.clone();
+        let title = if editing.is_some() {
+            "Rename group"
+        } else {
+            "New project group"
+        };
+        let hint = if editing.is_some() {
+            "Projects stay in the group. Deleting it only removes the section."
+        } else {
+            "Use groups to separate projects, for example Private and Work."
+        };
+        let delete_id = editing.clone();
+
+        div()
+            .id("group-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| this.cancel_group_prompt(cx)))
+            .child(
+                div()
+                    .id("group-modal")
+                    .w(px(380.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(7.))
+                            .child(
+                                Icon::new(IconName::FolderTree)
+                                    .size(px(14.))
+                                    .text_color(p.muted_fg),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(p.fg)
+                                    .child(title),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .line_height(relative(1.5))
+                            .text_color(p.muted_fg)
+                            .child(hint),
+                    )
+                    .child(
+                        div()
+                            .h(px(30.))
+                            .px(px(7.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.bg)
+                            .flex()
+                            .items_center()
+                            .child(
+                                Input::new(&self.group_input)
+                                    .appearance(false)
+                                    .bordered(false),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(7.))
+                            .when_some(delete_id, |this, id| {
+                                this.child(
+                                    div()
+                                        .id("group-delete")
+                                        .h(px(27.))
+                                        .px(px(9.))
+                                        .rounded(px(5.))
+                                        .flex()
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .hover(move |style| style.bg(p.red_soft))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.delete_project_group(&id, cx);
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .text_color(p.red)
+                                                .child("Delete group"),
+                                        ),
+                                )
+                            })
+                            .child(div().flex_1())
+                            .child(
+                                div()
+                                    .id("group-cancel")
+                                    .h(px(27.))
+                                    .px(px(9.))
+                                    .rounded(px(5.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.cancel_group_prompt(cx);
+                                    }))
+                                    .child(
+                                        div().text_size(px(11.0)).text_color(p.fg).child("Cancel"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("group-save")
+                                    .h(px(27.))
+                                    .px(px(10.))
+                                    .rounded(px(5.))
+                                    .bg(p.fg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.opacity(0.9))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.submit_group_prompt(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.bg)
+                                            .child(if editing.is_some() {
+                                                "Save"
+                                            } else {
+                                                "Create group"
+                                            }),
                                     ),
                             ),
                     ),
@@ -4919,14 +5344,14 @@ impl KestrelApp {
                                     .gap(px(3.))
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(13.5))
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_color(p.fg)
                                             .child(title),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .line_height(relative(1.5))
                                             .text_color(p.muted_fg)
                                             .child(body),
@@ -4954,7 +5379,7 @@ impl KestrelApp {
                                     .hover(move |style| style.bg(p.hover))
                                     .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
                                     .child(
-                                        div().text_size(px(10.5)).text_color(p.fg).child("Cancel"),
+                                        div().text_size(px(12.0)).text_color(p.fg).child("Cancel"),
                                     ),
                             )
                             .child(
@@ -4971,7 +5396,7 @@ impl KestrelApp {
                                     .on_click(cx.listener(|this, _, _, cx| this.confirm_delete(cx)))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(white())
                                             .child(action),
@@ -5030,7 +5455,7 @@ impl KestrelApp {
                                     .gap(px(5.))
                                     .child(
                                         div()
-                                            .text_size(px(11.5))
+                                            .text_size(px(12.5))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(p.fg)
                                             .truncate()
@@ -5042,7 +5467,7 @@ impl KestrelApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(9.5))
+                                    .text_size(px(11.5))
                                     .font_family("Geist Mono")
                                     .text_color(p.muted_fg)
                                     .truncate()
@@ -5068,10 +5493,10 @@ impl KestrelApp {
                                 this.save_editor(cx);
                             }))
                             .child(icon(IconName::Save, 11.5, p.muted_fg))
-                            .child(div().text_size(px(9.5)).text_color(p.fg).child("Save"))
+                            .child(div().text_size(px(11.5)).text_color(p.fg).child("Save"))
                             .child(
                                 div()
-                                    .text_size(px(8.5))
+                                    .text_size(px(11.0))
                                     .font_family("Geist Mono")
                                     .text_color(p.muted_fg.opacity(0.7))
                                     .child("⌘S"),
@@ -5111,7 +5536,7 @@ impl KestrelApp {
                             .items_center()
                             .border_b_2()
                             .border_color(p.fg)
-                            .text_size(px(10.5))
+                            .text_size(px(12.0))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.fg)
                             .child("Editor"),
@@ -5126,7 +5551,7 @@ impl KestrelApp {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(8.))
+                                    .text_size(px(10.5))
                                     .font_family("Geist Mono")
                                     .text_color(p.muted_fg)
                                     .child(inspector.language.clone()),
@@ -5143,7 +5568,7 @@ impl KestrelApp {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_size(px(8.))
+                                        .text_size(px(10.5))
                                         .font_family("Geist Mono")
                                         .text_color(p.blue)
                                         .child(format!("line {line}")),
@@ -5153,7 +5578,7 @@ impl KestrelApp {
                     .child(div().flex_1())
                     .child(
                         div()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg)
                             .child(if dirty {
@@ -5190,7 +5615,7 @@ impl KestrelApp {
             .border_t_1()
             .border_color(p.border)
             .bg(p.statusbar)
-            .text_size(px(10.))
+            .text_size(px(11.5))
             .text_color(p.muted_fg)
             .child(
                 div()
@@ -5317,6 +5742,7 @@ impl Render for KestrelApp {
             .editor_conflict
             .as_ref()
             .map(|_| self.editor_conflict_modal(cx));
+        let group_modal = self.group_prompt.as_ref().map(|_| self.group_modal(cx));
 
         div()
             .relative()
@@ -5360,6 +5786,7 @@ impl Render for KestrelApp {
             .children(new_file_modal)
             .children(editor_prompt)
             .children(editor_conflict)
+            .children(group_modal)
     }
 }
 

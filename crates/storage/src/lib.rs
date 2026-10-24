@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use kestrel_domain::{Project, SessionSummary};
+use kestrel_domain::{Project, ProjectGroup, SessionSummary};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -121,6 +121,23 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 4 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS project_groups (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    tone        TEXT NOT NULL,
+                    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+
+                ALTER TABLE projects ADD COLUMN group_id TEXT
+                    REFERENCES project_groups(id) ON DELETE SET NULL;
+
+                PRAGMA user_version = 4;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
@@ -133,8 +150,8 @@ impl Store {
             .transpose()?;
         self.connection.execute(
             r#"
-            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote, group_id)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
@@ -142,7 +159,8 @@ impl Store {
                 tone = excluded.tone,
                 pinned = excluded.pinned,
                 trusted = excluded.trusted,
-                remote = excluded.remote
+                remote = excluded.remote,
+                group_id = excluded.group_id
             "#,
             params![
                 project.id,
@@ -153,6 +171,7 @@ impl Store {
                 project.pinned as i64,
                 project.trusted as i64,
                 remote,
+                project.group_id,
             ],
         )?;
         Ok(())
@@ -160,7 +179,7 @@ impl Store {
 
     pub fn projects(&self) -> Result<Vec<Project>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name, path, branch, tone, pinned, trusted, remote FROM projects ORDER BY created_at",
+            "SELECT id, name, path, branch, tone, pinned, trusted, remote, group_id FROM projects ORDER BY created_at",
         )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(4)?;
@@ -177,9 +196,46 @@ impl Store {
                 remote: remote
                     .as_deref()
                     .and_then(|value| serde_json::from_str(value).ok()),
+                group_id: row.get(8)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn project_groups(&self) -> Result<Vec<ProjectGroup>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, name, tone FROM project_groups ORDER BY created_at, id")?;
+        let rows = statement.query_map([], |row| {
+            let tone: String = row.get(2)?;
+            Ok(ProjectGroup {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                tone: serde_json::from_str(&tone).unwrap_or(kestrel_domain::ProjectTone::Blue),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_project_group(&self, group: &ProjectGroup) -> Result<()> {
+        let tone = serde_json::to_string(&group.tone)?;
+        self.connection.execute(
+            r#"
+            INSERT INTO project_groups (id, name, tone)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                tone = excluded.tone
+            "#,
+            params![group.id, group.name, tone],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_project_group(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM project_groups WHERE id = ?1", [id])?;
+        Ok(())
     }
 
     pub fn upsert_session(&self, session: &SessionSummary) -> Result<()> {
@@ -365,6 +421,7 @@ mod tests {
             trusted: true,
             running_sessions: 0,
             remote: None,
+            group_id: None,
         }
     }
 
@@ -428,6 +485,32 @@ mod tests {
         let sessions = store.sessions(None).unwrap();
         assert!(sessions[0].origin.is_remote());
         assert_eq!(sessions[0].acp_session_id.as_deref(), Some("acp-1"));
+    }
+
+    #[test]
+    fn groups_projects_and_ungroups_on_delete() {
+        let store = Store::open_in_memory().unwrap();
+        let group = ProjectGroup {
+            id: "group-work".into(),
+            name: "Work".into(),
+            tone: ProjectTone::Violet,
+        };
+        store.upsert_project_group(&group).unwrap();
+        let mut project = project();
+        project.group_id = Some(group.id.clone());
+        store.upsert_project(&project).unwrap();
+
+        let groups = store.project_groups().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "Work");
+        assert_eq!(
+            store.projects().unwrap()[0].group_id.as_deref(),
+            Some("group-work")
+        );
+
+        store.delete_project_group("group-work").unwrap();
+        assert!(store.project_groups().unwrap().is_empty());
+        assert!(store.projects().unwrap()[0].group_id.is_none());
     }
 
     #[test]

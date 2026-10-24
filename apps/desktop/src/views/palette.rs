@@ -55,13 +55,13 @@ pub(crate) fn render(
                 .gap(px(4.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(13.0))
                         .text_color(p.muted_fg)
                         .child("No matching commands"),
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.65))
                         .child("Try “chat”, “folder”, or a project name"),
@@ -108,7 +108,7 @@ pub(crate) fn render(
                             .flex_1()
                             .min_w(px(0.))
                             .truncate()
-                            .text_size(px(11.5))
+                            .text_size(px(12.5))
                             .font_weight(if active {
                                 FontWeight::MEDIUM
                             } else {
@@ -134,7 +134,7 @@ pub(crate) fn render(
         .child(div().flex_1())
         .child(
             div()
-                .text_size(px(9.))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg.opacity(0.6))
                 .child(format!("{} commands", items.len())),
@@ -183,6 +183,11 @@ fn hint_pair(keys: &'static str, label: &'static str, p: Palette) -> AnyElement 
         .items_center()
         .gap(px(4.))
         .child(kbd(keys, p))
-        .child(div().text_size(px(9.5)).text_color(p.muted_fg).child(label))
+        .child(
+            div()
+                .text_size(px(11.5))
+                .text_color(p.muted_fg)
+                .child(label),
+        )
         .into_any_element()
 }

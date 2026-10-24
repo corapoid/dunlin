@@ -96,7 +96,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .justify_center()
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::BOLD)
                         .font_family("Geist Mono")
                         .text_color(tone)
@@ -112,7 +112,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .gap(px(1.))
                 .child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .truncate()
@@ -120,7 +120,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 )
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .truncate()
@@ -139,7 +139,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(dot(tone, 4.5))
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!("{running} live")),
@@ -268,7 +268,12 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
                     .size(px(11.5))
                     .text_color(p.muted_fg),
             )
-            .child(div().text_size(px(9.5)).text_color(p.muted_fg).child("New"))
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(p.muted_fg)
+                    .child("New"),
+            )
             .into_any_element(),
         _ => div().into_any_element(),
     };
@@ -282,7 +287,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
         .gap(px(6.))
         .child(
             div()
-                .text_size(px(9.))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.muted_fg)
@@ -291,7 +296,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
         .when_some(count, |this, count| {
             this.child(
                 div()
-                    .text_size(px(8.5))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg.opacity(0.7))
                     .child(count.to_string()),
@@ -305,135 +310,110 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
 fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
     let mut list = div().flex().flex_col().gap(px(2.)).px(px(6.)).pb(px(10.));
+    let groups = this.project_groups.clone();
 
-    for (index, project) in this.projects.iter().enumerate() {
-        let active = index == this.selected_project;
-        let tone = tone_color(&p, project.tone);
-        let soft = tone_soft(&p, project.tone);
-        let monogram = monogram(&project.name);
-        let name = project.name.clone();
-        let tail = project.path_tail().to_string();
-        let branch = project.branch.clone().unwrap_or_else(|| "no branch".into());
-        let running = this.running_sessions_for(&project.id);
-        let pinned = project.pinned;
+    for group in &groups {
+        let mut indices: Vec<usize> = this
+            .projects
+            .iter()
+            .enumerate()
+            .filter(|(_, project)| project.group_id.as_deref() == Some(group.id.as_str()))
+            .map(|(index, _)| index)
+            .collect();
+        indices.sort_by_key(|index| {
+            (
+                !this.projects[*index].pinned,
+                this.projects[*index].name.to_lowercase(),
+            )
+        });
+        let collapsed = this.collapsed_project_groups.contains(&group.id);
+        list = list.child(group_header(group, indices.len(), collapsed, cx, &p));
+        if collapsed {
+            continue;
+        }
+        if indices.is_empty() {
+            list = list.child(
+                div()
+                    .px(px(10.))
+                    .pb(px(4.))
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg.opacity(0.7))
+                    .child("No projects yet"),
+            );
+        }
+        for index in indices {
+            list = list.child(project_row(this, index, cx, &p));
+            if this.project_group_editor == Some(index) {
+                list = list.child(project_group_picker(this, index, cx, &p));
+            }
+        }
+    }
 
+    let ungrouped: Vec<usize> = this
+        .projects
+        .iter()
+        .enumerate()
+        .filter(|(_, project)| project.group_id.is_none())
+        .map(|(index, _)| index)
+        .collect();
+    let mut ungrouped = ungrouped;
+    ungrouped.sort_by_key(|index| {
+        (
+            !this.projects[*index].pinned,
+            this.projects[*index].name.to_lowercase(),
+        )
+    });
+    if !groups.is_empty() && !ungrouped.is_empty() {
         list = list.child(
             div()
-                .id(("project-row", index))
-                .h(px(46.))
+                .mt(px(6.))
                 .px(px(8.))
-                .rounded(px(8.))
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .cursor_pointer()
-                .when(active, |this| {
-                    this.bg(p.card).border_1().border_color(p.border)
-                })
-                .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-                .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
-                .child(
-                    div()
-                        .size(px(26.))
-                        .flex_shrink_0()
-                        .rounded(px(7.))
-                        .bg(soft)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_size(px(9.))
-                                .font_family("Geist Mono")
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(tone)
-                                .child(monogram),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(5.))
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(p.fg)
-                                        .truncate()
-                                        .child(name),
-                                )
-                                .when(pinned, |this| {
-                                    this.child(
-                                        Icon::new(IconName::Pin)
-                                            .size(px(9.))
-                                            .text_color(p.muted_fg),
-                                    )
-                                }),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(5.))
-                                .child(
-                                    div()
-                                        .text_size(px(9.))
-                                        .font_family("Geist Mono")
-                                        .text_color(p.muted_fg)
-                                        .truncate()
-                                        .child(branch),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(9.))
-                                        .text_color(p.border_strong)
-                                        .child("·"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(9.))
-                                        .font_family("Geist Mono")
-                                        .text_color(p.muted_fg.opacity(0.72))
-                                        .truncate()
-                                        .child(tail),
-                                ),
-                        ),
-                )
-                .when(running > 0, |this| {
-                    this.child(
-                        div()
-                            .h(px(17.))
-                            .min_w(px(17.))
-                            .px(px(4.))
-                            .rounded_full()
-                            .bg(soft)
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(8.5))
-                                    .font_family("Geist Mono")
-                                    .text_color(tone)
-                                    .child(running.to_string()),
-                            ),
-                    )
-                }),
+                .pb(px(2.))
+                .text_size(px(10.0))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg.opacity(0.7))
+                .child("UNGROUPED"),
         );
     }
+    for index in ungrouped {
+        list = list.child(project_row(this, index, cx, &p));
+        if this.project_group_editor == Some(index) {
+            list = list.child(project_group_picker(this, index, cx, &p));
+        }
+    }
+
+    list = list.child(
+        div()
+            .id("new-project-group")
+            .mt(px(4.))
+            .h(px(30.))
+            .px(px(8.))
+            .rounded(px(7.))
+            .flex()
+            .items_center()
+            .gap(px(7.))
+            .cursor_pointer()
+            .hover(move |style| style.bg(p.hover))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_new_group_prompt(None, window, cx);
+            }))
+            .child(
+                Icon::new(IconName::FolderTree)
+                    .size(px(13.))
+                    .text_color(p.muted_fg),
+            )
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(p.muted_fg)
+                    .child("New group…"),
+            ),
+    );
 
     list.child(
         div()
             .id("open-folder")
-            .mt(px(4.))
+            .mt(px(2.))
             .h(px(34.))
             .px(px(8.))
             .rounded(px(7.))
@@ -455,20 +435,388 @@ fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
             )
             .child(
                 div()
-                    .text_size(px(10.5))
+                    .text_size(px(12.0))
                     .text_color(p.muted_fg)
                     .child("Open local folder…"),
             )
             .child(div().flex_1())
             .child(
                 div()
-                    .text_size(px(9.))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg.opacity(0.6))
                     .child("⌘O"),
             ),
     )
     .into_any_element()
+}
+
+fn group_header(
+    group: &ProjectGroup,
+    count: usize,
+    collapsed: bool,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    let id = group.id.clone();
+    let rename_id = group.id.clone();
+    let name = group.name.clone();
+    let tone = tone_color(p, group.tone);
+    let hover_group = format!("project-group-{}", group.id);
+
+    div()
+        .id(format!("project-group-{}", group.id))
+        .group(hover_group.clone())
+        .mt(px(5.))
+        .h(px(27.))
+        .px(px(7.))
+        .rounded(px(6.))
+        .flex()
+        .items_center()
+        .gap(px(5.))
+        .cursor_pointer()
+        .hover(move |style| style.bg(p.hover))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.toggle_project_group(&id, cx);
+        }))
+        .child(
+            Icon::new(if collapsed {
+                IconName::ChevronRight
+            } else {
+                IconName::ChevronDown
+            })
+            .size(px(11.))
+            .text_color(p.muted_fg),
+        )
+        .child(div().size(px(6.)).rounded_full().bg(tone))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .text_size(px(10.5))
+                .font_family("Geist Mono")
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.muted_fg)
+                .truncate()
+                .child(name.to_uppercase()),
+        )
+        .child(
+            div()
+                .text_size(px(10.0))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg.opacity(0.6))
+                .child(count.to_string()),
+        )
+        .child(
+            div()
+                .id(format!("project-group-rename-{}", group.id))
+                .size(px(18.))
+                .rounded(px(4.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .opacity(0.0)
+                .group_hover(hover_group, move |style| style.opacity(1.0))
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.open_rename_group_prompt(&rename_id, window, cx);
+                }))
+                .child(
+                    Icon::new(IconName::Pencil)
+                        .size(px(10.5))
+                        .text_color(p.muted_fg),
+                ),
+        )
+        .into_any_element()
+}
+
+fn project_row(
+    this: &KestrelApp,
+    index: usize,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    let Some(project) = this.projects.get(index) else {
+        return div().into_any_element();
+    };
+    let active = index == this.selected_project;
+    let tone = tone_color(p, project.tone);
+    let soft = tone_soft(p, project.tone);
+    let monogram = monogram(&project.name);
+    let name = project.name.clone();
+    let tail = project.path_tail().to_string();
+    let branch = project.branch.clone().unwrap_or_else(|| "no branch".into());
+    let running = this.running_sessions_for(&project.id);
+    let pinned = project.pinned;
+    let hover_group = format!("project-row-hover-{index}");
+    let editing = this.project_group_editor == Some(index);
+
+    div()
+        .id(("project-row", index))
+        .group(hover_group.clone())
+        .h(px(46.))
+        .px(px(8.))
+        .rounded(px(8.))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .cursor_pointer()
+        .when(active, |this| {
+            this.bg(p.card).border_1().border_color(p.border)
+        })
+        .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+        .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+        .child(
+            div()
+                .size(px(26.))
+                .flex_shrink_0()
+                .rounded(px(7.))
+                .bg(soft)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .font_family("Geist Mono")
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(tone)
+                        .child(monogram),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(5.))
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(p.fg)
+                                .truncate()
+                                .child(name),
+                        )
+                        .when(pinned, |this| {
+                            this.child(Icon::new(IconName::Pin).size(px(9.)).text_color(p.muted_fg))
+                        }),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(5.))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(branch),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(p.border_strong)
+                                .child("·"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg.opacity(0.72))
+                                .truncate()
+                                .child(tail),
+                        ),
+                ),
+        )
+        .when(running > 0, |this| {
+            this.child(
+                div()
+                    .h(px(17.))
+                    .min_w(px(17.))
+                    .px(px(4.))
+                    .rounded_full()
+                    .bg(soft)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_family("Geist Mono")
+                            .text_color(tone)
+                            .child(running.to_string()),
+                    ),
+            )
+        })
+        .child(
+            div()
+                .id(("project-row-more", index))
+                .size(px(20.))
+                .flex_shrink_0()
+                .rounded(px(4.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .when(editing, |this| this.bg(p.accent))
+                .when(!editing, |this| {
+                    this.opacity(0.0)
+                        .group_hover(hover_group, move |style| style.opacity(1.0))
+                })
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.project_group_editor = if this.project_group_editor == Some(index) {
+                        None
+                    } else {
+                        Some(index)
+                    };
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(IconName::Ellipsis)
+                        .size(px(12.5))
+                        .text_color(p.muted_fg),
+                ),
+        )
+        .into_any_element()
+}
+
+fn project_group_picker(
+    this: &KestrelApp,
+    index: usize,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    let current = this
+        .projects
+        .get(index)
+        .and_then(|project| project.group_id.clone());
+    let mut chips = div().flex().flex_wrap().gap(px(4.));
+
+    for group in &this.project_groups {
+        let selected = current.as_deref() == Some(group.id.as_str());
+        let id = group.id.clone();
+        let tone = tone_color(p, group.tone);
+        let soft = tone_soft(p, group.tone);
+        chips = chips.child(
+            div()
+                .id(format!("project-group-chip-{}", group.id))
+                .h(px(22.))
+                .px(px(6.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(if selected { tone } else { p.border })
+                .bg(if selected { soft } else { p.card })
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.assign_project_group(index, Some(id.clone()), cx);
+                }))
+                .when(selected, |this| {
+                    this.child(Icon::new(IconName::Check).size(px(9.5)).text_color(tone))
+                })
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(if selected { tone } else { p.fg })
+                        .child(group.name.clone()),
+                ),
+        );
+    }
+
+    chips = chips
+        .child(
+            div()
+                .id("project-group-chip-none")
+                .h(px(22.))
+                .px(px(6.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(if current.is_none() {
+                    p.border_strong
+                } else {
+                    p.border
+                })
+                .bg(p.card)
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.assign_project_group(index, None, cx);
+                }))
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(p.muted_fg)
+                        .child("No group"),
+                ),
+        )
+        .child(
+            div()
+                .id("project-group-chip-new")
+                .h(px(22.))
+                .px(px(6.))
+                .rounded(px(5.))
+                .border_1()
+                .border_color(p.border)
+                .border_dashed()
+                .flex()
+                .items_center()
+                .gap(px(3.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_new_group_prompt(Some(index), window, cx);
+                }))
+                .child(
+                    Icon::new(IconName::Plus)
+                        .size(px(9.5))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(p.muted_fg)
+                        .child("New"),
+                ),
+        );
+
+    div()
+        .mx(px(4.))
+        .mb(px(3.))
+        .p(px(7.))
+        .rounded(px(7.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.subtle)
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .child(
+            div()
+                .text_size(px(10.0))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg)
+                .child("MOVE TO GROUP"),
+        )
+        .child(chips)
+        .into_any_element()
 }
 
 fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
@@ -502,7 +850,7 @@ fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             )
             .child(
                 div()
-                    .text_size(px(10.))
+                    .text_size(px(11.5))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(p.fg)
                     .truncate()
@@ -511,7 +859,7 @@ fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .child(div().flex_1())
             .child(
                 div()
-                    .text_size(px(8.5))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg)
                     .child(branch),
@@ -526,7 +874,7 @@ fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
                 .p(px(9.))
                 .rounded(px(7.))
                 .bg(p.amber_soft)
-                .text_size(px(10.))
+                .text_size(px(11.5))
                 .text_color(p.amber)
                 .child(error),
         );
@@ -600,7 +948,7 @@ fn file_rows(
             .child(Icon::new(icon_name).size(px(12.5)).text_color(icon_color))
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(12.5))
                     .text_color(if active { p.fg } else { p.fg.opacity(0.86) })
                     .truncate()
                     .child(name),
@@ -635,7 +983,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
         )
         .suffix(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg.opacity(0.65))
                 .child("↵"),
@@ -671,7 +1019,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                         .on_click(cx.listener(|this, _, _, cx| this.run_search(cx)))
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.bg)
                                 .child("Run"),
@@ -687,7 +1035,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(if query.is_empty() {
@@ -699,7 +1047,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .text_color(p.muted_fg.opacity(0.6))
                         .child("project"),
                 ),
@@ -753,7 +1101,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                         )
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.fg)
                                 .child(file),
@@ -762,7 +1110,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                             div()
                                 .flex_1()
                                 .min_w(px(0.))
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.7))
                                 .truncate()
@@ -770,7 +1118,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child(format!(":{line}")),
@@ -778,7 +1126,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .line_height(relative(1.45))
@@ -847,7 +1195,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(branch),
@@ -877,7 +1225,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!(
@@ -929,7 +1277,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.bg)
                         .child("Commit staged"),
@@ -945,7 +1293,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
             .gap(px(5.))
             .child(
                 div()
-                    .text_size(px(9.))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg)
                     .child("CHANGES"),
@@ -954,7 +1302,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
             .child(
                 div()
                     .id("stage-all")
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .text_color(if changes.is_empty() {
                         p.muted_fg.opacity(0.5)
                     } else {
@@ -984,7 +1332,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.red)
                         .child(error),
@@ -1010,7 +1358,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .child(if loading {
                             "Reading the working tree…"
@@ -1103,7 +1451,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                         .justify_center()
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(tone)
@@ -1114,7 +1462,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.fg.opacity(0.85))
                         .truncate()
@@ -1126,7 +1474,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 .when(additions > 0, |this| {
                     this.child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.green)
                             .child(format!("+{additions}")),
@@ -1135,7 +1483,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 .when(deletions > 0, |this| {
                     this.child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.red)
                             .child(format!("−{deletions}")),
@@ -1224,7 +1572,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
             .child(Icon::new(IconName::Info).size(px(12.)).text_color(p.blue))
             .child(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .line_height(relative(1.5))
                     .text_color(p.blue)
                     .child("Status and diffs come from the system git CLI. Stage, commit and branch actions never leave this machine."),
@@ -1294,7 +1642,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                             div()
                                 .flex_1()
                                 .min_w(px(0.))
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .font_weight(if active {
                                     FontWeight::MEDIUM
                                 } else {
@@ -1306,7 +1654,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                         )
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .child(updated),
@@ -1328,7 +1676,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_size(px(8.))
+                                        .text_size(px(10.5))
                                         .font_family("Geist Mono")
                                         .text_color(status_color)
                                         .child(session.status.label().to_uppercase()),
@@ -1338,7 +1686,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                             div()
                                 .min_w(px(0.))
                                 .truncate()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.muted_fg)
                                 .child(format!("{harness} · {model}")),
                         )
@@ -1346,7 +1694,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                         .child(
                             div()
                                 .flex_shrink_0()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child(format!(
@@ -1395,7 +1743,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
             )
             .child(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .text_color(p.muted_fg)
                     .child("Sessions are stored locally and resumable."),
             ),
@@ -1435,7 +1783,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.muted_fg)
@@ -1449,7 +1797,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .id("usage-details")
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .text_color(p.muted_fg)
                         .cursor_pointer()
                         .hover(move |style| style.text_color(p.fg))
@@ -1473,7 +1821,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                     .child(dot(tone, 4.5))
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(px(11.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.fg.opacity(0.88))
                             .child(usage.provider.clone()),
@@ -1481,7 +1829,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                     .child(div().flex_1())
                     .child(
                         div()
-                            .text_size(px(8.))
+                            .text_size(px(10.5))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg)
                             .child(usage.plan.clone()),
@@ -1519,7 +1867,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .gap(px(5.))
                         .child(
                             div()
-                                .text_size(px(9.5))
+                                .text_size(px(11.5))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.fg.opacity(0.88))
                                 .child(provider),
@@ -1534,7 +1882,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_size(px(7.5))
+                                        .text_size(px(10.0))
                                         .font_family("Geist Mono")
                                         .text_color(tone)
                                         .child(plan),
@@ -1543,14 +1891,14 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(source_color)
                                 .child(source),
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child(format!("{percent:.0}%")),
@@ -1584,7 +1932,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(dot(status_dot, 4.5))
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(status_label),
@@ -1592,7 +1940,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.7))
                         .child("v0.1"),
@@ -1601,14 +1949,111 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .into_any_element()
 }
 
+fn project_menu_row(
+    this: &KestrelApp,
+    index: usize,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
+    let Some(project) = this.projects.get(index) else {
+        return div().into_any_element();
+    };
+    let active = index == this.selected_project;
+    let tone = tone_color(p, project.tone);
+    let soft = tone_soft(p, project.tone);
+    let name = project.name.clone();
+    let tail = project.path_tail().to_string();
+    let monogram = monogram(&name);
+    let group = project
+        .group_id
+        .as_ref()
+        .and_then(|id| this.project_groups.iter().find(|group| &group.id == id))
+        .map(|group| group.name.clone());
+
+    div()
+        .id(("project-menu-row", index))
+        .h(px(36.))
+        .px(px(6.))
+        .rounded(px(6.))
+        .flex()
+        .items_center()
+        .gap(px(7.))
+        .cursor_pointer()
+        .when(active, |this| this.bg(p.accent))
+        .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+        .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+        .child(
+            div()
+                .size(px(20.))
+                .rounded(px(5.))
+                .bg(soft)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .font_family("Geist Mono")
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(tone)
+                        .child(monogram),
+                ),
+        )
+        .child(
+            div()
+                .min_w(px(0.))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(if active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .text_color(p.fg)
+                        .truncate()
+                        .child(name),
+                )
+                .when_some(group, |this, group| {
+                    this.child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(p.muted_fg.opacity(0.65))
+                            .truncate()
+                            .child(group),
+                    )
+                }),
+        )
+        .child(div().flex_1())
+        .child(
+            div()
+                .max_w(px(86.))
+                .text_size(px(10.5))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg.opacity(0.7))
+                .truncate()
+                .child(tail),
+        )
+        .when(active, |this| {
+            this.child(Icon::new(IconName::Check).size(px(11.)).text_color(p.fg))
+        })
+        .into_any_element()
+}
+
 fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
     let trusted = this.project().trusted;
+    let pinned = this.project().pinned;
     let mut menu = div()
+        .id("project-menu")
         .absolute()
         .top(px(45.))
         .left(px(6.))
         .right(px(6.))
+        .max_h(px(720.))
+        .overflow_y_scroll()
         .p(px(5.))
         .rounded(px(10.))
         .border_1()
@@ -1621,76 +2066,108 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
             div()
                 .px(px(8.))
                 .py(px(5.))
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child("SWITCH PROJECT"),
         );
 
-    for (index, project) in this.projects.iter().enumerate() {
-        let active = index == this.selected_project;
-        let tone = tone_color(&p, project.tone);
-        let soft = tone_soft(&p, project.tone);
-        let name = project.name.clone();
-        let tail = project.path_tail().to_string();
-        let monogram = monogram(&name);
-
+    let groups = this.project_groups.clone();
+    for group in &groups {
+        let mut indices: Vec<usize> = this
+            .projects
+            .iter()
+            .enumerate()
+            .filter(|(_, project)| project.group_id.as_deref() == Some(group.id.as_str()))
+            .map(|(index, _)| index)
+            .collect();
+        indices.sort_by_key(|index| {
+            (
+                !this.projects[*index].pinned,
+                this.projects[*index].name.to_lowercase(),
+            )
+        });
+        if indices.is_empty() {
+            continue;
+        }
         menu = menu.child(
             div()
-                .id(("project-menu-row", index))
-                .h(px(34.))
-                .px(px(6.))
+                .px(px(8.))
+                .pt(px(5.))
+                .pb(px(2.))
+                .text_size(px(10.0))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg.opacity(0.75))
+                .truncate()
+                .child(group.name.to_uppercase()),
+        );
+        for index in indices {
+            menu = menu.child(project_menu_row(this, index, cx, &p));
+        }
+    }
+
+    let ungrouped: Vec<usize> = this
+        .projects
+        .iter()
+        .enumerate()
+        .filter(|(_, project)| project.group_id.is_none())
+        .map(|(index, _)| index)
+        .collect();
+    let ungrouped = {
+        let mut indices = ungrouped;
+        indices.sort_by_key(|index| {
+            (
+                !this.projects[*index].pinned,
+                this.projects[*index].name.to_lowercase(),
+            )
+        });
+        indices
+    };
+    if !groups.is_empty() && !ungrouped.is_empty() {
+        menu = menu.child(
+            div()
+                .px(px(8.))
+                .pt(px(6.))
+                .pb(px(2.))
+                .text_size(px(10.0))
+                .font_family("Geist Mono")
+                .text_color(p.muted_fg.opacity(0.75))
+                .child("UNGROUPED"),
+        );
+    }
+    for index in ungrouped {
+        menu = menu.child(project_menu_row(this, index, cx, &p));
+    }
+
+    menu.child(div().h(px(1.)).my(px(3.)).bg(p.border))
+        .child(
+            div()
+                .id("menu-new-group")
+                .h(px(30.))
+                .px(px(7.))
                 .rounded(px(6.))
                 .flex()
                 .items_center()
                 .gap(px(7.))
                 .cursor_pointer()
-                .when(active, |this| this.bg(p.accent))
-                .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-                .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.project_menu_open = false;
+                    this.open_new_group_prompt(None, window, cx);
+                }))
                 .child(
-                    div()
-                        .size(px(20.))
-                        .rounded(px(5.))
-                        .bg(soft)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_size(px(8.))
-                                .font_family("Geist Mono")
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(tone)
-                                .child(monogram),
-                        ),
+                    Icon::new(IconName::FolderTree)
+                        .size(px(13.))
+                        .text_color(p.muted_fg),
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
+                        .flex_1()
+                        .text_size(px(12.0))
                         .text_color(p.fg)
-                        .child(name),
-                )
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .text_size(px(8.5))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.7))
-                        .child(tail),
-                )
-                .when(active, |this| {
-                    this.child(Icon::new(IconName::Check).size(px(11.)).text_color(p.fg))
-                }),
-        );
-    }
-
-    menu.child(div().h(px(1.)).my(px(3.)).bg(p.border))
+                        .child("New project group…"),
+                ),
+        )
         .child(
             div()
                 .id("menu-open-folder")
@@ -1714,13 +2191,13 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(p.fg)
                         .child("Open local folder…"),
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("⌘O"),
@@ -1749,9 +2226,72 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(p.fg)
                         .child("Add remote project…"),
+                ),
+        )
+        .child(
+            div()
+                .id("project-move-group")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.section = SidebarSection::Projects;
+                    this.project_group_editor = Some(this.selected_project);
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(IconName::FolderTree)
+                        .size(px(12.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.0))
+                        .text_color(p.fg)
+                        .child("Move to group…"),
+                ),
+        )
+        .child(
+            div()
+                .id("project-pin")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.toggle_project_pin(cx);
+                }))
+                .child(
+                    Icon::new(IconName::Pin)
+                        .size(px(12.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.0))
+                        .text_color(p.fg)
+                        .child(if pinned {
+                            "Unpin project"
+                        } else {
+                            "Pin project"
+                        }),
                 ),
         )
         .child(
@@ -1778,7 +2318,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.fg)
                         .child("Project settings"),
                 ),
@@ -1810,7 +2350,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.fg)
                         .child(if trusted {
                             "Untrust project"
@@ -1848,7 +2388,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.fg)
                         .child("Reveal in Finder"),
                 ),
@@ -1878,7 +2418,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.fg)
                         .child("Copy path"),
                 ),
@@ -1902,7 +2442,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(Icon::new(IconName::Trash).size(px(12.)).text_color(p.red))
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .text_color(p.red)
                         .child("Remove project…"),
                 ),
@@ -1918,7 +2458,7 @@ fn group_label(label: &str, p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg.opacity(0.75))
                 .child(label.to_string()),
@@ -1946,7 +2486,7 @@ fn empty_state(icon_name: IconName, title: &str, body: &str, p: &Palette) -> Any
         )
         .child(
             div()
-                .text_size(px(10.5))
+                .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.fg.opacity(0.8))
                 .child(title.to_string()),
@@ -1955,7 +2495,7 @@ fn empty_state(icon_name: IconName, title: &str, body: &str, p: &Palette) -> Any
             div()
                 .max_w(px(180.))
                 .text_center()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
                 .child(body.to_string()),

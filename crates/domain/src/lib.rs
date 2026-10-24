@@ -86,6 +86,16 @@ pub struct Project {
     pub running_sessions: usize,
     #[serde(default)]
     pub remote: Option<RemoteProject>,
+    #[serde(default)]
+    pub group_id: Option<Id>,
+}
+
+/// A user-defined section in the project switcher, such as Private or Work.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProjectGroup {
+    pub id: Id,
+    pub name: String,
+    pub tone: ProjectTone,
 }
 
 impl Project {

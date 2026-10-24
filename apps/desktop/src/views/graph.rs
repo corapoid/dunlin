@@ -1,6 +1,8 @@
 //! Agent graph: the orchestrator tree, subagent fan-out, handoffs and live
 //! status painted on a quiet dot grid.
 
+use std::time::Duration;
+
 use kestrel_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::Icon;
@@ -57,7 +59,7 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
                 .child("Agent graph"),
@@ -74,7 +76,7 @@ pub(crate) fn render(
                 .child(dot(badge_fg, 4.5))
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(badge_fg)
                         .child(badge_label),
@@ -82,7 +84,7 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!("{} nodes · {running} running", nodes.len())),
@@ -90,7 +92,7 @@ pub(crate) fn render(
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!("${total_cost:.2}")),
@@ -124,7 +126,7 @@ pub(crate) fn render(
                 )
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .text_color(if following { p.blue } else { p.muted_fg })
                         .child("Follow"),
                 ),
@@ -142,7 +144,7 @@ pub(crate) fn render(
                     div()
                         .min_w(px(32.))
                         .text_center()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!("{:.0}%", zoom * 100.)),
@@ -172,7 +174,12 @@ pub(crate) fn render(
                         .size(px(10.5))
                         .text_color(p.muted_fg),
                 )
-                .child(div().text_size(px(9.)).text_color(p.muted_fg).child("Fit")),
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(p.muted_fg)
+                        .child("Fit"),
+                ),
         );
 
     let content = graph_canvas(&nodes, selected, following, cx, &p);
@@ -197,7 +204,7 @@ pub(crate) fn render(
         .child(div().w(px(1.)).h(px(11.)).bg(p.border))
         .child(
             div()
-                .text_size(px(8.))
+                .text_size(px(10.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child("dashed = handoff"),
@@ -333,7 +340,13 @@ fn graph_canvas(
     .top_0()
     .left_0()
     .w(px(width))
-    .h(px(height));
+    .h(px(height))
+    .with_animation(
+        ElementId::NamedInteger("graph-edges".into(), nodes.len() as u64),
+        Animation::new(Duration::from_millis(360)).with_easing(ease_out_quint()),
+        |this, t| this.opacity(t),
+    )
+    .into_any_element();
 
     let mut layer = div()
         .relative()
@@ -423,11 +436,6 @@ fn node_card(
 ) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
     let is_tool = node.kind == AgentKind::Tool;
-    let kind_label = match node.kind {
-        AgentKind::Orchestrator => "orchestrator",
-        AgentKind::Subagent => "subagent",
-        AgentKind::Tool => "tool",
-    };
     let active = following && node.status == AgentStatus::Running;
     let accent = tone_color(
         p,
@@ -437,6 +445,7 @@ fn node_card(
             AgentKind::Tool => kestrel_domain::ProjectTone::Teal,
         },
     );
+    let base_y = node.y;
 
     let mut card = div()
         .id(("agent-node", index))
@@ -489,18 +498,11 @@ fn node_card(
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .truncate()
                         .child(node.title.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(7.5))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.75))
-                        .child(kind_label),
                 )
                 .child(
                     div()
@@ -512,7 +514,7 @@ fn node_card(
                         .items_center()
                         .child(
                             div()
-                                .text_size(px(7.))
+                                .text_size(px(10.0))
                                 .font_family("Geist Mono")
                                 .text_color(status_color)
                                 .child(node.status.label().to_uppercase()),
@@ -528,8 +530,8 @@ fn node_card(
                 .gap(px(6.))
                 .child(
                     div()
-                        .h(px(30.))
-                        .text_size(px(9.))
+                        .h(px(34.))
+                        .text_size(px(11.0))
                         .line_height(relative(1.45))
                         .text_color(if is_tool {
                             p.muted_fg
@@ -547,7 +549,7 @@ fn node_card(
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(7.5))
+                                .text_size(px(10.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .child(format!("${:.2}", node.cost_usd)),
@@ -567,7 +569,7 @@ fn node_card(
                             div()
                                 .flex_1()
                                 .min_w(px(0.))
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .truncate()
@@ -575,7 +577,7 @@ fn node_card(
                         )
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.7))
                                 .child(format_duration(node.duration_secs)),
@@ -597,12 +599,28 @@ fn node_card(
                         .h_full()
                         .w(relative(0.62))
                         .bg(status_color)
-                        .rounded_full(),
+                        .rounded_full()
+                        .with_animation(
+                            ElementId::Name(format!("graph-running-{}", node.id).into()),
+                            Animation::new(Duration::from_millis(1800))
+                                .repeat_synced()
+                                .with_easing(pulsating_between(0.4, 1.0)),
+                            |this, t| this.opacity(t),
+                        ),
                 ),
         );
     }
 
-    card.into_any_element()
+    let node_id = node.id.clone();
+    card.with_animation(
+        ElementId::Name(format!("graph-node-{node_id}").into()),
+        Animation::new(Duration::from_millis(260)).with_easing(ease_out_quint()),
+        move |this, t| {
+            this.top(px(base_y + (1.0 - t) * 10.0))
+                .opacity(0.25 + 0.75 * t)
+        },
+    )
+    .into_any_element()
 }
 
 fn tool_chip(kind: ToolKind, p: &Palette) -> AnyElement {
@@ -621,7 +639,7 @@ fn tool_chip(kind: ToolKind, p: &Palette) -> AnyElement {
         )
         .child(
             div()
-                .text_size(px(7.))
+                .text_size(px(10.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(kind.label()),
@@ -637,7 +655,7 @@ fn legend_item(label: &str, color: Hsla, p: &Palette) -> AnyElement {
         .child(dot(color, 5.0))
         .child(
             div()
-                .text_size(px(8.))
+                .text_size(px(10.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(label.to_string()),
@@ -647,7 +665,7 @@ fn legend_item(label: &str, color: Hsla, p: &Palette) -> AnyElement {
 
 fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
-    div()
+    let detail = div()
         .absolute()
         .right(px(12.))
         .bottom(px(10.))
@@ -668,7 +686,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                 .child(dot(status_color, 5.0))
                 .child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .child(node.title.clone()),
@@ -683,7 +701,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                         .items_center()
                         .child(
                             div()
-                                .text_size(px(7.))
+                                .text_size(px(10.0))
                                 .font_family("Geist Mono")
                                 .text_color(status_color)
                                 .child(node.status.label().to_uppercase()),
@@ -709,7 +727,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
         )
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .line_height(relative(1.5))
                 .text_color(p.muted_fg)
                 .child(node.task.clone()),
@@ -724,7 +742,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!(
@@ -755,13 +773,12 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.view = MainView::Chat;
-                            this.settings_open = false;
+                            this.set_view(MainView::Chat, cx);
                             this.set_notice("Opened the live transcript", cx);
                         }))
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .text_color(p.muted_fg)
                                 .child("Transcript"),
                         )
@@ -771,6 +788,18 @@ fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> A
                                 .text_color(p.muted_fg),
                         ),
                 ),
+        );
+
+    detail
+        .with_animation(
+            ElementId::Name(format!("graph-detail-{}", node.id).into()),
+            Animation::new(Duration::from_millis(220)).with_easing(ease_out_quint()),
+            |this, t| {
+                this.opacity(t)
+                    .relative()
+                    .left(px((1.0 - t) * 8.0))
+                    .top(px((1.0 - t) * 5.0))
+            },
         )
         .into_any_element()
 }
@@ -785,7 +814,7 @@ fn meta_chip(text: &str, p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(7.5))
+                .text_size(px(10.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(text.to_string()),

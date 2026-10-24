@@ -107,7 +107,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 )
                 .child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .child("Settings"),
@@ -115,7 +115,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("v0.1"),
@@ -149,7 +149,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 }))
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -184,7 +184,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.fg.opacity(0.85))
                                 .child("Local-first"),
@@ -192,7 +192,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .line_height(relative(1.45))
                         .text_color(p.muted_fg)
                         .child("Sessions, traces and usage stay on this Mac."),
@@ -246,14 +246,14 @@ fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .gap(px(2.))
                 .child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(px(13.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .child(title),
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .child(subtitle),
                 ),
@@ -342,7 +342,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                                 }))
                                 .child(
                                     div()
-                                        .text_size(px(9.))
+                                        .text_size(px(11.0))
                                         .text_color(if active { p.fg } else { p.muted_fg })
                                         .child(candidate.label()),
                                 )
@@ -371,7 +371,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                                 .child(dot(p.green, 4.5))
                                 .child(
                                     div()
-                                        .text_size(px(9.))
+                                        .text_size(px(11.0))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(p.green)
                                         .child(harness),
@@ -380,7 +380,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                         .child(
                             div()
                                 .id("general-change-harness")
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.blue)
                                 .cursor_pointer()
                                 .on_click(cx.listener(|this, _, _, cx| {
@@ -451,7 +451,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
             .child(Icon::new(IconName::Info).size(px(13.)).text_color(p.blue))
             .child(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .line_height(relative(1.5))
                     .text_color(p.blue)
                     .child("Kestrel never uploads project contents. Harness adapters run as local child processes and speak ACP over stdio."),
@@ -566,7 +566,7 @@ fn theme_card(
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(label),
@@ -705,14 +705,14 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                                 .gap(px(1.))
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(px(12.5))
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(p.fg)
                                         .child(name.to_string()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(8.5))
+                                        .text_size(px(11.0))
                                         .font_family("Geist Mono")
                                         .text_color(p.muted_fg)
                                         .child(if version == "—" {
@@ -750,7 +750,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                                 ))
                                 .child(
                                     div()
-                                        .text_size(px(8.))
+                                        .text_size(px(10.5))
                                         .font_family("Geist Mono")
                                         .text_color(if status == "Ready" {
                                             p.green
@@ -790,7 +790,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .gap(px(5.))
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child("$"),
@@ -798,7 +798,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .child(
                             div()
                                 .flex_1()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.fg.opacity(0.8))
                                 .child(command),
@@ -851,7 +851,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .gap(px(5.))
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child("$"),
@@ -867,7 +867,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .line_height(relative(1.45))
                         .text_color(p.muted_fg)
                         .child("Kestrel spawns this command over stdio and speaks ACP. Select Custom ACP above to use it."),
@@ -918,7 +918,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                     )
                     .child(
                         div()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .text_color(p.fg)
                             .child(connect_label),
                     )
@@ -976,7 +976,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                             .size(px(10.5))
                             .text_color(p.muted_fg),
                     )
-                    .child(div().text_size(px(9.)).text_color(p.fg).child("Add…"))
+                    .child(div().text_size(px(11.0)).text_color(p.fg).child("Add…"))
                     .into_any_element(),
                 &p,
             )),
@@ -1065,14 +1065,14 @@ fn permissions(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                         .gap(px(3.))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(p.fg)
                                 .child(title),
                         )
                         .child(
                             div()
-                                .text_size(px(9.5))
+                                .text_size(px(11.5))
                                 .line_height(relative(1.5))
                                 .text_color(p.muted_fg)
                                 .child(description),
@@ -1229,7 +1229,7 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child("supervisor.rs"),
@@ -1237,7 +1237,7 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child("Rust"),
@@ -1265,14 +1265,14 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                                     div()
                                         .w(px(18.))
                                         .text_right()
-                                        .text_size(px(8.5))
+                                        .text_size(px(11.0))
                                         .font_family("Geist Mono")
                                         .text_color(p.muted_fg.opacity(0.5))
                                         .child(number),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(9.5))
+                                        .text_size(px(11.5))
                                         .font_family("Geist Mono")
                                         .text_color(color)
                                         .child(line),
@@ -1333,7 +1333,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .size(px(10.5))
                             .text_color(p.muted_fg),
                         )
-                        .child(div().text_size(px(9.)).text_color(p.fg).child(
+                        .child(div().text_size(px(11.0)).text_color(p.fg).child(
                             if this.usage_loading {
                                 "Refreshing…"
                             } else {
@@ -1372,7 +1372,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(12.5))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(p.fg)
                             .child(usage.provider.clone()),
@@ -1387,7 +1387,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(7.5))
+                                    .text_size(px(10.0))
                                     .font_family("Geist Mono")
                                     .text_color(color)
                                     .child(usage.plan.clone()),
@@ -1417,13 +1417,13 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .gap(px(5.))
                             .child(
                                 div()
-                                    .text_size(px(9.))
+                                    .text_size(px(11.0))
                                     .text_color(p.fg.opacity(0.8))
                                     .child(window.label.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(8.))
+                                    .text_size(px(10.5))
                                     .font_family("Geist Mono")
                                     .text_color(p.muted_fg)
                                     .child(format!("resets in {}", window.resets_in)),
@@ -1431,7 +1431,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .child(div().flex_1())
                             .child(
                                 div()
-                                    .text_size(px(8.5))
+                                    .text_size(px(11.0))
                                     .font_family("Geist Mono")
                                     .text_color(if percent > 85. { p.red } else { p.muted_fg })
                                     .child(format!("{percent:.0}%")),
@@ -1457,7 +1457,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
 
         card = card.child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(usage.detail.clone()),
@@ -1482,14 +1482,14 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                     .gap(px(4.))
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(px(11.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.amber)
                             .child("Where these numbers come from"),
                     )
                     .child(
                         div()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .line_height(relative(1.5))
                             .text_color(p.amber.opacity(0.9))
                             .child("Context usage is live by ACP. Provider windows are read where the harness runs: on this Mac for local projects, or on the relay for remote projects. Codex uses its local app-server, Claude Code requires a `user:profile` login, and OpenCode stays estimated until it exposes subscription data. Kestrel never uploads project data to obtain usage."),
@@ -1559,7 +1559,7 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .child(Icon::new(IconName::FolderOpen).size(px(10.)).text_color(p.muted_fg))
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.fg)
                                 .child("Open"),
                         )
@@ -1586,14 +1586,14 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .gap(px(2.))
                         .child(
                             div()
-                                .text_size(px(10.))
+                                .text_size(px(11.5))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.red)
                                 .child("Clear conversation history"),
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.red.opacity(0.8))
                                 .child("Delete every session and transcript on this Mac. Projects and settings stay."),
                         ),
@@ -1617,7 +1617,7 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .child(Icon::new(IconName::Trash).size(px(10.)).text_color(p.red))
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.red)
                                 .child("Clear…"),
                         ),
@@ -1651,14 +1651,14 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .gap(px(1.))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(p.fg)
                                 .child("Kestrel 0.1.0"),
                         )
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child("Rust · GPUI · ACP · macOS arm64"),
@@ -1667,7 +1667,7 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("Apache-2.0"),
@@ -1702,14 +1702,14 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                 .gap(px(4.))
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child("No relay paired yet"),
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
                         .child("Run `kestrel-relay pair <user>` on the machine that hosts your projects, then enter the code below."),
@@ -1753,14 +1753,14 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                                     .gap(px(1.))
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(12.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(p.fg)
                                             .child(host.name.clone()),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(9.))
+                                            .text_size(px(11.0))
                                             .font_family("Geist Mono")
                                             .text_color(p.muted_fg)
                                             .truncate()
@@ -1784,7 +1784,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                                     }))
                                     .child(
                                         div()
-                                            .text_size(px(9.))
+                                            .text_size(px(11.0))
                                             .text_color(p.fg)
                                             .child("Add project"),
                                     ),
@@ -1818,7 +1818,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
             .gap(px(3.))
             .child(
                 div()
-                    .text_size(px(8.5))
+                    .text_size(px(11.0))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg)
                     .child(label),
@@ -1899,7 +1899,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                     .gap(px(8.))
                     .child(
                         div()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .text_color(p.muted_fg)
                             .child("The relay must be reachable over Tailscale or HTTPS."),
                     )
@@ -1918,7 +1918,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                             .on_click(cx.listener(|this, _, _, cx| this.pair_remote(cx)))
                             .child(
                                 div()
-                                    .text_size(px(9.5))
+                                    .text_size(px(11.5))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(p.bg)
                                     .child(if loading { "Pairing…" } else { "Pair device" }),
@@ -1932,7 +1932,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
 
 fn section_label(label: &str, p: &Palette) -> AnyElement {
     div()
-        .text_size(px(8.5))
+        .text_size(px(11.0))
         .font_family("Geist Mono")
         .font_weight(FontWeight::MEDIUM)
         .text_color(p.muted_fg)
@@ -1957,14 +1957,14 @@ fn setting_row(title: &str, description: &str, control: AnyElement, p: &Palette)
                 .gap(px(1.))
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(title.to_string()),
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .line_height(relative(1.4))
                         .text_color(p.muted_fg)
                         .child(description.to_string()),
@@ -2022,7 +2022,7 @@ fn value_chip(label: &str, p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(9.))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.fg.opacity(0.8))
                 .child(label.to_string()),
@@ -2041,7 +2041,7 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .truncate()
@@ -2081,7 +2081,7 @@ fn stepper(this: &mut KestrelApp, cx: &mut Context<KestrelApp>, p: &Palette) -> 
         .child(
             div()
                 .px(px(5.))
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.fg.opacity(0.8))
                 .child(format!("{size:.0} px")),
@@ -2118,7 +2118,7 @@ fn scope_badge(label: &str, fg: Hsla, bg: Hsla, _p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(8.))
+                .text_size(px(10.5))
                 .font_family("Geist Mono")
                 .text_color(fg)
                 .child(label.to_uppercase()),
@@ -2142,7 +2142,7 @@ fn source_badge(source: UsageSource, p: &Palette) -> AnyElement {
         .items_center()
         .child(
             div()
-                .text_size(px(7.5))
+                .text_size(px(10.0))
                 .font_family("Geist Mono")
                 .text_color(fg)
                 .child(label),

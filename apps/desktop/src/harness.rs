@@ -221,6 +221,12 @@ impl Default for HarnessState {
     }
 }
 
+impl HarnessState {
+    pub(crate) fn queued_prompts(&self) -> usize {
+        self.pending_prompts.len()
+    }
+}
+
 impl KestrelApp {
     /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {

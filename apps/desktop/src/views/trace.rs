@@ -2,6 +2,8 @@
 //! details. Designed for long agent runs where the interesting work is nested
 //! three levels deep.
 
+use std::time::Duration;
+
 use kestrel_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::Icon;
@@ -65,7 +67,7 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
                 .child("Trace waterfall"),
@@ -89,7 +91,7 @@ pub(crate) fn render(
                 .items_center()
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(if preview {
                             p.amber
@@ -115,7 +117,7 @@ pub(crate) fn render(
         )
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!("{} spans · {running} running", spans.len())),
@@ -123,7 +125,7 @@ pub(crate) fn render(
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!(
@@ -163,7 +165,7 @@ pub(crate) fn render(
                 }))
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -174,7 +176,7 @@ pub(crate) fn render(
                 )
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(count.to_string()),
@@ -212,7 +214,7 @@ pub(crate) fn render(
                 )
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .text_color(if following { p.blue } else { p.muted_fg })
                         .child("Follow"),
                 ),
@@ -230,7 +232,7 @@ pub(crate) fn render(
                     div()
                         .min_w(px(32.))
                         .text_center()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!("{:.0}%", zoom * 100.)),
@@ -256,7 +258,7 @@ pub(crate) fn render(
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("SPAN"),
@@ -265,7 +267,7 @@ pub(crate) fn render(
                 .child(
                     div()
                         .pr(px(10.))
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.65))
                         .child(format!("{} shown", filtered.len())),
@@ -282,7 +284,7 @@ pub(crate) fn render(
                 .px(px(4.))
                 .children([0, 25, 50, 75, 100].map(|pct| {
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.75))
                         .child(axis_label(total_ms * pct as f32 / 100.0))
@@ -392,7 +394,33 @@ fn span_row(
     let width = (span.duration_ms as f32 / total_ms).clamp(0.001, 1.0 - start.min(0.999));
     let indent = 10.0 + span.depth as f32 * 10.0;
 
-    div()
+    let bar_width = width;
+    let bar = div()
+        .absolute()
+        .top(px((row_h - 15.0) / 2.0))
+        .left(relative(start))
+        .w(relative(width))
+        .min_w(px(2.))
+        .h(px(15.))
+        .rounded(px(3.))
+        .bg(if span.status == SpanStatus::Done {
+            color.opacity(0.72)
+        } else {
+            color
+        })
+        .when(span.status == SpanStatus::Running, |this| {
+            this.border_1().border_color(color)
+        })
+        .when(active, |this| {
+            this.border_1().border_color(p.fg.opacity(0.45))
+        })
+        .with_animation(
+            ElementId::Name(format!("trace-bar-{}", span.id).into()),
+            Animation::new(Duration::from_millis(320)).with_easing(ease_out_quint()),
+            move |this, t| this.w(relative(bar_width * t)),
+        );
+
+    let row = div()
         .id(("span-row", index))
         .h(px(row_h))
         .flex_shrink_0()
@@ -445,7 +473,7 @@ fn span_row(
                         .gap(px(0.))
                         .child(
                             div()
-                                .text_size(px(10.))
+                                .text_size(px(11.5))
                                 .font_weight(
                                     if span.kind == SpanKind::Agent || span.kind == SpanKind::Turn {
                                         FontWeight::MEDIUM
@@ -459,16 +487,31 @@ fn span_row(
                         )
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .truncate()
-                                .child(format!("{} · {}", span.agent, span.kind.label())),
+                                .child(format!(
+                                    "{} · {} · {}",
+                                    span.agent,
+                                    span.kind.label(),
+                                    format_ms(span.duration_ms)
+                                )),
                         ),
                 )
                 .when(
                     span.status == SpanStatus::Waiting || span.status == SpanStatus::Running,
-                    |this| this.child(div().size(px(5.)).rounded_full().bg(status_color)),
+                    |this| {
+                        this.child(
+                            div().child(dot(status_color, 5.0)).with_animation(
+                                ElementId::Name(format!("trace-pulse-{}", span.id).into()),
+                                Animation::new(Duration::from_millis(1600))
+                                    .repeat_synced()
+                                    .with_easing(pulsating_between(0.35, 1.0)),
+                                |this, t| this.opacity(t),
+                            ),
+                        )
+                    },
                 ),
         )
         .child(
@@ -477,40 +520,19 @@ fn span_row(
                 .h_full()
                 .relative()
                 .child(grid_lines(p))
-                .child(
-                    div()
-                        .absolute()
-                        .top(px((row_h - 15.0) / 2.0))
-                        .left(relative(start))
-                        .w(relative(width))
-                        .min_w(px(2.))
-                        .h(px(15.))
-                        .rounded(px(3.))
-                        .bg(if span.status == SpanStatus::Done {
-                            color.opacity(0.72)
-                        } else {
-                            color
-                        })
-                        .when(span.status == SpanStatus::Running, |this| {
-                            this.border_1().border_color(color)
-                        })
-                        .when(active, |this| {
-                            this.border_1().border_color(p.fg.opacity(0.45))
-                        }),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .top(px((row_h - 15.0) / 2.0 + 15.5))
-                        .left(relative(start))
-                        .pl(px(3.))
-                        .text_size(px(7.5))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.0))
-                        .child(format_ms(span.duration_ms)),
-                ),
-        )
-        .into_any_element()
+                .child(bar),
+        );
+
+    row.with_animation(
+        ElementId::Name(format!("trace-row-{}", span.id).into()),
+        Animation::new(Duration::from_millis(280)).with_easing(ease_out_quint()),
+        |this, t| {
+            this.opacity(0.3 + 0.7 * t)
+                .relative()
+                .left(px((1.0 - t) * 5.0))
+        },
+    )
+    .into_any_element()
 }
 
 fn grid_lines(p: &Palette) -> AnyElement {
@@ -584,7 +606,7 @@ fn span_detail(
                         .gap(px(3.))
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(px(12.5))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(p.fg)
                                 .child(span.name.clone()),
@@ -604,7 +626,7 @@ fn span_detail(
                                         .items_center()
                                         .child(
                                             div()
-                                                .text_size(px(7.5))
+                                                .text_size(px(10.0))
                                                 .font_family("Geist Mono")
                                                 .text_color(status_color)
                                                 .child(span.status.label().to_uppercase()),
@@ -612,7 +634,7 @@ fn span_detail(
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(8.5))
+                                        .text_size(px(11.0))
                                         .font_family("Geist Mono")
                                         .text_color(p.muted_fg)
                                         .child(format!("{} · {}", span.kind.label(), span.agent)),
@@ -648,7 +670,7 @@ fn span_detail(
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
                         .child(span.detail.clone()),
@@ -684,7 +706,7 @@ fn span_detail(
                 .gap(px(3.))
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("PARENT"),
@@ -717,14 +739,14 @@ fn span_detail(
                         .child(
                             div()
                                 .flex_1()
-                                .text_size(px(9.5))
+                                .text_size(px(11.5))
                                 .text_color(p.fg.opacity(0.85))
                                 .truncate()
                                 .child(parent.name.clone()),
                         )
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child(format_ms(parent.duration_ms)),
@@ -736,7 +758,7 @@ fn span_detail(
     if !children.is_empty() {
         let mut child_list = div().flex().flex_col().gap(px(2.)).child(
             div()
-                .text_size(px(8.))
+                .text_size(px(10.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!("CHILDREN · {}", children.len())),
@@ -768,14 +790,14 @@ fn span_detail(
                     .child(
                         div()
                             .flex_1()
-                            .text_size(px(9.))
+                            .text_size(px(11.0))
                             .text_color(p.muted_fg)
                             .truncate()
                             .child(child.name.clone()),
                     )
                     .child(
                         div()
-                            .text_size(px(8.))
+                            .text_size(px(10.5))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg.opacity(0.7))
                             .child(format_ms(child.duration_ms)),
@@ -811,7 +833,7 @@ fn span_detail(
                     )
                     .child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.bg)
                             .child("Open in chat"),
@@ -843,14 +865,14 @@ fn span_detail(
                     )
                     .child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .text_color(p.muted_fg)
                             .child("Copy JSON"),
                     ),
             ),
     );
 
-    div()
+    let detail = div()
         .w(px(324.))
         .h_full()
         .flex_shrink_0()
@@ -876,7 +898,7 @@ fn span_detail(
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child("Span detail"),
@@ -884,7 +906,7 @@ fn span_detail(
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.))
+                        .text_size(px(10.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(span.id.clone()),
@@ -897,6 +919,13 @@ fn span_detail(
                 .min_h(px(0.))
                 .overflow_y_scroll()
                 .child(content),
+        );
+
+    detail
+        .with_animation(
+            ElementId::Name(format!("trace-detail-{}", span.id).into()),
+            Animation::new(Duration::from_millis(220)).with_easing(ease_out_quint()),
+            |this, t| this.opacity(t).relative().left(px((1.0 - t) * 8.0)),
         )
         .into_any_element()
 }
@@ -915,14 +944,14 @@ fn metric(label: &str, value: String, p: &Palette) -> AnyElement {
         .gap(px(2.))
         .child(
             div()
-                .text_size(px(7.5))
+                .text_size(px(10.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(label.to_uppercase()),
         )
         .child(
             div()
-                .text_size(px(10.))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.fg)

@@ -464,6 +464,7 @@ mod tests {
             trusted: true,
             running_sessions: 0,
             remote: None,
+            group_id: None,
         }
     }
 

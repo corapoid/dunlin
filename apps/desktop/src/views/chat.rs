@@ -69,14 +69,14 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
         )
         .child(
             div()
-                .text_size(px(10.5))
+                .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.fg.opacity(0.88))
                 .child("Conversation"),
         )
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!(
@@ -101,7 +101,7 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(context_label),
@@ -115,7 +115,7 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 .child(dot(status_color, 4.5))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .child(format!("{} · {}", session.harness, status.label())),
                 ),
@@ -168,7 +168,7 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 ))
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(if this.reasoning_open {
                             p.violet
@@ -199,7 +199,7 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .child("Compact"),
                 ),
@@ -235,7 +235,7 @@ fn suggestion_chip(
         }))
         .child(
             div()
-                .text_size(px(9.5))
+                .text_size(px(11.5))
                 .text_color(p.muted_fg)
                 .child(label.to_string()),
         )
@@ -315,7 +315,7 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         )
         .child(
             div()
-                .text_size(px(9.))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg.opacity(0.7))
                 .child(if running {
@@ -396,7 +396,7 @@ fn empty_state(
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(19.))
+                        .text_size(px(19.0))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .child("What should we build?"),
@@ -405,7 +405,7 @@ fn empty_state(
                     div()
                         .max_w(px(430.))
                         .text_center()
-                        .text_size(px(11.))
+                        .text_size(px(12.5))
                         .line_height(relative(1.55))
                         .text_color(p.muted_fg)
                         .child(if remote {
@@ -437,14 +437,14 @@ fn empty_state(
             .child(dot(status_color, 5.0))
             .child(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .text_color(status_color)
                     .child(status.label()),
             )
             .when_some(status.detail(), |this, detail| {
                 this.child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(status_color.opacity(0.75))
                         .child(detail),
@@ -504,14 +504,14 @@ fn starter_row(
                 .min_w(px(0.))
                 .child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(title.to_string()),
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .text_color(p.muted_fg)
                         .truncate()
                         .child(subtitle.to_string()),
@@ -552,7 +552,7 @@ fn agent_group(
                 };
                 body = body.child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(px(13.0))
                         .line_height(relative(1.62))
                         .text_color(p.fg.opacity(0.92))
                         .child(content),
@@ -620,7 +620,7 @@ fn user_message(text: &str, p: &Palette) -> AnyElement {
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(13.0))
                         .line_height(relative(1.6))
                         .text_color(p.fg)
                         .child(text.to_string()),
@@ -628,7 +628,7 @@ fn user_message(text: &str, p: &Palette) -> AnyElement {
                 .child(
                     div().flex().justify_end().child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg.opacity(0.75))
                             .child("You"),
@@ -670,7 +670,7 @@ fn agent_header(
         .child(agent_avatar(p))
         .child(
             div()
-                .text_size(px(11.))
+                .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
                 .child("Kestrel"),
@@ -691,7 +691,7 @@ fn agent_header(
                 )
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.violet)
                         .child(model),
@@ -699,7 +699,7 @@ fn agent_header(
         )
         .child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg)
                 .child(format!("{} · ACP", session.harness)),
@@ -720,7 +720,7 @@ fn agent_header(
                 ))
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(if running {
@@ -769,14 +769,14 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<KestrelApp>, p: &Palett
                 )
                 .child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg.opacity(0.85))
                         .child("Thought"),
                 )
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child(format!(
@@ -821,7 +821,7 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<KestrelApp>, p: &Palett
                     .child(
                         div()
                             .flex_1()
-                            .text_size(px(10.))
+                            .text_size(px(11.5))
                             .line_height(relative(1.5))
                             .text_color(p.muted_fg)
                             .child(format!("{}. {}", index + 1, line)),
@@ -831,7 +831,7 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<KestrelApp>, p: &Palett
         if lines.is_empty() {
             body = body.child(
                 div()
-                    .text_size(px(10.))
+                    .text_size(px(11.5))
                     .text_color(p.muted_fg)
                     .child("Thinking…"),
             );
@@ -907,7 +907,7 @@ fn tool_card(
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(title),
@@ -916,7 +916,7 @@ fn tool_card(
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(10.))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .truncate()
@@ -925,14 +925,14 @@ fn tool_card(
                 .when(additions > 0 || deletions > 0, |this| {
                     this.child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.green)
                             .child(format!("+{additions}")),
                     )
                     .child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.red)
                             .child(format!("−{deletions}")),
@@ -956,7 +956,7 @@ fn tool_card(
                         })
                         .child(
                             div()
-                                .text_size(px(8.))
+                                .text_size(px(10.5))
                                 .font_family("Geist Mono")
                                 .text_color(status_color)
                                 .child(status.label().to_uppercase()),
@@ -965,7 +965,7 @@ fn tool_card(
                 .when(duration_ms > 0, |this| {
                     this.child(
                         div()
-                            .text_size(px(8.5))
+                            .text_size(px(11.0))
                             .font_family("Geist Mono")
                             .text_color(p.muted_fg)
                             .child(format_ms(duration_ms)),
@@ -991,7 +991,7 @@ fn tool_card(
             .gap(px(6.))
             .child(
                 div()
-                    .text_size(px(10.5))
+                    .text_size(px(12.0))
                     .line_height(relative(1.55))
                     .text_color(p.muted_fg)
                     .child(if detail.is_empty() {
@@ -1010,7 +1010,7 @@ fn tool_card(
                     .bg(p.subtle)
                     .border_1()
                     .border_color(p.border)
-                    .text_size(px(9.5))
+                    .text_size(px(11.5))
                     .font_family("Geist Mono")
                     .text_color(p.fg.opacity(0.75))
                     .child(format!("$ {}", tool.locations.join("  "))),
@@ -1047,7 +1047,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
                         .child("EXECUTION PLAN"),
@@ -1055,7 +1055,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(format!("{} steps", items.len())),
@@ -1078,7 +1078,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(if item.status == PlanStatus::Completed {
                             p.muted_fg
                         } else if item.status == PlanStatus::InProgress {
@@ -1090,7 +1090,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 )
                 .child(
                     div()
-                        .text_size(px(9.))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(if item.status == PlanStatus::InProgress {
                             p.blue
@@ -1147,7 +1147,7 @@ fn permission_card(
                         )
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(accent)
                                 .child(if denied {
@@ -1161,7 +1161,7 @@ fn permission_card(
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(accent.opacity(0.7))
                                 .child(if resolved.is_some() {
@@ -1180,7 +1180,7 @@ fn permission_card(
                             div()
                                 .flex_1()
                                 .min_w(px(0.))
-                                .text_size(px(10.))
+                                .text_size(px(11.5))
                                 .font_family("Geist Mono")
                                 .text_color(p.fg.opacity(0.8))
                                 .truncate()
@@ -1188,7 +1188,7 @@ fn permission_card(
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg.opacity(0.8))
                                 .child("ACP"),
@@ -1211,7 +1211,7 @@ fn permission_card(
                 )
                 .child(
                     div()
-                        .text_size(px(9.5))
+                        .text_size(px(11.5))
                         .text_color(accent)
                         .child(label.to_string()),
                 ),
@@ -1267,7 +1267,7 @@ fn permission_card(
                     }))
                     .child(
                         div()
-                            .text_size(px(9.5))
+                            .text_size(px(11.5))
                             .font_weight(if primary {
                                 FontWeight::MEDIUM
                             } else {
@@ -1287,7 +1287,7 @@ fn permission_card(
 
         buttons = buttons.child(div().flex_1()).child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(accent.opacity(0.75))
                 .child("session/request_permission"),
@@ -1318,7 +1318,7 @@ fn error_card(message: &str, p: &Palette) -> AnyElement {
         .child(
             div()
                 .flex_1()
-                .text_size(px(10.5))
+                .text_size(px(12.0))
                 .line_height(relative(1.5))
                 .text_color(p.red)
                 .child(message.to_string()),
@@ -1349,7 +1349,7 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.blue)
                         .child("Agent is working"),
@@ -1357,7 +1357,7 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.blue.opacity(0.8))
                         .child(
@@ -1375,7 +1375,7 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
         )
         .child(
             div()
-                .text_size(px(9.))
+                .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.blue.opacity(0.78))
                 .child("tool calls and reasoning will appear inline"),
@@ -1408,6 +1408,7 @@ fn composer(
         .unwrap_or_else(|| "main".into());
     let project = this.project().name.clone();
     let command_count = this.harness.commands.len();
+    let queued = this.harness.queued_prompts();
 
     let input = Textarea::new(&this.composer)
         .appearance(false)
@@ -1457,7 +1458,7 @@ fn composer(
                         .child(dot(status_color, 4.5))
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(status_color)
                                 .child(harness),
@@ -1484,7 +1485,7 @@ fn composer(
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.fg.opacity(0.85))
                                 .child(model),
                         )
@@ -1517,15 +1518,39 @@ fn composer(
                         )
                         .child(
                             div()
-                                .text_size(px(9.))
+                                .text_size(px(11.0))
                                 .text_color(p.muted_fg)
                                 .child(permission.label()),
                         ),
                 )
                 .child(div().flex_1())
+                .when(queued > 0, |this| {
+                    this.child(
+                        div()
+                            .h(px(20.))
+                            .px(px(6.))
+                            .rounded(px(5.))
+                            .bg(p.amber_soft)
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .child(
+                                Icon::new(IconName::Clock3)
+                                    .size(px(10.))
+                                    .text_color(p.amber),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family("Geist Mono")
+                                    .text_color(p.amber)
+                                    .child(format!("{queued} queued")),
+                            ),
+                    )
+                })
                 .child(
                     div()
-                        .text_size(px(8.5))
+                        .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(if status.is_ready() {
@@ -1566,13 +1591,6 @@ fn composer(
                     |this, window, cx| this.open_composer_tools(window, cx),
                 ))
                 .child(div().flex_1())
-                .child(
-                    div()
-                        .text_size(px(8.5))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.65))
-                        .child("⌘↵"),
-                )
                 .child(
                     div()
                         .id("composer-send")
@@ -1633,7 +1651,7 @@ fn composer(
                         )
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
                                 .child(format!("{branch} · {project} · workspace")),
@@ -1641,7 +1659,7 @@ fn composer(
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(8.5))
+                                .text_size(px(11.0))
                                 .text_color(if matches!(status, HarnessStatus::Failed(_)) {
                                     p.red
                                 } else {
@@ -1681,7 +1699,7 @@ fn attachment_button(
         .child(Icon::new(icon_name).size(px(11.5)).text_color(p.muted_fg))
         .child(
             div()
-                .text_size(px(8.5))
+                .text_size(px(11.0))
                 .text_color(p.muted_fg)
                 .child(label_owned),
         )
