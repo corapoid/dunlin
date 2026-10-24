@@ -1,6 +1,7 @@
 //! HTTP and WebSocket API for the relay.
 
 use std::collections::HashMap;
+use std::path::Path as FsPath;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -9,6 +10,8 @@ use axum::http::{HeaderName, HeaderValue, StatusCode, header::AUTHORIZATION, req
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use kestrel_workspace::fs as workspace_fs;
 use kestrel_workspace::git;
 use kestrel_workspace::search;
@@ -159,6 +162,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/fs/tree", get(fs_tree))
         .route("/v1/fs/file", get(fs_file).put(fs_write))
         .route("/v1/fs/create", post(fs_create))
+        .route("/v1/fs/upload", post(fs_upload))
         .route("/v1/fs/stat", get(fs_stat))
         .route("/v1/search", get(search_project))
         .route("/v1/git/status", get(git_status))
@@ -172,7 +176,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/git/push", post(git_push))
         .route("/v1/git/branches", get(git_branches))
         .route("/v1/git/switch", post(git_switch))
-        .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -456,6 +460,106 @@ async fn fs_stat(
     let project = state.project_for_user(&user.id, &query.project)?;
     let stat = run_blocking(move || workspace_fs::stat_file(&project.path, &query.path)).await?;
     Ok(Json(stat))
+}
+
+#[derive(Deserialize)]
+struct UploadRequest {
+    project: String,
+    name: String,
+    contents: String,
+}
+
+#[derive(Serialize)]
+struct UploadResponse {
+    path: String,
+}
+
+/// Store a locally attached file inside the project so the remote agent can
+/// read it. Attachments are namespaced under `.kestrel/attachments`.
+async fn fs_upload(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<UploadRequest>,
+) -> Result<Json<UploadResponse>, ApiError> {
+    const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let bytes = STANDARD
+        .decode(request.contents.as_bytes())
+        .map_err(|_| ApiError::bad_request("Attachment is not valid base64"))?;
+    if bytes.len() > MAX_UPLOAD_BYTES {
+        return Err(ApiError::bad_request("Attachment is larger than 8 MiB"));
+    }
+    let name = sanitize_attachment_name(&request.name);
+    let relative = format!(".kestrel/attachments/{}-{name}", uuid::Uuid::now_v7());
+    let full = FsPath::new(&project.path).join(&relative);
+    if let Some(parent) = full.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| ApiError::internal(format!("Could not store attachment: {error}")))?;
+    }
+    std::fs::write(&full, bytes)
+        .map_err(|error| ApiError::internal(format!("Could not store attachment: {error}")))?;
+    exclude_attachments_from_git(&project.path);
+    Ok(Json(UploadResponse { path: relative }))
+}
+
+/// Keep uploaded attachments out of the user's `git status` without touching a
+/// tracked `.gitignore`.
+fn exclude_attachments_from_git(project_path: &str) {
+    let Ok(output) = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["rev-parse", "--git-path", "info/exclude"])
+        .output()
+    else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        return;
+    }
+    let path = FsPath::new(&path);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        FsPath::new(project_path).join(path)
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if !existing.lines().any(|line| line.trim() == ".kestrel/") {
+        let mut next = existing;
+        if !next.is_empty() && !next.ends_with('\n') {
+            next.push('\n');
+        }
+        next.push_str(".kestrel/\n");
+        let _ = std::fs::write(path, next);
+    }
+}
+
+fn sanitize_attachment_name(name: &str) -> String {
+    let base = FsPath::new(name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("attachment");
+    let cleaned: String = base
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "attachment".into()
+    } else {
+        cleaned
+    }
 }
 
 #[derive(Deserialize)]

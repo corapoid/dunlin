@@ -16,6 +16,7 @@ kestrel-domain.workspace = true
 kestrel-agent.workspace = true
 kestrel-storage.workspace = true
 kestrel-workspace.workspace = true
+base64 = "0.22"
 ureq = { version = "2.12", features = ["json", "tls"] }
 uuid.workspace = true
 serde.workspace = true

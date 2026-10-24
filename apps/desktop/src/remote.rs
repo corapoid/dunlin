@@ -8,6 +8,8 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use kestrel_domain::RemoteProject;
 use kestrel_workspace::fs::{FileContents, FileStat};
 use kestrel_workspace::git::GitStatus;
@@ -361,6 +363,33 @@ impl RemoteWorkspace {
         ))
     }
 
+    /// Upload a local attachment into the remote project and return its
+    /// project-relative path.
+    pub fn upload_file(&self, local_path: &Path) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Uploaded {
+            path: String,
+        }
+        let bytes = std::fs::read(local_path)
+            .map_err(|error| format!("Could not read {}: {error}", local_path.display()))?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("Attachments must be smaller than 8 MiB".into());
+        }
+        let name = local_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("attachment");
+        let response: Uploaded = self.post(
+            "/v1/fs/upload",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "name": name,
+                "contents": STANDARD.encode(bytes),
+            }),
+        )?;
+        Ok(response.path)
+    }
+
     fn relative(&self, path: &str) -> String {
         Path::new(path)
             .strip_prefix(&self.project.path)
@@ -550,6 +579,13 @@ impl WorkspaceBackend {
                 workspace_fs::stat_file(root, &self.relative(root, path))
             }
             WorkspaceBackend::Remote(remote) => remote.stat_file(path),
+        }
+    }
+
+    pub fn upload_file(&self, path: &Path) -> Result<String, String> {
+        match self {
+            WorkspaceBackend::Local { .. } => Ok(path.to_string_lossy().to_string()),
+            WorkspaceBackend::Remote(remote) => remote.upload_file(path),
         }
     }
 

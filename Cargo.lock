@@ -3614,6 +3614,7 @@ dependencies = [
 name = "kestrel"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "gpui-kit",
  "kestrel-agent",
  "kestrel-domain",

@@ -2563,14 +2563,38 @@ impl KestrelApp {
                 && !paths.is_empty()
             {
                 this.update_in(cx, |this, window, cx| {
+                    let remote = this.project().is_remote();
+                    let backend = match this.backend() {
+                        Ok(backend) => backend,
+                        Err(error) => {
+                            this.set_notice(error, cx);
+                            return;
+                        }
+                    };
+                    let mut inserted = Vec::new();
+                    for path in &paths {
+                        match backend.upload_file(path) {
+                            Ok(uploaded) => {
+                                inserted.push(if remote {
+                                    uploaded
+                                } else {
+                                    display_path(&root, path)
+                                });
+                            }
+                            Err(error) => {
+                                this.set_notice(error, cx);
+                                return;
+                            }
+                        }
+                    }
                     let mut text = this.composer.read(cx).value().to_string();
                     if mention {
                         if !text.is_empty() && !text.ends_with(char::is_whitespace) {
                             text.push(' ');
                         }
-                        for path in &paths {
+                        for path in &inserted {
                             text.push('@');
-                            text.push_str(&display_path(&root, path));
+                            text.push_str(path);
                             text.push(' ');
                         }
                     } else {
@@ -2578,9 +2602,9 @@ impl KestrelApp {
                             text.push('\n');
                         }
                         text.push_str("Attached files:\n");
-                        for path in &paths {
+                        for path in &inserted {
                             text.push_str("- ");
-                            text.push_str(&display_path(&root, path));
+                            text.push_str(path);
                             text.push('\n');
                         }
                     }
@@ -2591,7 +2615,7 @@ impl KestrelApp {
                     this.notice = Some(format!(
                         "{} {}",
                         if mention { "Mentioned" } else { "Attached" },
-                        paths.len()
+                        inserted.len()
                     ));
                     cx.notify();
                 })

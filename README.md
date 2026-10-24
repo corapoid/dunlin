@@ -99,7 +99,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in **Settings → Remote** on macOS, or in the iOS app. A paired device receives its own token; revoke it with `kestrel-relay revoke <device-id>`.
 
-Remote projects support the full macOS surface: explorer, editor with save, search, source control, diffs, chat, permissions, graph and trace. The only difference from a local project is that files and the session live on the relay. A session can be opened on one device at a time; if another device is active, use **Take over session** in the session menu or the **Take over** button on iOS. ACP permissions are never auto-approved by the relay.
+Remote projects support the full macOS surface: explorer, editor with save, search, source control, diffs, chat, permissions, graph and trace. The only difference from a local project is that files and the session live on the relay. A session can be opened on one device at a time; if another device is active, use **Take over session** in the session menu or the **Take over** button on iOS. ACP permissions are never auto-approved by the relay. Composer attachments are uploaded to `.kestrel/attachments` on the relay and kept out of `git status` through `.git/info/exclude`.
 
 Users are isolated: each account sees only granted projects and its own sessions. All relay users currently share the OpenCode credentials installed on the server. Project grants are enforced by the relay API, not by an OS sandbox; run the relay for trusted users only.
 
