@@ -541,6 +541,7 @@ fn span_detail(
         .parent
         .as_ref()
         .and_then(|id| spans.iter().find(|candidate| &candidate.id == id));
+    let parent_index = parent.and_then(|p| spans.iter().position(|c| c.id == p.id));
     let children: Vec<&TraceSpan> = spans
         .iter()
         .filter(|candidate| candidate.parent.as_ref() == Some(&span.id))
@@ -702,6 +703,12 @@ fn span_detail(
                         .gap(px(5.))
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(index) = parent_index {
+                                this.selected_span = Some(index);
+                                cx.notify();
+                            }
+                        }))
                         .child(
                             Icon::new(span_icon(parent.kind))
                                 .size(px(10.5))
@@ -735,14 +742,24 @@ fn span_detail(
                 .child(format!("CHILDREN · {}", children.len())),
         );
         for child in children.iter().take(5) {
+            let child_index = spans.iter().position(|c| c.id == child.id);
             child_list = child_list.child(
                 div()
+                    .id(format!("trace-child:{}", child.id))
                     .h(px(23.))
                     .px(px(5.))
                     .rounded(px(4.))
                     .flex()
                     .items_center()
                     .gap(px(5.))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(index) = child_index {
+                            this.selected_span = Some(index);
+                            cx.notify();
+                        }
+                    }))
                     .child(
                         Icon::new(span_icon(child.kind))
                             .size(px(9.5))
