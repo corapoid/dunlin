@@ -31,9 +31,10 @@ pub(crate) fn render(
     let footer = usage_footer(this, cx);
     let menu = this.project_menu_open.then(|| project_menu(this, cx));
 
+    let compact = _window.viewport_size().width < px(1050.);
     let mut root = div()
         .relative()
-        .w(px(278.))
+        .w(px(if compact { 232. } else { 278. }))
         .h_full()
         .flex_shrink_0()
         .flex()
@@ -66,6 +67,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
     let soft = tone_soft(&p, project.tone);
     let monogram = monogram(&project.name);
     let running = this.running_sessions_for(&project.id);
+    let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
 
     div()
         .id("project-switcher")
@@ -112,11 +114,24 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .gap(px(1.))
                 .child(
                     div()
-                        .text_size(px(12.5))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(p.fg)
-                        .truncate()
-                        .child(project.name.clone()),
+                        .flex()
+                        .items_center()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(p.fg)
+                                .truncate()
+                                .child(project.name.clone()),
+                        )
+                        .when(missing, |this| {
+                            this.child(
+                                Icon::new(IconName::TriangleAlert)
+                                    .size(px(10.))
+                                    .text_color(p.amber),
+                            )
+                        }),
                 )
                 .child(
                     div()
@@ -550,6 +565,7 @@ fn project_row(
     let branch = project.branch.clone().unwrap_or_else(|| "no branch".into());
     let running = this.running_sessions_for(&project.id);
     let pinned = project.pinned;
+    let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
     let hover_group = format!("project-row-hover-{index}");
     let editing = this.project_group_editor == Some(index);
 
@@ -608,6 +624,13 @@ fn project_row(
                         )
                         .when(pinned, |this| {
                             this.child(Icon::new(IconName::Pin).size(px(9.)).text_color(p.muted_fg))
+                        })
+                        .when(missing, |this| {
+                            this.child(
+                                Icon::new(IconName::TriangleAlert)
+                                    .size(px(10.))
+                                    .text_color(p.amber),
+                            )
                         }),
                 )
                 .child(
@@ -2046,6 +2069,7 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
     let p = palette(cx);
     let trusted = this.project().trusted;
     let pinned = this.project().pinned;
+    let missing = !this.project().is_remote() && !Path::new(&this.project().path).is_dir();
     let mut menu = div()
         .id("project-menu")
         .absolute()
@@ -2359,6 +2383,36 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         }),
                 ),
         )
+        .when(missing, |this| {
+            this.child(
+                div()
+                    .id("project-locate")
+                    .h(px(28.))
+                    .px(px(7.))
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .gap(px(7.))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.project_menu_open = false;
+                        this.locate_project(cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::FolderSearch)
+                            .size(px(12.))
+                            .text_color(p.amber),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(11.0))
+                            .text_color(p.fg)
+                            .child("Locate folder…"),
+                    ),
+            )
+        })
         .child(
             div()
                 .id("project-reveal")

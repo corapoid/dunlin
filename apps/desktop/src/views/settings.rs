@@ -427,6 +427,19 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                 ))
                 .child(divider(&p))
                 .child(setting_row(
+                    "Desktop notifications",
+                    "Show a macOS notification when a turn finishes or a permission is waiting.",
+                    toggle_switch(
+                        "notifications",
+                        this.notifications_enabled,
+                        |this| this.notifications_enabled = !this.notifications_enabled,
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                ))
+                .child(divider(&p))
+                .child(setting_row(
                     "Show reasoning by default",
                     "Expand the model's thinking block in chat.",
                     toggle_switch(

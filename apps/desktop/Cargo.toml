@@ -17,6 +17,11 @@ kestrel-agent.workspace = true
 kestrel-storage.workspace = true
 kestrel-workspace.workspace = true
 kestrel-usage.workspace = true
+notify.workspace = true
+notify-rust.workspace = true
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
 base64 = "0.22"
 ureq = { version = "2.12", features = ["json", "tls"] }
 uuid.workspace = true

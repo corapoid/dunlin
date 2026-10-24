@@ -13,7 +13,7 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{demo, harness, logging, projection, remote, views, window_state};
+use crate::{demo, harness, logging, projection, remote, views, watch, window_state};
 use kestrel_workspace::tree::FileTree;
 use kestrel_workspace::{git, search};
 
@@ -101,6 +101,7 @@ pub(crate) struct StoredSettings {
     pub view: MainView,
     pub default_view: MainView,
     pub section: SidebarSection,
+    pub notifications_enabled: bool,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
     pub remote_hosts: Vec<remote::RemoteHost>,
@@ -118,6 +119,7 @@ impl Default for StoredSettings {
             restore_session: true,
             word_wrap: false,
             autosave: false,
+            notifications_enabled: true,
             code_font_size: 13.0,
             allow_network: false,
             reasoning_open: false,
@@ -220,6 +222,21 @@ pub(crate) struct GroupPrompt {
     pub assign_project: Option<usize>,
 }
 
+/// A short-lived action shown in the corner. The first use is undoing a group
+/// deletion without reviving a whole session/project history.
+pub(crate) struct Toast {
+    pub message: String,
+    pub action_label: String,
+    pub action: ToastAction,
+}
+
+pub(crate) enum ToastAction {
+    RestoreGroup {
+        group: ProjectGroup,
+        project_ids: Vec<String>,
+    },
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -295,6 +312,7 @@ pub(crate) struct KestrelApp {
     pub collapsed_project_groups: Vec<String>,
     pub project_group_editor: Option<usize>,
     pub group_prompt: Option<GroupPrompt>,
+    pub toast: Option<Toast>,
     pub group_input: Entity<InputState>,
     _group_subscription: Subscription,
     pub selected_project: usize,
@@ -308,6 +326,7 @@ pub(crate) struct KestrelApp {
     pub usage_loading: bool,
     pub composer: Entity<TextareaState>,
     _composer_subscription: Subscription,
+    pub queue_open: bool,
     pub search_input: Entity<InputState>,
     _search_subscription: Subscription,
 
@@ -334,6 +353,7 @@ pub(crate) struct KestrelApp {
     pub restore_session: bool,
     pub word_wrap: bool,
     pub autosave: bool,
+    pub notifications_enabled: bool,
     pub code_font_size: f32,
     pub allow_network: bool,
     pub remote_hosts: Vec<remote::RemoteHost>,
@@ -359,7 +379,10 @@ pub(crate) struct KestrelApp {
     pub editor_mtime: Option<u64>,
     pub autosave_generation: u64,
     pub editor_conflict: Option<EditorConflict>,
+    pub app_active: bool,
+    last_dock_badge: Option<String>,
     last_window_geometry: Option<window_state::WindowGeometry>,
+    _activation_subscription: Option<Subscription>,
     _window_bounds_subscription: Option<Subscription>,
     pub pending_editor: Option<PendingEditor>,
     pub selected_span: Option<usize>,
@@ -372,6 +395,8 @@ pub(crate) struct KestrelApp {
     pub trace_filter: TraceFilter,
 
     pub file_tree: FileTree,
+    file_watcher: Option<watch::ProjectWatcher>,
+    watcher_root: Option<String>,
     pub search_hits: Vec<search::SearchHit>,
     pub search_query: String,
     pub search_loading: bool,
@@ -613,6 +638,7 @@ impl KestrelApp {
             collapsed_project_groups: stored.collapsed_project_groups.clone(),
             project_group_editor: None,
             group_prompt: None,
+            toast: None,
             group_input,
             _group_subscription: group_subscription,
             selected_project: 0,
@@ -630,6 +656,7 @@ impl KestrelApp {
             usage_loading: false,
             composer,
             _composer_subscription: composer_subscription,
+            queue_open: false,
             search_input,
             _search_subscription: search_subscription,
             focus_handle,
@@ -654,6 +681,7 @@ impl KestrelApp {
             restore_session: stored.restore_session,
             word_wrap: stored.word_wrap,
             autosave: stored.autosave,
+            notifications_enabled: stored.notifications_enabled,
             code_font_size: stored.code_font_size,
             allow_network: stored.allow_network,
             remote_hosts: stored.remote_hosts.clone(),
@@ -678,7 +706,10 @@ impl KestrelApp {
             editor_mtime: None,
             autosave_generation: 0,
             editor_conflict: None,
+            app_active: true,
+            last_dock_badge: None,
             last_window_geometry: None,
+            _activation_subscription: None,
             _window_bounds_subscription: None,
             pending_editor: None,
             selected_span: None,
@@ -690,6 +721,8 @@ impl KestrelApp {
             trace_zoom: 1.0,
             trace_filter: TraceFilter::All,
             file_tree,
+            file_watcher: None,
+            watcher_root: None,
             search_hits,
             search_query: String::new(),
             search_loading: false,
@@ -735,9 +768,14 @@ impl KestrelApp {
             }
         }
 
-        if app.auto_connect && !app.harness.status.is_busy() && !app.remote_sessions_loading {
+        if app.auto_connect
+            && !app.harness.status.is_busy()
+            && !app.remote_sessions_loading
+            && !app.project_path_missing()
+        {
             app.connect_harness(cx);
         }
+        app.restart_file_watcher();
         if !restored_project {
             app.refresh_git_status(cx);
         }
@@ -749,7 +787,10 @@ impl KestrelApp {
                     .timer(std::time::Duration::from_secs(1))
                     .await;
                 if this
-                    .update(cx, |this, cx| this.check_open_file(cx))
+                    .update(cx, |this, cx| {
+                        this.check_open_file(cx);
+                        this.poll_file_watcher(cx);
+                    })
                     .is_err()
                 {
                     break;
@@ -765,6 +806,11 @@ impl KestrelApp {
                     window_state::save(geometry);
                 }
             }));
+        app.app_active = window.is_window_active();
+        app._activation_subscription =
+            Some(cx.observe_window_activation(window, |this, window, _| {
+                this.app_active = window.is_window_active();
+            }));
 
         if let Ok(prompt) = std::env::var("KESTREL_AUTOPROMPT")
             && !prompt.trim().is_empty()
@@ -779,6 +825,11 @@ impl KestrelApp {
 
     pub(crate) fn project(&self) -> &Project {
         &self.projects[self.selected_project]
+    }
+
+    pub(crate) fn project_path_missing(&self) -> bool {
+        let project = self.project();
+        !project.is_remote() && !Path::new(&project.path).is_dir()
     }
 
     pub(crate) fn session(&self) -> &SessionSummary {
@@ -1522,6 +1573,55 @@ impl KestrelApp {
         .detach();
     }
 
+    /// Re-point a local project whose folder was moved or deleted.
+    pub(crate) fn locate_project(&mut self, cx: &mut Context<Self>) {
+        let index = self.selected_project;
+        let receiver = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Locate the project folder".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = receiver.await
+                && let Some(path) = paths.into_iter().next()
+            {
+                this.update(cx, |this, cx| this.relocate_project(index, path, cx))
+                    .ok();
+            }
+        })
+        .detach();
+    }
+
+    fn relocate_project(&mut self, index: usize, path: PathBuf, cx: &mut Context<Self>) {
+        let path = path.to_string_lossy().trim_end_matches('/').to_string();
+        if !Path::new(&path).is_dir() {
+            self.set_notice("That path is not a folder", cx);
+            return;
+        }
+        let Some(project) = self.projects.get_mut(index) else {
+            return;
+        };
+        project.path = path.clone();
+        project.branch = git_branch(&path);
+        let stored = project.clone();
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&stored);
+        }
+        let active = index == self.selected_project;
+        self.notice = Some(format!("Located {}", stored.name));
+        self.persist_settings(cx);
+        if active {
+            self.restart_file_watcher();
+            self.refresh_file_tree(cx);
+            self.refresh_git_status(cx);
+            if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            }
+        }
+        cx.notify();
+    }
+
     pub(crate) fn add_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let path = path.to_string_lossy().trim_end_matches('/').to_string();
         if let Some(index) = self.projects.iter().position(|project| {
@@ -1682,6 +1782,20 @@ impl KestrelApp {
     }
 
     pub(crate) fn delete_project_group(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(group) = self
+            .project_groups
+            .iter()
+            .find(|group| group.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        let project_ids: Vec<String> = self
+            .projects
+            .iter()
+            .filter(|project| project.group_id.as_deref() == Some(id))
+            .map(|project| project.id.clone())
+            .collect();
         if let Some(store) = &self.store {
             let _ = store.delete_project_group(id);
         }
@@ -1698,6 +1812,48 @@ impl KestrelApp {
         self.group_prompt = None;
         self.persist_settings(cx);
         self.notice = Some("Deleted the group · projects are now ungrouped".into());
+        self.toast = Some(Toast {
+            message: format!("Deleted group {}", group.name),
+            action_label: "Undo".into(),
+            action: ToastAction::RestoreGroup { group, project_ids },
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn dismiss_toast(&mut self, cx: &mut Context<Self>) {
+        self.toast = None;
+        cx.notify();
+    }
+
+    pub(crate) fn apply_toast(&mut self, cx: &mut Context<Self>) {
+        let Some(toast) = self.toast.take() else {
+            return;
+        };
+        match toast.action {
+            ToastAction::RestoreGroup { group, project_ids } => {
+                if !self
+                    .project_groups
+                    .iter()
+                    .any(|candidate| candidate.id == group.id)
+                {
+                    self.project_groups.push(group.clone());
+                }
+                if let Some(store) = &self.store {
+                    let _ = store.upsert_project_group(&group);
+                }
+                for project in &mut self.projects {
+                    if project_ids.iter().any(|id| id == &project.id) {
+                        project.group_id = Some(group.id.clone());
+                        if let Some(store) = &self.store {
+                            let _ = store.upsert_project(&*project);
+                        }
+                    }
+                }
+                self.collapsed_project_groups.retain(|id| id != &group.id);
+                self.notice = Some(format!("Restored group {}", group.name));
+            }
+        }
+        self.persist_settings(cx);
         cx.notify();
     }
 
@@ -2318,6 +2474,13 @@ impl KestrelApp {
             }
         }
 
+        if self.queue_open && keystroke.key.as_str() == "escape" {
+            self.queue_open = false;
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+
         if self.pending_delete.is_some() {
             match keystroke.key.as_str() {
                 "escape" => self.cancel_delete(cx),
@@ -2559,6 +2722,7 @@ impl KestrelApp {
         self.project_menu_open = false;
         self.session_menu_open = false;
         let project = self.projects[index].clone();
+        self.restart_file_watcher();
         let path = project.path.clone();
         self.file_tree = if project.is_remote() {
             FileTree {
@@ -2660,13 +2824,22 @@ impl KestrelApp {
         self.harness.commands.clear();
 
         self.notice = Some(format!("Switched to {}", project.name));
-        if self.auto_connect {
+        let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
+        if missing {
+            self.disconnect_harness(cx);
+            self.notice = Some(format!(
+                "{} is missing · use Locate folder… in the project menu",
+                project.name
+            ));
+        } else if self.auto_connect {
             self.connect_harness(cx);
         } else {
             self.disconnect_harness(cx);
             self.notice = Some(format!("Switched to {}", project.name));
         }
-        self.refresh_git_status(cx);
+        if !missing {
+            self.refresh_git_status(cx);
+        }
         self.refresh_usage(cx);
         self.persist_settings(cx);
         cx.notify();
@@ -2707,6 +2880,35 @@ impl KestrelApp {
             .ok();
         })
         .detach();
+    }
+
+    /// Rebuild the debounced file watcher after a project switch.
+    pub(crate) fn restart_file_watcher(&mut self) {
+        let project = self.project().clone();
+        if self.watcher_root.as_deref() == Some(project.path.as_str())
+            && (self.file_watcher.is_some() || project.is_remote())
+        {
+            return;
+        }
+        self.file_watcher = None;
+        self.watcher_root = Some(project.path.clone());
+        if !project.is_remote() {
+            self.file_watcher = watch::ProjectWatcher::start(Path::new(&project.path));
+        }
+    }
+
+    /// Poll the watcher once per second and refresh the surfaces that depend on
+    /// the working tree. The watcher already debounces bursts.
+    pub(crate) fn poll_file_watcher(&mut self, cx: &mut Context<Self>) {
+        let changed = self
+            .file_watcher
+            .as_mut()
+            .map(watch::ProjectWatcher::poll)
+            .unwrap_or(false);
+        if changed {
+            self.refresh_file_tree(cx);
+            self.refresh_git_status(cx);
+        }
     }
 
     /// Read branch and working-tree state off the UI thread.
@@ -3144,6 +3346,7 @@ impl KestrelApp {
             restore_session: self.restore_session,
             word_wrap: self.word_wrap,
             autosave: self.autosave,
+            notifications_enabled: self.notifications_enabled,
             code_font_size: self.code_font_size,
             allow_network: self.allow_network,
             reasoning_open: self.reasoning_open,
@@ -5099,6 +5302,82 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    fn toast_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(toast) = self.toast.as_ref() else {
+            return div().into_any_element();
+        };
+        let message = toast.message.clone();
+        let action_label = toast.action_label.clone();
+
+        div()
+            .absolute()
+            .top(px(54.))
+            .right(px(14.))
+            .w(px(320.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(p.border_strong)
+            .bg(p.card)
+            .p(px(9.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .size(px(22.))
+                    .flex_shrink_0()
+                    .rounded(px(6.))
+                    .bg(p.green_soft)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(Icon::new(IconName::Check).size(px(12.)).text_color(p.green)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.))
+                    .text_size(px(11.5))
+                    .text_color(p.fg)
+                    .child(message),
+            )
+            .child(
+                div()
+                    .id("toast-action")
+                    .h(px(24.))
+                    .px(px(7.))
+                    .rounded(px(5.))
+                    .bg(p.fg)
+                    .flex()
+                    .items_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.opacity(0.9))
+                    .on_click(cx.listener(|this, _, _, cx| this.apply_toast(cx)))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(p.bg)
+                            .child(action_label),
+                    ),
+            )
+            .child(
+                div()
+                    .id("toast-dismiss")
+                    .size(px(22.))
+                    .rounded(px(4.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| this.dismiss_toast(cx)))
+                    .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+            )
+            .into_any_element()
+    }
+
     fn group_modal(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let Some(prompt) = self.group_prompt.as_ref() else {
@@ -5716,6 +5995,16 @@ impl Render for KestrelApp {
             self.editor_stale = false;
             self.reload_open_editor(window, cx);
         }
+        let waiting = self
+            .all_sessions
+            .iter()
+            .filter(|session| session.status == SessionStatus::Waiting)
+            .count();
+        let badge = (waiting > 0).then(|| waiting.to_string());
+        if self.last_dock_badge != badge {
+            crate::platform::set_dock_badge(badge.as_deref());
+            self.last_dock_badge = badge;
+        }
         let p = palette(cx);
         let titlebar = views::titlebar::render(self, window, cx);
         let rail = self.rail(cx);
@@ -5743,6 +6032,7 @@ impl Render for KestrelApp {
             .as_ref()
             .map(|_| self.editor_conflict_modal(cx));
         let group_modal = self.group_prompt.as_ref().map(|_| self.group_modal(cx));
+        let toast = self.toast.as_ref().map(|_| self.toast_overlay(cx));
 
         div()
             .relative()
@@ -5787,6 +6077,7 @@ impl Render for KestrelApp {
             .children(editor_prompt)
             .children(editor_conflict)
             .children(group_modal)
+            .children(toast)
     }
 }
 

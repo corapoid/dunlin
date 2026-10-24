@@ -13,10 +13,11 @@ use crate::app::KestrelApp;
 
 pub(crate) fn render(
     this: &mut KestrelApp,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    let compact = window.viewport_size().width < px(1050.);
     let project = this.project().clone();
     let session = this.session().clone();
     let running = if session.status == kestrel_domain::SessionStatus::Running {
@@ -153,17 +154,19 @@ pub(crate) fn render(
                     .text_color(color)
                     .child(view.label()),
             )
-            .child(
-                div()
-                    .text_size(px(11.0))
-                    .font_family("Geist Mono")
-                    .text_color(if active {
-                        p.muted_fg
-                    } else {
-                        p.muted_fg.opacity(0.55)
-                    })
-                    .child(hint),
-            );
+            .when(!compact, |this| {
+                this.child(
+                    div()
+                        .text_size(px(11.0))
+                        .font_family("Geist Mono")
+                        .text_color(if active {
+                            p.muted_fg
+                        } else {
+                            p.muted_fg.opacity(0.55)
+                        })
+                        .child(hint),
+                )
+            });
 
         let tab = if active {
             let card = p.card;
@@ -230,13 +233,15 @@ pub(crate) fn render(
                         .size(px(12.5))
                         .text_color(p.muted_fg),
                 )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(p.muted_fg)
-                        .child("Search"),
-                )
-                .child(kbd("⌘K", p)),
+                .when(!compact, |this| {
+                    this.child(
+                        div()
+                            .text_size(px(12.0))
+                            .text_color(p.muted_fg)
+                            .child("Search"),
+                    )
+                })
+                .when(!compact, |this| this.child(kbd("⌘K", p))),
         )
         .child(
             div()

@@ -4,9 +4,11 @@ mod app;
 mod demo;
 mod harness;
 mod logging;
+mod platform;
 mod projection;
 mod remote;
 mod views;
+mod watch;
 mod window_state;
 
 use app::KestrelApp;

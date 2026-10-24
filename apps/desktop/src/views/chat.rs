@@ -10,7 +10,7 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 
 use crate::app::{KestrelApp, SettingsTab, format_duration, format_ms, format_tokens, tool_icon};
-use crate::harness::{ChatItem, HarnessStatus};
+use crate::harness::{ChatItem, HarnessStatus, QueuedPrompt};
 
 pub(crate) fn render(
     this: &mut KestrelApp,
@@ -269,7 +269,7 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         let mut index = 0;
         while index < items.len() {
             if let ChatItem::User { text, .. } = &items[index] {
-                inner = inner.child(user_message(text, &p));
+                inner = inner.child(user_message(index, text, cx, &p));
                 index += 1;
                 continue;
             }
@@ -550,13 +550,46 @@ fn agent_group(
                 } else {
                     text.clone()
                 };
-                body = body.child(
-                    div()
-                        .text_size(px(13.0))
-                        .line_height(relative(1.62))
-                        .text_color(p.fg.opacity(0.92))
-                        .child(content),
-                );
+                let copy_text = text.clone();
+                let group = format!("agent-text-{index}");
+                let mut text_block = div()
+                    .id(("agent-text", index))
+                    .group(group.clone())
+                    .relative()
+                    .pr(px(24.))
+                    .text_size(px(13.0))
+                    .line_height(relative(1.62))
+                    .text_color(p.fg.opacity(0.92))
+                    .child(content);
+                if !*streaming {
+                    text_block = text_block.child(
+                        div()
+                            .id(("agent-copy", index))
+                            .absolute()
+                            .top(px(0.))
+                            .right(px(0.))
+                            .size(px(21.))
+                            .rounded(px(4.))
+                            .bg(p.bg)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .opacity(0.0)
+                            .group_hover(group, move |style| style.opacity(1.0))
+                            .hover(move |style| style.bg(p.hover))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
+                                this.set_notice("Copied the response", cx);
+                            }))
+                            .child(
+                                Icon::new(IconName::Copy)
+                                    .size(px(11.))
+                                    .text_color(p.muted_fg),
+                            ),
+                    );
+                }
+                body = body.child(text_block);
             }
             ChatItem::Thought { text, .. } => {
                 body = body.child(thought_card(text, reasoning_open, cx, p));
@@ -601,8 +634,15 @@ fn agent_group(
         .into_any_element()
 }
 
-fn user_message(text: &str, p: &Palette) -> AnyElement {
+fn user_message(index: usize, text: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+    let copy_text = text.to_string();
+    let retry_text = text.to_string();
+    let group = format!("user-message-{index}");
+    let action_group = group.clone();
+
     div()
+        .id(("user-message", index))
+        .group(group)
         .w_full()
         .flex()
         .justify_end()
@@ -626,13 +666,63 @@ fn user_message(text: &str, p: &Palette) -> AnyElement {
                         .child(text.to_string()),
                 )
                 .child(
-                    div().flex().justify_end().child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family("Geist Mono")
-                            .text_color(p.muted_fg.opacity(0.75))
-                            .child("You"),
-                    ),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg.opacity(0.75))
+                                .child("You"),
+                        )
+                        .child(div().flex_1())
+                        .child(
+                            div()
+                                .id(("user-copy", index))
+                                .size(px(20.))
+                                .rounded(px(4.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .opacity(0.0)
+                                .group_hover(action_group.clone(), move |style| style.opacity(1.0))
+                                .hover(move |style| style.bg(p.card))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        copy_text.clone(),
+                                    ));
+                                    this.set_notice("Copied the prompt", cx);
+                                }))
+                                .child(
+                                    Icon::new(IconName::Copy)
+                                        .size(px(11.))
+                                        .text_color(p.muted_fg),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id(("user-retry", index))
+                                .size(px(20.))
+                                .rounded(px(4.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .opacity(0.0)
+                                .group_hover(action_group, move |style| style.opacity(1.0))
+                                .hover(move |style| style.bg(p.card))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.retry_prompt(retry_text.clone(), window, cx);
+                                }))
+                                .child(
+                                    Icon::new(IconName::RotateCcw)
+                                        .size(px(11.))
+                                        .text_color(p.muted_fg),
+                                ),
+                        ),
                 ),
         )
         .into_any_element()
@@ -1409,6 +1499,7 @@ fn composer(
     let project = this.project().name.clone();
     let command_count = this.harness.commands.len();
     let queued = this.harness.queued_prompts();
+    let queue_open = this.queue_open;
 
     let input = Textarea::new(&this.composer)
         .appearance(false)
@@ -1524,27 +1615,34 @@ fn composer(
                         ),
                 )
                 .child(div().flex_1())
-                .when(queued > 0, |this| {
+                .when(!queued.is_empty(), |this| {
                     this.child(
                         div()
+                            .id("composer-queue")
                             .h(px(20.))
                             .px(px(6.))
                             .rounded(px(5.))
-                            .bg(p.amber_soft)
+                            .bg(if queue_open { p.amber } else { p.amber_soft })
                             .flex()
                             .items_center()
                             .gap(px(4.))
+                            .cursor_pointer()
+                            .hover(move |style| style.opacity(0.9))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.queue_open = !this.queue_open;
+                                cx.notify();
+                            }))
                             .child(
                                 Icon::new(IconName::Clock3)
                                     .size(px(10.))
-                                    .text_color(p.amber),
+                                    .text_color(if queue_open { p.bg } else { p.amber }),
                             )
                             .child(
                                 div()
                                     .text_size(px(11.0))
                                     .font_family("Geist Mono")
-                                    .text_color(p.amber)
-                                    .child(format!("{queued} queued")),
+                                    .text_color(if queue_open { p.bg } else { p.amber })
+                                    .child(format!("{} queued", queued.len())),
                             ),
                     )
                 })
@@ -1637,6 +1735,9 @@ fn composer(
                 .flex()
                 .flex_col()
                 .gap(px(5.))
+                .when(queue_open && !queued.is_empty(), |this| {
+                    this.child(queue_panel(&queued, cx, &p))
+                })
                 .child(card)
                 .child(
                     div()
@@ -1672,6 +1773,197 @@ fn composer(
                         ),
                 ),
         )
+        .into_any_element()
+}
+
+fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+    let mut rows = div()
+        .id("prompt-queue-rows")
+        .max_h(px(158.))
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .gap(px(2.));
+
+    for (index, prompt) in queued.iter().enumerate() {
+        let id = prompt.id;
+        let text = prompt.text.clone();
+        let first = index == 0;
+        let last = index + 1 == queued.len();
+
+        rows = rows.child(
+            div()
+                .id(("queued-prompt", index))
+                .min_h(px(30.))
+                .px(px(6.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .hover(move |style| style.bg(p.hover))
+                .child(
+                    div()
+                        .w(px(16.))
+                        .flex_shrink_0()
+                        .text_size(px(10.0))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.6))
+                        .child(format!("{}", index + 1)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .truncate()
+                        .text_size(px(11.0))
+                        .text_color(p.fg.opacity(0.85))
+                        .child(text),
+                )
+                .child(
+                    div()
+                        .id(("queued-up", index))
+                        .size(px(19.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .when(!first, |this| this.hover(move |style| style.bg(p.muted)))
+                        .when(first, |this| this.opacity(0.3))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.reorder_queued_prompt(id, -1, cx);
+                        }))
+                        .child(
+                            Icon::new(IconName::ChevronUp)
+                                .size(px(10.5))
+                                .text_color(p.muted_fg),
+                        ),
+                )
+                .child(
+                    div()
+                        .id(("queued-down", index))
+                        .size(px(19.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .when(!last, |this| this.hover(move |style| style.bg(p.muted)))
+                        .when(last, |this| this.opacity(0.3))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.reorder_queued_prompt(id, 1, cx);
+                        }))
+                        .child(
+                            Icon::new(IconName::ChevronDown)
+                                .size(px(10.5))
+                                .text_color(p.muted_fg),
+                        ),
+                )
+                .child(
+                    div()
+                        .id(("queued-edit", index))
+                        .size(px(19.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.muted))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.edit_queued_prompt(id, window, cx);
+                        }))
+                        .child(
+                            Icon::new(IconName::Pencil)
+                                .size(px(10.5))
+                                .text_color(p.muted_fg),
+                        ),
+                )
+                .child(
+                    div()
+                        .id(("queued-remove", index))
+                        .size(px(19.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.red_soft))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remove_queued_prompt(id, cx);
+                        }))
+                        .child(Icon::new(IconName::X).size(px(10.5)).text_color(p.red)),
+                ),
+        );
+    }
+
+    div()
+        .w_full()
+        .rounded(px(10.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .p(px(7.))
+        .flex()
+        .flex_col()
+        .gap(px(4.))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child("PROMPT QUEUE"),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.6))
+                        .child(queued.len().to_string()),
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id("queue-clear")
+                        .h(px(20.))
+                        .px(px(6.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.red_soft))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.clear_queued_prompts(cx);
+                        }))
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(p.muted_fg)
+                                .child("Clear"),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("queue-close")
+                        .size(px(20.))
+                        .rounded(px(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.hover))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.queue_open = false;
+                            cx.notify();
+                        }))
+                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                ),
+        )
+        .child(rows)
         .into_any_element()
 }
 

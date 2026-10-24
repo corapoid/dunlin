@@ -1,3 +1,4 @@
+pub mod scale;
 pub mod theme;
 mod widgets;
 

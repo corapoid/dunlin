@@ -175,6 +175,15 @@ pub(crate) struct HarnessUsage {
     pub size: u64,
 }
 
+/// A prompt waiting for the current turn to finish. The id is stable so the
+/// queue panel can edit, remove and reorder entries without relying on text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct QueuedPrompt {
+    pub id: u64,
+    pub text: String,
+    pub created_at_ms: u64,
+}
+
 impl HarnessUsage {
     pub(crate) fn percent(&self) -> f32 {
         if self.size == 0 {
@@ -194,7 +203,8 @@ pub(crate) struct HarnessState {
     pub commands: Vec<String>,
     pub running: bool,
     pub session_id: Option<String>,
-    pending_prompts: VecDeque<String>,
+    pending_prompts: VecDeque<QueuedPrompt>,
+    next_prompt_id: u64,
     prompt_sent: bool,
     generation: u64,
     pub(crate) started_tools: HashMap<String, Instant>,
@@ -213,6 +223,7 @@ impl Default for HarnessState {
             running: false,
             session_id: None,
             pending_prompts: VecDeque::new(),
+            next_prompt_id: 0,
             prompt_sent: false,
             generation: 0,
             started_tools: HashMap::new(),
@@ -222,8 +233,54 @@ impl Default for HarnessState {
 }
 
 impl HarnessState {
-    pub(crate) fn queued_prompts(&self) -> usize {
-        self.pending_prompts.len()
+    pub(crate) fn queued_prompts(&self) -> Vec<QueuedPrompt> {
+        self.pending_prompts.iter().cloned().collect()
+    }
+
+    pub(crate) fn remove_queued_prompt(&mut self, id: u64) -> Option<QueuedPrompt> {
+        self.pending_prompts
+            .iter()
+            .position(|prompt| prompt.id == id)
+            .and_then(|index| self.pending_prompts.remove(index))
+    }
+
+    pub(crate) fn move_queued_prompt(&mut self, id: u64, delta: isize) -> bool {
+        let Some(index) = self
+            .pending_prompts
+            .iter()
+            .position(|prompt| prompt.id == id)
+        else {
+            return false;
+        };
+        let target = (index as isize + delta)
+            .clamp(0, self.pending_prompts.len().saturating_sub(1) as isize)
+            as usize;
+        if target == index {
+            return false;
+        }
+        let prompt = match self.pending_prompts.remove(index) {
+            Some(prompt) => prompt,
+            None => return false,
+        };
+        self.pending_prompts.insert(target, prompt);
+        true
+    }
+
+    fn enqueue_prompt(&mut self, text: String) -> QueuedPrompt {
+        self.next_prompt_id = self.next_prompt_id.wrapping_add(1);
+        let prompt = QueuedPrompt {
+            id: self.next_prompt_id,
+            text,
+            created_at_ms: now_ms(),
+        };
+        self.pending_prompts.push_back(prompt.clone());
+        prompt
+    }
+
+    pub(crate) fn clear_queued_prompts(&mut self) -> usize {
+        let count = self.pending_prompts.len();
+        self.pending_prompts.clear();
+        count
     }
 }
 
@@ -391,6 +448,64 @@ impl KestrelApp {
         cx.notify();
     }
 
+    pub(crate) fn reorder_queued_prompt(&mut self, id: u64, delta: isize, cx: &mut Context<Self>) {
+        if self.harness.move_queued_prompt(id, delta) {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn remove_queued_prompt(&mut self, id: u64, cx: &mut Context<Self>) {
+        if self.harness.remove_queued_prompt(id).is_some() {
+            if self.harness.queued_prompts().is_empty() {
+                self.queue_open = false;
+            }
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn clear_queued_prompts(&mut self, cx: &mut Context<Self>) {
+        let count = self.harness.clear_queued_prompts();
+        if count > 0 {
+            self.queue_open = false;
+            self.notice = Some(format!(
+                "Cleared {count} queued {}",
+                if count == 1 { "prompt" } else { "prompts" }
+            ));
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn edit_queued_prompt(
+        &mut self,
+        id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(prompt) = self.harness.remove_queued_prompt(id) else {
+            return;
+        };
+        self.composer.update(cx, |state, cx| {
+            state.set_value(prompt.text, window, cx);
+            state.focus(window, cx);
+        });
+        self.queue_open = false;
+        cx.notify();
+    }
+
+    /// Re-run a previous user prompt as a new turn.
+    pub(crate) fn retry_prompt(
+        &mut self,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.composer.update(cx, |state, cx| {
+            state.set_value(text, window, cx);
+            state.focus(window, cx);
+        });
+        self.send_prompt(window, cx);
+    }
+
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
         let title = session_title(&text);
@@ -404,7 +519,7 @@ impl KestrelApp {
         if !was_running {
             self.harness.prompt_sent = false;
         }
-        self.harness.pending_prompts.push_back(text);
+        self.harness.enqueue_prompt(text);
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
             session.summary = summary;
@@ -577,6 +692,15 @@ impl KestrelApp {
         self.harness.session_id.as_deref() == Some(session_id)
     }
 
+    /// Notify only when the window is in the background and the user kept
+    /// desktop notifications enabled. The Dock badge is updated separately so
+    /// it stays visible while the app is active too.
+    fn notify_if_background(&self, title: &str, body: &str) {
+        if self.notifications_enabled && !self.app_active {
+            crate::platform::notify(title, body);
+        }
+    }
+
     /// Rescan the explorer and flag a clean editor for reload after a turn.
     fn refresh_workspace_after_turn(&mut self, cx: &mut Context<Self>) {
         self.refresh_file_tree(cx);
@@ -587,9 +711,10 @@ impl KestrelApp {
         if self.harness.prompt_sent || self.harness.session_id.is_none() {
             return;
         }
-        let Some(text) = self.harness.pending_prompts.pop_front() else {
+        let Some(prompt) = self.harness.pending_prompts.pop_front() else {
             return;
         };
+        let text = prompt.text;
         let title = session_title(&text);
         self.update_active_session(|session| {
             if session.title == "New session" {
@@ -687,7 +812,12 @@ impl KestrelApp {
                 options,
             } => {
                 if self.is_current_session(&session_id) {
-                    self.handle_permission(request_id, title, options);
+                    let session_title = self.session().title.clone();
+                    self.handle_permission(request_id, title.clone(), options);
+                    self.notify_if_background(
+                        "Permission requested",
+                        &format!("{title} · {session_title}"),
+                    );
                 } else if let Some(harness) = self.harness.harness.as_ref() {
                     // A prompt from a session we left behind must not block the
                     // agent forever; decline it and let the cancellation settle.
@@ -703,6 +833,7 @@ impl KestrelApp {
                     self.harness.prompt_sent = false;
                     self.finish_streaming();
                     let cancelled = stop_reason == "cancelled";
+                    let session_title = self.session().title.clone();
                     self.update_active_session(|session| {
                         session.status = if cancelled {
                             SessionStatus::Interrupted
@@ -715,6 +846,14 @@ impl KestrelApp {
                     } else {
                         "Turn complete".into()
                     });
+                    self.notify_if_background(
+                        if cancelled {
+                            "Turn cancelled"
+                        } else {
+                            "Turn complete"
+                        },
+                        &session_title,
+                    );
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
@@ -741,6 +880,7 @@ impl KestrelApp {
                     message: message.clone(),
                     at_ms: now_ms(),
                 });
+                self.notify_if_background("Kestrel needs attention", &message);
                 if matches!(self.harness.status, HarnessStatus::Starting) {
                     self.harness.status = HarnessStatus::Failed(message.clone());
                     self.update_active_session(|session| {
@@ -1181,7 +1321,7 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatItem, command_available, harness_command, session_summary, session_title,
+        ChatItem, HarnessState, command_available, harness_command, session_summary, session_title,
         transcript_markdown,
     };
 
@@ -1284,6 +1424,20 @@ mod tests {
         assert!(markdown.contains("## Agent\n\nDone"));
         assert!(markdown.contains("[x] Read files"));
         assert!(markdown.contains("**Error:** boom"));
+    }
+
+    #[test]
+    fn queue_reorders_and_removes_entries() {
+        let mut state = HarnessState::default();
+        let first = state.enqueue_prompt("first".into());
+        let second = state.enqueue_prompt("second".into());
+        assert_eq!(state.queued_prompts().len(), 2);
+        assert!(state.move_queued_prompt(second.id, -1));
+        assert_eq!(state.queued_prompts()[0].id, second.id);
+        assert!(state.remove_queued_prompt(first.id).is_some());
+        assert_eq!(state.queued_prompts().len(), 1);
+        assert_eq!(state.clear_queued_prompts(), 1);
+        assert!(state.queued_prompts().is_empty());
     }
 
     #[test]
