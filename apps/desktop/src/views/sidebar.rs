@@ -172,6 +172,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .child(
                 div()
                     .id("refresh-explorer")
+                    .aria_label("Refresh explorer")
                     .size(px(22.))
                     .rounded(px(5.))
                     .flex()
@@ -192,6 +193,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .child(
                 div()
                     .id("collapse-all")
+                    .aria_label("Collapse all folders")
                     .size(px(22.))
                     .rounded(px(5.))
                     .flex()
@@ -212,6 +214,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
             .child(
                 div()
                     .id("new-file")
+                    .aria_label("Create a new file")
                     .size(px(22.))
                     .rounded(px(5.))
                     .flex()
@@ -811,7 +814,10 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
     } else {
         this.git.branch.clone()
     };
-    let changes = this.git.changes.clone();
+    let mut changes = this.git.changes.clone();
+    changes.sort_by_key(|change| !change.staged);
+    let staged_count = changes.iter().filter(|change| change.staged).count();
+    let worktree_count = changes.len().saturating_sub(staged_count);
     let loading = this.git_loading;
     let error = this.git.error.clone();
     let change_count = changes.len();
@@ -847,6 +853,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 .child(
                     div()
                         .id("git-refresh")
+                        .aria_label("Refresh source control")
                         .size(px(18.))
                         .rounded(px(4.))
                         .flex()
@@ -1011,8 +1018,23 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
         );
     }
 
+    let mut section = None;
     for change in &changes {
+        if section != Some(change.staged) {
+            section = Some(change.staged);
+            let label = if change.staged {
+                format!("STAGED · {staged_count}")
+            } else {
+                format!("CHANGES · {worktree_count}")
+            };
+            list = list.child(group_label(&label, &p));
+        }
         let path = change.path.clone();
+        let file_name = Path::new(&path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&path)
+            .to_string();
         let status = change.status;
         let (tone, soft) = match status {
             'A' | 'U' => (p.green, p.green_soft),
@@ -1024,13 +1046,36 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
         let additions = change.additions;
         let deletions = change.deletions;
         let staged = change.staged;
-        let group = format!("change-row:{path}");
+        let side = if staged { "staged" } else { "worktree" };
+        let group = format!("change-row:{side}:{path}");
         let action_path = path.clone();
         let diff_path = path.clone();
+        let discard_path = path.clone();
+        let discard_button = (!staged && status != 'U').then(|| {
+            div()
+                .id(format!("change-discard:{side}:{discard_path}"))
+                .aria_label("Discard working tree changes")
+                .size(px(18.))
+                .flex_shrink_0()
+                .rounded(px(4.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .opacity(0.35)
+                .group_hover(group.clone(), move |style| style.opacity(1.))
+                .hover(move |style| style.bg(p.red_soft))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.request_discard_file(&discard_path, cx);
+                }))
+                .child(Icon::new(IconName::Undo2).size(px(10.5)).text_color(p.red))
+                .into_any_element()
+        });
 
         list = list.child(
             div()
-                .id(format!("change:{path}"))
+                .id(format!("change:{side}:{path}"))
                 .group(group.clone())
                 .mx(px(6.))
                 .px(px(7.))
@@ -1070,7 +1115,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                         .font_family("Geist Mono")
                         .text_color(p.fg.opacity(0.85))
                         .truncate()
-                        .child(change.path.clone()),
+                        .child(file_name),
                 )
                 .when(staged, |this| {
                     this.child(div().size(px(4.)).rounded_full().bg(p.green.opacity(0.8)))
@@ -1093,9 +1138,15 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                             .child(format!("−{deletions}")),
                     )
                 })
+                .children(discard_button)
                 .child(
                     div()
-                        .id(format!("change-diff:{diff_path}"))
+                        .id(format!("change-diff:{side}:{diff_path}"))
+                        .aria_label(if staged {
+                            "Show staged diff"
+                        } else {
+                            "Show working tree diff"
+                        })
                         .size(px(18.))
                         .flex_shrink_0()
                         .rounded(px(4.))
@@ -1118,7 +1169,8 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
                 )
                 .child(
                     div()
-                        .id(format!("change-stage:{action_path}"))
+                        .id(format!("change-stage:{side}:{action_path}"))
+                        .aria_label(if staged { "Unstage file" } else { "Stage file" })
                         .size(px(18.))
                         .flex_shrink_0()
                         .rounded(px(4.))
@@ -1405,6 +1457,29 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
 
     for usage in usages {
         let Some(window) = usage.primary() else {
+            let tone = tone_color(&p, usage.accent);
+            footer = footer.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .child(dot(tone, 4.5))
+                    .child(
+                        div()
+                            .text_size(px(9.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(p.fg.opacity(0.88))
+                            .child(usage.provider.clone()),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .text_size(px(8.))
+                            .font_family("Geist Mono")
+                            .text_color(p.muted_fg)
+                            .child(usage.plan.clone()),
+                    ),
+            );
             continue;
         };
         let tone = tone_color(&p, usage.accent);
@@ -1519,8 +1594,9 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .into_any_element()
 }
 
-fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
+    let trusted = this.project().trusted;
     let mut menu = div()
         .absolute()
         .top(px(45.))
@@ -1670,6 +1746,42 @@ fn project_menu(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .text_size(px(10.))
                         .text_color(p.fg)
                         .child("Project settings"),
+                ),
+        )
+        .child(
+            div()
+                .id("project-trust")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.toggle_project_trust(cx);
+                }))
+                .child(
+                    Icon::new(if trusted {
+                        IconName::ShieldCheck
+                    } else {
+                        IconName::ShieldAlert
+                    })
+                    .size(px(12.))
+                    .text_color(if trusted { p.green } else { p.amber }),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.))
+                        .text_color(p.fg)
+                        .child(if trusted {
+                            "Untrust project"
+                        } else {
+                            "Trust project"
+                        }),
                 ),
         )
         .child(

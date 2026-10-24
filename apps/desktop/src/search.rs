@@ -12,6 +12,7 @@ use std::path::Path;
 const MAX_DEPTH: usize = 12;
 const MAX_FILE_BYTES: u64 = 256 * 1024;
 const MAX_FILES: usize = 6_000;
+const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 
 pub type Hit = (String, u32, String);
 
@@ -23,7 +24,16 @@ pub fn search_project(root: &str, query: &str, limit: usize) -> Vec<Hit> {
     let needle = query.to_lowercase();
     let mut hits = Vec::new();
     let mut scanned = 0usize;
-    walk(Path::new(root), &needle, limit, &mut scanned, 0, &mut hits);
+    let mut bytes_scanned = 0u64;
+    walk(
+        Path::new(root),
+        &needle,
+        limit,
+        &mut scanned,
+        &mut bytes_scanned,
+        0,
+        &mut hits,
+    );
     hits
 }
 
@@ -32,10 +42,15 @@ fn walk(
     needle: &str,
     limit: usize,
     scanned: &mut usize,
+    bytes_scanned: &mut u64,
     depth: usize,
     hits: &mut Vec<Hit>,
 ) {
-    if depth > MAX_DEPTH || hits.len() >= limit || *scanned >= MAX_FILES {
+    if depth > MAX_DEPTH
+        || hits.len() >= limit
+        || *scanned >= MAX_FILES
+        || *bytes_scanned >= MAX_TOTAL_BYTES
+    {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
@@ -48,7 +63,7 @@ fn walk(
     paths.sort();
 
     for path in paths {
-        if hits.len() >= limit || *scanned >= MAX_FILES {
+        if hits.len() >= limit || *scanned >= MAX_FILES || *bytes_scanned >= MAX_TOTAL_BYTES {
             return;
         }
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -56,7 +71,15 @@ fn walk(
         };
         if path.is_dir() {
             if !is_skipped_dir(name) {
-                walk(&path, needle, limit, scanned, depth + 1, hits);
+                walk(
+                    &path,
+                    needle,
+                    limit,
+                    scanned,
+                    bytes_scanned,
+                    depth + 1,
+                    hits,
+                );
             }
             continue;
         }
@@ -68,6 +91,10 @@ fn walk(
         };
         if meta.len() > MAX_FILE_BYTES {
             continue;
+        }
+        *bytes_scanned = bytes_scanned.saturating_add(meta.len());
+        if *bytes_scanned > MAX_TOTAL_BYTES {
+            return;
         }
         let Ok(bytes) = fs::read(&path) else {
             continue;

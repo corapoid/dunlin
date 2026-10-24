@@ -17,6 +17,7 @@ use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
 use crate::app::KestrelApp;
+use crate::logging;
 
 /// One rendered entry in the conversation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -227,6 +228,13 @@ impl KestrelApp {
 
         let path = self.project().path.clone();
         let cwd = PathBuf::from(&path);
+        if !self.project().trusted {
+            let reason = format!("{path} is not trusted. Trust it from the project menu first.");
+            self.harness.status = HarnessStatus::Failed(reason.clone());
+            self.notice = Some(reason);
+            cx.notify();
+            return;
+        }
         if !cwd.is_dir() {
             let reason = format!("Folder is not available: {path}");
             self.harness.status = HarnessStatus::Failed(reason.clone());
@@ -247,6 +255,10 @@ impl KestrelApp {
             .unwrap_or_else(|| {
                 harness_command(&self.default_harness, &self.custom_harness_command)
             });
+        logging::info(&format!(
+            "starting harness: {command} · cwd {}",
+            cwd.display()
+        ));
         let harness = AcpHarness::spawn(HarnessConfig::new(command.clone(), cwd));
         let events = harness.events().clone();
         self.harness.harness = Some(harness);
@@ -277,6 +289,7 @@ impl KestrelApp {
 
     pub(crate) fn disconnect_harness(&mut self, cx: &mut Context<Self>) {
         self.interrupt_live_turn(cx);
+        logging::info("disconnecting harness");
         self.harness.generation += 1;
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
@@ -504,6 +517,7 @@ impl KestrelApp {
         if std::env::var_os("KESTREL_TRACE_HARNESS").is_some() {
             eprintln!("[harness] {event:?}");
         }
+        logging::harness_event(&event);
         match event {
             HarnessEvent::Ready { agent, version } => {
                 self.harness.status = HarnessStatus::Ready {

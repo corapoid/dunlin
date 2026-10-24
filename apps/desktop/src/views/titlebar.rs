@@ -118,6 +118,7 @@ pub(crate) fn render(
 
         let tab = div()
             .id(("view-tab", view as usize))
+            .aria_label(format!("Open {} view", view.label()))
             .h(px(24.))
             .px(px(8.))
             .rounded(px(6.))
@@ -189,6 +190,7 @@ pub(crate) fn render(
         .child(
             div()
                 .id("title-search")
+                .aria_label("Open command palette")
                 .h(px(26.))
                 .px(px(8.))
                 .rounded(px(7.))
@@ -216,6 +218,7 @@ pub(crate) fn render(
         .child(
             div()
                 .id("title-theme")
+                .aria_label("Toggle light or dark theme")
                 .size(px(26.))
                 .rounded(px(7.))
                 .flex()

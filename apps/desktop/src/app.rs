@@ -13,7 +13,7 @@ use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
 use crate::tree::FileTree;
-use crate::{demo, git, harness, search, views};
+use crate::{demo, git, harness, logging, projection, search, usage, views, window_state};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SettingsTab {
@@ -87,6 +87,7 @@ pub(crate) struct StoredSettings {
     pub restart_harness: bool,
     pub restore_session: bool,
     pub word_wrap: bool,
+    pub autosave: bool,
     pub code_font_size: f32,
     pub allow_network: bool,
     pub reasoning_open: bool,
@@ -107,6 +108,7 @@ impl Default for StoredSettings {
             restart_harness: true,
             restore_session: true,
             word_wrap: false,
+            autosave: false,
             code_font_size: 13.0,
             allow_network: false,
             reasoning_open: false,
@@ -174,6 +176,7 @@ pub(crate) enum PendingDelete {
     Session { id: String, title: String },
     Project { id: String, name: String },
     History { count: usize },
+    DiscardFile { path: String },
 }
 
 /// The read-only unified patch shown for one source-control change.
@@ -183,6 +186,13 @@ pub(crate) struct DiffView {
     pub staged: bool,
     pub state: Entity<DiffState>,
     pub error: Option<String>,
+}
+
+/// What to do after the user resolves an unsaved editor buffer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PendingEditor {
+    Close,
+    Open { path: String, line: Option<u32> },
 }
 
 /// A single executable entry in the command palette.
@@ -201,6 +211,11 @@ pub(crate) enum Command {
     RestartHarness,
     RefreshGit,
     RefreshExplorer,
+    GitPull,
+    GitPush,
+    GitAmend,
+    SwitchBranch(usize),
+    CopyTrace,
     SwitchProject(usize),
     CloseInspector,
 }
@@ -239,6 +254,7 @@ pub(crate) struct KestrelApp {
     pub fallback_session: SessionSummary,
     pub selected_session: usize,
     pub usages: Vec<ProviderUsage>,
+    pub usage_loading: bool,
     pub composer: Entity<TextareaState>,
     _composer_subscription: Subscription,
     pub search_input: Entity<InputState>,
@@ -266,6 +282,7 @@ pub(crate) struct KestrelApp {
     pub restart_harness: bool,
     pub restore_session: bool,
     pub word_wrap: bool,
+    pub autosave: bool,
     pub code_font_size: f32,
     pub allow_network: bool,
 
@@ -276,6 +293,11 @@ pub(crate) struct KestrelApp {
     pub editor_dirty: bool,
     pub editor_stale: bool,
     pub editor_readonly: bool,
+    pub editor_mtime: Option<std::time::SystemTime>,
+    pub autosave_generation: u64,
+    last_window_geometry: Option<window_state::WindowGeometry>,
+    _window_bounds_subscription: Option<Subscription>,
+    pub pending_editor: Option<PendingEditor>,
     pub selected_span: Option<usize>,
     pub selected_node: Option<usize>,
     pub reasoning_open: bool,
@@ -293,6 +315,7 @@ pub(crate) struct KestrelApp {
 
     pub git: git::GitStatus,
     pub git_loading: bool,
+    pub branches: Vec<String>,
     pub commit_input: Entity<InputState>,
 
     pub store: Option<kestrel_storage::Store>,
@@ -303,6 +326,7 @@ impl KestrelApp {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let root = workspace_root();
         let store = open_store();
+        logging::info(&format!("workspace {root} · data {}", data_dir_display()));
         let stored = store
             .as_ref()
             .and_then(|store| store.load_setting::<StoredSettings>("app").ok().flatten())
@@ -416,6 +440,9 @@ impl KestrelApp {
             cx.subscribe_in(&editor, window, |this, _, event: &InputEvent, _, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.editor_dirty = true;
+                    if this.autosave {
+                        this.schedule_autosave(cx);
+                    }
                     cx.notify();
                 }
             });
@@ -472,7 +499,8 @@ impl KestrelApp {
             all_sessions,
             fallback_session,
             selected_session: 0,
-            usages: demo::usage(),
+            usages: usage::fallback(),
+            usage_loading: false,
             composer,
             _composer_subscription: composer_subscription,
             search_input,
@@ -498,6 +526,7 @@ impl KestrelApp {
             restart_harness: stored.restart_harness,
             restore_session: stored.restore_session,
             word_wrap: stored.word_wrap,
+            autosave: stored.autosave,
             code_font_size: stored.code_font_size,
             allow_network: stored.allow_network,
             inspector: None,
@@ -507,6 +536,11 @@ impl KestrelApp {
             editor_dirty: false,
             editor_stale: false,
             editor_readonly: false,
+            editor_mtime: None,
+            autosave_generation: 0,
+            last_window_geometry: None,
+            _window_bounds_subscription: None,
+            pending_editor: None,
             selected_span: None,
             selected_node: None,
             reasoning_open: stored.reasoning_open,
@@ -522,6 +556,7 @@ impl KestrelApp {
             notice: None,
             git: git::GitStatus::default(),
             git_loading: false,
+            branches: Vec::new(),
             commit_input,
             store,
             harness: harness::HarnessState::default(),
@@ -567,6 +602,29 @@ impl KestrelApp {
             app.refresh_git_status(cx);
         }
         app.persist_settings(cx);
+        app.refresh_usage(cx);
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(1))
+                    .await;
+                if this
+                    .update(cx, |this, cx| this.check_open_file(cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        app._window_bounds_subscription =
+            Some(cx.observe_window_bounds(window, |this, window, _| {
+                let geometry = window_state::from_bounds(window.window_bounds());
+                if this.last_window_geometry != Some(geometry) {
+                    this.last_window_geometry = Some(geometry);
+                    window_state::save(geometry);
+                }
+            }));
 
         if let Ok(prompt) = std::env::var("KESTREL_AUTOPROMPT")
             && !prompt.trim().is_empty()
@@ -701,6 +759,27 @@ impl KestrelApp {
                 keywords: "files tree reload rescan".into(),
             },
             CommandItem {
+                command: Command::GitPull,
+                label: "Git Pull (fast-forward)".into(),
+                hint: None,
+                icon: IconName::ArrowDownToLine,
+                keywords: "source control fetch merge remote".into(),
+            },
+            CommandItem {
+                command: Command::GitPush,
+                label: "Git Push".into(),
+                hint: None,
+                icon: IconName::ArrowUpFromLine,
+                keywords: "source control upload remote branch".into(),
+            },
+            CommandItem {
+                command: Command::GitAmend,
+                label: "Amend Last Commit".into(),
+                hint: None,
+                icon: IconName::GitCommitHorizontal,
+                keywords: "git rewrite message staged".into(),
+            },
+            CommandItem {
                 command: Command::OpenFolder,
                 label: "Open Folder…".into(),
                 hint: Some("⌘O".into()),
@@ -727,6 +806,13 @@ impl KestrelApp {
                 hint: None,
                 icon: IconName::ChartNoAxesColumn,
                 keywords: "quota subscription tokens cost".into(),
+            },
+            CommandItem {
+                command: Command::CopyTrace,
+                label: "Copy Trace JSON".into(),
+                hint: None,
+                icon: IconName::Copy,
+                keywords: "export spans waterfall diagnostics".into(),
             },
             CommandItem {
                 command: Command::ToggleTheme,
@@ -761,6 +847,16 @@ impl KestrelApp {
             });
         }
 
+        for (index, branch) in self.branches.iter().take(16).enumerate() {
+            items.push(CommandItem {
+                command: Command::SwitchBranch(index),
+                label: format!("Switch to branch {branch}"),
+                hint: Some("git".into()),
+                icon: IconName::GitBranch,
+                keywords: format!("checkout branch {branch}"),
+            });
+        }
+
         for (index, project) in self.projects.iter().enumerate() {
             items.push(CommandItem {
                 command: Command::SwitchProject(index),
@@ -789,6 +885,7 @@ impl KestrelApp {
     }
 
     pub(crate) fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.branches = git::branches(&self.project().path).unwrap_or_default();
         self.command_open = true;
         self.command_index = 0;
         self.settings_open = false;
@@ -866,11 +963,29 @@ impl KestrelApp {
                 self.notice = Some("Refreshed the explorer".into());
                 cx.notify();
             }
+            Command::GitPull => self.git_pull(cx),
+            Command::GitPush => self.git_push(cx),
+            Command::GitAmend => self.amend_commit(cx),
+            Command::SwitchBranch(index) => {
+                if let Some(branch) = self.branches.get(index).cloned() {
+                    self.switch_branch(&branch, cx);
+                }
+            }
+            Command::CopyTrace => {
+                let session = self.session().clone();
+                let spans = if self.harness.transcript.is_empty() {
+                    demo::trace_spans()
+                } else {
+                    projection::spans(&self.harness.transcript, &session)
+                };
+                let json = serde_json::to_string_pretty(&spans).unwrap_or_default();
+                cx.write_to_clipboard(ClipboardItem::new_string(json));
+                self.set_notice("Copied trace JSON", cx);
+            }
             Command::SwitchProject(index) => self.select_project(index, cx),
             Command::CloseInspector => {
-                let dirty = self.editor_dirty;
-                self.close_inspector();
-                if !dirty {
+                self.request_close_inspector(cx);
+                if self.inspector.is_none() {
                     self.notice = Some("Closed file inspector".into());
                 }
             }
@@ -1055,6 +1170,13 @@ impl KestrelApp {
         cx.notify();
     }
 
+    pub(crate) fn request_discard_file(&mut self, path: &str, cx: &mut Context<Self>) {
+        self.pending_delete = Some(PendingDelete::DiscardFile {
+            path: path.to_string(),
+        });
+        cx.notify();
+    }
+
     pub(crate) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
         self.pending_delete = None;
         cx.notify();
@@ -1065,7 +1187,22 @@ impl KestrelApp {
             Some(PendingDelete::Session { id, .. }) => self.delete_session(&id, cx),
             Some(PendingDelete::Project { id, .. }) => self.delete_project(&id, cx),
             Some(PendingDelete::History { .. }) => self.clear_history(cx),
+            Some(PendingDelete::DiscardFile { path }) => self.discard_file(&path, cx),
             None => {}
+        }
+    }
+
+    fn discard_file(&mut self, path: &str, cx: &mut Context<Self>) {
+        let root = self.project().path.clone();
+        match git::discard_file(&root, path) {
+            Ok(()) => {
+                self.notice = Some(format!("Discarded changes in {path}"));
+                if self.inspector.as_ref().is_some_and(|i| i.path == path) {
+                    self.editor_stale = true;
+                }
+                self.refresh_git_status(cx);
+            }
+            Err(error) => self.set_notice(error, cx),
         }
     }
 
@@ -1236,6 +1373,16 @@ impl KestrelApp {
         let platform = keystroke.modifiers.platform;
         let shift = keystroke.modifiers.shift;
 
+        if self.pending_editor.is_some() {
+            match keystroke.key.as_str() {
+                "escape" => self.cancel_pending_editor(cx),
+                "enter" => self.save_pending_editor(window, cx),
+                _ => {}
+            }
+            cx.stop_propagation();
+            return;
+        }
+
         if self.pending_delete.is_some() {
             match keystroke.key.as_str() {
                 "escape" => self.cancel_delete(cx),
@@ -1363,9 +1510,8 @@ impl KestrelApp {
                 self.close_diff(window, cx);
                 cx.stop_propagation();
             } else if self.inspector.is_some() {
-                self.close_inspector();
+                self.request_close_inspector(cx);
                 cx.stop_propagation();
-                cx.notify();
             }
         }
     }
@@ -1406,6 +1552,31 @@ impl KestrelApp {
             .ok();
         })
         .detach();
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_project_trust(&mut self, cx: &mut Context<Self>) {
+        let index = self.selected_project;
+        let Some(project) = self.projects.get_mut(index) else {
+            return;
+        };
+        project.trusted = !project.trusted;
+        let trusted = project.trusted;
+        let name = project.name.clone();
+        let stored = project.clone();
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&stored);
+        }
+        if trusted {
+            self.notice = Some(format!("Trusted {name} · harness may start"));
+            if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            }
+        } else {
+            self.interrupt_live_turn(cx);
+            self.disconnect_harness(cx);
+            self.notice = Some(format!("Untrusted {name} · harness stopped"));
+        }
         cx.notify();
     }
 
@@ -1478,6 +1649,9 @@ impl KestrelApp {
                 .await;
             this.update(cx, |this, cx| {
                 if this.project().path == expected {
+                    if let Some(error) = &status.error {
+                        logging::warn(&format!("git status: {error}"));
+                    }
                     this.git = status;
                     this.git_loading = false;
                     cx.notify();
@@ -1690,6 +1864,89 @@ impl KestrelApp {
         }
     }
 
+    pub(crate) fn git_pull(&mut self, cx: &mut Context<Self>) {
+        self.run_git_task("Pulling…", "Pulled the latest changes", git::pull, cx);
+    }
+
+    pub(crate) fn git_push(&mut self, cx: &mut Context<Self>) {
+        self.run_git_task("Pushing…", "Pushed the current branch", git::push, cx);
+    }
+
+    fn run_git_task(
+        &mut self,
+        label: &'static str,
+        success: &'static str,
+        operation: fn(&str) -> Result<(), String>,
+        cx: &mut Context<Self>,
+    ) {
+        let path = self.project().path.clone();
+        self.git_loading = true;
+        self.notice = Some(label.into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { operation(&path) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.git_loading = false;
+                match result {
+                    Ok(()) => {
+                        this.notice = Some(success.into());
+                        this.file_tree.reload(this.project().path.clone());
+                        this.refresh_git_status(cx);
+                    }
+                    Err(error) => this.set_notice(error, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub(crate) fn switch_branch(&mut self, branch: &str, cx: &mut Context<Self>) {
+        let path = self.project().path.clone();
+        let branch = branch.to_string();
+        self.git_loading = true;
+        self.notice = Some(format!("Switching to {branch}…"));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let switch = branch.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { git::switch_branch(&path, &switch) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.git_loading = false;
+                match result {
+                    Ok(()) => {
+                        this.close_inspector();
+                        this.file_tree.reload(this.project().path.clone());
+                        this.notice = Some(format!("Switched to {branch}"));
+                        this.refresh_git_status(cx);
+                    }
+                    Err(error) => this.set_notice(error, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub(crate) fn amend_commit(&mut self, cx: &mut Context<Self>) {
+        let message = self.commit_input.read(cx).value().to_string();
+        let path = self.project().path.clone();
+        match git::amend(&path, &message) {
+            Ok(()) => {
+                self.notice = Some("Amended the last commit".into());
+                self.refresh_git_status(cx);
+            }
+            Err(error) => self.set_notice(error, cx),
+        }
+    }
+
     /// Snapshot the settings that survive a restart.
     pub(crate) fn stored_settings(&self, cx: &App) -> StoredSettings {
         StoredSettings {
@@ -1700,6 +1957,7 @@ impl KestrelApp {
             restart_harness: self.restart_harness,
             restore_session: self.restore_session,
             word_wrap: self.word_wrap,
+            autosave: self.autosave,
             code_font_size: self.code_font_size,
             allow_network: self.allow_network,
             reasoning_open: self.reasoning_open,
@@ -1751,10 +2009,70 @@ impl KestrelApp {
         })
     }
 
-    pub(crate) fn open_file(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.editor_dirty {
-            self.notice = Some("Unsaved changes discarded".into());
+    pub(crate) fn refresh_usage(&mut self, cx: &mut Context<Self>) {
+        if self.usage_loading {
+            return;
         }
+        self.usage_loading = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let usages = cx
+                .background_executor()
+                .spawn(async move { usage::probe_all() })
+                .await;
+            this.update(cx, |this, cx| {
+                for usage in &usages {
+                    if usage.primary().is_none() {
+                        logging::warn(&format!(
+                            "usage {} unavailable: {}",
+                            usage.provider, usage.detail
+                        ));
+                    }
+                }
+                logging::info(&format!("usage refreshed · {} providers", usages.len()));
+                this.usages = usages;
+                this.usage_loading = false;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub(crate) fn open_file(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_file_at(path, None, window, cx);
+    }
+
+    pub(crate) fn open_file_at(
+        &mut self,
+        path: &str,
+        line: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.inspector.as_ref().is_some_and(|i| i.path == path) {
+            self.editor.update(cx, |state, cx| state.focus(window, cx));
+            if let Some(line) = line {
+                self.jump_to_line(line, window, cx);
+            }
+            cx.notify();
+            return;
+        }
+        if self.editor_dirty {
+            self.pending_editor = Some(PendingEditor::Open {
+                path: path.to_string(),
+                line,
+            });
+            cx.notify();
+            return;
+        }
+        self.open_file_now(path, window, cx);
+        if let Some(line) = line {
+            self.jump_to_line(line, window, cx);
+        }
+    }
+
+    fn open_file_now(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
         let root = self.project().path.clone();
         let path_buf = Path::new(path);
         let name = path_buf
@@ -1775,9 +2093,12 @@ impl KestrelApp {
             .unwrap_or_else(|| ".".to_string());
 
         let language = editor_language(path).to_string();
-        let bytes = fs::metadata(path)
+        let metadata = fs::metadata(path).ok();
+        let bytes = metadata
+            .as_ref()
             .map(|metadata| metadata.len() as usize)
             .unwrap_or(0);
+        self.editor_mtime = metadata.and_then(|metadata| metadata.modified().ok());
         let (contents, readonly) = match fs::read_to_string(path) {
             Ok(contents) if contents.contains('\0') => {
                 ("Binary file — editing is disabled.".to_string(), true)
@@ -1805,6 +2126,15 @@ impl KestrelApp {
         cx.notify();
     }
 
+    fn jump_to_line(&mut self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(inspector) = self.inspector.as_mut() {
+            inspector.snippet = Some((line, line));
+        }
+        self.editor.update(cx, |state, cx| {
+            state.set_cursor_position(Position::new(line.saturating_sub(1), 0), window, cx);
+        });
+    }
+
     /// Re-read the open file after the agent finishes a turn.
     ///
     /// Skipped while the buffer has unsaved edits so local work is never lost.
@@ -1822,6 +2152,9 @@ impl KestrelApp {
         if contents.contains('\0') {
             return;
         }
+        self.editor_mtime = fs::metadata(&path)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok());
 
         let language = editor_language(&path).to_string();
         let bytes = contents.len();
@@ -1853,6 +2186,50 @@ impl KestrelApp {
     }
 
     /// Close the inspector, discarding any unsaved editor buffer.
+    /// Prompt before closing when the buffer has unsaved edits.
+    pub(crate) fn request_close_inspector(&mut self, cx: &mut Context<Self>) {
+        if self.editor_dirty {
+            self.pending_editor = Some(PendingEditor::Close);
+            cx.notify();
+        } else {
+            self.close_inspector();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn cancel_pending_editor(&mut self, cx: &mut Context<Self>) {
+        self.pending_editor = None;
+        cx.notify();
+    }
+
+    pub(crate) fn save_pending_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_editor(cx);
+        if !self.editor_dirty {
+            self.finish_pending_editor(window, cx);
+        }
+    }
+
+    pub(crate) fn discard_pending_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.editor_dirty = false;
+        self.finish_pending_editor(window, cx);
+    }
+
+    fn finish_pending_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_editor.take() else {
+            return;
+        };
+        match pending {
+            PendingEditor::Close => self.close_inspector(),
+            PendingEditor::Open { path, line } => {
+                self.open_file_now(&path, window, cx);
+                if let Some(line) = line {
+                    self.jump_to_line(line, window, cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
     pub(crate) fn close_inspector(&mut self) {
         if self.editor_dirty {
             self.notice = Some("Unsaved changes discarded".into());
@@ -1860,14 +2237,22 @@ impl KestrelApp {
         self.inspector = None;
         self.editor_dirty = false;
         self.editor_readonly = false;
+        self.editor_mtime = None;
+        self.pending_editor = None;
     }
 
     pub(crate) fn save_editor(&mut self, cx: &mut Context<Self>) {
+        self.save_editor_internal(true, cx);
+    }
+
+    fn save_editor_internal(&mut self, announce: bool, cx: &mut Context<Self>) {
         let Some(inspector) = self.inspector.clone() else {
             return;
         };
         if self.editor_readonly {
-            self.notice = Some(format!("{} is read-only", inspector.name));
+            if announce {
+                self.notice = Some(format!("{} is read-only", inspector.name));
+            }
             cx.notify();
             return;
         }
@@ -1875,14 +2260,58 @@ impl KestrelApp {
         match fs::write(&inspector.path, value) {
             Ok(()) => {
                 self.editor_dirty = false;
-                self.notice = Some(format!("Saved {}", inspector.name));
+                self.editor_mtime = fs::metadata(&inspector.path)
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok());
+                if announce {
+                    self.notice = Some(format!("Saved {}", inspector.name));
+                }
                 self.refresh_git_status(cx);
             }
             Err(error) => {
-                self.notice = Some(format!("Could not save {}: {error}", inspector.name));
+                if announce {
+                    self.notice = Some(format!("Could not save {}: {error}", inspector.name));
+                }
             }
         }
         cx.notify();
+    }
+
+    /// Debounce a quiet autosave after the buffer changes.
+    pub(crate) fn schedule_autosave(&mut self, cx: &mut Context<Self>) {
+        self.autosave_generation = self.autosave_generation.wrapping_add(1);
+        let generation = self.autosave_generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(700))
+                .await;
+            this.update(cx, |this, cx| {
+                if this.autosave_generation == generation && this.autosave && this.editor_dirty {
+                    this.save_editor_internal(false, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Detect external edits to the open file and reload a clean buffer.
+    fn check_open_file(&mut self, cx: &mut Context<Self>) {
+        if self.editor_dirty {
+            return;
+        }
+        let Some(inspector) = self.inspector.as_ref() else {
+            return;
+        };
+        let path = inspector.path.clone();
+        let Ok(modified) = fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
+            return;
+        };
+        if self.editor_mtime != Some(modified) {
+            self.editor_mtime = Some(modified);
+            self.editor_stale = true;
+            cx.notify();
+        }
     }
 
     pub(crate) fn open_search_hit(
@@ -1892,14 +2321,7 @@ impl KestrelApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_file(path, window, cx);
-        if let Some(inspector) = self.inspector.as_mut() {
-            inspector.snippet = Some((line, line));
-        }
-        self.editor.update(cx, |state, cx| {
-            state.set_cursor_position(Position::new(line.saturating_sub(1), 0), window, cx);
-        });
-        cx.notify();
+        self.open_file_at(path, Some(line), window, cx);
     }
 
     pub(crate) fn toggle_folder(&mut self, path: &str, cx: &mut Context<Self>) {
@@ -2164,6 +2586,7 @@ impl KestrelApp {
                     .child(
                         div()
                             .id("header-more")
+                            .aria_label("Session menu")
                             .size(px(28.))
                             .rounded(px(7.))
                             .flex()
@@ -2325,6 +2748,166 @@ impl KestrelApp {
             row = row.child(inspector);
         }
         row.into_any_element()
+    }
+
+    fn editor_prompt(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(pending) = self.pending_editor.as_ref() else {
+            return div().into_any_element();
+        };
+        let name = self
+            .inspector
+            .as_ref()
+            .map(|inspector| inspector.name.clone())
+            .unwrap_or_else(|| "this file".into());
+        let next = match pending {
+            PendingEditor::Close => "closing the editor".to_string(),
+            PendingEditor::Open { path, .. } => format!(
+                "opening {}",
+                Path::new(path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(path)
+            ),
+        };
+
+        div()
+            .id("editor-prompt-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| this.cancel_pending_editor(cx)))
+            .child(
+                div()
+                    .id("editor-prompt")
+                    .w(px(400.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(16.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(10.))
+                            .child(
+                                div()
+                                    .size(px(30.))
+                                    .flex_shrink_0()
+                                    .rounded(px(8.))
+                                    .bg(p.amber_soft)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(IconName::FileCode, 14.0, p.amber)),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(3.))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(p.fg)
+                                            .child("Unsaved changes"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .line_height(relative(1.5))
+                                            .text_color(p.muted_fg)
+                                            .child(format!(
+                                                "Save changes to “{name}” before {next}?"
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .id("editor-cancel")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.cancel_pending_editor(cx);
+                                    }))
+                                    .child(
+                                        div().text_size(px(10.5)).text_color(p.fg).child("Cancel"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("editor-discard")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.red_soft))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.discard_pending_editor(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(p.red)
+                                            .child("Discard"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("editor-save")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .bg(p.fg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.opacity(0.9))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.save_pending_editor(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.bg)
+                                            .child("Save"),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn diff_modal(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2524,6 +3107,13 @@ impl KestrelApp {
                     "{count} sessions and their transcripts will be deleted from this Mac. Projects and settings stay. This cannot be undone."
                 ),
                 "Clear history",
+            ),
+            PendingDelete::DiscardFile { path } => (
+                "Discard file changes?".to_string(),
+                format!(
+                    "“{path}” will be restored to the last committed version. This cannot be undone."
+                ),
+                "Discard changes",
             ),
         };
 
@@ -2735,6 +3325,7 @@ impl KestrelApp {
                     .child(
                         div()
                             .id("inspector-close")
+                            .aria_label("Close editor")
                             .size(px(26.))
                             .rounded(px(6.))
                             .flex()
@@ -2743,8 +3334,7 @@ impl KestrelApp {
                             .cursor_pointer()
                             .hover(move |style| style.bg(p.hover))
                             .on_click(cx.listener(|this, _, _, cx| {
-                                this.close_inspector();
-                                cx.notify();
+                                this.request_close_inspector(cx);
                             }))
                             .child(icon(IconName::X, 13.0, p.muted_fg)),
                     ),
@@ -2937,6 +3527,11 @@ impl KestrelApp {
 
 impl Render for KestrelApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let geometry = window_state::from_bounds(window.window_bounds());
+        if self.last_window_geometry != Some(geometry) {
+            self.last_window_geometry = Some(geometry);
+            window_state::save(geometry);
+        }
         if self.editor_stale {
             self.editor_stale = false;
             self.reload_open_editor(window, cx);
@@ -2957,6 +3552,7 @@ impl Render for KestrelApp {
         let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
         let diff = self.diff_view.as_ref().map(|_| self.diff_modal(cx));
         let session_menu = self.session_menu_open.then(|| self.session_menu(cx));
+        let editor_prompt = self.pending_editor.as_ref().map(|_| self.editor_prompt(cx));
 
         div()
             .relative()
@@ -2996,6 +3592,7 @@ impl Render for KestrelApp {
             .children(palette)
             .children(confirm)
             .children(diff)
+            .children(editor_prompt)
     }
 }
 
@@ -3042,16 +3639,46 @@ fn editor_language(path: &str) -> &'static str {
     }
 }
 
-fn open_store() -> Option<kestrel_storage::Store> {
-    let base = std::env::var_os("KESTREL_DATA_DIR")
+pub(crate) fn data_dir() -> Option<PathBuf> {
+    std::env::var_os("KESTREL_DATA_DIR")
         .map(PathBuf::from)
         .or_else(|| {
             std::env::var_os("HOME")
                 .map(|home| PathBuf::from(home).join("Library/Application Support/Kestrel"))
-        })?;
+        })
+}
+
+pub(crate) fn data_dir_display() -> String {
+    let Some(path) = data_dir() else {
+        return "unavailable".into();
+    };
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        if let Ok(relative) = path.strip_prefix(&home) {
+            return format!("~/{}", relative.to_string_lossy());
+        }
+    }
+    path.to_string_lossy().to_string()
+}
+
+/// Approximate on-disk size of the SQLite database and its WAL files.
+pub(crate) fn storage_size() -> u64 {
+    let Some(directory) = data_dir() else {
+        return 0;
+    };
+    ["kestrel.db", "kestrel.db-wal", "kestrel.db-shm"]
+        .iter()
+        .filter_map(|name| std::fs::metadata(directory.join(name)).ok())
+        .map(|metadata| metadata.len())
+        .sum()
+}
+
+fn open_store() -> Option<kestrel_storage::Store> {
+    let base = data_dir()?;
     match kestrel_storage::Store::open(base.join("kestrel.db")) {
         Ok(store) => Some(store),
         Err(error) => {
+            logging::error(&format!("could not open database: {error}"));
             eprintln!("[storage] could not open database: {error}");
             None
         }
@@ -3286,6 +3913,7 @@ mod tests {
         assert!(settings.auto_connect);
         assert!(settings.restore_session);
         assert_eq!(settings.code_font_size, 13.0);
+        assert!(!settings.autosave);
         assert_eq!(settings.view, MainView::Chat);
         assert_eq!(settings.default_view, MainView::Chat);
         assert_eq!(settings.last_project_id, None);

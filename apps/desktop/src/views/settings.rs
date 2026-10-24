@@ -1137,6 +1137,7 @@ fn permissions(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
 fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     let p = palette(cx);
     let word_wrap = this.word_wrap;
+    let autosave = this.autosave;
 
     let body = div()
         .px(px(16.))
@@ -1179,6 +1180,19 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         "word-wrap",
                         word_wrap,
                         |this| this.word_wrap = !this.word_wrap,
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                ))
+                .child(divider(&p))
+                .child(setting_row(
+                    "Autosave",
+                    "Write clean edits after a short pause.",
+                    toggle_switch(
+                        "autosave",
+                        autosave,
+                        |this| this.autosave = !this.autosave,
                         cx,
                         &p,
                     ),
@@ -1302,22 +1316,25 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_notice(
-                                "Context usage is live · provider windows are estimates",
-                                cx,
-                            );
+                            this.refresh_usage(cx);
+                            this.set_notice("Refreshing provider usage…", cx);
                         }))
                         .child(
-                            Icon::new(IconName::RefreshCw)
-                                .size(px(10.5))
-                                .text_color(p.muted_fg),
+                            Icon::new(if this.usage_loading {
+                                IconName::LoaderCircle
+                            } else {
+                                IconName::RefreshCw
+                            })
+                            .size(px(10.5))
+                            .text_color(p.muted_fg),
                         )
-                        .child(
-                            div()
-                                .text_size(px(9.))
-                                .text_color(p.fg)
-                                .child("Refresh all"),
-                        ),
+                        .child(div().text_size(px(9.)).text_color(p.fg).child(
+                            if this.usage_loading {
+                                "Refreshing…"
+                            } else {
+                                "Refresh all"
+                            },
+                        )),
                 ),
         );
 
@@ -1470,7 +1487,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .text_size(px(9.))
                             .line_height(relative(1.5))
                             .text_color(p.amber.opacity(0.9))
-                            .child("Context usage is reported live by the active ACP session. Subscription windows for Codex, Claude Code and OpenCode Go are estimates until a provider-specific probe is configured; Kestrel never uploads project data to obtain them."),
+                            .child("Context usage is live by ACP. Codex windows are read from the local Codex app-server. Claude Code requires a `user:profile` login before its OAuth usage can be read. OpenCode stays estimated until it exposes subscription data. Kestrel never uploads project data to obtain usage."),
                     ),
             ),
     );
@@ -1497,42 +1514,26 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                 .child(setting_row(
                     "Data directory",
                     "SQLite database, session events, spans and the search index.",
-                    mono_value("~/Library/Application Support/Kestrel", &p),
+                    mono_value(&crate::app::data_dir_display(), &p),
                     &p,
                 ))
                 .child(divider(&p))
                 .child(setting_row(
-                    "Cache",
-                    "Icon atlas, font shaping and span projections.",
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(7.))
-                        .child(
-                            div()
-                                .text_size(px(9.))
-                                .font_family("Geist Mono")
-                                .text_color(p.muted_fg)
-                                .child("1.2 GB"),
-                        )
-                        .child(
-                            div()
-                                .id("clear-cache")
-                                .text_size(px(9.))
-                                .text_color(p.blue)
-                                .cursor_pointer()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.set_notice("Cache cleared · projections rebuild on demand", cx);
-                                }))
-                                .child("Clear"),
-                        )
-                        .into_any_element(),
+                    "Local storage",
+                    "Database, WAL files and cached projections.",
+                    mono_value(
+                        &crate::app::format_bytes(crate::app::storage_size() as usize),
+                        &p,
+                    ),
                     &p,
                 ))
                 .child(divider(&p))
                 .child(setting_row(
                     "ACP logs",
-                    "Raw JSON-RPC frames for the last seven days.",
+                    &format!(
+                        "Lifecycle and errors · {}",
+                        crate::logging::display_path()
+                    ),
                     div()
                         .id("open-logs")
                         .h(px(21.))
@@ -1546,7 +1547,9 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_notice("ACP logs · ~/Library/Logs/Kestrel", cx);
+                            let path = crate::logging::log_path();
+                            cx.reveal_path(&path);
+                            this.set_notice("Revealed the Kestrel log", cx);
                         }))
                         .child(Icon::new(IconName::FolderOpen).size(px(10.)).text_color(p.muted_fg))
                         .child(

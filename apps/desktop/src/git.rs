@@ -51,17 +51,21 @@ pub(crate) fn load(path: &str) -> GitStatus {
 
     let mut changes = porcelain
         .lines()
-        .filter_map(parse_change)
+        .flat_map(parse_changes)
         .collect::<Vec<_>>();
 
-    // One diff against HEAD covers staged and unstaged edits without
-    // double-counting. Repositories without a commit fall back to the index.
-    let numstat = git(path, &["diff", "--numstat", "HEAD"])
-        .or_else(|_| git(path, &["diff", "--numstat"]))
-        .unwrap_or_default();
-    let counts = parse_numstat(&numstat);
+    // Count each side separately so a file with both staged and unstaged edits
+    // gets accurate numbers in both source-control rows.
+    let staged_counts =
+        parse_numstat(&git(path, &["diff", "--cached", "--numstat"]).unwrap_or_default());
+    let worktree_counts = parse_numstat(&git(path, &["diff", "--numstat"]).unwrap_or_default());
 
     for change in &mut changes {
+        let counts = if change.staged {
+            &staged_counts
+        } else {
+            &worktree_counts
+        };
         if let Some((additions, deletions)) = counts.get(&change.path) {
             change.additions = *additions;
             change.deletions = *deletions;
@@ -151,6 +155,42 @@ pub(crate) fn commit(path: &str, message: &str) -> Result<(), String> {
     git(path, &["commit", "-m", message]).map(|_| ())
 }
 
+/// Replace the last commit with the current index and a new message.
+pub(crate) fn amend(path: &str, message: &str) -> Result<(), String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Write a commit message first".into());
+    }
+    git(path, &["commit", "--amend", "-m", message]).map(|_| ())
+}
+
+pub(crate) fn branches(path: &str) -> Result<Vec<String>, String> {
+    let output = git(path, &["branch", "--format=%(refname:short)"])?;
+    Ok(output
+        .lines()
+        .map(str::trim)
+        .filter(|branch| !branch.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+pub(crate) fn switch_branch(path: &str, branch: &str) -> Result<(), String> {
+    git(path, &["switch", branch]).map(|_| ())
+}
+
+pub(crate) fn pull(path: &str) -> Result<(), String> {
+    git(path, &["pull", "--ff-only"]).map(|_| ())
+}
+
+pub(crate) fn push(path: &str) -> Result<(), String> {
+    git(path, &["push"]).map(|_| ())
+}
+
+/// Restore one tracked file in the working tree, leaving the index alone.
+pub(crate) fn discard_file(path: &str, file: &str) -> Result<(), String> {
+    git(path, &["restore", "--worktree", "--", file]).map(|_| ())
+}
+
 fn git(path: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
         .arg("-c")
@@ -174,15 +214,15 @@ fn git(path: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
-fn parse_change(line: &str) -> Option<GitChange> {
+fn parse_changes(line: &str) -> Vec<GitChange> {
     if line.len() < 4 {
-        return None;
+        return Vec::new();
     }
     let bytes = line.as_bytes();
     let x = bytes[0] as char;
     let y = bytes[1] as char;
     if x == '!' && y == '!' {
-        return None;
+        return Vec::new();
     }
 
     let raw_path = line[3..].trim();
@@ -193,24 +233,39 @@ fn parse_change(line: &str) -> Option<GitChange> {
         .trim_matches('"')
         .to_string();
     if path.is_empty() {
-        return None;
+        return Vec::new();
     }
 
-    let status = if x == '?' {
-        'U'
-    } else if y != ' ' {
-        y
-    } else {
-        x
-    };
+    if x == '?' {
+        return vec![GitChange {
+            path,
+            status: 'U',
+            additions: 0,
+            deletions: 0,
+            staged: false,
+        }];
+    }
 
-    Some(GitChange {
-        path,
-        status,
-        additions: 0,
-        deletions: 0,
-        staged: x != ' ' && x != '?',
-    })
+    let mut changes = Vec::new();
+    if x != ' ' {
+        changes.push(GitChange {
+            path: path.clone(),
+            status: x,
+            additions: 0,
+            deletions: 0,
+            staged: true,
+        });
+    }
+    if y != ' ' {
+        changes.push(GitChange {
+            path,
+            status: y,
+            additions: 0,
+            deletions: 0,
+            staged: false,
+        });
+    }
+    changes
 }
 
 fn parse_numstat(output: &str) -> std::collections::HashMap<String, (u32, u32)> {
@@ -263,24 +318,35 @@ mod tests {
 
     #[test]
     fn parses_modified_and_untracked_entries() {
-        let modified = parse_change(" M crates/agent/src/lib.rs").unwrap();
+        let modified = parse_changes(" M crates/agent/src/lib.rs").remove(0);
         assert_eq!(modified.path, "crates/agent/src/lib.rs");
         assert_eq!(modified.status, 'M');
         assert!(!modified.staged);
 
-        let untracked = parse_change("?? notes.md").unwrap();
+        let untracked = parse_changes("?? notes.md").remove(0);
         assert_eq!(untracked.path, "notes.md");
         assert_eq!(untracked.status, 'U');
         assert!(!untracked.staged);
 
-        let staged = parse_change("A  src/new.rs").unwrap();
+        let staged = parse_changes("A  src/new.rs").remove(0);
         assert_eq!(staged.status, 'A');
         assert!(staged.staged);
     }
 
     #[test]
+    fn splits_a_file_with_staged_and_unstaged_edits() {
+        let changes = parse_changes("MM src/lib.rs");
+        assert_eq!(changes.len(), 2);
+        assert!(changes[0].staged);
+        assert_eq!(changes[0].status, 'M');
+        assert!(!changes[1].staged);
+        assert_eq!(changes[1].status, 'M');
+        assert_eq!(changes[0].path, changes[1].path);
+    }
+
+    #[test]
     fn parses_renames_to_the_new_path() {
-        let change = parse_change("R  old/name.rs -> new/name.rs").unwrap();
+        let change = parse_changes("R  old/name.rs -> new/name.rs").remove(0);
         assert_eq!(change.path, "new/name.rs");
         assert_eq!(change.status, 'R');
         assert!(change.staged);
@@ -359,6 +425,19 @@ mod tests {
         assert_eq!(status.error, None);
         assert!(status.changes.is_empty());
 
+        let default_branch = status.branch.clone();
+        amend(&root, "amended initial commit").unwrap();
+        assert!(
+            git(&root, &["log", "-1", "--pretty=%s"])
+                .unwrap()
+                .contains("amended initial commit")
+        );
+        run(&["branch", "feature"]);
+        switch_branch(&root, "feature").unwrap();
+        assert_eq!(load(&root).branch, "feature");
+        switch_branch(&root, &default_branch).unwrap();
+        assert_eq!(load(&root).branch, default_branch);
+
         std::fs::write(std::path::Path::new(&root).join("ünïcode.txt"), "hi").unwrap();
         let status = load(&root);
         assert_eq!(status.changes.len(), 1);
@@ -381,6 +460,27 @@ mod tests {
         std::fs::write(std::path::Path::new(&root).join("logo.bin"), [0, 1, 2]).unwrap();
         let error = file_diff(&root, "logo.bin", false).unwrap_err();
         assert!(error.contains("Binary"), "{error}");
+
+        std::fs::write(
+            std::path::Path::new(&root).join("hello.txt"),
+            "one\ntwo\nthree\nfour\n",
+        )
+        .unwrap();
+        let status = load(&root);
+        let hello: Vec<_> = status
+            .changes
+            .iter()
+            .filter(|change| change.path == "hello.txt")
+            .collect();
+        assert_eq!(hello.len(), 2);
+        assert!(hello.iter().any(|change| change.staged));
+        assert!(hello.iter().any(|change| !change.staged));
+
+        discard_file(&root, "hello.txt").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(std::path::Path::new(&root).join("hello.txt")).unwrap(),
+            "one\ntwo\nthree\n"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

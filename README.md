@@ -6,11 +6,11 @@ No Electron. No webview. No Monaco. The entire UI is GPUI, the data layer is SQL
 
 ## Status
 
-Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Files open in a lightweight syntax-highlighted editor with dirty tracking and `⌘S` save, and new files are created through the native save panel. Transcripts can be copied as Markdown from the session menu. Projects, sessions and transcripts persist across launches; sessions and projects can be removed with a confirmation step, and settings, theme, and the last open project and session are restored on startup.
+Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Files open in a lightweight syntax-highlighted editor with dirty tracking, `⌘S` save, optional autosave, an unsaved-changes prompt and external-change detection. New files are created through the native save panel. Transcripts can be copied as Markdown from the session menu. Projects, sessions and transcripts persist across launches; sessions and projects can be removed with a confirmation step, and settings, theme, the last open project and session, and the window frame are restored on startup.
 
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
-Source control reads the system `git` CLI: branch, changed files, per-file line counts, per-file staging, stage all, commits, and a read-only unified diff for any change. It refreshes when an agent turn finishes. The explorer rescans too, and an open editor with no unsaved edits reloads from disk. Project search runs on GPUI's background executor and skips build, VCS and secret files. Nothing leaves the machine.
+Source control reads the system `git` CLI: branch, staged and unstaged entries, per-file line counts, stage/unstage, discard, stage all, commits, amend, fast-forward pull, push and branch switching. Every change opens a read-only unified diff. Source control refreshes when an agent turn finishes. The explorer rescans too, and an open editor with no unsaved edits reloads from disk. Project search runs on GPUI's background executor and skips build, VCS and secret files. Codex subscription windows are read live from the local Codex app-server; Claude Code reports when it needs a `user:profile` login, and OpenCode stays explicitly estimated. Nothing leaves the machine.
 
 ## Requirements
 
@@ -32,6 +32,25 @@ For a release build:
 ```sh
 cargo build --release -p kestrel
 ```
+
+## macOS app bundle
+
+```sh
+./scripts/bundle-macos.sh --build
+open dist/Kestrel.app
+```
+
+The script copies the release binary, renders `assets/kestrel-icon.svg` into an `.icns`, writes `Info.plist`, and applies an ad-hoc signature. For distribution, sign with a Developer ID and notarize:
+
+```sh
+KESTREL_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  ./scripts/bundle-macos.sh --build
+ditto -c -k --keepParent dist/Kestrel.app dist/Kestrel.app.zip
+xcrun notarytool submit dist/Kestrel.app.zip --keychain-profile KESTREL --wait
+xcrun stapler staple dist/Kestrel.app
+```
+
+Notarization packaging is intentionally manual for now.
 
 ## Harnesses
 
@@ -102,6 +121,8 @@ Useful diagnostics:
 - `KESTREL_TRACE_HARNESS=1` logs every harness event to stderr.
 - `KESTREL_HARNESS_COMMAND="..."` overrides the configured harness command for one run.
 - `KESTREL_DATA_DIR=/path` redirects the SQLite database.
+- `KESTREL_LOG_FILE=/path` redirects the lifecycle log (default `~/Library/Logs/Kestrel/kestrel.log`).
+- `KESTREL_CODEX_BIN=/path/to/codex` overrides Codex detection for live usage probes.
 - `KESTREL_AUTOPROMPT="..."` sends a prompt once the harness connects; useful for smoke tests.
 
 ## License
