@@ -8,9 +8,11 @@ No Electron. No webview. No Monaco. The entire UI is GPUI, the data layer is SQL
 
 Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Files open in a lightweight syntax-highlighted editor with dirty tracking, `⌘S` save, optional autosave, an unsaved-changes prompt and external-change detection. New files are created through the native save panel. Transcripts can be copied as Markdown from the session menu. Projects, sessions and transcripts persist across launches; sessions and projects can be removed with a confirmation step, and settings, theme, the last open project and session, and the window frame are restored on startup.
 
+Kestrel can also connect a project to a self-hosted relay. The relay owns the working tree, git, search and the ACP harness, while the macOS client keeps the full explorer, editor, source control, search, chat, graph and trace surfaces. Remote sessions live on the server, so they keep running when the Mac is closed and can be continued from another paired device. A native SwiftUI iOS client is included as a scaffold in `apps/ios`; it needs Xcode, which is not installed on the current machine.
+
 The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
 
-Source control reads the system `git` CLI: branch, staged and unstaged entries, per-file line counts, stage/unstage, discard, stage all, commits, amend, fast-forward pull, push and branch switching. Every change opens a read-only unified diff. Source control refreshes when an agent turn finishes. The explorer rescans too, and an open editor with no unsaved edits reloads from disk. Project search runs on GPUI's background executor and skips build, VCS and secret files. Codex subscription windows are read live from the local Codex app-server; Claude Code reports when it needs a `user:profile` login, and OpenCode stays explicitly estimated. Nothing leaves the machine.
+Source control reads the system `git` CLI: branch, staged and unstaged entries, per-file line counts, stage/unstage, discard, stage all, commits, amend, fast-forward pull, push and branch switching. Every change opens a read-only unified diff. Source control refreshes when an agent turn finishes. The explorer rescans too, and an open editor with no unsaved edits reloads from disk. Project search runs on GPUI's background executor and skips build, VCS and secret files. Codex subscription windows are read live from the local Codex app-server; Claude Code reports when it needs a `user:profile` login, and OpenCode stays explicitly estimated. Local projects keep all of this on the machine; remote projects use the self-hosted relay described below.
 
 ## Requirements
 
@@ -67,6 +69,51 @@ The default is OpenCode. Selecting a different harness restarts the ACP process 
 
 Permission requests are surfaced as cards in the chat. The permissions tab controls whether Kestrel asks, auto-approves, or runs read-only.
 
+## Remote relay
+
+`kestrel-relay` is a small self-hosted server. It stores accounts, devices, project grants and a session index; prompts and transcripts stay in OpenCode. The relay spawns one ACP harness per connection and exposes it over WebSocket, so the macOS app and the iPhone share the same remote sessions.
+
+Build and initialise it on the machine that has the repositories:
+
+```sh
+cargo build -p kestrel-relay
+./target/debug/kestrel-relay init
+./target/debug/kestrel-relay user add marek
+./target/debug/kestrel-relay project add kestrel /Users/me/git/kestrel --user marek
+./target/debug/kestrel-relay pair marek --ttl 10
+./target/debug/kestrel-relay serve
+```
+
+For a standalone release binary:
+
+```sh
+./scripts/bundle-relay.sh
+./dist/kestrel-relay serve
+```
+
+`serve` listens on `127.0.0.1:8787` by default. For a phone or another Mac, expose it over Tailscale:
+
+```sh
+tailscale serve --bg --https=443 http://127.0.0.1:8787
+```
+
+Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in **Settings → Remote** on macOS, or in the iOS app. A paired device receives its own token; revoke it with `kestrel-relay revoke <device-id>`.
+
+Remote projects support the full macOS surface: explorer, editor with save, search, source control, diffs, chat, permissions, graph and trace. The only difference from a local project is that files and the session live on the relay. A session can be opened on one device at a time; if another device is active, use **Take over session** in the session menu or the **Take over** button on iOS. ACP permissions are never auto-approved by the relay.
+
+Users are isolated: each account sees only granted projects and its own sessions. All relay users currently share the OpenCode credentials installed on the server. Project grants are enforced by the relay API, not by an OS sandbox; run the relay for trusted users only.
+
+## iOS
+
+The SwiftUI client lives in `apps/ios`. It supports pairing, projects, sessions, chat, permissions and takeover. Generate the Xcode project with XcodeGen:
+
+```sh
+brew install xcodegen
+cd apps/ios && xcodegen && open Kestrel.xcodeproj
+```
+
+See `apps/ios/README.md` for simulator and Tailscale setup. Xcode is required and is not installed on the current machine, so the iOS target has only been syntax-checked.
+
 ## Keyboard
 
 | Shortcut | Action |
@@ -86,9 +133,12 @@ Permission requests are surfaced as cards in the chat. The permissions tab contr
 
 ```
 apps/desktop        GPUI application, views, git and search integration
+apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
 crates/ui           Kobra-themed design system on top of GPUI Kit
 crates/domain       Shared project, session, usage, graph and trace types
+crates/workspace    Tree, search, git and filesystem operations shared by local and remote
 crates/agent        Reusable ACP client running on a dedicated worker thread
+crates/relay        Self-hosted relay: accounts, pairing, grants, ACP-over-WS and workspace APIs
 crates/storage      SQLite persistence (WAL, foreign keys, migrations)
 ```
 
@@ -114,6 +164,9 @@ cargo run -p kestrel-agent --bin harness_smoke -- "opencode acp" "Reply with: HA
 cargo build -p kestrel-agent --bins
 ./target/debug/permission_smoke allow
 ./target/debug/permission_smoke reject
+
+# Relay end-to-end: pairing, ACP-over-WS, session isolation and grants
+./scripts/relay-smoke.sh
 ```
 
 Useful diagnostics:
@@ -124,6 +177,9 @@ Useful diagnostics:
 - `KESTREL_LOG_FILE=/path` redirects the lifecycle log (default `~/Library/Logs/Kestrel/kestrel.log`).
 - `KESTREL_CODEX_BIN=/path/to/codex` overrides Codex detection for live usage probes.
 - `KESTREL_AUTOPROMPT="..."` sends a prompt once the harness connects; useful for smoke tests.
+- `KESTREL_RELAY_DB=/path` and `KESTREL_RELAY_LISTEN=addr` configure the relay.
+- `KESTREL_RELAY_HARNESS="opencode acp"` sets the command the relay spawns.
+- `KESTREL_REMOTE_TOKEN=...` is a test-only fallback for the macOS remote token.
 
 ## License
 

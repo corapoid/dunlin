@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -5,14 +6,14 @@ use kestrel_domain::*;
 use kestrel_ui::assets::IconName;
 use kestrel_ui::component::diff::{Diff, DiffFile, DiffState};
 use kestrel_ui::component::input::{
-    Editor, EditorState, InputEvent, InputState, Position, TextareaState,
+    Editor, EditorState, Input, InputEvent, InputState, Position, TextareaState,
 };
 use kestrel_ui::component::{ActiveTheme, ThemeMode};
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{demo, harness, logging, projection, usage, views, window_state};
+use crate::{demo, harness, logging, projection, remote, usage, views, window_state};
 use kestrel_workspace::tree::FileTree;
 use kestrel_workspace::{git, search};
 
@@ -21,16 +22,18 @@ pub(crate) enum SettingsTab {
     General,
     Harnesses,
     Permissions,
+    Remote,
     Editor,
     Usage,
     Advanced,
 }
 
 impl SettingsTab {
-    pub const ALL: [SettingsTab; 6] = [
+    pub const ALL: [SettingsTab; 7] = [
         SettingsTab::General,
         SettingsTab::Harnesses,
         SettingsTab::Permissions,
+        SettingsTab::Remote,
         SettingsTab::Editor,
         SettingsTab::Usage,
         SettingsTab::Advanced,
@@ -41,6 +44,7 @@ impl SettingsTab {
             SettingsTab::General => "General",
             SettingsTab::Harnesses => "Harnesses",
             SettingsTab::Permissions => "Permissions",
+            SettingsTab::Remote => "Remote",
             SettingsTab::Editor => "Editor",
             SettingsTab::Usage => "Usage",
             SettingsTab::Advanced => "Advanced",
@@ -52,6 +56,7 @@ impl SettingsTab {
             SettingsTab::General => IconName::Settings2,
             SettingsTab::Harnesses => IconName::Bot,
             SettingsTab::Permissions => IconName::ShieldCheck,
+            SettingsTab::Remote => IconName::Cloud,
             SettingsTab::Editor => IconName::Code,
             SettingsTab::Usage => IconName::ChartNoAxesColumn,
             SettingsTab::Advanced => IconName::SlidersHorizontal,
@@ -97,6 +102,7 @@ pub(crate) struct StoredSettings {
     pub default_view: MainView,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
+    pub remote_hosts: Vec<remote::RemoteHost>,
 }
 
 impl Default for StoredSettings {
@@ -118,6 +124,7 @@ impl Default for StoredSettings {
             default_view: MainView::Chat,
             last_project_id: None,
             last_session_id: None,
+            remote_hosts: Vec::new(),
         }
     }
 }
@@ -203,6 +210,7 @@ pub(crate) enum Command {
     Section(SidebarSection),
     Settings(SettingsTab),
     OpenFolder,
+    AddRemoteProject,
     ToggleTheme,
     NewSession,
     NewFile,
@@ -212,6 +220,7 @@ pub(crate) enum Command {
     RestartHarness,
     RefreshGit,
     RefreshExplorer,
+    RefreshSessions,
     GitPull,
     GitPush,
     GitAmend,
@@ -242,6 +251,20 @@ pub(crate) fn command_matches(item: &CommandItem, terms: &[&str]) -> bool {
     terms
         .iter()
         .all(|term| haystack.contains(&term.to_lowercase()))
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum PendingRemoteSession {
+    New,
+    Load { session_id: String },
+}
+
+pub(crate) struct RemotePicker {
+    pub host_id: String,
+    pub host_name: String,
+    pub projects: Vec<remote::RemoteProjectInfo>,
+    pub loading: bool,
+    pub error: Option<String>,
 }
 
 pub(crate) struct KestrelApp {
@@ -286,6 +309,18 @@ pub(crate) struct KestrelApp {
     pub autosave: bool,
     pub code_font_size: f32,
     pub allow_network: bool,
+    pub remote_hosts: Vec<remote::RemoteHost>,
+    pub remote_tokens: HashMap<String, String>,
+    pub remote_sessions_loading: bool,
+    pub pending_remote_session: Option<PendingRemoteSession>,
+    pub remote_url_input: Entity<InputState>,
+    pub remote_code_input: Entity<InputState>,
+    pub remote_name_input: Entity<InputState>,
+    pub remote_loading: bool,
+    pub remote_picker: Option<RemotePicker>,
+    pub new_file_prompt: bool,
+    pub new_file_input: Entity<InputState>,
+    _new_file_subscription: Subscription,
 
     pub inspector: Option<Inspector>,
     pub editor: Entity<EditorState>,
@@ -294,7 +329,7 @@ pub(crate) struct KestrelApp {
     pub editor_dirty: bool,
     pub editor_stale: bool,
     pub editor_readonly: bool,
-    pub editor_mtime: Option<std::time::SystemTime>,
+    pub editor_mtime: Option<u64>,
     pub autosave_generation: u64,
     last_window_geometry: Option<window_state::WindowGeometry>,
     _window_bounds_subscription: Option<Subscription>,
@@ -380,8 +415,20 @@ impl KestrelApp {
                 }
             },
         );
-        let file_tree = FileTree::load(projects[0].path.clone());
-        let search_hits = demo::search_hits(&projects[0].path);
+        let file_tree = if projects[0].is_remote() {
+            FileTree {
+                root: projects[0].path.clone(),
+                entries: Vec::new(),
+                error: None,
+            }
+        } else {
+            FileTree::load(projects[0].path.clone())
+        };
+        let search_hits = if projects[0].is_remote() {
+            Vec::new()
+        } else {
+            demo::search_hits(&projects[0].path)
+        };
 
         let search_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -407,6 +454,22 @@ impl KestrelApp {
                 .placeholder("Type a command or search the workspace…")
                 .clean_on_escape()
         });
+        let remote_url_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("https://host.tailnet.ts.net"));
+        let remote_code_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Pairing code"));
+        let remote_name_input = cx.new(|cx| InputState::new(window, cx).placeholder("Server name"));
+        let new_file_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("src/new-file.rs"));
+        let new_file_subscription = cx.subscribe_in(
+            &new_file_input,
+            window,
+            |this, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    this.create_remote_file(window, cx);
+                }
+            },
+        );
         let command_subscription = cx.subscribe_in(
             &command_query,
             window,
@@ -471,12 +534,16 @@ impl KestrelApp {
         );
 
         let first_project = projects[0].id.clone();
+        let first_is_remote = projects[0].is_remote();
         let mut sessions: Vec<SessionSummary> = all_sessions
             .iter()
-            .filter(|session| session.project_id == first_project)
+            .filter(|session| {
+                session.project_id == first_project
+                    && (!first_is_remote || session.origin.is_remote())
+            })
             .cloned()
             .collect();
-        if sessions.is_empty() {
+        if sessions.is_empty() && !first_is_remote {
             let session = blank_session(
                 &first_project,
                 &stored.default_harness,
@@ -530,6 +597,18 @@ impl KestrelApp {
             autosave: stored.autosave,
             code_font_size: stored.code_font_size,
             allow_network: stored.allow_network,
+            remote_hosts: stored.remote_hosts.clone(),
+            remote_tokens: HashMap::new(),
+            remote_sessions_loading: false,
+            pending_remote_session: None,
+            remote_url_input,
+            remote_code_input,
+            remote_name_input,
+            remote_loading: false,
+            remote_picker: None,
+            new_file_prompt: false,
+            new_file_input,
+            _new_file_subscription: new_file_subscription,
             inspector: None,
             editor,
             _editor_subscription: editor_subscription,
@@ -596,7 +675,7 @@ impl KestrelApp {
             }
         }
 
-        if app.auto_connect && !app.harness.status.is_busy() {
+        if app.auto_connect && !app.harness.status.is_busy() && !app.remote_sessions_loading {
             app.connect_harness(cx);
         }
         if !restored_project {
@@ -646,6 +725,231 @@ impl KestrelApp {
         self.sessions
             .get(self.selected_session)
             .unwrap_or(&self.fallback_session)
+    }
+
+    pub(crate) fn remote_host(&self, id: &str) -> Option<remote::RemoteHost> {
+        self.remote_hosts.iter().find(|host| host.id == id).cloned()
+    }
+
+    pub(crate) fn remote_token(&mut self, host_id: &str) -> Result<String, String> {
+        if let Some(token) = self.remote_tokens.get(host_id) {
+            return Ok(token.clone());
+        }
+        let token = remote::load_token(host_id)?
+            .ok_or_else(|| "Pair this device with the relay again".to_string())?;
+        self.remote_tokens
+            .insert(host_id.to_string(), token.clone());
+        Ok(token)
+    }
+
+    pub(crate) fn backend(&mut self) -> Result<remote::WorkspaceBackend, String> {
+        let project = self.project().clone();
+        if let Some(remote_project) = project.remote.clone() {
+            let host = self
+                .remote_host(&remote_project.host_id)
+                .ok_or_else(|| "Remote server is not configured".to_string())?;
+            let token = self.remote_token(&host.id)?;
+            Ok(remote::WorkspaceBackend::Remote(remote::RemoteWorkspace {
+                host,
+                project: remote_project,
+                token,
+            }))
+        } else {
+            Ok(remote::WorkspaceBackend::Local { root: project.path })
+        }
+    }
+
+    fn import_remote_sessions(
+        &mut self,
+        rows: Vec<remote::RemoteSessionInfo>,
+        cx: &mut Context<Self>,
+    ) {
+        let project_id = self.project().id.clone();
+        let Some(host_id) = self
+            .project()
+            .remote
+            .as_ref()
+            .map(|project| project.host_id.clone())
+        else {
+            return;
+        };
+        let mut updates = Vec::new();
+        for row in &rows {
+            let summary = remote_session_summary(row, &project_id, &host_id);
+            if let Some(existing) = self
+                .all_sessions
+                .iter_mut()
+                .find(|session| session.id == summary.id)
+            {
+                existing.title = summary.title;
+                existing.updated_at = summary.updated_at;
+                existing.status = SessionStatus::Waiting;
+                existing.origin = summary.origin;
+                existing.acp_session_id = summary.acp_session_id;
+                updates.push(existing.clone());
+            } else {
+                self.all_sessions.push(summary.clone());
+                updates.push(summary);
+            }
+        }
+        for session in updates {
+            self.persist_session(&session);
+        }
+
+        let live: std::collections::HashSet<String> =
+            rows.iter().map(|row| row.id.clone()).collect();
+        self.all_sessions.retain(|session| {
+            !(session.project_id == project_id
+                && session.origin.is_remote()
+                && !live.contains(&session.id))
+        });
+        self.sessions = self
+            .all_sessions
+            .iter()
+            .filter(|session| session.project_id == project_id && session.origin.is_remote())
+            .cloned()
+            .collect();
+        self.remote_sessions_loading = false;
+
+        if self.sessions.is_empty() {
+            self.selected_session = 0;
+            self.harness.transcript.clear();
+            self.pending_remote_session = Some(PendingRemoteSession::New);
+            if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            }
+            self.notice = Some("No remote sessions yet · starting a new one".into());
+        } else {
+            self.selected_session = 0;
+            let session = self.sessions[0].clone();
+            self.load_transcript(&session.id);
+            let acp_id = session
+                .acp_session_id
+                .clone()
+                .unwrap_or_else(|| session.id.clone());
+            self.pending_remote_session = Some(PendingRemoteSession::Load { session_id: acp_id });
+            if self.harness.status.is_ready() {
+                let action = self.pending_remote_session.take().unwrap();
+                self.start_remote_session(action, cx);
+            } else if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            }
+            self.notice = Some(format!(
+                "Loaded {} remote session{}",
+                rows.len(),
+                if rows.len() == 1 { "" } else { "s" }
+            ));
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn create_remote_session_summary(
+        &mut self,
+        session_id: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let project_id = self.project().id.clone();
+        let host_id = self
+            .project()
+            .remote
+            .as_ref()
+            .map(|project| project.host_id.clone())
+            .unwrap_or_default();
+
+        if let Some(existing) = self
+            .sessions
+            .iter_mut()
+            .find(|session| session.id.starts_with("pending-"))
+        {
+            existing.id = session_id.to_string();
+            existing.acp_session_id = Some(session_id.to_string());
+            existing.status = SessionStatus::Waiting;
+            let stored = existing.clone();
+            if let Some(all) = self
+                .all_sessions
+                .iter_mut()
+                .find(|session| session.id.starts_with("pending-"))
+            {
+                all.id = session_id.to_string();
+                all.acp_session_id = Some(session_id.to_string());
+                all.status = SessionStatus::Waiting;
+            }
+            self.persist_session(&stored);
+            self.selected_session = self
+                .sessions
+                .iter()
+                .position(|session| session.id == session_id)
+                .unwrap_or(0);
+            self.harness.transcript.clear();
+            self.notice = Some("Remote session created".into());
+            cx.notify();
+            return;
+        }
+
+        if let Some(existing) = self
+            .sessions
+            .iter()
+            .position(|session| session.id == session_id)
+        {
+            self.selected_session = existing;
+            self.notice = Some("Remote session created".into());
+            cx.notify();
+            return;
+        }
+
+        let session = SessionSummary {
+            id: session_id.to_string(),
+            project_id,
+            title: "New session".into(),
+            status: SessionStatus::Waiting,
+            harness: "Remote".into(),
+            model: "Auto".into(),
+            branch: None,
+            updated_at: "now".into(),
+            cost_usd: 0.0,
+            duration_secs: 0,
+            tokens: 0,
+            summary: "Remote session on the relay.".into(),
+            origin: SessionOrigin::Remote {
+                host_id: host_id.clone(),
+            },
+            acp_session_id: Some(session_id.to_string()),
+        };
+        self.persist_session(&session);
+        self.all_sessions.push(session.clone());
+        self.sessions.push(session.clone());
+        self.selected_session = self.sessions.len() - 1;
+        self.harness.transcript.clear();
+        self.notice = Some("Remote session created".into());
+        cx.notify();
+    }
+
+    pub(crate) fn start_remote_session(
+        &mut self,
+        action: PendingRemoteSession,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(harness) = self.harness.harness.as_ref() else {
+            self.pending_remote_session = Some(action);
+            return;
+        };
+        let cwd = PathBuf::from(&self.project().path);
+        match action {
+            PendingRemoteSession::New => {
+                harness.new_session(cwd);
+            }
+            PendingRemoteSession::Load { session_id } => {
+                self.harness.transcript.clear();
+                self.harness.started_tools.clear();
+                self.harness.running = false;
+                self.harness.usage = None;
+                // `session/load` replays history as notifications before the
+                // response arrives, so make the session current first.
+                self.harness.session_id = Some(session_id.clone());
+                harness.load_session(session_id, cwd);
+            }
+        }
+        cx.notify();
     }
 
     /// Number of live turns in a project, derived from session state.
@@ -760,6 +1064,13 @@ impl KestrelApp {
                 keywords: "files tree reload rescan".into(),
             },
             CommandItem {
+                command: Command::RefreshSessions,
+                label: "Refresh Remote Sessions".into(),
+                hint: None,
+                icon: IconName::Cloud,
+                keywords: "relay phone sessions sync".into(),
+            },
+            CommandItem {
                 command: Command::GitPull,
                 label: "Git Pull (fast-forward)".into(),
                 hint: None,
@@ -786,6 +1097,13 @@ impl KestrelApp {
                 hint: Some("⌘O".into()),
                 icon: IconName::FolderOpen,
                 keywords: "add project workspace directory".into(),
+            },
+            CommandItem {
+                command: Command::AddRemoteProject,
+                label: "Add Remote Project…".into(),
+                hint: None,
+                icon: IconName::Cloud,
+                keywords: "relay server remote project tailscale".into(),
             },
             CommandItem {
                 command: Command::Settings(SettingsTab::General),
@@ -886,7 +1204,11 @@ impl KestrelApp {
     }
 
     pub(crate) fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.branches = git::branches(&self.project().path).unwrap_or_default();
+        self.branches = self
+            .backend()
+            .ok()
+            .and_then(|backend| backend.git_branches().ok())
+            .unwrap_or_default();
         self.command_open = true;
         self.command_index = 0;
         self.settings_open = false;
@@ -948,6 +1270,7 @@ impl KestrelApp {
                 self.settings_tab = tab;
             }
             Command::OpenFolder => self.open_folder(cx),
+            Command::AddRemoteProject => self.open_remote_picker(cx),
             Command::ToggleTheme => {
                 toggle_mode(window, cx);
                 self.persist_settings(cx);
@@ -960,9 +1283,16 @@ impl KestrelApp {
             Command::RestartHarness => self.restart_harness(cx),
             Command::RefreshGit => self.refresh_git_status(cx),
             Command::RefreshExplorer => {
-                self.file_tree.reload(self.project().path.clone());
+                self.refresh_file_tree(cx);
                 self.notice = Some("Refreshed the explorer".into());
                 cx.notify();
+            }
+            Command::RefreshSessions => {
+                if self.project().is_remote() {
+                    self.select_project(self.selected_project, cx);
+                } else {
+                    self.set_notice("Only remote projects have relay sessions", cx);
+                }
             }
             Command::GitPull => self.git_pull(cx),
             Command::GitPush => self.git_push(cx),
@@ -997,6 +1327,15 @@ impl KestrelApp {
 
     /// Ask macOS for a path inside the project, then create or open it.
     pub(crate) fn new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.project().is_remote() {
+            self.new_file_prompt = true;
+            self.new_file_input.update(cx, |state, cx| {
+                state.set_value("", window, cx);
+                state.focus(window, cx);
+            });
+            cx.notify();
+            return;
+        }
         let root = self.project().path.clone();
         let receiver = cx.prompt_for_new_path(Path::new(&root), Some("untitled.txt"));
         cx.spawn_in(window, async move |this, cx| {
@@ -1006,6 +1345,46 @@ impl KestrelApp {
             }
         })
         .detach();
+    }
+
+    fn create_remote_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let relative = self.new_file_input.read(cx).value().trim().to_string();
+        if relative.is_empty() {
+            self.set_notice("Enter a file path", cx);
+            return;
+        }
+        if Path::new(&relative).is_absolute()
+            || relative
+                .split(['/', '\\'])
+                .any(|component| component == "..")
+        {
+            self.set_notice("Use a relative path inside the project", cx);
+            return;
+        }
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.create_file(&relative) {
+            Ok(_) => {
+                let root = self.project().path.clone();
+                let full = format!(
+                    "{}/{}",
+                    root.trim_end_matches('/'),
+                    relative.trim_start_matches('/')
+                );
+                self.new_file_prompt = false;
+                self.new_file_input
+                    .update(cx, |state, cx| state.set_value("", window, cx));
+                self.refresh_file_tree(cx);
+                self.open_file(&full, window, cx);
+                self.notice = Some(format!("Created {relative}"));
+            }
+            Err(error) => self.set_notice(error, cx),
+        }
     }
 
     fn create_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
@@ -1054,11 +1433,9 @@ impl KestrelApp {
 
     pub(crate) fn add_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         let path = path.to_string_lossy().trim_end_matches('/').to_string();
-        if let Some(index) = self
-            .projects
-            .iter()
-            .position(|project| project.path.trim_end_matches('/') == path)
-        {
+        if let Some(index) = self.projects.iter().position(|project| {
+            project.remote.is_none() && project.path.trim_end_matches('/') == path
+        }) {
             self.select_project(index, cx);
             self.notice = Some(format!("{} is already open", self.projects[index].name));
             cx.notify();
@@ -1091,6 +1468,7 @@ impl KestrelApp {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            remote: None,
         };
         if let Some(store) = &self.store {
             let _ = store.upsert_project(&project);
@@ -1102,8 +1480,238 @@ impl KestrelApp {
         cx.notify();
     }
 
+    pub(crate) fn pair_remote(&mut self, cx: &mut Context<Self>) {
+        if self.remote_loading {
+            return;
+        }
+        let url = self
+            .remote_url_input
+            .read(cx)
+            .value()
+            .trim()
+            .trim_end_matches('/')
+            .to_string();
+        let code = self.remote_code_input.read(cx).value().trim().to_string();
+        let mut name = self.remote_name_input.read(cx).value().trim().to_string();
+        if url.is_empty() || code.is_empty() {
+            self.set_notice("Enter the relay URL and a pairing code", cx);
+            return;
+        }
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            self.set_notice("The relay URL must start with http:// or https://", cx);
+            return;
+        }
+        if name.is_empty() {
+            name = url
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or("Relay")
+                .to_string();
+        }
+        let host_id = format!("host-{}", uuid::Uuid::now_v7());
+        let host_id_for_task = host_id.clone();
+        let url_for_task = url.clone();
+        self.remote_loading = true;
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let pair = remote::pair(&url_for_task, &code, "Kestrel on macOS")?;
+                    remote::save_token(&host_id_for_task, &pair.token)?;
+                    Ok::<_, String>((pair, host_id_for_task))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.remote_loading = false;
+                match result {
+                    Ok((pair, host_id)) => {
+                        this.remote_tokens.insert(host_id.clone(), pair.token);
+                        this.remote_hosts.push(remote::RemoteHost {
+                            id: host_id,
+                            name,
+                            url,
+                            user_name: pair.user.name,
+                            device_id: pair.device_id,
+                        });
+                        this.persist_settings(cx);
+                        this.notice = Some("Paired this Mac with the relay".into());
+                    }
+                    Err(error) => this.set_notice(error, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(crate) fn remove_remote_host(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.remote_hosts.retain(|host| host.id != id);
+        self.remote_tokens.remove(id);
+        remote::delete_token(id);
+        self.persist_settings(cx);
+        self.set_notice("Removed the remote server", cx);
+    }
+
+    pub(crate) fn open_remote_picker(&mut self, cx: &mut Context<Self>) {
+        if self.remote_hosts.is_empty() {
+            self.settings_open = true;
+            self.settings_tab = SettingsTab::Remote;
+            self.set_notice("Pair a relay before adding a remote project", cx);
+            return;
+        }
+        let host_id = self
+            .project()
+            .remote
+            .as_ref()
+            .map(|project| project.host_id.clone())
+            .or_else(|| self.remote_hosts.first().map(|host| host.id.clone()))
+            .unwrap();
+        self.open_remote_picker_for(&host_id, cx);
+    }
+
+    pub(crate) fn open_remote_picker_for(&mut self, host_id: &str, cx: &mut Context<Self>) {
+        let Some(host) = self.remote_host(host_id) else {
+            self.set_notice("Remote server is not configured", cx);
+            return;
+        };
+        let token = match self.remote_token(&host.id) {
+            Ok(token) => token,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        self.remote_picker = Some(RemotePicker {
+            host_id: host.id.clone(),
+            host_name: host.name.clone(),
+            projects: Vec::new(),
+            loading: true,
+            error: None,
+        });
+        let url = host.url.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { remote::projects(&url, &token) })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Some(picker) = this.remote_picker.as_mut() {
+                    picker.loading = false;
+                    match result {
+                        Ok(projects) => picker.projects = projects,
+                        Err(error) => picker.error = Some(error),
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(crate) fn add_remote_project(
+        &mut self,
+        host_id: &str,
+        info: &remote::RemoteProjectInfo,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(index) = self.projects.iter().position(|project| {
+            project
+                .remote
+                .as_ref()
+                .is_some_and(|remote| remote.host_id == host_id && remote.project_id == info.id)
+        }) {
+            self.remote_picker = None;
+            self.select_project(index, cx);
+            return;
+        }
+        let tone = match self.projects.len() % 6 {
+            0 => ProjectTone::Blue,
+            1 => ProjectTone::Green,
+            2 => ProjectTone::Violet,
+            3 => ProjectTone::Amber,
+            4 => ProjectTone::Rose,
+            _ => ProjectTone::Teal,
+        };
+        let project = Project {
+            id: format!("project-{}", uuid::Uuid::now_v7()),
+            name: info.name.clone(),
+            path: info.path.clone(),
+            branch: None,
+            tone,
+            pinned: false,
+            trusted: true,
+            running_sessions: 0,
+            remote: Some(RemoteProject {
+                host_id: host_id.to_string(),
+                project_id: info.id.clone(),
+                path: info.path.clone(),
+            }),
+        };
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&project);
+        }
+        self.projects.push(project);
+        let index = self.projects.len() - 1;
+        self.remote_picker = None;
+        self.select_project(index, cx);
+        self.notice = Some(format!("Added remote project {}", info.name));
+        cx.notify();
+    }
+
     pub(crate) fn new_session(&mut self, cx: &mut Context<Self>) {
         let project_id = self.project().id.clone();
+        if let Some(remote_project) = self.project().remote.clone() {
+            self.interrupt_live_turn(cx);
+            self.stash_transcript();
+            let pending = SessionSummary {
+                id: format!("pending-{}", uuid::Uuid::now_v7()),
+                project_id,
+                title: "New session".into(),
+                status: SessionStatus::Waiting,
+                harness: "Remote".into(),
+                model: "Auto".into(),
+                branch: None,
+                updated_at: "now".into(),
+                cost_usd: 0.0,
+                duration_secs: 0,
+                tokens: 0,
+                summary: "Remote session on the relay.".into(),
+                origin: SessionOrigin::Remote {
+                    host_id: remote_project.host_id.clone(),
+                },
+                acp_session_id: None,
+            };
+            self.sessions.push(pending.clone());
+            self.all_sessions.push(pending.clone());
+            self.selected_session = self.sessions.len() - 1;
+            self.harness.transcript.clear();
+            self.harness.session_id = None;
+            self.harness.running = false;
+            self.pending_remote_session = Some(PendingRemoteSession::New);
+
+            if self.harness.status.is_ready() {
+                let action = self.pending_remote_session.take().unwrap();
+                self.start_remote_session(action, cx);
+            } else if self.auto_connect && !self.harness.status.is_busy() {
+                self.connect_harness(cx);
+            } else {
+                self.notice = Some("Connect to the relay to start a session".into());
+            }
+
+            self.view = self.default_view;
+            self.settings_open = false;
+            self.session_menu_open = false;
+            self.persist_settings(cx);
+            cx.notify();
+            return;
+        }
+
         let branch = self.project().branch.clone();
         let session = blank_session(&project_id, &self.default_harness, branch);
         self.interrupt_live_turn(cx);
@@ -1194,8 +1802,14 @@ impl KestrelApp {
     }
 
     fn discard_file(&mut self, path: &str, cx: &mut Context<Self>) {
-        let root = self.project().path.clone();
-        match git::discard_file(&root, path) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_discard(path) {
             Ok(()) => {
                 self.notice = Some(format!("Discarded changes in {path}"));
                 if self.inspector.as_ref().is_some_and(|i| i.path == path) {
@@ -1210,6 +1824,13 @@ impl KestrelApp {
     fn clear_history(&mut self, cx: &mut Context<Self>) {
         if self.all_sessions.is_empty() {
             self.set_notice("No conversation history to clear", cx);
+            return;
+        }
+        if self.project().is_remote() {
+            self.set_notice(
+                "Remote history lives on the relay; delete sessions individually",
+                cx,
+            );
             return;
         }
         self.interrupt_live_turn(cx);
@@ -1252,6 +1873,31 @@ impl KestrelApp {
         let Some(index) = self.sessions.iter().position(|session| session.id == id) else {
             return;
         };
+        let remote_origin = match &self.sessions[index].origin {
+            SessionOrigin::Remote { host_id } => Some(host_id.clone()),
+            SessionOrigin::Local => None,
+        };
+        if let Some(host_id) = remote_origin
+            && let Some(host) = self.remote_host(&host_id)
+            && let Ok(token) = self.remote_token(&host_id)
+        {
+            let url = host.url.clone();
+            let session_id = id.to_string();
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { remote::delete_session(&url, &token, &session_id) })
+                    .await;
+                this.update(cx, |this, cx| {
+                    if let Err(error) = result {
+                        this.set_notice(error, cx);
+                    }
+                })
+                .ok();
+            })
+            .detach();
+        }
+
         let active = index == self.selected_session;
         if active && self.harness.running {
             self.cancel_turn(cx);
@@ -1262,22 +1908,44 @@ impl KestrelApp {
             let _ = store.delete_session(id);
         }
         self.forget_transcript(id);
+        let remote_project = self.project().is_remote();
         if self.sessions.is_empty() {
-            let project_id = self.project().id.clone();
-            let branch = self.project().branch.clone();
-            let session = blank_session(&project_id, &self.default_harness, branch);
-            self.persist_session(&session);
-            self.all_sessions.push(session.clone());
-            self.sessions.push(session);
+            if remote_project {
+                self.harness.transcript.clear();
+                self.pending_remote_session = Some(PendingRemoteSession::New);
+                if self.auto_connect && !self.harness.status.is_busy() {
+                    self.connect_harness(cx);
+                }
+            } else {
+                let project_id = self.project().id.clone();
+                let branch = self.project().branch.clone();
+                let session = blank_session(&project_id, &self.default_harness, branch);
+                self.persist_session(&session);
+                self.all_sessions.push(session.clone());
+                self.sessions.push(session);
+            }
         }
         self.selected_session =
             session_index_after_delete(index, self.selected_session, self.sessions.len());
 
-        if active {
-            let session_id = self.session().id.clone();
+        if active && !self.sessions.is_empty() {
+            let session = self.session().clone();
             self.harness.session_id = None;
-            self.load_transcript(&session_id);
-            if self.harness.status.is_ready() {
+            self.load_transcript(&session.id);
+            if session.origin.is_remote() {
+                let acp_id = session
+                    .acp_session_id
+                    .clone()
+                    .unwrap_or_else(|| session.id.clone());
+                self.pending_remote_session =
+                    Some(PendingRemoteSession::Load { session_id: acp_id });
+                if self.harness.status.is_ready() {
+                    let action = self.pending_remote_session.take().unwrap();
+                    self.start_remote_session(action, cx);
+                } else if self.auto_connect && !self.harness.status.is_busy() {
+                    self.connect_harness(cx);
+                }
+            } else if self.harness.status.is_ready() {
                 let path = PathBuf::from(&self.project().path);
                 if let Some(harness) = self.harness.harness.as_ref() {
                     harness.new_session(path);
@@ -1325,41 +1993,7 @@ impl KestrelApp {
 
         if active {
             self.selected_project = index.min(self.projects.len() - 1);
-            let project_id = self.project().id.clone();
-            self.sessions = self
-                .all_sessions
-                .iter()
-                .filter(|session| session.project_id == project_id)
-                .cloned()
-                .collect();
-            if self.sessions.is_empty() {
-                let branch = self.project().branch.clone();
-                let session = blank_session(&project_id, &self.default_harness, branch);
-                self.persist_session(&session);
-                self.all_sessions.push(session.clone());
-                self.sessions.push(session);
-            }
-            self.selected_session = 0;
-            let session_id = self.sessions[0].id.clone();
-            let path = self.project().path.clone();
-            self.harness.session_id = None;
-            self.harness.commands.clear();
-            self.load_transcript(&session_id);
-            self.file_tree = FileTree::load(path.clone());
-            self.search_query.clear();
-            self.search_loading = false;
-            self.search_hits = if path == workspace_root() {
-                demo::search_hits(&path)
-            } else {
-                Vec::new()
-            };
-            self.close_inspector();
-            if self.auto_connect {
-                self.connect_harness(cx);
-            } else {
-                self.disconnect_harness(cx);
-            }
-            self.refresh_git_status(cx);
+            self.select_project(self.selected_project, cx);
         } else if index < self.selected_project {
             self.selected_project -= 1;
         }
@@ -1518,36 +2152,55 @@ impl KestrelApp {
     }
 
     pub(crate) fn run_search(&mut self, cx: &mut Context<Self>) {
-        let root = self.project().path.clone();
         let query = self.search_query.trim().to_string();
         if query.is_empty() {
-            self.search_hits = demo::search_hits(&root);
+            self.search_hits = if self.project().is_remote() {
+                Vec::new()
+            } else {
+                demo::search_hits(&self.project().path)
+            };
             self.search_loading = false;
             self.notice = Some("Showing recent matches. Type a query and press Enter.".into());
             cx.notify();
             return;
         }
 
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
         self.search_loading = true;
         self.notice = Some(format!("Searching for “{query}”…"));
+        let expected = self.project().path.clone();
         cx.spawn(async move |this, cx| {
             let match_query = query.clone();
             let hits = cx
                 .background_executor()
-                .spawn(async move { search::search_project(&root, &query, 80) })
+                .spawn(async move { backend.search(&query, 80) })
                 .await;
             this.update(cx, |this, cx| {
-                if this.search_query.trim() != match_query {
+                if this.search_query.trim() != match_query || this.project().path != expected {
                     return;
                 }
-                let count = hits.len();
-                this.search_hits = hits;
+                match hits {
+                    Ok(hits) => {
+                        let count = hits.len();
+                        this.search_hits = hits;
+                        this.notice = Some(if count == 0 {
+                            format!("No matches for “{match_query}”")
+                        } else {
+                            format!("{count} matches for “{match_query}”")
+                        });
+                    }
+                    Err(error) => {
+                        this.search_hits = Vec::new();
+                        this.notice = Some(error);
+                    }
+                }
                 this.search_loading = false;
-                this.notice = Some(if count == 0 {
-                    format!("No matches for “{match_query}”")
-                } else {
-                    format!("{count} matches for “{match_query}”")
-                });
                 cx.notify();
             })
             .ok();
@@ -1590,9 +2243,18 @@ impl KestrelApp {
         self.selected_project = index;
         self.project_menu_open = false;
         self.session_menu_open = false;
-        let path = self.projects[index].path.clone();
-        self.file_tree = FileTree::load(path.clone());
-        self.search_hits = if path == workspace_root() {
+        let project = self.projects[index].clone();
+        let path = project.path.clone();
+        self.file_tree = if project.is_remote() {
+            FileTree {
+                root: path.clone(),
+                entries: Vec::new(),
+                error: None,
+            }
+        } else {
+            FileTree::load(path.clone())
+        };
+        self.search_hits = if !project.is_remote() && path == workspace_root() {
             demo::search_hits(&path)
         } else {
             Vec::new()
@@ -1601,19 +2263,76 @@ impl KestrelApp {
         self.search_loading = false;
         self.close_inspector();
 
-        let project_id = self.projects[index].id.clone();
+        let project_id = project.id.clone();
         self.sessions = self
             .all_sessions
             .iter()
-            .filter(|session| session.project_id == project_id)
+            .filter(|session| {
+                session.project_id == project_id
+                    && (!project.is_remote() || session.origin.is_remote())
+            })
             .cloned()
             .collect();
+        self.selected_session = 0;
+        self.harness.session_id = None;
+        self.harness.commands.clear();
+        self.pending_remote_session = None;
+
+        if let Some(remote_project) = project.remote.clone() {
+            self.remote_sessions_loading = true;
+            self.disconnect_harness(cx);
+            if let Some(session) = self.sessions.first() {
+                let session_id = session.id.clone();
+                self.load_transcript(&session_id);
+            } else {
+                self.harness.transcript.clear();
+            }
+            let Some(host) = self.remote_host(&remote_project.host_id) else {
+                self.remote_sessions_loading = false;
+                self.set_notice("Remote server is not configured", cx);
+                return;
+            };
+            let token = match self.remote_token(&host.id) {
+                Ok(token) => token,
+                Err(error) => {
+                    self.remote_sessions_loading = false;
+                    self.set_notice(error, cx);
+                    return;
+                }
+            };
+            let url = host.url.clone();
+            let remote_id = remote_project.project_id.clone();
+            let expected_project = project.id.clone();
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { remote::sessions(&url, &token, &remote_id) })
+                    .await;
+                this.update(cx, |this, cx| {
+                    if this.project().id != expected_project {
+                        return;
+                    }
+                    match result {
+                        Ok(rows) => this.import_remote_sessions(rows, cx),
+                        Err(error) => {
+                            this.remote_sessions_loading = false;
+                            this.set_notice(error, cx);
+                        }
+                    }
+                })
+                .ok();
+            })
+            .detach();
+            self.refresh_file_tree(cx);
+            self.refresh_git_status(cx);
+            self.notice = Some(format!("Switched to {}", project.name));
+            self.persist_settings(cx);
+            cx.notify();
+            return;
+        }
+
         if self.sessions.is_empty() {
-            let session = blank_session(
-                &project_id,
-                &self.default_harness,
-                self.projects[index].branch.clone(),
-            );
+            let session = blank_session(&project_id, &self.default_harness, project.branch.clone());
             self.persist_session(&session);
             self.all_sessions.push(session.clone());
             self.sessions.push(session);
@@ -1624,36 +2343,88 @@ impl KestrelApp {
         self.harness.session_id = None;
         self.harness.commands.clear();
 
-        self.notice = Some(format!("Switched to {}", self.projects[index].name));
+        self.notice = Some(format!("Switched to {}", project.name));
         if self.auto_connect {
             self.connect_harness(cx);
         } else {
             self.disconnect_harness(cx);
-            self.notice = Some(format!("Switched to {}", self.projects[index].name));
+            self.notice = Some(format!("Switched to {}", project.name));
         }
         self.refresh_git_status(cx);
         self.persist_settings(cx);
         cx.notify();
     }
 
+    /// Load the explorer through the active local or remote backend.
+    pub(crate) fn refresh_file_tree(&mut self, cx: &mut Context<Self>) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_tree.error = Some(error);
+                cx.notify();
+                return;
+            }
+        };
+        let expanded = self.file_tree.expanded_paths();
+        let expected = self.project().path.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { backend.tree() })
+                .await;
+            this.update(cx, |this, cx| {
+                if this.project().path != expected {
+                    return;
+                }
+                match result {
+                    Ok(mut tree) => {
+                        tree.restore_expanded(&expanded);
+                        this.file_tree = tree;
+                    }
+                    Err(error) => {
+                        this.file_tree.error = Some(error);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// Read branch and working-tree state off the UI thread.
     pub(crate) fn refresh_git_status(&mut self, cx: &mut Context<Self>) {
-        let path = self.project().path.clone();
-        let expected = path.clone();
+        let expected = self.project().path.clone();
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.git.error = Some(error);
+                self.git_loading = false;
+                cx.notify();
+                return;
+            }
+        };
         self.git_loading = true;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
             let status = cx
                 .background_executor()
-                .spawn(async move { git::load(&path) })
+                .spawn(async move { backend.git_status() })
                 .await;
             this.update(cx, |this, cx| {
                 if this.project().path == expected {
-                    if let Some(error) = &status.error {
-                        logging::warn(&format!("git status: {error}"));
+                    match status {
+                        Ok(status) => {
+                            if let Some(error) = &status.error {
+                                logging::warn(&format!("git status: {error}"));
+                            }
+                            this.git = status;
+                        }
+                        Err(error) => {
+                            this.git.error = Some(error);
+                        }
                     }
-                    this.git = status;
                     this.git_loading = false;
                     cx.notify();
                 }
@@ -1664,8 +2435,14 @@ impl KestrelApp {
     }
 
     pub(crate) fn stage_all_changes(&mut self, cx: &mut Context<Self>) {
-        let path = self.project().path.clone();
-        match git::stage_all(&path) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_stage_all() {
             Ok(()) => {
                 self.notice = Some("Staged all changes".into());
                 self.refresh_git_status(cx);
@@ -1678,8 +2455,14 @@ impl KestrelApp {
     }
 
     pub(crate) fn stage_file(&mut self, file: &str, cx: &mut Context<Self>) {
-        let path = self.project().path.clone();
-        match git::stage_file(&path, file) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_stage_file(file) {
             Ok(()) => {
                 self.notice = Some(format!("Staged {file}"));
                 self.refresh_git_status(cx);
@@ -1689,8 +2472,14 @@ impl KestrelApp {
     }
 
     pub(crate) fn unstage_file(&mut self, file: &str, cx: &mut Context<Self>) {
-        let path = self.project().path.clone();
-        match git::unstage_file(&path, file) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_unstage_file(file) {
             Ok(()) => {
                 self.notice = Some(format!("Unstaged {file}"));
                 self.refresh_git_status(cx);
@@ -1701,14 +2490,20 @@ impl KestrelApp {
 
     /// Show the read-only unified patch for one source-control change.
     pub(crate) fn open_diff(&mut self, path: &str, staged: bool, cx: &mut Context<Self>) {
-        let root = self.project().path.clone();
         let name = Path::new(path)
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or(path)
             .to_string();
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
 
-        match git::file_diff(&root, path, staged) {
+        match backend.git_file_diff(path, staged) {
             Ok(patch) => match DiffFile::parse(&patch) {
                 Ok(files) if !files.is_empty() => {
                     self.diff_state
@@ -1850,8 +2645,14 @@ impl KestrelApp {
 
     pub(crate) fn commit_changes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let message = self.commit_input.read(cx).value().to_string();
-        let path = self.project().path.clone();
-        match git::commit(&path, &message) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_commit(&message) {
             Ok(()) => {
                 self.commit_input
                     .update(cx, |state, cx| state.set_value("", window, cx));
@@ -1866,35 +2667,55 @@ impl KestrelApp {
     }
 
     pub(crate) fn git_pull(&mut self, cx: &mut Context<Self>) {
-        self.run_git_task("Pulling…", "Pulled the latest changes", git::pull, cx);
+        self.run_git_task(
+            "Pulling…",
+            "Pulled the latest changes",
+            |backend| backend.git_pull(),
+            cx,
+        );
     }
 
     pub(crate) fn git_push(&mut self, cx: &mut Context<Self>) {
-        self.run_git_task("Pushing…", "Pushed the current branch", git::push, cx);
+        self.run_git_task(
+            "Pushing…",
+            "Pushed the current branch",
+            |backend| backend.git_push(),
+            cx,
+        );
     }
 
-    fn run_git_task(
+    fn run_git_task<F>(
         &mut self,
-        label: &'static str,
-        success: &'static str,
-        operation: fn(&str) -> Result<(), String>,
+        label: impl Into<String>,
+        success: impl Into<String>,
+        operation: F,
         cx: &mut Context<Self>,
-    ) {
-        let path = self.project().path.clone();
+    ) where
+        F: FnOnce(remote::WorkspaceBackend) -> Result<(), String> + Send + 'static,
+    {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        let label = label.into();
+        let success = success.into();
         self.git_loading = true;
-        self.notice = Some(label.into());
+        self.notice = Some(label);
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { operation(&path) })
+                .spawn(async move { operation(backend) })
                 .await;
             this.update(cx, |this, cx| {
                 this.git_loading = false;
                 match result {
                     Ok(()) => {
-                        this.notice = Some(success.into());
-                        this.file_tree.reload(this.project().path.clone());
+                        this.notice = Some(success);
+                        this.refresh_file_tree(cx);
                         this.refresh_git_status(cx);
                     }
                     Err(error) => this.set_notice(error, cx),
@@ -1907,7 +2728,13 @@ impl KestrelApp {
     }
 
     pub(crate) fn switch_branch(&mut self, branch: &str, cx: &mut Context<Self>) {
-        let path = self.project().path.clone();
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
         let branch = branch.to_string();
         self.git_loading = true;
         self.notice = Some(format!("Switching to {branch}…"));
@@ -1916,14 +2743,14 @@ impl KestrelApp {
             let switch = branch.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { git::switch_branch(&path, &switch) })
+                .spawn(async move { backend.git_switch(&switch) })
                 .await;
             this.update(cx, |this, cx| {
                 this.git_loading = false;
                 match result {
                     Ok(()) => {
                         this.close_inspector();
-                        this.file_tree.reload(this.project().path.clone());
+                        this.refresh_file_tree(cx);
                         this.notice = Some(format!("Switched to {branch}"));
                         this.refresh_git_status(cx);
                     }
@@ -1938,8 +2765,14 @@ impl KestrelApp {
 
     pub(crate) fn amend_commit(&mut self, cx: &mut Context<Self>) {
         let message = self.commit_input.read(cx).value().to_string();
-        let path = self.project().path.clone();
-        match git::amend(&path, &message) {
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        match backend.git_amend(&message) {
             Ok(()) => {
                 self.notice = Some("Amended the last commit".into());
                 self.refresh_git_status(cx);
@@ -1973,6 +2806,7 @@ impl KestrelApp {
                 .sessions
                 .get(self.selected_session)
                 .map(|session| session.id.clone()),
+            remote_hosts: self.remote_hosts.clone(),
         }
     }
 
@@ -2067,9 +2901,13 @@ impl KestrelApp {
             cx.notify();
             return;
         }
-        self.open_file_now(path, window, cx);
-        if let Some(line) = line {
-            self.jump_to_line(line, window, cx);
+        if self.project().is_remote() {
+            self.open_file_remote(path, line, window, cx);
+        } else {
+            self.open_file_now(path, window, cx);
+            if let Some(line) = line {
+                self.jump_to_line(line, window, cx);
+            }
         }
     }
 
@@ -2099,7 +2937,7 @@ impl KestrelApp {
             .as_ref()
             .map(|metadata| metadata.len() as usize)
             .unwrap_or(0);
-        self.editor_mtime = metadata.and_then(|metadata| metadata.modified().ok());
+        self.editor_mtime = metadata.as_ref().map(metadata_mtime_ms);
         let (contents, readonly) = match fs::read_to_string(path) {
             Ok(contents) if contents.contains('\0') => {
                 ("Binary file — editing is disabled.".to_string(), true)
@@ -2127,6 +2965,107 @@ impl KestrelApp {
         cx.notify();
     }
 
+    fn open_file_remote(
+        &mut self,
+        path: &str,
+        line: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let root = self.project().path.clone();
+        let path_buf = Path::new(path);
+        let name = path_buf
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(path)
+            .to_string();
+        let directory = path_buf
+            .parent()
+            .and_then(|parent| parent.strip_prefix(&root).ok())
+            .map(|parent| {
+                if parent.as_os_str().is_empty() {
+                    ".".to_string()
+                } else {
+                    parent.to_string_lossy().to_string()
+                }
+            })
+            .unwrap_or_else(|| ".".to_string());
+        let language = editor_language(path).to_string();
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        self.editor_readonly = true;
+        self.editor_dirty = false;
+        self.editor_mtime = None;
+        self.editor.update(cx, |state, cx| {
+            state.set_value("Loading…", window, cx);
+            state.set_highlighter(language.clone(), cx);
+            state.set_soft_wrap(self.word_wrap, window, cx);
+            state.focus(window, cx);
+        });
+        self.inspector = Some(Inspector {
+            path: path.to_string(),
+            name,
+            directory,
+            language: language.clone(),
+            bytes: 0,
+            snippet: None,
+        });
+        let file_path = path.to_string();
+        let expected_path = file_path.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { backend.read_file(&file_path) })
+                .await;
+            this.update_in(cx, |this, window, cx| {
+                if !this
+                    .inspector
+                    .as_ref()
+                    .is_some_and(|inspector| inspector.path == expected_path)
+                {
+                    return;
+                }
+                match result {
+                    Ok(file) => {
+                        this.editor_readonly = file.readonly;
+                        this.editor_mtime = Some(file.mtime_ms);
+                        let wrap = this.word_wrap;
+                        this.editor.update(cx, |state, cx| {
+                            state.set_value(file.contents, window, cx);
+                            state.set_highlighter(language.clone(), cx);
+                            state.set_soft_wrap(wrap, window, cx);
+                            state.focus(window, cx);
+                        });
+                        if let Some(inspector) = this.inspector.as_mut() {
+                            inspector.bytes = file.bytes as usize;
+                        }
+                        if let Some(line) = line {
+                            this.jump_to_line(line, window, cx);
+                        }
+                    }
+                    Err(error) => {
+                        this.editor_readonly = true;
+                        this.editor.update(cx, |state, cx| {
+                            state.set_value(
+                                format!("Unable to read this file: {error}"),
+                                window,
+                                cx,
+                            );
+                        });
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn jump_to_line(&mut self, line: u32, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(inspector) = self.inspector.as_mut() {
             inspector.snippet = Some((line, line));
@@ -2147,6 +3086,47 @@ impl KestrelApp {
             return;
         };
         let path = inspector.path.clone();
+        if self.project().is_remote() {
+            let backend = match self.backend() {
+                Ok(backend) => backend,
+                Err(_) => return,
+            };
+            let language = editor_language(&path).to_string();
+            let expected_path = path.clone();
+            cx.spawn_in(window, async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { backend.read_file(&path) })
+                    .await;
+                this.update_in(cx, |this, window, cx| {
+                    if !this
+                        .inspector
+                        .as_ref()
+                        .is_some_and(|inspector| inspector.path == expected_path)
+                    {
+                        return;
+                    }
+                    if let Ok(file) = result {
+                        this.editor_readonly = file.readonly;
+                        this.editor_mtime = Some(file.mtime_ms);
+                        let wrap = this.word_wrap;
+                        this.editor.update(cx, |state, cx| {
+                            state.set_value(file.contents, window, cx);
+                            state.set_highlighter(language.clone(), cx);
+                            state.set_soft_wrap(wrap, window, cx);
+                        });
+                        if let Some(inspector) = this.inspector.as_mut() {
+                            inspector.bytes = file.bytes as usize;
+                            inspector.language = language;
+                        }
+                    }
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+            return;
+        }
         let Ok(contents) = fs::read_to_string(&path) else {
             return;
         };
@@ -2155,7 +3135,7 @@ impl KestrelApp {
         }
         self.editor_mtime = fs::metadata(&path)
             .ok()
-            .and_then(|metadata| metadata.modified().ok());
+            .map(|metadata| metadata_mtime_ms(&metadata));
 
         let language = editor_language(&path).to_string();
         let bytes = contents.len();
@@ -2222,10 +3202,7 @@ impl KestrelApp {
         match pending {
             PendingEditor::Close => self.close_inspector(),
             PendingEditor::Open { path, line } => {
-                self.open_file_now(&path, window, cx);
-                if let Some(line) = line {
-                    self.jump_to_line(line, window, cx);
-                }
+                self.open_file_at(&path, line, window, cx);
             }
         }
         cx.notify();
@@ -2258,12 +3235,41 @@ impl KestrelApp {
             return;
         }
         let value = self.editor.read(cx).value().to_string();
+        if self.project().is_remote() {
+            let backend = match self.backend() {
+                Ok(backend) => backend,
+                Err(error) => {
+                    if announce {
+                        self.notice = Some(error);
+                    }
+                    cx.notify();
+                    return;
+                }
+            };
+            match backend.write_file(&inspector.path, &value) {
+                Ok(stat) => {
+                    self.editor_dirty = false;
+                    self.editor_mtime = Some(stat.mtime_ms);
+                    if announce {
+                        self.notice = Some(format!("Saved {}", inspector.name));
+                    }
+                    self.refresh_git_status(cx);
+                }
+                Err(error) => {
+                    if announce {
+                        self.notice = Some(format!("Could not save {}: {error}", inspector.name));
+                    }
+                }
+            }
+            cx.notify();
+            return;
+        }
         match fs::write(&inspector.path, value) {
             Ok(()) => {
                 self.editor_dirty = false;
                 self.editor_mtime = fs::metadata(&inspector.path)
                     .ok()
-                    .and_then(|metadata| metadata.modified().ok());
+                    .map(|metadata| metadata_mtime_ms(&metadata));
                 if announce {
                     self.notice = Some(format!("Saved {}", inspector.name));
                 }
@@ -2298,14 +3304,48 @@ impl KestrelApp {
 
     /// Detect external edits to the open file and reload a clean buffer.
     fn check_open_file(&mut self, cx: &mut Context<Self>) {
-        if self.editor_dirty {
+        if self.editor_dirty || self.editor_stale {
             return;
         }
         let Some(inspector) = self.inspector.as_ref() else {
             return;
         };
         let path = inspector.path.clone();
-        let Ok(modified) = fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
+        if self.project().is_remote() {
+            let backend = match self.backend() {
+                Ok(backend) => backend,
+                Err(_) => return,
+            };
+            let known = self.editor_mtime;
+            let expected_path = path.clone();
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { backend.stat_file(&path) })
+                    .await;
+                this.update(cx, |this, cx| {
+                    if !this
+                        .inspector
+                        .as_ref()
+                        .is_some_and(|inspector| inspector.path == expected_path)
+                    {
+                        return;
+                    }
+                    if let Ok(stat) = result
+                        && this.editor_mtime == known
+                        && known != Some(stat.mtime_ms)
+                    {
+                        this.editor_mtime = Some(stat.mtime_ms);
+                        this.editor_stale = true;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            })
+            .detach();
+            return;
+        }
+        let Ok(modified) = fs::metadata(&path).map(|metadata| metadata_mtime_ms(&metadata)) else {
             return;
         };
         if self.editor_mtime != Some(modified) {
@@ -2606,6 +3646,58 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    pub(crate) fn takeover_current_session(&mut self, cx: &mut Context<Self>) {
+        let session = self.session().clone();
+        let Some(host_id) = session.origin.host_id().map(str::to_string) else {
+            self.set_notice("Only remote sessions can be taken over", cx);
+            return;
+        };
+        let Some(host) = self.remote_host(&host_id) else {
+            self.set_notice("Remote server is not configured", cx);
+            return;
+        };
+        let token = match self.remote_token(&host_id) {
+            Ok(token) => token,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        let session_id = session
+            .acp_session_id
+            .clone()
+            .unwrap_or_else(|| session.id.clone());
+        let session_for_load = session_id.clone();
+        let expected_project = self.project().id.clone();
+        self.session_menu_open = false;
+        self.notice = Some("Taking over the remote session…".into());
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { remote::takeover_session(&host.url, &token, &session_id) })
+                .await;
+            this.update(cx, |this, cx| {
+                if this.project().id != expected_project {
+                    return;
+                }
+                match result {
+                    Ok(()) => {
+                        this.pending_remote_session = Some(PendingRemoteSession::Load {
+                            session_id: session_for_load,
+                        });
+                        this.disconnect_harness(cx);
+                        this.connect_harness(cx);
+                        this.notice = Some("Took over the remote session".into());
+                    }
+                    Err(error) => this.set_notice(error, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn session_menu(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
 
@@ -2653,6 +3745,21 @@ impl KestrelApp {
                 }))
                 .into_any_element()
         }
+
+        let takeover = self.session().origin.is_remote().then(|| {
+            item(
+                "session-menu-takeover",
+                IconName::Cloud,
+                "Take over session",
+                None,
+                false,
+                cx,
+                |this, _, cx| {
+                    this.session_menu_open = false;
+                    this.takeover_current_session(cx);
+                },
+            )
+        });
 
         div()
             .id("session-menu-overlay")
@@ -2710,6 +3817,7 @@ impl KestrelApp {
                             this.set_notice("Copied the transcript as Markdown", cx);
                         },
                     ))
+                    .children(takeover)
                     .child(div().h(px(1.)).my(px(3.)).bg(p.border))
                     .child(item(
                         "session-menu-delete",
@@ -3078,6 +4186,324 @@ impl KestrelApp {
                             ),
                     )
                     .child(body),
+            )
+            .into_any_element()
+    }
+
+    fn remote_picker_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(picker) = self.remote_picker.as_ref() else {
+            return div().into_any_element();
+        };
+        let host_id = picker.host_id.clone();
+        let host_name = picker.host_name.clone();
+        let loading = picker.loading;
+        let error = picker.error.clone();
+        let projects = picker.projects.clone();
+
+        let mut list = div().flex().flex_col().gap(px(2.));
+        if loading {
+            list = list.child(
+                div()
+                    .py(px(24.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(7.))
+                    .child(icon(IconName::LoaderCircle, 13.0, p.muted_fg))
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(p.muted_fg)
+                            .child("Loading projects…"),
+                    ),
+            );
+        } else if let Some(error) = error {
+            list = list.child(
+                div()
+                    .py(px(18.))
+                    .px(px(10.))
+                    .rounded(px(6.))
+                    .bg(p.red_soft)
+                    .text_size(px(10.))
+                    .text_color(p.red)
+                    .child(error),
+            );
+        } else if projects.is_empty() {
+            list = list.child(
+                div()
+                    .py(px(24.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(p.fg)
+                            .child("No projects on this relay"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(9.))
+                            .text_color(p.muted_fg)
+                            .child("Add one with `kestrel-relay project add`."),
+                    ),
+            );
+        } else {
+            for info in &projects {
+                let info = info.clone();
+                let info_for_click = info.clone();
+                let host = host_id.clone();
+                list = list.child(
+                    div()
+                        .id(format!("remote-project:{}", info.id))
+                        .h(px(42.))
+                        .px(px(8.))
+                        .rounded(px(6.))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.hover))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.add_remote_project(&host, &info_for_click, cx);
+                        }))
+                        .child(
+                            div()
+                                .size(px(24.))
+                                .rounded(px(6.))
+                                .bg(p.blue_soft)
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(icon(IconName::Folder, 12.0, p.blue)),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .flex()
+                                .flex_col()
+                                .gap(px(1.))
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(p.fg)
+                                        .child(info.name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(8.5))
+                                        .font_family("Geist Mono")
+                                        .text_color(p.muted_fg)
+                                        .truncate()
+                                        .child(info.path.clone()),
+                                ),
+                        )
+                        .child(icon(IconName::ChevronRight, 11.0, p.muted_fg)),
+                );
+            }
+        }
+
+        div()
+            .id("remote-picker-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.remote_picker = None;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("remote-picker")
+                    .w(px(440.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .size(px(28.))
+                                    .rounded(px(7.))
+                                    .bg(p.blue_soft)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(IconName::Cloud, 13.0, p.blue)),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(1.))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(p.fg)
+                                            .child("Add remote project"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(9.))
+                                            .text_color(p.muted_fg)
+                                            .child(host_name),
+                                    ),
+                            )
+                            .child(div().flex_1())
+                            .child(
+                                div()
+                                    .id("remote-picker-close")
+                                    .size(px(24.))
+                                    .rounded(px(5.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.remote_picker = None;
+                                        cx.notify();
+                                    }))
+                                    .child(icon(IconName::X, 11.0, p.muted_fg)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("remote-picker-list")
+                            .max_h(px(320.))
+                            .overflow_y_scroll()
+                            .child(list),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn new_file_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        div()
+            .id("new-file-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.new_file_prompt = false;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("new-file-modal")
+                    .w(px(380.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.fg)
+                            .child("New remote file"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(9.5))
+                            .text_color(p.muted_fg)
+                            .child("Path relative to the project root."),
+                    )
+                    .child(
+                        div()
+                            .h(px(30.))
+                            .px(px(7.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.bg)
+                            .flex()
+                            .items_center()
+                            .child(
+                                Input::new(&self.new_file_input)
+                                    .appearance(false)
+                                    .bordered(false),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .id("new-file-cancel")
+                                    .h(px(27.))
+                                    .px(px(9.))
+                                    .rounded(px(5.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.new_file_prompt = false;
+                                        cx.notify();
+                                    }))
+                                    .child(
+                                        div().text_size(px(10.)).text_color(p.fg).child("Cancel"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("new-file-create")
+                                    .h(px(27.))
+                                    .px(px(9.))
+                                    .rounded(px(5.))
+                                    .bg(p.fg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.create_remote_file(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.bg)
+                                            .child("Create"),
+                                    ),
+                            ),
+                    ),
             )
             .into_any_element()
     }
@@ -3552,6 +4978,11 @@ impl Render for KestrelApp {
             .then(|| views::palette::render(self, window, cx));
         let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
         let diff = self.diff_view.as_ref().map(|_| self.diff_modal(cx));
+        let remote_picker = self
+            .remote_picker
+            .as_ref()
+            .map(|_| self.remote_picker_modal(cx));
+        let new_file_modal = self.new_file_prompt.then(|| self.new_file_modal(cx));
         let session_menu = self.session_menu_open.then(|| self.session_menu(cx));
         let editor_prompt = self.pending_editor.as_ref().map(|_| self.editor_prompt(cx));
 
@@ -3593,6 +5024,8 @@ impl Render for KestrelApp {
             .children(palette)
             .children(confirm)
             .children(diff)
+            .children(remote_picker)
+            .children(new_file_modal)
             .children(editor_prompt)
     }
 }
@@ -3686,6 +5119,57 @@ fn open_store() -> Option<kestrel_storage::Store> {
     }
 }
 
+fn remote_session_summary(
+    row: &remote::RemoteSessionInfo,
+    project_id: &str,
+    host_id: &str,
+) -> SessionSummary {
+    SessionSummary {
+        id: row.id.clone(),
+        project_id: project_id.to_string(),
+        title: row.title.clone(),
+        status: SessionStatus::Waiting,
+        harness: "Remote".into(),
+        model: "Auto".into(),
+        branch: None,
+        updated_at: relative_epoch(row.updated_at),
+        cost_usd: 0.0,
+        duration_secs: 0,
+        tokens: 0,
+        summary: "Remote session on the relay.".into(),
+        origin: SessionOrigin::Remote {
+            host_id: host_id.to_string(),
+        },
+        acp_session_id: Some(row.id.clone()),
+    }
+}
+
+fn relative_epoch(epoch: i64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0);
+    let delta = (now - epoch).max(0);
+    if delta < 60 {
+        "now".into()
+    } else if delta < 3_600 {
+        format!("{}m ago", delta / 60)
+    } else if delta < 86_400 {
+        format!("{}h ago", delta / 3_600)
+    } else {
+        format!("{}d ago", delta / 86_400)
+    }
+}
+
+fn metadata_mtime_ms(metadata: &fs::Metadata) -> u64 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn blank_session(project_id: &str, harness: &str, branch: Option<String>) -> SessionSummary {
     SessionSummary {
         id: format!("ses-{}", uuid::Uuid::now_v7()),
@@ -3700,6 +5184,8 @@ fn blank_session(project_id: &str, harness: &str, branch: Option<String>) -> Ses
         duration_secs: 0,
         tokens: 0,
         summary: "No messages yet. Ask Kestrel to build, fix, or explain something.".into(),
+        origin: SessionOrigin::Local,
+        acp_session_id: None,
     }
 }
 

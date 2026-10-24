@@ -110,22 +110,39 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 3 {
+            self.connection.execute_batch(
+                r#"
+                ALTER TABLE projects ADD COLUMN remote TEXT;
+                ALTER TABLE sessions ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';
+                ALTER TABLE sessions ADD COLUMN acp_session_id TEXT;
+
+                PRAGMA user_version = 3;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
     pub fn upsert_project(&self, project: &Project) -> Result<()> {
         let tone = serde_json::to_string(&project.tone)?;
+        let remote = project
+            .remote
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
         self.connection.execute(
             r#"
-            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
                 branch = excluded.branch,
                 tone = excluded.tone,
                 pinned = excluded.pinned,
-                trusted = excluded.trusted
+                trusted = excluded.trusted,
+                remote = excluded.remote
             "#,
             params![
                 project.id,
@@ -135,6 +152,7 @@ impl Store {
                 tone,
                 project.pinned as i64,
                 project.trusted as i64,
+                remote,
             ],
         )?;
         Ok(())
@@ -142,10 +160,11 @@ impl Store {
 
     pub fn projects(&self) -> Result<Vec<Project>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name, path, branch, tone, pinned, trusted FROM projects ORDER BY created_at",
+            "SELECT id, name, path, branch, tone, pinned, trusted, remote FROM projects ORDER BY created_at",
         )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(4)?;
+            let remote: Option<String> = row.get(7)?;
             Ok(Project {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -155,6 +174,9 @@ impl Store {
                 pinned: row.get::<_, i64>(5)? != 0,
                 trusted: row.get::<_, i64>(6)? != 0,
                 running_sessions: 0,
+                remote: remote
+                    .as_deref()
+                    .and_then(|value| serde_json::from_str(value).ok()),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -162,13 +184,14 @@ impl Store {
 
     pub fn upsert_session(&self, session: &SessionSummary) -> Result<()> {
         let status = serde_json::to_string(&session.status)?;
+        let origin = serde_json::to_string(&session.origin)?;
         self.connection.execute(
             r#"
             INSERT INTO sessions (
                 id, project_id, title, status, harness, model, branch,
-                updated_at, cost_usd, duration_secs, tokens, summary
+                updated_at, cost_usd, duration_secs, tokens, summary, origin, acp_session_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 status = excluded.status,
@@ -179,7 +202,9 @@ impl Store {
                 cost_usd = excluded.cost_usd,
                 duration_secs = excluded.duration_secs,
                 tokens = excluded.tokens,
-                summary = excluded.summary
+                summary = excluded.summary,
+                origin = excluded.origin,
+                acp_session_id = excluded.acp_session_id
             "#,
             params![
                 session.id,
@@ -194,6 +219,8 @@ impl Store {
                 session.duration_secs as i64,
                 session.tokens as i64,
                 session.summary,
+                origin,
+                session.acp_session_id,
             ],
         )?;
         Ok(())
@@ -203,18 +230,19 @@ impl Store {
         let sql = match project_id {
             Some(_) => {
                 "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
-                 cost_usd, duration_secs, tokens, summary FROM sessions \
+                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id FROM sessions \
                  WHERE project_id = ?1 ORDER BY created_at DESC"
             }
             None => {
                 "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
-                 cost_usd, duration_secs, tokens, summary FROM sessions \
+                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id FROM sessions \
                  ORDER BY created_at DESC"
             }
         };
         let mut statement = self.connection.prepare(sql)?;
         let map = |row: &rusqlite::Row<'_>| {
             let status: String = row.get(3)?;
+            let origin: String = row.get(12)?;
             Ok(SessionSummary {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
@@ -229,6 +257,9 @@ impl Store {
                 duration_secs: row.get::<_, i64>(9)? as u64,
                 tokens: row.get::<_, i64>(10)? as u64,
                 summary: row.get(11)?,
+                origin: serde_json::from_str(&origin)
+                    .unwrap_or(kestrel_domain::SessionOrigin::Local),
+                acp_session_id: row.get(13)?,
             })
         };
         let rows = match project_id {
@@ -321,7 +352,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kestrel_domain::{ProjectTone, SessionStatus};
+    use kestrel_domain::{ProjectTone, RemoteProject, SessionOrigin, SessionStatus};
 
     fn project() -> Project {
         Project {
@@ -333,6 +364,7 @@ mod tests {
             pinned: true,
             trusted: true,
             running_sessions: 0,
+            remote: None,
         }
     }
 
@@ -350,6 +382,8 @@ mod tests {
             duration_secs: 42,
             tokens: 1_024,
             summary: "Round-trip a permission request.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         }
     }
 
@@ -358,7 +392,6 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         store.upsert_project(&project()).unwrap();
         store.upsert_session(&session()).unwrap();
-
         let projects = store.projects().unwrap();
         assert_eq!(projects.len(), 1);
         assert_eq!(projects[0].name, "Kestrel");
@@ -370,6 +403,31 @@ mod tests {
         assert_eq!(sessions[0].tokens, 1_024);
 
         assert!(store.sessions(Some("missing")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn round_trips_remote_projects_and_sessions() {
+        let store = Store::open_in_memory().unwrap();
+        let mut project = project();
+        project.remote = Some(RemoteProject {
+            host_id: "host-1".into(),
+            project_id: "prj-1".into(),
+            path: "/srv/repo".into(),
+        });
+        store.upsert_project(&project).unwrap();
+
+        let mut session = session();
+        session.origin = SessionOrigin::Remote {
+            host_id: "host-1".into(),
+        };
+        session.acp_session_id = Some("acp-1".into());
+        store.upsert_session(&session).unwrap();
+
+        let projects = store.projects().unwrap();
+        assert_eq!(projects[0].remote.as_ref().unwrap().project_id, "prj-1");
+        let sessions = store.sessions(None).unwrap();
+        assert!(sessions[0].origin.is_remote());
+        assert_eq!(sessions[0].acp_session_id.as_deref(), Some("acp-1"));
     }
 
     #[test]

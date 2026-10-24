@@ -1,0 +1,30 @@
+name: Kestrel
+options:
+  bundleIdPrefix: dev.kestrel
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+
+targets:
+  Kestrel:
+    type: application
+    platform: iOS
+    sources:
+      - path: Kestrel
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.kestrel.ios
+        INFOPLIST_FILE: Kestrel/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.1.0"
+    scheme:
+      testTargets: []

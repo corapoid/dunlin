@@ -9,12 +9,16 @@
 
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, ContentBlock, ContentChunk, Diff, InitializeRequest, InitializeResponse,
-    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry,
-    PlanEntryPriority, PlanEntryStatus, PromptRequest, PromptResponse, RequestPermissionOutcome,
-    RequestPermissionRequest, SessionNotification, SessionUpdate, StopReason, TextContent,
-    ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, UsageUpdate,
+    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
+    PermissionOption, PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority, PlanEntryStatus,
+    PromptRequest, PromptResponse, RequestPermissionOutcome, RequestPermissionRequest,
+    SessionNotification, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallContent,
+    ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, UsageUpdate,
 };
 use agent_client_protocol::{Agent, Result, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn main() -> Result<()> {
     async_io::block_on(
@@ -46,7 +50,30 @@ fn main() -> Result<()> {
                        responder,
                        _connection: agent_client_protocol::ConnectionTo<
                     agent_client_protocol::Client,
-                >| { responder.respond(NewSessionResponse::new("mock-session-1")) },
+                >| {
+                    let id = format!(
+                        "mock-{}-{}",
+                        std::process::id(),
+                        SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
+                    );
+                    responder.respond(NewSessionResponse::new(id))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async |request: LoadSessionRequest,
+                       responder,
+                       connection: agent_client_protocol::ConnectionTo<
+                    agent_client_protocol::Client,
+                >| {
+                    connection.send_notification(SessionNotification::new(
+                        request.session_id.clone(),
+                        SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                            TextContent::new("Restored session history."),
+                        ))),
+                    ))?;
+                    responder.respond(LoadSessionResponse::new())
+                },
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(

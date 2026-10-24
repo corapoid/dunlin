@@ -11,6 +11,7 @@
 //! from a spawned task, never while holding up the ACP dispatch loop.
 
 use std::collections::HashMap;
+use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,23 +20,44 @@ use std::thread::{self, JoinHandle};
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    AvailableCommandsUpdate, CancelNotification, ContentBlock, InitializeRequest,
-    NewSessionRequest, PermissionOptionKind, PromptRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionNotification, SessionUpdate, ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate,
-    UsageUpdate,
+    AvailableCommandsUpdate, CancelNotification, ContentBlock, Error as AcpError,
+    InitializeRequest, LoadSessionRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
+    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, ToolCall, ToolCallContent,
+    ToolCallStatus, ToolCallUpdate, UsageUpdate,
 };
-use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
+use agent_client_protocol::{
+    AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult,
+};
 use async_channel::{Receiver, Sender};
+use futures_util::{SinkExt, StreamExt};
 use kestrel_domain::{ToolKind, ToolStatus};
 use serde::{Deserialize, Serialize};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::HeaderValue;
+use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
 
-/// Everything needed to start one ACP agent process.
+/// How the ACP connection reaches its agent.
+#[derive(Clone, Debug)]
+pub enum HarnessTransport {
+    /// Spawn a local process and speak ACP over stdio.
+    Local { command: String },
+    /// Connect to a relay over WebSocket and speak ACP over text frames.
+    Remote {
+        url: String,
+        token: String,
+        project_id: String,
+    },
+}
+
+/// Everything needed to start one ACP agent process or remote connection.
 #[derive(Clone, Debug)]
 pub struct HarnessConfig {
-    /// Shell-style command, for example `opencode acp`.
-    pub command: String,
-    /// Session working directory. Must be absolute.
+    pub transport: HarnessTransport,
+    /// Session working directory. Must be absolute. For remote sessions this is
+    /// the path on the relay.
     pub cwd: PathBuf,
     /// Client name reported during `initialize`.
     pub client_name: String,
@@ -44,9 +66,39 @@ pub struct HarnessConfig {
 impl HarnessConfig {
     pub fn new(command: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
         Self {
-            command: command.into(),
+            transport: HarnessTransport::Local {
+                command: command.into(),
+            },
             cwd: cwd.into(),
             client_name: "Kestrel".into(),
+        }
+    }
+
+    pub fn remote(
+        url: impl Into<String>,
+        token: impl Into<String>,
+        project_id: impl Into<String>,
+        cwd: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            transport: HarnessTransport::Remote {
+                url: url.into(),
+                token: token.into(),
+                project_id: project_id.into(),
+            },
+            cwd: cwd.into(),
+            client_name: "Kestrel".into(),
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self.transport, HarnessTransport::Remote { .. })
+    }
+
+    pub fn description(&self) -> String {
+        match &self.transport {
+            HarnessTransport::Local { command } => command.clone(),
+            HarnessTransport::Remote { url, .. } => format!("relay {url}"),
         }
     }
 }
@@ -131,6 +183,9 @@ pub enum HarnessEvent {
     SessionCreated {
         session_id: String,
     },
+    SessionLoaded {
+        session_id: String,
+    },
     Update {
         session_id: String,
         update: HarnessUpdate,
@@ -163,6 +218,10 @@ pub enum HarnessCommand {
     NewSession {
         cwd: PathBuf,
     },
+    LoadSession {
+        session_id: String,
+        cwd: PathBuf,
+    },
     RespondPermission {
         request_id: String,
         option_id: Option<String>,
@@ -189,10 +248,19 @@ impl AcpHarness {
 
         let join = {
             let next_request = next_request.clone();
+            let remote = config.is_remote();
             thread::Builder::new()
                 .name("kestrel-acp".into())
                 .spawn(move || {
-                    async_io::block_on(worker(config, command_rx, event_tx, next_request));
+                    if remote {
+                        let runtime = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .expect("failed to build the remote ACP runtime");
+                        runtime.block_on(worker(config, command_rx, event_tx, next_request));
+                    } else {
+                        async_io::block_on(worker(config, command_rx, event_tx, next_request));
+                    }
                 })
                 .expect("failed to spawn ACP worker thread")
         };
@@ -222,6 +290,14 @@ impl AcpHarness {
     /// Create a fresh ACP session in `cwd` and make it active.
     pub fn new_session(&self, cwd: impl Into<PathBuf>) -> bool {
         self.send(HarnessCommand::NewSession { cwd: cwd.into() })
+    }
+
+    /// Load an existing ACP session and replay its history.
+    pub fn load_session(&self, session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> bool {
+        self.send(HarnessCommand::LoadSession {
+            session_id: session_id.into(),
+            cwd: cwd.into(),
+        })
     }
 
     /// Resolve a pending permission request.
@@ -292,8 +368,21 @@ async fn run(
     events: Sender<HarnessEvent>,
     next_request: Arc<AtomicU64>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let agent = AcpAgent::from_str(&config.command)
-        .map_err(|error| format!("could not parse harness command: {error}"))?;
+    let transport = match &config.transport {
+        HarnessTransport::Local { command } => {
+            Transport::Local(AcpAgent::from_str(command).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("could not parse harness command: {error}"),
+                )
+            })?)
+        }
+        HarnessTransport::Remote {
+            url,
+            token,
+            project_id,
+        } => Transport::Remote(WsTransport::new(url, token, project_id)?),
+    };
     let pending: PendingPermissions = Arc::new(Mutex::new(HashMap::new()));
 
     let notification_events = events.clone();
@@ -374,153 +463,183 @@ async fn run(
             },
             agent_client_protocol::on_receive_request!(),
         )
-        .connect_with(agent, move |connection: ConnectionTo<Agent>| async move {
-            let init = connection
-                .send_request(
-                    InitializeRequest::new(ProtocolVersion::V1).client_info(
-                        agent_client_protocol::schema::v1::Implementation::new(
-                            "Kestrel",
-                            env!("CARGO_PKG_VERSION"),
-                        )
-                        .title("Kestrel"),
-                    ),
-                )
-                .block_task()
-                .await?;
-
-            let (agent_name, agent_version) = init
-                .agent_info
-                .as_ref()
-                .map(|info| {
-                    (
-                        info.title.clone().unwrap_or_else(|| info.name.clone()),
-                        info.version.clone(),
+        .connect_with(
+            transport,
+            move |connection: ConnectionTo<Agent>| async move {
+                let init = connection
+                    .send_request(
+                        InitializeRequest::new(ProtocolVersion::V1).client_info(
+                            agent_client_protocol::schema::v1::Implementation::new(
+                                "Kestrel",
+                                env!("CARGO_PKG_VERSION"),
+                            )
+                            .title("Kestrel"),
+                        ),
                     )
-                })
-                .unwrap_or_else(|| ("ACP agent".into(), String::new()));
+                    .block_task()
+                    .await?;
 
-            let _ = foreground_events
-                .send(HarnessEvent::Ready {
-                    agent: agent_name,
-                    version: agent_version,
-                })
-                .await;
+                let (agent_name, agent_version) = init
+                    .agent_info
+                    .as_ref()
+                    .map(|info| {
+                        (
+                            info.title.clone().unwrap_or_else(|| info.name.clone()),
+                            info.version.clone(),
+                        )
+                    })
+                    .unwrap_or_else(|| ("ACP agent".into(), String::new()));
 
-            let session = connection
-                .send_request(NewSessionRequest::new(config.cwd.clone()))
-                .block_task()
-                .await?;
-            let mut active_session = Some(session.session_id);
-            let _ = foreground_events
-                .send(HarnessEvent::SessionCreated {
-                    session_id: active_session
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_default(),
-                })
-                .await;
+                let _ = foreground_events
+                    .send(HarnessEvent::Ready {
+                        agent: agent_name,
+                        version: agent_version,
+                    })
+                    .await;
 
-            let mut shutting_down = false;
-            while let Ok(command) = commands.recv().await {
-                match command {
-                    HarnessCommand::Prompt { text } => {
-                        let Some(session_id) = active_session.clone() else {
-                            let _ = foreground_events
-                                .send(HarnessEvent::Error {
-                                    message: "No active ACP session".into(),
-                                })
-                                .await;
-                            continue;
-                        };
-                        let prompt_connection = connection.clone();
-                        let prompt_events = foreground_events.clone();
-                        connection.spawn(async move {
-                            let response = prompt_connection
-                                .send_request(PromptRequest::new(
-                                    session_id.clone(),
-                                    vec![ContentBlock::Text(
-                                        agent_client_protocol::schema::v1::TextContent::new(text),
-                                    )],
-                                ))
+                let mut active_session = None;
+                if !config.is_remote() {
+                    let session = connection
+                        .send_request(NewSessionRequest::new(config.cwd.clone()))
+                        .block_task()
+                        .await?;
+                    active_session = Some(session.session_id.clone());
+                    let _ = foreground_events
+                        .send(HarnessEvent::SessionCreated {
+                            session_id: session.session_id.to_string(),
+                        })
+                        .await;
+                }
+
+                let mut shutting_down = false;
+                while let Ok(command) = commands.recv().await {
+                    match command {
+                        HarnessCommand::Prompt { text } => {
+                            let Some(session_id) = active_session.clone() else {
+                                let _ = foreground_events
+                                    .send(HarnessEvent::Error {
+                                        message: "No active ACP session".into(),
+                                    })
+                                    .await;
+                                continue;
+                            };
+                            let prompt_connection = connection.clone();
+                            let prompt_events = foreground_events.clone();
+                            connection.spawn(async move {
+                                let response = prompt_connection
+                                    .send_request(PromptRequest::new(
+                                        session_id.clone(),
+                                        vec![ContentBlock::Text(
+                                            agent_client_protocol::schema::v1::TextContent::new(
+                                                text,
+                                            ),
+                                        )],
+                                    ))
+                                    .block_task()
+                                    .await;
+                                match response {
+                                    Ok(response) => {
+                                        let _ = prompt_events
+                                            .send(HarnessEvent::PromptFinished {
+                                                session_id: session_id.to_string(),
+                                                stop_reason: stop_reason_label(
+                                                    response.stop_reason,
+                                                ),
+                                            })
+                                            .await;
+                                    }
+                                    Err(error) => {
+                                        let _ = prompt_events
+                                            .send(HarnessEvent::Error {
+                                                message: format!("Prompt failed: {error}"),
+                                            })
+                                            .await;
+                                    }
+                                }
+                                Ok(())
+                            })?;
+                        }
+                        HarnessCommand::Cancel => {
+                            if let Some(session_id) = active_session.as_ref() {
+                                let _ = connection
+                                    .send_notification(CancelNotification::new(session_id.clone()));
+                            }
+                        }
+                        HarnessCommand::NewSession { cwd } => {
+                            match connection
+                                .send_request(NewSessionRequest::new(cwd))
                                 .block_task()
-                                .await;
-                            match response {
-                                Ok(response) => {
-                                    let _ = prompt_events
-                                        .send(HarnessEvent::PromptFinished {
-                                            session_id: session_id.to_string(),
-                                            stop_reason: stop_reason_label(response.stop_reason),
+                                .await
+                            {
+                                Ok(session) => {
+                                    active_session = Some(session.session_id.clone());
+                                    let _ = foreground_events
+                                        .send(HarnessEvent::SessionCreated {
+                                            session_id: session.session_id.to_string(),
                                         })
                                         .await;
                                 }
                                 Err(error) => {
-                                    let _ = prompt_events
+                                    let _ = foreground_events
                                         .send(HarnessEvent::Error {
-                                            message: format!("Prompt failed: {error}"),
+                                            message: format!("Could not create session: {error}"),
                                         })
                                         .await;
                                 }
                             }
-                            Ok(())
-                        })?;
-                    }
-                    HarnessCommand::Cancel => {
-                        if let Some(session_id) = active_session.as_ref() {
-                            let _ = connection
-                                .send_notification(CancelNotification::new(session_id.clone()));
                         }
-                    }
-                    HarnessCommand::NewSession { cwd } => {
-                        match connection
-                            .send_request(NewSessionRequest::new(cwd))
-                            .block_task()
-                            .await
-                        {
-                            Ok(session) => {
-                                active_session = Some(session.session_id.clone());
-                                let _ = foreground_events
-                                    .send(HarnessEvent::SessionCreated {
-                                        session_id: session.session_id.to_string(),
-                                    })
-                                    .await;
-                            }
-                            Err(error) => {
-                                let _ = foreground_events
-                                    .send(HarnessEvent::Error {
-                                        message: format!("Could not create session: {error}"),
-                                    })
-                                    .await;
+                        HarnessCommand::LoadSession { session_id, cwd } => {
+                            match connection
+                                .send_request(LoadSessionRequest::new(session_id.clone(), cwd))
+                                .block_task()
+                                .await
+                            {
+                                Ok(_) => {
+                                    active_session = Some(session_id.clone().into());
+                                    let _ = foreground_events
+                                        .send(HarnessEvent::SessionLoaded {
+                                            session_id: session_id.clone(),
+                                        })
+                                        .await;
+                                }
+                                Err(error) => {
+                                    let _ = foreground_events
+                                        .send(HarnessEvent::Error {
+                                            message: format!("Could not load session: {error}"),
+                                        })
+                                        .await;
+                                }
                             }
                         }
-                    }
-                    HarnessCommand::RespondPermission {
-                        request_id,
-                        option_id,
-                    } => {
-                        let sender = pending
-                            .lock()
-                            .ok()
-                            .and_then(|mut pending| pending.remove(&request_id));
-                        if let Some(sender) = sender {
-                            let _ = sender.send(option_id).await;
+                        HarnessCommand::RespondPermission {
+                            request_id,
+                            option_id,
+                        } => {
+                            let sender = pending
+                                .lock()
+                                .ok()
+                                .and_then(|mut pending| pending.remove(&request_id));
+                            if let Some(sender) = sender {
+                                let _ = sender.send(option_id).await;
+                            }
                         }
-                    }
-                    HarnessCommand::Shutdown => {
-                        shutting_down = true;
-                        break;
+                        HarnessCommand::Shutdown => {
+                            shutting_down = true;
+                            break;
+                        }
                     }
                 }
-            }
 
-            if !shutting_down {
-                let _ = foreground_events
-                    .send(HarnessEvent::Exited {
-                        reason: "command channel closed".into(),
-                    })
-                    .await;
-            }
-            Ok(())
-        })
+                if !shutting_down {
+                    let _ = foreground_events
+                        .send(HarnessEvent::Exited {
+                            reason: "command channel closed".into(),
+                        })
+                        .await;
+                }
+                Ok(())
+            },
+        )
         .await
         .map_err(|error| format!("ACP connection failed: {error}"))?;
 
@@ -709,6 +828,81 @@ fn stop_reason_label(reason: agent_client_protocol::schema::v1::StopReason) -> S
         _ => "unknown",
     }
     .into()
+}
+
+/// The two ACP transports share one client setup; this enum lets the builder
+/// stay generic while the local path spawns a process and the remote path
+/// connects a WebSocket.
+enum Transport {
+    Local(AcpAgent),
+    Remote(WsTransport),
+}
+
+impl ConnectTo<Client> for Transport {
+    async fn connect_to(self, client: impl ConnectTo<Agent>) -> AcpResult<()> {
+        match self {
+            Transport::Local(agent) => ConnectTo::<Client>::connect_to(agent, client).await,
+            Transport::Remote(remote) => ConnectTo::<Client>::connect_to(remote, client).await,
+        }
+    }
+}
+
+/// ACP over a WebSocket text-frame transport.
+struct WsTransport {
+    request: tokio_tungstenite::tungstenite::http::Request<()>,
+}
+
+impl WsTransport {
+    fn new(url: &str, token: &str, project_id: &str) -> io::Result<Self> {
+        let base = url.trim_end_matches('/');
+        let ws = if let Some(rest) = base.strip_prefix("https://") {
+            format!("wss://{rest}")
+        } else if let Some(rest) = base.strip_prefix("http://") {
+            format!("ws://{rest}")
+        } else {
+            base.to_string()
+        };
+        let endpoint = if ws.ends_with("/acp") {
+            format!("{ws}?project={project_id}")
+        } else {
+            format!("{ws}/acp?project={project_id}")
+        };
+        let mut request = endpoint
+            .into_client_request()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        request.headers_mut().insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?,
+        );
+        Ok(Self { request })
+    }
+}
+
+impl ConnectTo<Client> for WsTransport {
+    async fn connect_to(self, client: impl ConnectTo<Agent>) -> AcpResult<()> {
+        let (socket, _) = connect_async(self.request).await.map_err(|error| {
+            AcpError::new(-32603, format!("Could not connect to the relay: {error}"))
+        })?;
+        let (write, read) = socket.split();
+        let sink = write
+            .with(|line: String| async move {
+                Ok::<Message, tokio_tungstenite::tungstenite::Error>(Message::Text(line.into()))
+            })
+            .sink_map_err(io::Error::other);
+        let stream = read.filter_map(|message| async move {
+            match message {
+                Ok(Message::Text(text)) => Some(Ok(text.to_string())),
+                Ok(Message::Binary(_))
+                | Ok(Message::Ping(_))
+                | Ok(Message::Pong(_))
+                | Ok(Message::Close(_))
+                | Ok(Message::Frame(_)) => None,
+                Err(error) => Some(Err(io::Error::other(error))),
+            }
+        });
+        ConnectTo::<Client>::connect_to(Lines::new(sink, stream), client).await
+    }
 }
 
 #[cfg(test)]

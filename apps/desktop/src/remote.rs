@@ -1,0 +1,629 @@
+//! Remote relay client and the local/remote workspace backend.
+//!
+//! The desktop talks to the relay over HTTP for pairing, project discovery,
+//! sessions, files, search and git. ACP itself uses a separate WebSocket
+//! connection managed by `kestrel-agent`.
+
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
+
+use kestrel_domain::RemoteProject;
+use kestrel_workspace::fs::{FileContents, FileStat};
+use kestrel_workspace::git::GitStatus;
+use kestrel_workspace::search::SearchHit;
+use kestrel_workspace::tree::FileTree;
+use kestrel_workspace::{fs as workspace_fs, git, search};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+const KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct RemoteHost {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub user_name: String,
+    pub device_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct RemoteUser {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct PairResponse {
+    pub token: String,
+    pub user: RemoteUser,
+    pub device_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteProjectInfo {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct RemoteSessionInfo {
+    pub id: String,
+    pub title: String,
+    pub updated_at: i64,
+    pub last_device_id: Option<String>,
+    pub active_device_id: Option<String>,
+}
+
+pub(crate) fn pair(url: &str, code: &str, device_name: &str) -> Result<PairResponse, String> {
+    let endpoint = format!("{}/v1/pair", url.trim_end_matches('/'));
+    let response = ureq::post(&endpoint)
+        .timeout(Duration::from_secs(15))
+        .send_json(serde_json::json!({
+            "code": code.trim().to_uppercase(),
+            "device_name": device_name,
+        }))
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn projects(url: &str, token: &str) -> Result<Vec<RemoteProjectInfo>, String> {
+    let response = ureq::get(&format!("{}/v1/projects", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .call()
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn sessions(
+    url: &str,
+    token: &str,
+    project_id: &str,
+) -> Result<Vec<RemoteSessionInfo>, String> {
+    let response = ureq::get(&format!(
+        "{}/v1/sessions?project={}",
+        url.trim_end_matches('/'),
+        encode(project_id)
+    ))
+    .set("Authorization", &format!("Bearer {token}"))
+    .timeout(Duration::from_secs(15))
+    .call()
+    .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn delete_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
+    ureq::delete(&format!(
+        "{}/v1/sessions/{}",
+        url.trim_end_matches('/'),
+        encode(session_id)
+    ))
+    .set("Authorization", &format!("Bearer {token}"))
+    .timeout(Duration::from_secs(15))
+    .call()
+    .map(|_| ())
+    .map_err(http_error)
+}
+
+pub(crate) fn takeover_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
+    ureq::post(&format!(
+        "{}/v1/sessions/{}/takeover",
+        url.trim_end_matches('/'),
+        encode(session_id)
+    ))
+    .set("Authorization", &format!("Bearer {token}"))
+    .timeout(Duration::from_secs(15))
+    .send_string("")
+    .map(|_| ())
+    .map_err(http_error)
+}
+
+pub(crate) fn save_token(host_id: &str, token: &str) -> Result<(), String> {
+    let status = Command::new("security")
+        .args([
+            "add-generic-password",
+            "-U",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            host_id,
+            "-w",
+            token,
+        ])
+        .status()
+        .map_err(|error| format!("Could not access the macOS keychain: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Could not save the relay token in the keychain".into())
+    }
+}
+
+pub(crate) fn load_token(host_id: &str) -> Result<Option<String>, String> {
+    if let Ok(token) = std::env::var("KESTREL_REMOTE_TOKEN") {
+        return Ok(Some(token));
+    }
+    let output = Command::new("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            host_id,
+            "-w",
+        ])
+        .output()
+        .map_err(|error| format!("Could not access the macOS keychain: {error}"))?;
+    if output.status.success() {
+        return Ok(Some(
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        ));
+    }
+    // `security` exits 44 when the item is missing; anything else is a real
+    // error (for example a locked keychain).
+    if output.status.code() == Some(44) {
+        Ok(None)
+    } else {
+        Err("Could not read the relay token from the keychain".into())
+    }
+}
+
+pub(crate) fn delete_token(host_id: &str) {
+    let _ = Command::new("security")
+        .args([
+            "delete-generic-password",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            host_id,
+        ])
+        .status();
+}
+
+#[derive(Clone)]
+pub(crate) struct RemoteWorkspace {
+    pub host: RemoteHost,
+    pub project: RemoteProject,
+    pub token: String,
+}
+
+impl RemoteWorkspace {
+    pub fn tree(&self) -> Result<FileTree, String> {
+        self.get(&format!(
+            "/v1/fs/tree?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
+
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, String> {
+        self.get(&format!(
+            "/v1/search?project={}&q={}&limit={}",
+            encode(&self.project.project_id),
+            encode(query),
+            limit
+        ))
+    }
+
+    pub fn git_status(&self) -> Result<GitStatus, String> {
+        self.get(&format!(
+            "/v1/git/status?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
+
+    pub fn git_file_diff(&self, path: &str, staged: bool) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Patch {
+            patch: String,
+        }
+        let patch: Patch = self.get(&format!(
+            "/v1/git/diff?project={}&file={}&staged={staged}",
+            encode(&self.project.project_id),
+            encode(&self.relative(path))
+        ))?;
+        Ok(patch.patch)
+    }
+
+    pub fn git_stage_file(&self, path: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/stage",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "file": self.relative(path),
+            }),
+        )
+    }
+
+    pub fn git_stage_all(&self) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/stage",
+            &serde_json::json!({ "project": self.project.project_id }),
+        )
+    }
+
+    pub fn git_unstage_file(&self, path: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/unstage",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "file": self.relative(path),
+            }),
+        )
+    }
+
+    pub fn git_commit(&self, message: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/commit",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "message": message,
+            }),
+        )
+    }
+
+    pub fn git_amend(&self, message: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/amend",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "message": message,
+            }),
+        )
+    }
+
+    pub fn git_discard(&self, path: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/discard",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "file": self.relative(path),
+            }),
+        )
+    }
+
+    pub fn git_pull(&self) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/pull",
+            &serde_json::json!({ "project": self.project.project_id }),
+        )
+    }
+
+    pub fn git_push(&self) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/push",
+            &serde_json::json!({ "project": self.project.project_id }),
+        )
+    }
+
+    pub fn git_branches(&self) -> Result<Vec<String>, String> {
+        #[derive(Deserialize)]
+        struct Branches {
+            branches: Vec<String>,
+        }
+        let response: Branches = self.get(&format!(
+            "/v1/git/branches?project={}",
+            encode(&self.project.project_id)
+        ))?;
+        Ok(response.branches)
+    }
+
+    pub fn git_switch(&self, branch: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/switch",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "branch": branch,
+            }),
+        )
+    }
+
+    pub fn read_file(&self, path: &str) -> Result<FileContents, String> {
+        self.get(&format!(
+            "/v1/fs/file?project={}&path={}",
+            encode(&self.project.project_id),
+            encode(&self.relative(path))
+        ))
+    }
+
+    pub fn write_file(&self, path: &str, contents: &str) -> Result<FileStat, String> {
+        self.put(
+            "/v1/fs/file",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "path": self.relative(path),
+                "contents": contents,
+            }),
+        )
+    }
+
+    pub fn create_file(&self, path: &str) -> Result<FileStat, String> {
+        self.post(
+            "/v1/fs/create",
+            &serde_json::json!({
+                "project": self.project.project_id,
+                "path": self.relative(path),
+            }),
+        )
+    }
+
+    pub fn stat_file(&self, path: &str) -> Result<FileStat, String> {
+        self.get(&format!(
+            "/v1/fs/stat?project={}&path={}",
+            encode(&self.project.project_id),
+            encode(&self.relative(path))
+        ))
+    }
+
+    fn relative(&self, path: &str) -> String {
+        Path::new(path)
+            .strip_prefix(&self.project.path)
+            .map(|relative| {
+                relative
+                    .to_string_lossy()
+                    .trim_start_matches('/')
+                    .to_string()
+            })
+            .unwrap_or_else(|_| path.trim_start_matches('/').to_string())
+    }
+
+    fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
+        let response = ureq::get(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .call()
+            .map_err(http_error)?;
+        response.into_json().map_err(|error| error.to_string())
+    }
+
+    fn put<T: DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T, String> {
+        let response = ureq::put(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .send_json(body)
+            .map_err(http_error)?;
+        response.into_json().map_err(|error| error.to_string())
+    }
+
+    fn post<T: DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T, String> {
+        let response = ureq::post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .send_json(body)
+            .map_err(http_error)?;
+        response.into_json().map_err(|error| error.to_string())
+    }
+
+    fn post_empty(&self, path: &str, body: &Value) -> Result<(), String> {
+        ureq::post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .send_json(body)
+            .map(|_| ())
+            .map_err(http_error)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum WorkspaceBackend {
+    Local { root: String },
+    Remote(RemoteWorkspace),
+}
+
+impl WorkspaceBackend {
+    pub fn tree(&self) -> Result<FileTree, String> {
+        match self {
+            WorkspaceBackend::Local { root } => Ok(FileTree::load(root.clone())),
+            WorkspaceBackend::Remote(remote) => remote.tree(),
+        }
+    }
+
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, String> {
+        match self {
+            WorkspaceBackend::Local { root } => Ok(search::search_project(root, query, limit)),
+            WorkspaceBackend::Remote(remote) => remote.search(query, limit),
+        }
+    }
+
+    pub fn git_status(&self) -> Result<GitStatus, String> {
+        match self {
+            WorkspaceBackend::Local { root } => Ok(git::load(root)),
+            WorkspaceBackend::Remote(remote) => remote.git_status(),
+        }
+    }
+
+    pub fn git_file_diff(&self, path: &str, staged: bool) -> Result<String, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                git::file_diff(root, &self.relative(root, path), staged)
+            }
+            WorkspaceBackend::Remote(remote) => remote.git_file_diff(path, staged),
+        }
+    }
+
+    pub fn git_stage_file(&self, path: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::stage_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Remote(remote) => remote.git_stage_file(path),
+        }
+    }
+
+    pub fn git_stage_all(&self) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::stage_all(root),
+            WorkspaceBackend::Remote(remote) => remote.git_stage_all(),
+        }
+    }
+
+    pub fn git_unstage_file(&self, path: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::unstage_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Remote(remote) => remote.git_unstage_file(path),
+        }
+    }
+
+    pub fn git_commit(&self, message: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::commit(root, message),
+            WorkspaceBackend::Remote(remote) => remote.git_commit(message),
+        }
+    }
+
+    pub fn git_amend(&self, message: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::amend(root, message),
+            WorkspaceBackend::Remote(remote) => remote.git_amend(message),
+        }
+    }
+
+    pub fn git_discard(&self, path: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::discard_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Remote(remote) => remote.git_discard(path),
+        }
+    }
+
+    pub fn git_pull(&self) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::pull(root),
+            WorkspaceBackend::Remote(remote) => remote.git_pull(),
+        }
+    }
+
+    pub fn git_push(&self) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::push(root),
+            WorkspaceBackend::Remote(remote) => remote.git_push(),
+        }
+    }
+
+    pub fn git_branches(&self) -> Result<Vec<String>, String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::branches(root),
+            WorkspaceBackend::Remote(remote) => remote.git_branches(),
+        }
+    }
+
+    pub fn git_switch(&self, branch: &str) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::switch_branch(root, branch),
+            WorkspaceBackend::Remote(remote) => remote.git_switch(branch),
+        }
+    }
+
+    pub fn read_file(&self, path: &str) -> Result<FileContents, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                workspace_fs::read_file(root, &self.relative(root, path))
+            }
+            WorkspaceBackend::Remote(remote) => remote.read_file(path),
+        }
+    }
+
+    pub fn write_file(&self, path: &str, contents: &str) -> Result<FileStat, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                workspace_fs::write_file(root, &self.relative(root, path), contents)
+            }
+            WorkspaceBackend::Remote(remote) => remote.write_file(path, contents),
+        }
+    }
+
+    pub fn create_file(&self, path: &str) -> Result<FileStat, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                workspace_fs::create_file(root, &self.relative(root, path))
+            }
+            WorkspaceBackend::Remote(remote) => remote.create_file(path),
+        }
+    }
+
+    pub fn stat_file(&self, path: &str) -> Result<FileStat, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                workspace_fs::stat_file(root, &self.relative(root, path))
+            }
+            WorkspaceBackend::Remote(remote) => remote.stat_file(path),
+        }
+    }
+
+    fn relative(&self, root: &str, path: &str) -> String {
+        Path::new(path)
+            .strip_prefix(root)
+            .map(|relative| {
+                relative
+                    .to_string_lossy()
+                    .trim_start_matches('/')
+                    .to_string()
+            })
+            .unwrap_or_else(|_| path.trim_start_matches('/').to_string())
+    }
+}
+
+fn http_error(error: ureq::Error) -> String {
+    match error {
+        ureq::Error::Status(code, response) => {
+            let body = response.into_string().unwrap_or_default();
+            let message = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or(body);
+            format!("Relay error {code}: {message}")
+        }
+        ureq::Error::Transport(error) => format!("Relay connection failed: {error}"),
+    }
+}
+
+fn encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorkspaceBackend, encode};
+    use std::fs;
+
+    #[test]
+    fn encodes_query_values() {
+        assert_eq!(encode("src/main file.rs"), "src/main%20file.rs");
+        assert_eq!(encode("a&b"), "a%26b");
+    }
+
+    #[test]
+    fn local_backend_reads_files() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kestrel-backend-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("hello.txt"), "hi").unwrap();
+        let backend = WorkspaceBackend::Local {
+            root: root.to_string_lossy().to_string(),
+        };
+        let file = backend
+            .read_file(&root.join("hello.txt").to_string_lossy())
+            .unwrap();
+        assert_eq!(file.contents, "hi");
+        let _ = fs::remove_dir_all(&root);
+    }
+}

@@ -181,7 +181,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
                     .cursor_pointer()
                     .hover(move |style| style.bg(p.hover))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.file_tree.reload(this.project().path.clone());
+                        this.refresh_file_tree(cx);
                         this.set_notice("Refreshed the explorer", cx);
                     }))
                     .child(
@@ -1724,6 +1724,34 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         )
         .child(
             div()
+                .id("project-add-remote")
+                .h(px(28.))
+                .px(px(7.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_menu_open = false;
+                    this.open_remote_picker(cx);
+                }))
+                .child(
+                    Icon::new(IconName::Cloud)
+                        .size(px(13.))
+                        .text_color(p.muted_fg),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.5))
+                        .text_color(p.fg)
+                        .child("Add remote project…"),
+                ),
+        )
+        .child(
+            div()
                 .id("project-settings")
                 .h(px(28.))
                 .px(px(7.))
@@ -1800,6 +1828,10 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.project_menu_open = false;
+                    if this.project().is_remote() {
+                        this.set_notice("Remote project · files live on the relay", cx);
+                        return;
+                    }
                     let path = this.project().path.clone();
                     cx.reveal_path(Path::new(&path));
                     this.set_notice("Revealed the project in Finder", cx);

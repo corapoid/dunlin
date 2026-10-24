@@ -48,6 +48,7 @@ pub(crate) fn render(
                             SettingsTab::General => general(this, window, cx),
                             SettingsTab::Harnesses => harnesses(this, cx),
                             SettingsTab::Permissions => permissions(this, cx),
+                            SettingsTab::Remote => remote_settings(this, cx),
                             SettingsTab::Editor => editor(this, cx),
                             SettingsTab::Usage => usage(this, cx),
                             SettingsTab::Advanced => advanced(this, cx),
@@ -212,6 +213,10 @@ fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
             "Connect Kestrel to ACP agents. OpenCode is the default.",
         ),
         SettingsTab::Permissions => ("Permissions", "Decide what an agent may do without asking."),
+        SettingsTab::Remote => (
+            "Remote",
+            "Pair this Mac with a relay and continue sessions on your other devices.",
+        ),
         SettingsTab::Editor => (
             "Editor",
             "Typography and editing behavior for the lightweight editor.",
@@ -1668,6 +1673,259 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .child("Apache-2.0"),
                 ),
         );
+
+    body.into_any_element()
+}
+
+fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+    let p = palette(cx);
+    let loading = this.remote_loading;
+
+    let mut body = div()
+        .px(px(16.))
+        .py(px(14.))
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .child(section_label("REMOTE SERVERS", &p));
+
+    if this.remote_hosts.is_empty() {
+        body = body.child(
+            div()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(p.border)
+                .bg(p.card)
+                .p(px(12.))
+                .flex()
+                .flex_col()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.fg)
+                        .child("No relay paired yet"),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .line_height(relative(1.5))
+                        .text_color(p.muted_fg)
+                        .child("Run `kestrel-relay pair <user>` on the machine that hosts your projects, then enter the code below."),
+                ),
+        );
+    } else {
+        for host in this.remote_hosts.clone() {
+            let host_id = host.id.clone();
+            let host_for_picker = host_id.clone();
+            body = body.child(
+                div()
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.card)
+                    .child(
+                        div()
+                            .px(px(10.))
+                            .py(px(9.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .size(px(28.))
+                                    .rounded(px(7.))
+                                    .bg(p.blue_soft)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        Icon::new(IconName::Cloud).size(px(13.)).text_color(p.blue),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(1.))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.fg)
+                                            .child(host.name.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(9.))
+                                            .font_family("Geist Mono")
+                                            .text_color(p.muted_fg)
+                                            .truncate()
+                                            .child(format!("{} · {}", host.url, host.user_name)),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("remote-add-project")
+                                    .h(px(23.))
+                                    .px(px(7.))
+                                    .rounded(px(5.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.open_remote_picker_for(&host_for_picker, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(9.))
+                                            .text_color(p.fg)
+                                            .child("Add project"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("remote-remove")
+                                    .size(px(23.))
+                                    .rounded(px(5.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.red_soft))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.remove_remote_host(&host_id, cx);
+                                    }))
+                                    .child(
+                                        Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg),
+                                    ),
+                            ),
+                    ),
+            );
+        }
+    }
+
+    let field = |label: &'static str, input: AnyElement, p: &Palette| {
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(3.))
+            .child(
+                div()
+                    .text_size(px(8.5))
+                    .font_family("Geist Mono")
+                    .text_color(p.muted_fg)
+                    .child(label),
+            )
+            .child(
+                div()
+                    .h(px(30.))
+                    .px(px(7.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.bg)
+                    .flex()
+                    .items_center()
+                    .child(input),
+            )
+    };
+
+    body = body.child(section_label("PAIR THIS MAC", &p)).child(
+        div()
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.card)
+            .p(px(10.))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(field(
+                "RELAY URL",
+                div()
+                    .child(
+                        Input::new(&this.remote_url_input)
+                            .appearance(false)
+                            .bordered(false)
+                            .cleanable(true),
+                    )
+                    .into_any_element(),
+                &p,
+            ))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(
+                        div().flex_1().child(field(
+                            "PAIRING CODE",
+                            div()
+                                .child(
+                                    Input::new(&this.remote_code_input)
+                                        .appearance(false)
+                                        .bordered(false)
+                                        .cleanable(true),
+                                )
+                                .into_any_element(),
+                            &p,
+                        )),
+                    )
+                    .child(
+                        div().flex_1().child(field(
+                            "SERVER NAME",
+                            div()
+                                .child(
+                                    Input::new(&this.remote_name_input)
+                                        .appearance(false)
+                                        .bordered(false)
+                                        .cleanable(true),
+                                )
+                                .into_any_element(),
+                            &p,
+                        )),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .text_size(px(9.))
+                            .text_color(p.muted_fg)
+                            .child("The relay must be reachable over Tailscale or HTTPS."),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .id("remote-pair")
+                            .h(px(25.))
+                            .px(px(9.))
+                            .rounded(px(5.))
+                            .bg(p.fg)
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .when(loading, |this| this.opacity(0.6))
+                            .on_click(cx.listener(|this, _, _, cx| this.pair_remote(cx)))
+                            .child(
+                                div()
+                                    .text_size(px(9.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.bg)
+                                    .child(if loading { "Pairing…" } else { "Pair device" }),
+                            ),
+                    ),
+            ),
+    );
 
     body.into_any_element()
 }

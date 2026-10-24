@@ -9,8 +9,12 @@ license.workspace = true
 agent-client-protocol = { version = "3.5", features = ["process", "stdio"] }
 async-channel = "2"
 async-io = "2"
+futures-util = "0.3"
+http = "1"
 kestrel-domain.workspace = true
 serde.workspace = true
+tokio = { version = "1", features = ["rt", "net", "time", "io-util", "macros"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 
 [[bin]]
 name = "acp_smoke"
@@ -23,3 +27,7 @@ path = "src/bin/mock_acp_agent.rs"
 [[bin]]
 name = "permission_smoke"
 path = "src/bin/permission_smoke.rs"
+
+[[bin]]
+name = "remote_smoke"
+path = "src/bin/remote_smoke.rs"

@@ -71,6 +71,9 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
         HarnessEvent::SessionCreated { session_id } => {
             format!("harness session created · {session_id}")
         }
+        HarnessEvent::SessionLoaded { session_id } => {
+            format!("harness session loaded · {session_id}")
+        }
         HarnessEvent::Update { session_id, update } => {
             format!("harness update · {session_id} · {}", update_kind(update))
         }

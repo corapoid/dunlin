@@ -16,7 +16,7 @@ use kestrel_domain::{SessionStatus, ToolStatus};
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::app::KestrelApp;
+use crate::app::{KestrelApp, PendingRemoteSession};
 use crate::logging;
 
 /// One rendered entry in the conversation.
@@ -196,7 +196,7 @@ pub(crate) struct HarnessState {
     pub session_id: Option<String>,
     pending_prompt: Option<String>,
     generation: u64,
-    started_tools: HashMap<String, Instant>,
+    pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
 }
 
@@ -220,33 +220,72 @@ impl Default for HarnessState {
 }
 
 impl KestrelApp {
-    /// Start a fresh ACP process for the selected project.
+    /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
         if self.harness.status.is_busy() {
             return;
         }
 
-        let path = self.project().path.clone();
-        let cwd = PathBuf::from(&path);
-        if !self.project().trusted {
-            let reason = format!("{path} is not trusted. Trust it from the project menu first.");
-            self.harness.status = HarnessStatus::Failed(reason.clone());
-            self.notice = Some(reason);
-            cx.notify();
-            return;
-        }
-        if !cwd.is_dir() {
-            let reason = format!("Folder is not available: {path}");
+        let project = self.project().clone();
+        if !project.trusted {
+            let reason = format!(
+                "{} is not trusted. Trust it from the project menu first.",
+                project.path
+            );
             self.harness.status = HarnessStatus::Failed(reason.clone());
             self.notice = Some(reason);
             cx.notify();
             return;
         }
 
-        self.harness.generation += 1;
-        let generation = self.harness.generation;
-        if let Some(previous) = self.harness.harness.take() {
-            previous.shutdown();
+        if let Some(remote_project) = project.remote.clone() {
+            let Some(host) = self.remote_host(&remote_project.host_id) else {
+                let reason = "Remote server is not configured".to_string();
+                self.harness.status = HarnessStatus::Failed(reason.clone());
+                self.notice = Some(reason);
+                cx.notify();
+                return;
+            };
+            let token = match self.remote_token(&host.id) {
+                Ok(token) => token,
+                Err(error) => {
+                    self.harness.status = HarnessStatus::Failed(error.clone());
+                    self.notice = Some(error);
+                    cx.notify();
+                    return;
+                }
+            };
+            logging::info(&format!(
+                "connecting to relay {} · project {}",
+                host.url, remote_project.project_id
+            ));
+            if self.pending_remote_session.is_none() && !self.remote_sessions_loading {
+                let current = self.session().clone();
+                self.pending_remote_session = Some(match current.acp_session_id {
+                    Some(session_id) => PendingRemoteSession::Load { session_id },
+                    None => PendingRemoteSession::New,
+                });
+            }
+            self.start_harness(
+                HarnessConfig::remote(
+                    host.url.clone(),
+                    token,
+                    remote_project.project_id.clone(),
+                    PathBuf::from(&project.path),
+                ),
+                Some(host.name),
+                cx,
+            );
+            return;
+        }
+
+        let cwd = PathBuf::from(&project.path);
+        if !cwd.is_dir() {
+            let reason = format!("Folder is not available: {}", project.path);
+            self.harness.status = HarnessStatus::Failed(reason.clone());
+            self.notice = Some(reason);
+            cx.notify();
+            return;
         }
 
         let command = std::env::var("KESTREL_HARNESS_COMMAND")
@@ -255,18 +294,37 @@ impl KestrelApp {
             .unwrap_or_else(|| {
                 harness_command(&self.default_harness, &self.custom_harness_command)
             });
+        self.start_harness(HarnessConfig::new(command, cwd), None, cx);
+    }
+
+    fn start_harness(
+        &mut self,
+        config: HarnessConfig,
+        remote_name: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.harness.generation += 1;
+        let generation = self.harness.generation;
+        if let Some(previous) = self.harness.harness.take() {
+            previous.shutdown();
+        }
+
+        let description = config.description();
         logging::info(&format!(
-            "starting harness: {command} · cwd {}",
-            cwd.display()
+            "starting harness: {description} · cwd {}",
+            config.cwd.display()
         ));
-        let harness = AcpHarness::spawn(HarnessConfig::new(command.clone(), cwd));
+        let harness = AcpHarness::spawn(config);
         let events = harness.events().clone();
         self.harness.harness = Some(harness);
         self.harness.status = HarnessStatus::Starting;
         self.harness.session_id = None;
         self.harness.running = false;
         self.harness.commands.clear();
-        self.notice = Some(format!("Starting {command}…"));
+        self.notice = Some(match remote_name {
+            Some(name) => format!("Connecting to {name}…"),
+            None => format!("Starting {description}…"),
+        });
 
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
@@ -346,7 +404,7 @@ impl KestrelApp {
 
         if self.harness.status.is_ready() && self.harness.session_id.is_some() {
             self.dispatch_pending_prompt();
-        } else if !self.harness.status.is_busy() {
+        } else if !self.harness.status.is_busy() && !self.remote_sessions_loading {
             self.connect_harness(cx);
         }
     }
@@ -456,6 +514,9 @@ impl KestrelApp {
         if index >= self.sessions.len() || index == self.selected_session {
             return;
         }
+        if self.remote_sessions_loading {
+            return;
+        }
         self.session_menu_open = false;
         self.interrupt_live_turn(cx);
         self.stash_transcript();
@@ -470,7 +531,20 @@ impl KestrelApp {
             }
         });
 
-        if self.harness.status.is_ready() {
+        if self.project().is_remote() {
+            let acp_id = self
+                .session()
+                .acp_session_id
+                .clone()
+                .unwrap_or_else(|| self.session().id.clone());
+            if self.harness.status.is_ready() {
+                self.start_remote_session(PendingRemoteSession::Load { session_id: acp_id }, cx);
+            } else if self.auto_connect && !self.harness.status.is_busy() {
+                self.pending_remote_session =
+                    Some(PendingRemoteSession::Load { session_id: acp_id });
+                self.connect_harness(cx);
+            }
+        } else if self.harness.status.is_ready() {
             let path = PathBuf::from(&self.project().path);
             if let Some(harness) = self.harness.harness.as_ref() {
                 harness.new_session(path);
@@ -489,8 +563,8 @@ impl KestrelApp {
     }
 
     /// Rescan the explorer and flag a clean editor for reload after a turn.
-    fn refresh_workspace_after_turn(&mut self) {
-        self.file_tree.reload(self.project().path.clone());
+    fn refresh_workspace_after_turn(&mut self, cx: &mut Context<Self>) {
+        self.refresh_file_tree(cx);
         self.editor_stale = self.inspector.is_some() && !self.editor_dirty;
     }
 
@@ -498,6 +572,12 @@ impl KestrelApp {
         let Some(text) = self.harness.pending_prompt.take() else {
             return;
         };
+        let title = session_title(&text);
+        self.update_active_session(|session| {
+            if session.title == "New session" {
+                session.title = title.clone();
+            }
+        });
         let sent = self
             .harness
             .harness
@@ -526,11 +606,32 @@ impl KestrelApp {
                 };
                 self.harness.restarts = 0;
                 self.notice = Some(format!("{agent} {version} connected over ACP"));
-                if self.harness.session_id.is_some() {
+                if self.project().is_remote()
+                    && let Some(action) = self.pending_remote_session.take()
+                {
+                    self.start_remote_session(action, cx);
+                } else if self.harness.session_id.is_some() {
                     self.dispatch_pending_prompt();
                 }
             }
             HarnessEvent::SessionCreated { session_id } => {
+                if self.project().is_remote() {
+                    self.create_remote_session_summary(&session_id, cx);
+                } else {
+                    let stored = self.sessions.get_mut(self.selected_session).map(|session| {
+                        session.acp_session_id = Some(session_id.clone());
+                        session.clone()
+                    });
+                    if let Some(session) = stored {
+                        self.persist_session(&session);
+                    }
+                }
+                self.harness.session_id = Some(session_id);
+                if self.harness.pending_prompt.is_some() {
+                    self.dispatch_pending_prompt();
+                }
+            }
+            HarnessEvent::SessionLoaded { session_id } => {
                 self.harness.session_id = Some(session_id);
                 if self.harness.pending_prompt.is_some() {
                     self.dispatch_pending_prompt();
@@ -578,7 +679,7 @@ impl KestrelApp {
                         "Turn complete".into()
                     });
                     self.save_current_transcript();
-                    self.refresh_workspace_after_turn();
+                    self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
                 }
             }
@@ -586,6 +687,16 @@ impl KestrelApp {
                 let was_running = self.harness.running;
                 self.harness.running = false;
                 self.finish_streaming();
+                if message.contains("Could not load session") {
+                    self.harness.session_id = None;
+                }
+                if message.contains("Could not create session") {
+                    self.sessions
+                        .retain(|session| !session.id.starts_with("pending-"));
+                    self.all_sessions
+                        .retain(|session| !session.id.starts_with("pending-"));
+                    self.selected_session = 0;
+                }
                 self.harness.transcript.push(ChatItem::Error {
                     message: message.clone(),
                     at_ms: now_ms(),
@@ -601,8 +712,12 @@ impl KestrelApp {
                     });
                 }
                 self.save_current_transcript();
-                self.notice = Some(message);
-                self.refresh_workspace_after_turn();
+                self.notice = Some(if message.contains("Session is active on another device") {
+                    "Session is active on another device · use Take over session".into()
+                } else {
+                    message
+                });
+                self.refresh_workspace_after_turn(cx);
                 self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {

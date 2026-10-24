@@ -449,7 +449,8 @@ mod tests {
     use crate::harness::ChatItem;
     use kestrel_agent::{PlanItem, PlanStatus, ToolCallView};
     use kestrel_domain::{
-        Project, ProjectTone, SessionStatus, SessionSummary, SpanKind, ToolKind, ToolStatus,
+        Project, ProjectTone, SessionOrigin, SessionStatus, SessionSummary, SpanKind, ToolKind,
+        ToolStatus,
     };
 
     fn project() -> Project {
@@ -462,6 +463,7 @@ mod tests {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            remote: None,
         }
     }
 
@@ -479,6 +481,8 @@ mod tests {
             duration_secs: 12,
             tokens: 2_000,
             summary: "Repair the failing build.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         }
     }
 

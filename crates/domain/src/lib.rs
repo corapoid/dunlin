@@ -67,6 +67,13 @@ pub enum ProjectTone {
     Teal,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct RemoteProject {
+    pub host_id: Id,
+    pub project_id: Id,
+    pub path: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
     pub id: Id,
@@ -77,6 +84,8 @@ pub struct Project {
     pub pinned: bool,
     pub trusted: bool,
     pub running_sessions: usize,
+    #[serde(default)]
+    pub remote: Option<RemoteProject>,
 }
 
 impl Project {
@@ -86,6 +95,10 @@ impl Project {
             .rsplit('/')
             .next()
             .unwrap_or(&self.name)
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote.is_some()
     }
 }
 
@@ -110,6 +123,28 @@ impl SessionStatus {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionOrigin {
+    #[default]
+    Local,
+    Remote {
+        host_id: Id,
+    },
+}
+
+impl SessionOrigin {
+    pub fn is_remote(&self) -> bool {
+        matches!(self, SessionOrigin::Remote { .. })
+    }
+
+    pub fn host_id(&self) -> Option<&str> {
+        match self {
+            SessionOrigin::Local => None,
+            SessionOrigin::Remote { host_id } => Some(host_id),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub id: Id,
@@ -124,6 +159,10 @@ pub struct SessionSummary {
     pub duration_secs: u64,
     pub tokens: u64,
     pub summary: String,
+    #[serde(default)]
+    pub origin: SessionOrigin,
+    #[serde(default)]
+    pub acp_session_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

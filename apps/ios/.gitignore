@@ -1,0 +1,5 @@
+Kestrel.xcodeproj/
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/

@@ -63,6 +63,32 @@ impl FileTree {
         visit(&mut self.entries);
     }
 
+    /// Paths of folders the user has opened, used to preserve state across a
+    /// local or remote rescan.
+    pub fn expanded_paths(&self) -> Vec<String> {
+        fn collect(entries: &[FileEntry], paths: &mut Vec<String>) {
+            for entry in entries {
+                if entry.expanded {
+                    paths.push(entry.path.clone());
+                }
+                collect(&entry.children, paths);
+            }
+        }
+        let mut paths = Vec::new();
+        collect(&self.entries, &mut paths);
+        paths
+    }
+
+    pub fn restore_expanded(&mut self, paths: &[String]) {
+        fn apply(entries: &mut [FileEntry], paths: &[String]) {
+            for entry in entries {
+                entry.expanded = paths.contains(&entry.path);
+                apply(&mut entry.children, paths);
+            }
+        }
+        apply(&mut self.entries, paths);
+    }
+
     /// Rescan the tree while keeping the folders the user opened.
     pub fn reload(&mut self, root: impl Into<String>) {
         use std::collections::HashSet;

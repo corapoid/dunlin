@@ -11,6 +11,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             pinned: true,
             trusted: true,
             running_sessions: 2,
+            remote: None,
         },
         Project {
             id: "atlas".into(),
@@ -21,6 +22,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             pinned: true,
             trusted: true,
             running_sessions: 1,
+            remote: None,
         },
         Project {
             id: "pulse".into(),
@@ -31,6 +33,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            remote: None,
         },
         Project {
             id: "tokens".into(),
@@ -41,6 +44,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             pinned: false,
             trusted: false,
             running_sessions: 0,
+            remote: None,
         },
     ]
 }
@@ -60,6 +64,8 @@ pub fn sessions() -> Vec<SessionSummary> {
             duration_secs: 252,
             tokens: 184_200,
             summary: "Split the supervisor into a connection actor and a projection layer, then verify child-session permissions.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         },
         SessionSummary {
             id: "ses-2".into(),
@@ -74,6 +80,8 @@ pub fn sessions() -> Vec<SessionSummary> {
             duration_secs: 389,
             tokens: 96_400,
             summary: "Call account/rateLimits/read from a supervised app-server and cache the snapshot.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         },
         SessionSummary {
             id: "ses-3".into(),
@@ -88,6 +96,8 @@ pub fn sessions() -> Vec<SessionSummary> {
             duration_secs: 612,
             tokens: 221_800,
             summary: "Reproduce the missing permission request from a nested Claude Code subagent.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         },
         SessionSummary {
             id: "ses-4".into(),
@@ -102,6 +112,8 @@ pub fn sessions() -> Vec<SessionSummary> {
             duration_secs: 198,
             tokens: 42_100,
             summary: "Prototype an orthogonal layout for orchestrator trees up to 200 nodes.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         },
         SessionSummary {
             id: "ses-5".into(),
@@ -116,6 +128,8 @@ pub fn sessions() -> Vec<SessionSummary> {
             duration_secs: 76,
             tokens: 18_900,
             summary: "Search cancellation raced with the result batcher.".into(),
+            origin: SessionOrigin::Local,
+            acp_session_id: None,
         },
     ]
 }

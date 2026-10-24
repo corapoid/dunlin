@@ -59,6 +59,9 @@ fn handle(
                 harness.prompt(prompt);
             }
         }
+        HarnessEvent::SessionLoaded { session_id } => {
+            println!("[loaded] {session_id}");
+        }
         HarnessEvent::Update { update, .. } => match update {
             HarnessUpdate::AgentMessage(text) => {
                 print!("{text}");
