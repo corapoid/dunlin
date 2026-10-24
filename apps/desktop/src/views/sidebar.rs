@@ -1409,7 +1409,7 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
     if let Some(live) = this.session_usage() {
         usages.push(live);
     }
-    usages.extend(this.usages.iter().cloned());
+    usages.extend(this.active_usages());
     let (status_dot, status_label) = match &this.harness.status {
         HarnessStatus::Ready { agent, version } => (p.green, format!("{agent} {version} · ACP")),
         HarnessStatus::Starting => (p.amber, "Connecting harness…".to_string()),
@@ -1439,7 +1439,11 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .font_family("Geist Mono")
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.muted_fg)
-                        .child("SUBSCRIPTION USAGE"),
+                        .child(if this.project().is_remote() {
+                            "SUBSCRIPTION USAGE · RELAY"
+                        } else {
+                            "SUBSCRIPTION USAGE"
+                        }),
                 )
                 .child(div().flex_1())
                 .child(

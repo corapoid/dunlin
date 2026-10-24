@@ -1292,7 +1292,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     if let Some(live) = this.session_usage() {
         usages.push(live);
     }
-    usages.extend(this.usages.iter().cloned());
+    usages.extend(this.active_usages());
 
     let mut body = div()
         .px(px(16.))
@@ -1492,7 +1492,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .text_size(px(9.))
                             .line_height(relative(1.5))
                             .text_color(p.amber.opacity(0.9))
-                            .child("Context usage is live by ACP. Codex windows are read from the local Codex app-server. Claude Code requires a `user:profile` login before its OAuth usage can be read. OpenCode stays estimated until it exposes subscription data. Kestrel never uploads project data to obtain usage."),
+                            .child("Context usage is live by ACP. Provider windows are read where the harness runs: on this Mac for local projects, or on the relay for remote projects. Codex uses its local app-server, Claude Code requires a `user:profile` login, and OpenCode stays estimated until it exposes subscription data. Kestrel never uploads project data to obtain usage."),
                     ),
             ),
     );

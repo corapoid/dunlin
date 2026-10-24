@@ -60,6 +60,13 @@ grep -q "Relay smoke session" "$TMP/admin.log" || true
 ADMIN_SESSIONS="$(curl -sS "http://127.0.0.1:$PORT/v1/sessions?project=$PRJ" -H "Authorization: Bearer $ADMIN_TOKEN")"
 echo "$ADMIN_SESSIONS" | grep -q "Relay smoke session" || { echo "missing admin session"; exit 1; }
 
+SESSION_ID="$(echo "$ADMIN_SESSIONS" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')"
+TRANSCRIPT_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "http://127.0.0.1:$PORT/v1/sessions/$SESSION_ID/transcript" -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' -d '{"payload":[{"kind":"smoke"}]}')"
+[[ "$TRANSCRIPT_STATUS" == "204" ]] || { echo "transcript save failed: $TRANSCRIPT_STATUS" >&2; exit 1; }
+curl -sS "http://127.0.0.1:$PORT/v1/sessions/$SESSION_ID/transcript" -H "Authorization: Bearer $ADMIN_TOKEN" | grep -q '"smoke"' || { echo "transcript load failed" >&2; exit 1; }
+
+curl -sS "http://127.0.0.1:$PORT/v1/usage" -H "Authorization: Bearer $ADMIN_TOKEN" | grep -q '"OpenCode"' || { echo "usage endpoint failed" >&2; exit 1; }
+
 ./target/debug/kestrel-relay user add anna --db "$DB" >/dev/null
 ./target/debug/kestrel-relay grant kestrel anna --db "$DB" >/dev/null
 ANNA_TOKEN="$(pair anna "Anna iPhone" | json_field '["token"]')"

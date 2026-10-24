@@ -13,7 +13,7 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{demo, harness, logging, projection, remote, usage, views, window_state};
+use crate::{demo, harness, logging, projection, remote, views, window_state};
 use kestrel_workspace::tree::FileTree;
 use kestrel_workspace::{git, search};
 
@@ -203,6 +203,12 @@ pub(crate) enum PendingEditor {
     Open { path: String, line: Option<u32> },
 }
 
+/// A save was rejected because the file changed on disk or on the relay.
+pub(crate) struct EditorConflict {
+    pub path: String,
+    pub message: String,
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -277,7 +283,9 @@ pub(crate) struct KestrelApp {
     pub all_sessions: Vec<SessionSummary>,
     pub fallback_session: SessionSummary,
     pub selected_session: usize,
+    pub restore_session_id: Option<String>,
     pub usages: Vec<ProviderUsage>,
+    pub remote_usages: HashMap<String, Vec<ProviderUsage>>,
     pub usage_loading: bool,
     pub composer: Entity<TextareaState>,
     _composer_subscription: Subscription,
@@ -331,6 +339,7 @@ pub(crate) struct KestrelApp {
     pub editor_readonly: bool,
     pub editor_mtime: Option<u64>,
     pub autosave_generation: u64,
+    pub editor_conflict: Option<EditorConflict>,
     last_window_geometry: Option<window_state::WindowGeometry>,
     _window_bounds_subscription: Option<Subscription>,
     pub pending_editor: Option<PendingEditor>,
@@ -567,7 +576,13 @@ impl KestrelApp {
             all_sessions,
             fallback_session,
             selected_session: 0,
-            usages: usage::fallback(),
+            restore_session_id: if stored.restore_session {
+                stored.last_session_id.clone()
+            } else {
+                None
+            },
+            usages: demo::usage(),
+            remote_usages: HashMap::new(),
             usage_loading: false,
             composer,
             _composer_subscription: composer_subscription,
@@ -618,6 +633,7 @@ impl KestrelApp {
             editor_readonly: false,
             editor_mtime: None,
             autosave_generation: 0,
+            editor_conflict: None,
             last_window_geometry: None,
             _window_bounds_subscription: None,
             pending_editor: None,
@@ -742,6 +758,17 @@ impl KestrelApp {
         Ok(token)
     }
 
+    pub(crate) fn active_usages(&self) -> Vec<ProviderUsage> {
+        match self.project().remote.as_ref() {
+            Some(remote) => self
+                .remote_usages
+                .get(&remote.host_id)
+                .cloned()
+                .unwrap_or_default(),
+            None => self.usages.clone(),
+        }
+    }
+
     pub(crate) fn backend(&mut self) -> Result<remote::WorkspaceBackend, String> {
         let project = self.project().clone();
         if let Some(remote_project) = project.remote.clone() {
@@ -813,6 +840,7 @@ impl KestrelApp {
 
         if self.sessions.is_empty() {
             self.selected_session = 0;
+            self.restore_session_id = None;
             self.harness.transcript.clear();
             self.pending_remote_session = Some(PendingRemoteSession::New);
             if self.auto_connect && !self.harness.status.is_busy() {
@@ -820,8 +848,13 @@ impl KestrelApp {
             }
             self.notice = Some("No remote sessions yet · starting a new one".into());
         } else {
-            self.selected_session = 0;
-            let session = self.sessions[0].clone();
+            let preferred = self.restore_session_id.take();
+            let index = preferred
+                .as_deref()
+                .and_then(|id| self.sessions.iter().position(|session| session.id == id))
+                .unwrap_or(0);
+            self.selected_session = index;
+            let session = self.sessions[index].clone();
             self.load_transcript(&session.id);
             let acp_id = session
                 .acp_session_id
@@ -1289,7 +1322,14 @@ impl KestrelApp {
             }
             Command::RefreshSessions => {
                 if self.project().is_remote() {
-                    self.select_project(self.selected_project, cx);
+                    if self.harness.running {
+                        self.set_notice(
+                            "Wait for the current turn to finish before refreshing sessions",
+                            cx,
+                        );
+                    } else {
+                        self.select_project(self.selected_project, cx);
+                    }
                 } else {
                     self.set_notice("Only remote projects have relay sessions", cx);
                 }
@@ -1549,8 +1589,18 @@ impl KestrelApp {
     }
 
     pub(crate) fn remove_remote_host(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self
+            .project()
+            .remote
+            .as_ref()
+            .is_some_and(|project| project.host_id == id)
+        {
+            self.interrupt_live_turn(cx);
+            self.disconnect_harness(cx);
+        }
         self.remote_hosts.retain(|host| host.id != id);
         self.remote_tokens.remove(id);
+        self.remote_usages.remove(id);
         remote::delete_token(id);
         self.persist_settings(cx);
         self.set_notice("Removed the remote server", cx);
@@ -1659,6 +1709,7 @@ impl KestrelApp {
         self.projects.push(project);
         let index = self.projects.len() - 1;
         self.remote_picker = None;
+        self.settings_open = false;
         self.select_project(index, cx);
         self.notice = Some(format!("Added remote project {}", info.name));
         cx.notify();
@@ -1669,6 +1720,10 @@ impl KestrelApp {
         if let Some(remote_project) = self.project().remote.clone() {
             self.interrupt_live_turn(cx);
             self.stash_transcript();
+            self.sessions
+                .retain(|session| !session.id.starts_with("pending-"));
+            self.all_sessions
+                .retain(|session| !session.id.starts_with("pending-"));
             let pending = SessionSummary {
                 id: format!("pending-{}", uuid::Uuid::now_v7()),
                 project_id,
@@ -1877,25 +1932,24 @@ impl KestrelApp {
             SessionOrigin::Remote { host_id } => Some(host_id.clone()),
             SessionOrigin::Local => None,
         };
-        if let Some(host_id) = remote_origin
-            && let Some(host) = self.remote_host(&host_id)
-            && let Ok(token) = self.remote_token(&host_id)
-        {
-            let url = host.url.clone();
-            let session_id = id.to_string();
-            cx.spawn(async move |this, cx| {
-                let result = cx
-                    .background_executor()
-                    .spawn(async move { remote::delete_session(&url, &token, &session_id) })
-                    .await;
-                this.update(cx, |this, cx| {
-                    if let Err(error) = result {
-                        this.set_notice(error, cx);
-                    }
-                })
-                .ok();
-            })
-            .detach();
+        if let Some(host_id) = remote_origin {
+            let Some(host) = self.remote_host(&host_id) else {
+                self.set_notice("Remote server is not configured", cx);
+                return;
+            };
+            let token = match self.remote_token(&host_id) {
+                Ok(token) => token,
+                Err(error) => {
+                    self.set_notice(error, cx);
+                    return;
+                }
+            };
+            if let Err(error) = remote::delete_session(&host.url, &token, id)
+                && !error.contains("404")
+            {
+                self.set_notice(format!("Could not delete the remote session: {error}"), cx);
+                return;
+            }
         }
 
         let active = index == self.selected_session;
@@ -2007,6 +2061,14 @@ impl KestrelApp {
         let keystroke = &event.keystroke;
         let platform = keystroke.modifiers.platform;
         let shift = keystroke.modifiers.shift;
+
+        if self.editor_conflict.is_some() {
+            if keystroke.key.as_str() == "escape" {
+                self.cancel_editor_conflict(cx);
+            }
+            cx.stop_propagation();
+            return;
+        }
 
         if self.pending_editor.is_some() {
             match keystroke.key.as_str() {
@@ -2238,6 +2300,10 @@ impl KestrelApp {
         if index >= self.projects.len() {
             return;
         }
+        if index == self.selected_project && self.harness.running {
+            self.set_notice("Wait for the current turn to finish before refreshing", cx);
+            return;
+        }
         self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_project = index;
@@ -2325,6 +2391,7 @@ impl KestrelApp {
             .detach();
             self.refresh_file_tree(cx);
             self.refresh_git_status(cx);
+            self.refresh_usage(cx);
             self.notice = Some(format!("Switched to {}", project.name));
             self.persist_settings(cx);
             cx.notify();
@@ -2351,6 +2418,7 @@ impl KestrelApp {
             self.notice = Some(format!("Switched to {}", project.name));
         }
         self.refresh_git_status(cx);
+        self.refresh_usage(cx);
         self.persist_settings(cx);
         cx.notify();
     }
@@ -2872,12 +2940,54 @@ impl KestrelApp {
         if self.usage_loading {
             return;
         }
+        if let Some(remote_project) = self.project().remote.clone() {
+            let Some(host) = self.remote_host(&remote_project.host_id) else {
+                return;
+            };
+            let token = match self.remote_token(&host.id) {
+                Ok(token) => token,
+                Err(error) => {
+                    self.set_notice(error, cx);
+                    return;
+                }
+            };
+            let host_id = host.id.clone();
+            let url = host.url.clone();
+            self.usage_loading = true;
+            cx.notify();
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { remote::usage(&url, &token) })
+                    .await;
+                this.update(cx, |this, cx| {
+                    this.usage_loading = false;
+                    match result {
+                        Ok(usages) => {
+                            logging::info(&format!(
+                                "remote usage refreshed · {} providers",
+                                usages.len()
+                            ));
+                            this.remote_usages.insert(host_id, usages);
+                        }
+                        Err(error) => {
+                            logging::warn(&format!("remote usage: {error}"));
+                            this.set_notice(error, cx);
+                        }
+                    }
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+            return;
+        }
         self.usage_loading = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let usages = cx
                 .background_executor()
-                .spawn(async move { usage::probe_all() })
+                .spawn(async move { kestrel_usage::probe_all() })
                 .await;
             this.update(cx, |this, cx| {
                 for usage in &usages {
@@ -3240,14 +3350,20 @@ impl KestrelApp {
         self.editor_dirty = false;
         self.editor_readonly = false;
         self.editor_mtime = None;
+        self.editor_conflict = None;
         self.pending_editor = None;
     }
 
     pub(crate) fn save_editor(&mut self, cx: &mut Context<Self>) {
-        self.save_editor_internal(true, cx);
+        self.save_editor_internal(true, self.editor_mtime, cx);
     }
 
-    fn save_editor_internal(&mut self, announce: bool, cx: &mut Context<Self>) {
+    fn save_editor_internal(
+        &mut self,
+        announce: bool,
+        expected_mtime: Option<u64>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(inspector) = self.inspector.clone() else {
             return;
         };
@@ -3259,45 +3375,35 @@ impl KestrelApp {
             return;
         }
         let value = self.editor.read(cx).value().to_string();
-        if self.project().is_remote() {
-            let backend = match self.backend() {
-                Ok(backend) => backend,
-                Err(error) => {
-                    if announce {
-                        self.notice = Some(error);
-                    }
-                    cx.notify();
-                    return;
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                if announce {
+                    self.notice = Some(error);
                 }
-            };
-            match backend.write_file(&inspector.path, &value) {
-                Ok(stat) => {
-                    self.editor_dirty = false;
-                    self.editor_mtime = Some(stat.mtime_ms);
-                    if announce {
-                        self.notice = Some(format!("Saved {}", inspector.name));
-                    }
-                    self.refresh_git_status(cx);
-                }
-                Err(error) => {
-                    if announce {
-                        self.notice = Some(format!("Could not save {}: {error}", inspector.name));
-                    }
-                }
+                cx.notify();
+                return;
             }
-            cx.notify();
-            return;
-        }
-        match fs::write(&inspector.path, value) {
-            Ok(()) => {
+        };
+        match backend.write_file(&inspector.path, &value, expected_mtime) {
+            Ok(stat) => {
                 self.editor_dirty = false;
-                self.editor_mtime = fs::metadata(&inspector.path)
-                    .ok()
-                    .map(|metadata| metadata_mtime_ms(&metadata));
+                self.editor_mtime = Some(stat.mtime_ms);
+                self.editor_conflict = None;
                 if announce {
                     self.notice = Some(format!("Saved {}", inspector.name));
                 }
                 self.refresh_git_status(cx);
+            }
+            Err(error) if error.starts_with("conflict:") => {
+                self.editor_conflict = Some(EditorConflict {
+                    path: inspector.path.clone(),
+                    message: error,
+                });
+                self.notice = Some(format!(
+                    "{} changed elsewhere · reload or overwrite",
+                    inspector.name
+                ));
             }
             Err(error) => {
                 if announce {
@@ -3306,6 +3412,31 @@ impl KestrelApp {
             }
         }
         cx.notify();
+    }
+
+    pub(crate) fn cancel_editor_conflict(&mut self, cx: &mut Context<Self>) {
+        self.editor_conflict = None;
+        cx.notify();
+    }
+
+    pub(crate) fn reload_editor_conflict(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.editor_conflict = None;
+        self.editor_dirty = false;
+        self.reload_open_editor(window, cx);
+        self.finish_pending_editor(window, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn overwrite_editor_conflict(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.editor_conflict = None;
+        self.save_editor_internal(true, None, cx);
+        if !self.editor_dirty {
+            self.finish_pending_editor(window, cx);
+        }
     }
 
     /// Debounce a quiet autosave after the buffer changes.
@@ -3318,7 +3449,8 @@ impl KestrelApp {
                 .await;
             this.update(cx, |this, cx| {
                 if this.autosave_generation == generation && this.autosave && this.editor_dirty {
-                    this.save_editor_internal(false, cx);
+                    let expected = this.editor_mtime;
+                    this.save_editor_internal(false, expected, cx);
                 }
             })
             .ok();
@@ -3328,7 +3460,7 @@ impl KestrelApp {
 
     /// Detect external edits to the open file and reload a clean buffer.
     fn check_open_file(&mut self, cx: &mut Context<Self>) {
-        if self.editor_dirty || self.editor_stale {
+        if self.editor_dirty || self.editor_stale || self.editor_conflict.is_some() {
             return;
         }
         let Some(inspector) = self.inspector.as_ref() else {
@@ -3545,6 +3677,20 @@ impl KestrelApp {
         let project = self.project();
         let session = self.session();
         let status = status_palette(&p, session.status);
+        let branch_label = session
+            .branch
+            .clone()
+            .or_else(|| {
+                if self.project().is_remote()
+                    && !self.git.branch.is_empty()
+                    && self.git.branch != "no branch"
+                {
+                    Some(self.git.branch.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "detached".into());
 
         div()
             .h(px(62.))
@@ -3605,7 +3751,7 @@ impl KestrelApp {
                             .child(project.name.clone())
                             .child(div().text_color(p.border_strong).child("·"))
                             .child(icon(IconName::GitBranch, 10.0, p.muted_fg))
-                            .child(session.branch.clone().unwrap_or_else(|| "detached".into()))
+                            .child(branch_label)
                             .child(div().text_color(p.border_strong).child("·"))
                             .child(crate::views::chat::message_count_label(
                                 self.harness.transcript.len(),
@@ -4532,6 +4678,164 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    fn editor_conflict_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(conflict) = self.editor_conflict.as_ref() else {
+            return div().into_any_element();
+        };
+        let name = Path::new(&conflict.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&conflict.path)
+            .to_string();
+        let message = conflict
+            .message
+            .trim_start_matches("conflict:")
+            .trim()
+            .to_string();
+
+        div()
+            .id("editor-conflict-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| this.cancel_editor_conflict(cx)))
+            .child(
+                div()
+                    .id("editor-conflict")
+                    .w(px(430.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(16.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_start()
+                            .gap(px(10.))
+                            .child(
+                                div()
+                                    .size(px(30.))
+                                    .flex_shrink_0()
+                                    .rounded(px(8.))
+                                    .bg(p.amber_soft)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon(IconName::TriangleAlert, 14.0, p.amber)),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(3.))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(p.fg)
+                                            .child("File changed elsewhere"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .line_height(relative(1.5))
+                                            .text_color(p.muted_fg)
+                                            .child(format!(
+                                                "“{name}” changed since you opened it. {message} Reload the remote version or overwrite it with your edits."
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_end()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .id("conflict-cancel")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.cancel_editor_conflict(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(p.fg)
+                                            .child("Cancel"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("conflict-reload")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(p.border)
+                                    .bg(p.bg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.reload_editor_conflict(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(p.fg)
+                                            .child("Reload"),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("conflict-overwrite")
+                                    .h(px(28.))
+                                    .px(px(11.))
+                                    .rounded(px(6.))
+                                    .bg(p.amber)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.opacity(0.9))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.overwrite_editor_conflict(window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.bg)
+                                            .child("Overwrite"),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn delete_modal(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let Some(pending) = self.pending_delete.clone() else {
@@ -5009,6 +5313,10 @@ impl Render for KestrelApp {
         let new_file_modal = self.new_file_prompt.then(|| self.new_file_modal(cx));
         let session_menu = self.session_menu_open.then(|| self.session_menu(cx));
         let editor_prompt = self.pending_editor.as_ref().map(|_| self.editor_prompt(cx));
+        let editor_conflict = self
+            .editor_conflict
+            .as_ref()
+            .map(|_| self.editor_conflict_modal(cx));
 
         div()
             .relative()
@@ -5051,6 +5359,7 @@ impl Render for KestrelApp {
             .children(remote_picker)
             .children(new_file_modal)
             .children(editor_prompt)
+            .children(editor_conflict)
     }
 }
 

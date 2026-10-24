@@ -6,6 +6,7 @@
 //! per session. Permission prompts are never answered by the relay.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -39,12 +40,37 @@ pub async fn bridge(
     let (close_tx, mut close_rx) = mpsc::channel::<()>(1);
 
     let (program, args) = command_parts(&state.config.harness);
-    let mut child = match Command::new(&program)
-        .args(&args)
+    let current_path = project.path.clone();
+    let other_projects = state
+        .store
+        .lock()
+        .ok()
+        .and_then(|store| store.list_projects().ok())
+        .map(|projects| {
+            projects
+                .into_iter()
+                .filter(|candidate| candidate.path != current_path)
+                .map(|candidate| candidate.path)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut harness = harness_command(
+        &state.config,
+        &program,
+        &args,
+        &project.path,
+        &other_projects,
+    );
+    let stderr = if std::env::var_os("KESTREL_RELAY_DEBUG").is_some() {
+        Stdio::inherit()
+    } else {
+        Stdio::null()
+    };
+    let mut child = match harness
         .current_dir(&project.path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .kill_on_drop(true)
         .spawn()
     {
@@ -84,6 +110,9 @@ pub async fn bridge(
     let mut tracker = Tracker::default();
     let mut ticker = tokio::time::interval(Duration::from_secs(30));
     let mut last_activity = Instant::now();
+    let mut client_gone = false;
+    let mut taken_over = false;
+    let mut harness_exited = false;
 
     loop {
         tokio::select! {
@@ -112,6 +141,7 @@ pub async fn bridge(
                     }
                     Ok(None) | Err(_) => {
                         eprintln!("[relay] harness stdout closed · {connection_id}");
+                        harness_exited = true;
                         break;
                     }
                 }
@@ -177,17 +207,23 @@ pub async fn bridge(
                     }
                     Some(Ok(Message::Close(frame))) => {
                         eprintln!("[relay] client closed · {connection_id} · {frame:?}");
+                        client_gone = true;
                         break;
                     }
-                    None => break,
+                    None => {
+                        client_gone = true;
+                        break;
+                    }
                     Some(Err(error)) => {
                         eprintln!("[relay] websocket error · {connection_id} · {error}");
+                        client_gone = true;
                         break;
                     }
                 }
             }
             _ = close_rx.recv() => {
                 eprintln!("[relay] session taken over · {connection_id}");
+                taken_over = true;
                 let _ = ws_tx
                     .send(Message::Close(Some(CloseFrame {
                         code: 4001,
@@ -199,6 +235,7 @@ pub async fn bridge(
             _ = ticker.tick() => {
                 if last_activity.elapsed() > Duration::from_secs(state.config.idle_timeout_secs) {
                     eprintln!("[relay] idle timeout · {connection_id}");
+                    client_gone = true;
                     break;
                 }
                 let _ = ws_tx.send(Message::Ping(Vec::new().into())).await;
@@ -218,11 +255,119 @@ pub async fn bridge(
         }
     }
 
+    if client_gone && !taken_over && !harness_exited && tracker.has_active_prompt() {
+        let timeout = Duration::from_secs(state.config.linger_secs);
+        if let Ok(mut leases) = state.leases.lock() {
+            for lease in leases.values_mut() {
+                if lease.connection_id == connection_id {
+                    lease.expires_at = Instant::now() + timeout + Duration::from_secs(60);
+                }
+            }
+        }
+        eprintln!(
+            "[relay] client left with an active turn · lingering for {}s · {connection_id}",
+            state.config.linger_secs
+        );
+        tokio::spawn(linger_turn(
+            child,
+            stdin,
+            lines,
+            tracker,
+            state,
+            user,
+            device,
+            project,
+            connection_id,
+            close_rx,
+            timeout,
+        ));
+        return;
+    }
+
     let _ = child.kill().await;
     eprintln!("[relay] acp disconnected · {connection_id}");
     if let Ok(mut leases) = state.leases.lock() {
         leases.retain(|_, lease| lease.connection_id != connection_id);
     }
+}
+
+/// Keep a harness alive after the last client disconnects so an in-flight turn
+/// can finish. Permission requests are auto-cancelled; the result stays in
+/// OpenCode and can be loaded from another device later.
+#[allow(clippy::too_many_arguments)]
+async fn linger_turn(
+    mut child: tokio::process::Child,
+    mut stdin: tokio::process::ChildStdin,
+    mut lines: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    mut tracker: Tracker,
+    state: AppState,
+    user: User,
+    device: Device,
+    project: Project,
+    connection_id: String,
+    mut close_rx: mpsc::Receiver<()>,
+    timeout: Duration,
+) {
+    let (dummy_tx, _dummy_rx) = mpsc::channel::<()>(1);
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        tokio::select! {
+            line = lines.next_line() => {
+                match line {
+                    Ok(Some(line)) => {
+                        if line.len() > state.config.max_frame_bytes {
+                            break;
+                        }
+                        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                            continue;
+                        };
+                        if value.get("method").and_then(Value::as_str)
+                            == Some("session/request_permission")
+                            && let Some(id) = value.get("id")
+                        {
+                            let response = json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": { "outcome": { "outcome": "cancelled" } }
+                            });
+                            if stdin.write_all(response.to_string().as_bytes()).await.is_err()
+                                || stdin.write_all(b"\n").await.is_err()
+                                || stdin.flush().await.is_err()
+                            {
+                                break;
+                            }
+                        }
+                        tracker.on_agent_message(
+                            &state,
+                            &user,
+                            &device,
+                            &project,
+                            &connection_id,
+                            &dummy_tx,
+                            &value,
+                        );
+                        if !tracker.has_active_prompt() {
+                            break;
+                        }
+                    }
+                    _ => break,
+                }
+            }
+            _ = close_rx.recv() => {
+                eprintln!("[relay] linger cancelled · {connection_id}");
+                break;
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                eprintln!("[relay] linger timeout · {connection_id}");
+                break;
+            }
+        }
+    }
+    let _ = child.kill().await;
+    if let Ok(mut leases) = state.leases.lock() {
+        leases.retain(|_, lease| lease.connection_id != connection_id);
+    }
+    eprintln!("[relay] lingering turn finished · {connection_id}");
 }
 
 #[derive(Default)]
@@ -233,6 +378,7 @@ struct Tracker {
 enum Pending {
     New,
     Load { session_id: String },
+    Prompt,
     Fork { source_id: String, title: String },
     Delete { session_id: String },
 }
@@ -323,6 +469,9 @@ impl Tracker {
                 {
                     let _ = store.rename_session_if_new(&session_id, &title);
                 }
+                if is_request {
+                    self.pending.insert(id_key(&id), Pending::Prompt);
+                }
                 Ok(())
             }
             "session/cancel" | "session/set_config_option" | "session/set_mode" => {
@@ -371,6 +520,7 @@ impl Tracker {
         };
 
         match pending {
+            Pending::Prompt => {}
             Pending::New => {
                 if let Some(session_id) = result_session_id(result) {
                     if let Ok(store) = state.store.lock() {
@@ -430,6 +580,12 @@ impl Tracker {
                 }
             }
         }
+    }
+
+    fn has_active_prompt(&self) -> bool {
+        self.pending
+            .values()
+            .any(|pending| matches!(pending, Pending::Prompt))
     }
 }
 
@@ -570,9 +726,106 @@ fn command_parts(command: &str) -> (String, Vec<String>) {
     (program, args)
 }
 
+/// Build the harness command, optionally wrapped in a macOS seatbelt profile.
+///
+/// The profile is allow-by-default with an explicit deny list: other project
+/// roots, credential stores, browser profiles and personal folders. That keeps
+/// OpenCode working while preventing an agent from reading another project or a
+/// user's keys. It is a best-effort privacy boundary, not a container; use
+/// separate OS accounts or containers for hard isolation.
+fn harness_command(
+    config: &crate::config::Config,
+    program: &str,
+    args: &[String],
+    project_path: &str,
+    other_projects: &[String],
+) -> Command {
+    if config.sandbox && cfg!(target_os = "macos") && Path::new("/usr/bin/sandbox-exec").is_file() {
+        let mut command = Command::new("/usr/bin/sandbox-exec");
+        let profile = sandbox_profile(project_path, other_projects, &config.harness);
+        if std::env::var_os("KESTREL_RELAY_DEBUG").is_some() {
+            eprintln!("[relay] sandbox profile:\n{profile}");
+        }
+        command.arg("-p").arg(profile).arg(program).args(args);
+        command
+    } else {
+        let mut command = Command::new(program);
+        command.args(args);
+        command
+    }
+}
+
+fn sandbox_profile(project_path: &str, other_projects: &[String], harness: &str) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let project = Path::new(project_path);
+    let mut denied = Vec::new();
+
+    if !home.is_empty() {
+        let home_path = Path::new(&home);
+        let mut private = vec![
+            ".ssh",
+            ".gnupg",
+            ".aws",
+            ".azure",
+            ".config/gcloud",
+            ".kube",
+            ".docker",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+            "Library/Keychains",
+            "Library/Messages",
+            "Library/Mail",
+            "Library/Safari",
+            "Library/Application Support/Google/Chrome",
+            "Documents",
+            "Desktop",
+            "Downloads",
+            "Pictures",
+            "Movies",
+            "Music",
+        ];
+        if !harness.contains("codex") {
+            private.push(".codex");
+        }
+        if !harness.contains("claude") {
+            private.push(".claude");
+        }
+        for suffix in private {
+            let path = home_path.join(suffix);
+            // A project can legitimately live under Documents or Desktop; never
+            // deny the active project itself.
+            if !project.starts_with(&path) {
+                denied.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    for path in other_projects {
+        if path != project_path {
+            denied.push(path.clone());
+        }
+    }
+
+    let mut profile = String::from("(version 1)\n(allow default)\n");
+    profile.push_str("(deny file-read*");
+    for path in &denied {
+        profile.push_str(&format!(" (subpath \"{}\")", escape_sandbox_path(path)));
+    }
+    profile.push_str(")\n(deny file-write*");
+    for path in &denied {
+        profile.push_str(&format!(" (subpath \"{}\")", escape_sandbox_path(path)));
+    }
+    profile.push_str(")\n");
+    profile
+}
+
+fn escape_sandbox_path(path: &str) -> String {
+    path.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{command_parts, prompt_title};
+    use super::{command_parts, prompt_title, sandbox_profile};
     use serde_json::json;
 
     #[test]
@@ -592,5 +845,25 @@ mod tests {
             }
         });
         assert_eq!(prompt_title(&value).as_deref(), Some("Fix the relay"));
+    }
+
+    #[test]
+    fn sandbox_denies_other_projects_and_credentials() {
+        let profile = sandbox_profile(
+            "/Users/me/project",
+            &["/Users/me/other".to_string()],
+            "opencode acp",
+        );
+        assert!(profile.starts_with("(version 1)\n(allow default)"));
+        assert!(profile.contains("/Users/me/other"));
+        assert!(profile.contains(".ssh"));
+        assert!(profile.contains(".codex"));
+        assert!(!profile.contains("(subpath \"/Users/me/project\")"));
+    }
+
+    #[test]
+    fn sandbox_does_not_deny_the_active_project_under_documents() {
+        let profile = sandbox_profile("/Users/me/Documents/project", &[], "opencode acp");
+        assert!(!profile.contains("(subpath \"/Users/me/Documents\")"));
     }
 }

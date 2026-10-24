@@ -12,6 +12,9 @@ pub struct Config {
     pub max_frame_bytes: usize,
     pub idle_timeout_secs: u64,
     pub lease_secs: u64,
+    pub linger_secs: u64,
+    pub sandbox: bool,
+    pub store_transcripts: bool,
 }
 
 impl Default for Config {
@@ -23,6 +26,9 @@ impl Default for Config {
             max_frame_bytes: 4 * 1024 * 1024,
             idle_timeout_secs: 15 * 60,
             lease_secs: 120,
+            linger_secs: 15 * 60,
+            sandbox: cfg!(target_os = "macos"),
+            store_transcripts: true,
         }
     }
 }
@@ -36,6 +42,9 @@ struct FileConfig {
     max_frame_bytes: Option<usize>,
     idle_timeout_secs: Option<u64>,
     lease_secs: Option<u64>,
+    linger_secs: Option<u64>,
+    sandbox: Option<bool>,
+    store_transcripts: Option<bool>,
 }
 
 impl Config {
@@ -63,6 +72,15 @@ impl Config {
         if let Some(value) = file.lease_secs {
             config.lease_secs = value.clamp(15, 60 * 60);
         }
+        if let Some(value) = file.linger_secs {
+            config.linger_secs = value.clamp(30, 24 * 60 * 60);
+        }
+        if let Some(value) = file.sandbox {
+            config.sandbox = value;
+        }
+        if let Some(value) = file.store_transcripts {
+            config.store_transcripts = value;
+        }
         Ok(config)
     }
 
@@ -76,7 +94,25 @@ impl Config {
         if let Ok(value) = std::env::var("KESTREL_RELAY_HARNESS") {
             self.harness = value;
         }
+        if let Ok(value) = std::env::var("KESTREL_RELAY_LINGER_SECS")
+            && let Ok(seconds) = value.parse::<u64>()
+        {
+            self.linger_secs = seconds.clamp(30, 24 * 60 * 60);
+        }
+        if let Ok(value) = std::env::var("KESTREL_RELAY_SANDBOX") {
+            self.sandbox = parse_bool(&value);
+        }
+        if let Ok(value) = std::env::var("KESTREL_RELAY_STORE_TRANSCRIPTS") {
+            self.store_transcripts = parse_bool(&value);
+        }
     }
+}
+
+fn parse_bool(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 pub fn default_db() -> PathBuf {

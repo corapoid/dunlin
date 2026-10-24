@@ -1,0 +1,10 @@
+[package]
+name = "kestrel-usage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kestrel-domain.workspace = true
+serde_json.workspace = true

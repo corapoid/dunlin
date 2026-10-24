@@ -151,6 +151,19 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 2 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS transcripts (
+                    session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+                    payload     TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL
+                );
+
+                PRAGMA user_version = 2;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
@@ -531,6 +544,31 @@ impl Store {
         )?;
         Ok(())
     }
+
+    pub fn save_transcript(&self, session_id: &str, payload: &str) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO transcripts (session_id, payload, updated_at)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT(session_id) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            "#,
+            params![session_id, payload, now_secs()],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_transcript(&self, session_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT payload FROM transcripts WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
 }
 
 pub fn now_secs() -> i64 {
@@ -597,5 +635,26 @@ mod tests {
 
         store.delete_session("ses-1").unwrap();
         assert!(store.session_owner("ses-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn stores_and_cascades_transcripts() {
+        let store = Store::open_in_memory().unwrap();
+        let user = store.create_user("marek", "member").unwrap();
+        let project = store.create_project("kestrel", "/tmp/kestrel").unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        let (device, _) = store.create_device(&user.id, "Mac").unwrap();
+        store
+            .create_session("ses-1", &user.id, &project.id, "Test", &device.id)
+            .unwrap();
+        store
+            .save_transcript("ses-1", r#"[{"kind":"smoke"}]"#)
+            .unwrap();
+        assert_eq!(
+            store.load_transcript("ses-1").unwrap().as_deref(),
+            Some(r#"[{"kind":"smoke"}]"#)
+        );
+        store.delete_session("ses-1").unwrap();
+        assert!(store.load_transcript("ses-1").unwrap().is_none());
     }
 }

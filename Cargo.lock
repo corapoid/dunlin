@@ -3620,6 +3620,7 @@ dependencies = [
  "kestrel-domain",
  "kestrel-storage",
  "kestrel-ui",
+ "kestrel-usage",
  "kestrel-workspace",
  "serde",
  "serde_json",
@@ -3657,6 +3658,8 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "futures-util",
+ "kestrel-domain",
+ "kestrel-usage",
  "kestrel-workspace",
  "rand 0.9.5",
  "rusqlite",
@@ -3685,6 +3688,14 @@ name = "kestrel-ui"
 version = "0.1.0"
 dependencies = [
  "gpui-kit",
+]
+
+[[package]]
+name = "kestrel-usage"
+version = "0.1.0"
+dependencies = [
+ "kestrel-domain",
+ "serde_json",
 ]
 
 [[package]]

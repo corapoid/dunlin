@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::Path as FsPath;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State, ws::WebSocketUpgrade};
 use axum::http::{HeaderName, HeaderValue, StatusCode, header::AUTHORIZATION, request::Parts};
@@ -12,6 +12,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use kestrel_domain::ProviderUsage;
 use kestrel_workspace::fs as workspace_fs;
 use kestrel_workspace::git;
 use kestrel_workspace::search;
@@ -23,11 +24,14 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::store::{Device, Project, Store, StoreError, User};
 
+pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
+    pub usage_cache: UsageCache,
 }
 
 #[derive(Clone)]
@@ -44,6 +48,7 @@ impl AppState {
             store: Arc::new(Mutex::new(store)),
             config: Arc::new(config),
             leases: Arc::new(Mutex::new(HashMap::new())),
+            usage_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -88,6 +93,10 @@ impl ApiError {
 
     pub fn not_found() -> Self {
         Self::new(StatusCode::NOT_FOUND, "Not found")
+    }
+
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, message)
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
@@ -154,10 +163,15 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/v1/pair", post(pair))
         .route("/v1/me", get(me))
+        .route("/v1/usage", get(usage))
         .route("/v1/projects", get(projects))
         .route("/v1/sessions", get(sessions))
         .route("/v1/sessions/{id}", delete(delete_session))
         .route("/v1/sessions/{id}/takeover", post(takeover))
+        .route(
+            "/v1/sessions/{id}/transcript",
+            get(session_transcript).put(session_transcript_save),
+        )
         .route("/acp", get(acp_ws))
         .route("/v1/fs/tree", get(fs_tree))
         .route("/v1/fs/file", get(fs_file).put(fs_write))
@@ -258,6 +272,23 @@ async fn projects(
     Ok(Json(projects))
 }
 
+async fn usage(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ProviderUsage>>, ApiError> {
+    if let Ok(cache) = state.usage_cache.lock()
+        && let Some((at, usages)) = cache.as_ref()
+        && at.elapsed() < Duration::from_secs(60)
+    {
+        return Ok(Json(usages.clone()));
+    }
+    let usages = run_blocking(|| Ok(kestrel_usage::probe_all())).await?;
+    if let Ok(mut cache) = state.usage_cache.lock() {
+        *cache = Some((Instant::now(), usages.clone()));
+    }
+    Ok(Json(usages))
+}
+
 #[derive(Deserialize)]
 struct ProjectQuery {
     project: String,
@@ -337,16 +368,7 @@ async fn takeover(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let owner = state
-        .store
-        .lock()
-        .map_err(|_| ApiError::internal("store lock poisoned"))?
-        .session_owner(&id)
-        .map_err(ApiError::from)?
-        .ok_or_else(ApiError::not_found)?;
-    if owner.user_id != user.id {
-        return Err(ApiError::not_found());
-    }
+    owned_session(&state, &user, &id)?;
     if let Some(lease) = state
         .leases
         .lock()
@@ -356,6 +378,70 @@ async fn takeover(
         let _ = lease.close_tx.try_send(());
     }
     Ok(StatusCode::OK)
+}
+
+fn owned_session(state: &AppState, user: &User, id: &str) -> Result<(), ApiError> {
+    let owner = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .session_owner(id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    if owner.user_id != user.id {
+        return Err(ApiError::not_found());
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct TranscriptRequest {
+    payload: Value,
+}
+
+async fn session_transcript_save(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<TranscriptRequest>,
+) -> Result<StatusCode, ApiError> {
+    if !state.config.store_transcripts {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Transcript storage is disabled on this relay",
+        ));
+    }
+    owned_session(&state, &user, &id)?;
+    let payload = serde_json::to_string(&request.payload)
+        .map_err(|error| ApiError::bad_request(error.to_string()))?;
+    if payload.len() > 4 * 1024 * 1024 {
+        return Err(ApiError::bad_request("Transcript is larger than 4 MiB"));
+    }
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .save_transcript(&id, &payload)
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn session_transcript(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    owned_session(&state, &user, &id)?;
+    let payload = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .load_transcript(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    let value: Value = serde_json::from_str(&payload)
+        .map_err(|error| ApiError::internal(format!("Stored transcript is invalid: {error}")))?;
+    Ok(Json(value))
 }
 
 async fn acp_ws(
@@ -420,6 +506,7 @@ struct WriteFileRequest {
     project: String,
     path: String,
     contents: String,
+    expected_mtime_ms: Option<u64>,
 }
 
 async fn fs_write(
@@ -428,6 +515,15 @@ async fn fs_write(
     Json(request): Json<WriteFileRequest>,
 ) -> Result<Json<workspace_fs::FileStat>, ApiError> {
     let project = state.project_for_user(&user.id, &request.project)?;
+    if let Some(expected) = request.expected_mtime_ms {
+        let current =
+            workspace_fs::stat_file(&project.path, &request.path).map_err(ApiError::bad_request)?;
+        if current.mtime_ms != expected {
+            return Err(ApiError::conflict(
+                "File changed on the relay since it was opened",
+            ));
+        }
+    }
     let stat = run_blocking(move || {
         workspace_fs::write_file(&project.path, &request.path, &request.contents)
     })

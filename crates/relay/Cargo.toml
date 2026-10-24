@@ -11,6 +11,8 @@ path = "src/main.rs"
 
 [dependencies]
 kestrel-workspace.workspace = true
+kestrel-usage.workspace = true
+kestrel-domain.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "io-util", "time", "sync", "signal"] }
 rusqlite = { version = "0.37", features = ["bundled"] }

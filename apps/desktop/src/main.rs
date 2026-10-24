@@ -6,7 +6,6 @@ mod harness;
 mod logging;
 mod projection;
 mod remote;
-mod usage;
 mod views;
 mod window_state;
 

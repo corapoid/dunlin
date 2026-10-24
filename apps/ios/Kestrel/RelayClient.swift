@@ -45,10 +45,8 @@ struct RelayClient {
         guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw RelayError.badURL
         }
-        let basePath = components.path
-        components.path = basePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")) .isEmpty
-            ? path
-            : basePath.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path
+        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = basePath.isEmpty ? path : "/\(basePath)\(path)"
         guard let url = components.url else { throw RelayError.badURL }
 
         var request = URLRequest(url: url)

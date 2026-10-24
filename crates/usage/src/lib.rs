@@ -17,13 +17,8 @@ use kestrel_domain::{ProjectTone, ProviderUsage, UsageSource, UsageWindow};
 use serde_json::{Value, json};
 
 /// Probe every provider that can be read locally.
-pub(crate) fn probe_all() -> Vec<ProviderUsage> {
+pub fn probe_all() -> Vec<ProviderUsage> {
     vec![probe_claude(), probe_codex(), estimated_opencode()]
-}
-
-/// Startup fallback so the sidebar is populated before probes finish.
-pub(crate) fn fallback() -> Vec<ProviderUsage> {
-    crate::demo::usage()
 }
 
 fn probe_codex() -> ProviderUsage {
@@ -60,14 +55,18 @@ fn probe_claude() -> ProviderUsage {
 }
 
 fn estimated_opencode() -> ProviderUsage {
-    let mut usage = crate::demo::usage()
-        .pop()
-        .unwrap_or_else(|| unavailable("OpenCode", "GO", "No usage data", ProjectTone::Teal));
-    usage.detail = "Estimated · OpenCode does not expose subscription windows over ACP".into();
-    for window in &mut usage.windows {
-        window.source = UsageSource::Estimated;
+    ProviderUsage {
+        provider: "OpenCode".into(),
+        plan: "Estimated".into(),
+        accent: ProjectTone::Teal,
+        windows: vec![UsageWindow {
+            label: "Session".into(),
+            used_percent: 19.0,
+            resets_in: "estimated".into(),
+            source: UsageSource::Estimated,
+        }],
+        detail: "Estimated · OpenCode does not expose subscription windows over ACP".into(),
     }
-    usage
 }
 
 fn unavailable(provider: &str, plan: &str, detail: &str, accent: ProjectTone) -> ProviderUsage {

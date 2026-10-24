@@ -299,7 +299,17 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
             config.db.display(),
             config.harness
         );
-        eprintln!("[relay] metadata only · no prompt logging");
+        if config.sandbox {
+            eprintln!("[relay] macOS sandbox enabled · other projects and credentials are denied");
+        }
+        eprintln!(
+            "[relay] {} · no prompt logging",
+            if config.store_transcripts {
+                "metadata + transcript snapshots"
+            } else {
+                "metadata only"
+            }
+        );
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
             .await

@@ -71,7 +71,9 @@ Permission requests are surfaced as cards in the chat. The permissions tab contr
 
 ## Remote relay
 
-`kestrel-relay` is a small self-hosted server. It stores accounts, devices, project grants and a session index; prompts and transcripts stay in OpenCode. The relay spawns one ACP harness per connection and exposes it over WebSocket, so the macOS app and the iPhone share the same remote sessions.
+`kestrel-relay` is a small self-hosted server. It stores accounts, devices, project grants, a session index and — by default — transcript snapshots. OpenCode remains the source of truth for live sessions; the relay's snapshot lets another device show history and provides a backup. No prompt or tool payload is written to the relay log.
+
+The relay spawns one ACP harness per connection and exposes it over WebSocket, so the macOS app and the iPhone share the same remote sessions.
 
 Build and initialise it on the machine that has the repositories:
 
@@ -91,6 +93,18 @@ For a standalone release binary:
 ./dist/kestrel-relay serve
 ```
 
+Optional `~/.config/kestrel/relay.toml`:
+
+```toml
+listen = "127.0.0.1:8787"
+harness = "opencode acp"
+linger_secs = 900       # keep an in-flight turn alive after the client leaves
+sandbox = true          # macOS seatbelt: deny other projects and credentials
+store_transcripts = true
+```
+
+`serve --config ~/.config/kestrel/relay.toml` uses it. CLI flags and `KESTREL_RELAY_*` environment variables override the file.
+
 `serve` listens on `127.0.0.1:8787` by default. For a phone or another Mac, expose it over Tailscale:
 
 ```sh
@@ -101,7 +115,13 @@ Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
 
 Remote projects support the full macOS surface: explorer, editor with save, search, source control, diffs, chat, permissions, graph and trace. The only difference from a local project is that files and the session live on the relay. A session can be opened on one device at a time; if another device is active, use **Take over session** in the session menu or the **Take over** button on iOS. ACP permissions are never auto-approved by the relay. Composer attachments are uploaded to `.kestrel/attachments` on the relay and kept out of `git status` through `.git/info/exclude`.
 
-Users are isolated: each account sees only granted projects and its own sessions. All relay users currently share the OpenCode credentials installed on the server. Project grants are enforced by the relay API, not by an OS sandbox; run the relay for trusted users only.
+Saves use an optimistic modification-time check on both local and remote files. If a file changed since it was opened, Kestrel blocks the save and offers **Reload** (take the newer version) or **Overwrite** (force the local buffer).
+
+If the client disconnects while a turn is running, the relay keeps the harness alive for `linger_secs` (15 minutes by default) so the turn can finish and the result is persisted by OpenCode. Permission requests raised during that window are auto-cancelled. Set `linger_secs` in the relay config or `KESTREL_RELAY_LINGER_SECS` to change the window.
+
+Users are isolated: each account sees only granted projects and its own sessions. All relay users currently share the OpenCode credentials installed on the server. On macOS the relay runs each harness under a seatbelt profile that denies other project roots and common credential stores (`.ssh`, `.gnupg`, `.aws`, browser profiles, Documents/Desktop/Downloads). This is a best-effort privacy boundary, not a container; disable it with `sandbox = false` if a harness needs broader filesystem access, and use separate OS accounts or containers for hard isolation.
+
+Transcript snapshots are stored in the relay's SQLite database. Set `store_transcripts = false` in the relay config (or `KESTREL_RELAY_STORE_TRANSCRIPTS=0`) to keep only metadata. The database is not encrypted at rest; use FileVault or an encrypted volume on the relay host.
 
 ## iOS
 
@@ -179,6 +199,10 @@ Useful diagnostics:
 - `KESTREL_AUTOPROMPT="..."` sends a prompt once the harness connects; useful for smoke tests.
 - `KESTREL_RELAY_DB=/path` and `KESTREL_RELAY_LISTEN=addr` configure the relay.
 - `KESTREL_RELAY_HARNESS="opencode acp"` sets the command the relay spawns.
+- `KESTREL_RELAY_LINGER_SECS=900` keeps an in-flight turn alive after disconnect.
+- `KESTREL_RELAY_SANDBOX=0` disables the macOS seatbelt profile.
+- `KESTREL_RELAY_STORE_TRANSCRIPTS=0` keeps only relay metadata.
+- `KESTREL_RELAY_DEBUG=1` prints the sandbox profile and forwards harness stderr.
 - `KESTREL_REMOTE_TOKEN=...` is a test-only fallback for the macOS remote token.
 
 ## License

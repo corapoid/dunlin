@@ -21,7 +21,8 @@ final class ACPClient: ObservableObject {
             throw RelayError.badURL
         }
         components.scheme = components.scheme == "https" ? "wss" : "ws"
-        components.path = "/acp"
+        let prefix = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = prefix.isEmpty ? "/acp" : "/\(prefix)/acp"
         components.queryItems = [URLQueryItem(name: "project", value: projectID)]
         guard let url = components.url else { throw RelayError.badURL }
 

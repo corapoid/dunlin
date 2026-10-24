@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use kestrel_domain::RemoteProject;
+use kestrel_domain::{ProviderUsage, RemoteProject};
 use kestrel_workspace::fs::{FileContents, FileStat};
 use kestrel_workspace::git::GitStatus;
 use kestrel_workspace::search::SearchHit;
@@ -99,6 +99,33 @@ pub(crate) fn sessions(
     .call()
     .map_err(http_error)?;
     response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn usage(url: &str, token: &str) -> Result<Vec<ProviderUsage>, String> {
+    let response = ureq::get(&format!("{}/v1/usage", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .call()
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn save_transcript(
+    url: &str,
+    token: &str,
+    session_id: &str,
+    payload: &serde_json::Value,
+) -> Result<(), String> {
+    ureq::put(&format!(
+        "{}/v1/sessions/{}/transcript",
+        url.trim_end_matches('/'),
+        encode(session_id)
+    ))
+    .set("Authorization", &format!("Bearer {token}"))
+    .timeout(Duration::from_secs(30))
+    .send_json(serde_json::json!({ "payload": payload }))
+    .map(|_| ())
+    .map_err(http_error)
 }
 
 pub(crate) fn delete_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
@@ -334,13 +361,19 @@ impl RemoteWorkspace {
         ))
     }
 
-    pub fn write_file(&self, path: &str, contents: &str) -> Result<FileStat, String> {
+    pub fn write_file(
+        &self,
+        path: &str,
+        contents: &str,
+        expected_mtime_ms: Option<u64>,
+    ) -> Result<FileStat, String> {
         self.put(
             "/v1/fs/file",
             &serde_json::json!({
                 "project": self.project.project_id,
                 "path": self.relative(path),
                 "contents": contents,
+                "expected_mtime_ms": expected_mtime_ms,
             }),
         )
     }
@@ -555,12 +588,26 @@ impl WorkspaceBackend {
         }
     }
 
-    pub fn write_file(&self, path: &str, contents: &str) -> Result<FileStat, String> {
+    pub fn write_file(
+        &self,
+        path: &str,
+        contents: &str,
+        expected_mtime_ms: Option<u64>,
+    ) -> Result<FileStat, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                workspace_fs::write_file(root, &self.relative(root, path), contents)
+                let relative = self.relative(root, path);
+                if let Some(expected) = expected_mtime_ms {
+                    let current = workspace_fs::stat_file(root, &relative)?;
+                    if current.mtime_ms != expected {
+                        return Err("conflict: file changed on disk since it was opened".into());
+                    }
+                }
+                workspace_fs::write_file(root, &relative, contents)
             }
-            WorkspaceBackend::Remote(remote) => remote.write_file(path, contents),
+            WorkspaceBackend::Remote(remote) => {
+                remote.write_file(path, contents, expected_mtime_ms)
+            }
         }
     }
 
@@ -615,7 +662,11 @@ fn http_error(error: ureq::Error) -> String {
                         .map(str::to_string)
                 })
                 .unwrap_or(body);
-            format!("Relay error {code}: {message}")
+            if code == 409 {
+                format!("conflict: {message}")
+            } else {
+                format!("Relay error {code}: {message}")
+            }
         }
         ureq::Error::Transport(error) => format!("Relay connection failed: {error}"),
     }
@@ -660,6 +711,32 @@ mod tests {
             .read_file(&root.join("hello.txt").to_string_lossy())
             .unwrap();
         assert_eq!(file.contents, "hi");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn local_backend_blocks_stale_writes() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kestrel-conflict-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("hello.txt");
+        fs::write(&path, "one").unwrap();
+        let backend = WorkspaceBackend::Local {
+            root: root.to_string_lossy().to_string(),
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let stat = backend.stat_file(&path_text).unwrap();
+        let error = backend
+            .write_file(&path_text, "two", Some(stat.mtime_ms + 1))
+            .unwrap_err();
+        assert!(error.starts_with("conflict:"), "{error}");
+        backend
+            .write_file(&path_text, "two", Some(stat.mtime_ms))
+            .unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "two");
         let _ = fs::remove_dir_all(&root);
     }
 }

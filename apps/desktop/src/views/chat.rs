@@ -264,7 +264,7 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .gap(px(18.));
 
     if items.is_empty() {
-        inner = inner.child(empty_state(&status, cx, &p));
+        inner = inner.child(empty_state(&status, this.project().is_remote(), cx, &p));
     } else {
         let mut index = 0;
         while index < items.len() {
@@ -341,7 +341,12 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .into_any_element()
 }
 
-fn empty_state(status: &HarnessStatus, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn empty_state(
+    status: &HarnessStatus,
+    remote: bool,
+    cx: &mut Context<KestrelApp>,
+    p: &Palette,
+) -> AnyElement {
     let (status_color, status_soft) = harness_tone(p, status);
     let starters = [
         (
@@ -403,7 +408,11 @@ fn empty_state(status: &HarnessStatus, cx: &mut Context<KestrelApp>, p: &Palette
                         .text_size(px(11.))
                         .line_height(relative(1.55))
                         .text_color(p.muted_fg)
-                        .child("Kestrel drives your harness over ACP. Prompts, tool calls and permission decisions stay on this machine."),
+                        .child(if remote {
+                            "Kestrel drives the relay harness over ACP. Files, prompts and permission decisions stay on your server."
+                        } else {
+                            "Kestrel drives your harness over ACP. Prompts, tool calls and permission decisions stay on this machine."
+                        }),
                 ),
         );
 
@@ -1380,7 +1389,12 @@ fn composer(
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let harness = this.default_harness.clone();
+    let remote = this.project().is_remote();
+    let harness = if remote {
+        "Remote".to_string()
+    } else {
+        this.default_harness.clone()
+    };
     let model = this.session().model.clone();
     let permission = this.permission_mode;
     let status = this.harness.status.clone();
@@ -1431,9 +1445,13 @@ fn composer(
                         .items_center()
                         .gap(px(4.))
                         .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
+                        .on_click(cx.listener(move |this, _, _, cx| {
                             this.settings_open = true;
-                            this.settings_tab = SettingsTab::Harnesses;
+                            this.settings_tab = if remote {
+                                SettingsTab::Remote
+                            } else {
+                                SettingsTab::Harnesses
+                            };
                             cx.notify();
                         }))
                         .child(dot(status_color, 4.5))

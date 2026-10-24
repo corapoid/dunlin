@@ -83,6 +83,11 @@ fn main() -> Result<()> {
                     agent_client_protocol::Client,
                 >| {
                     let session_id = request.session_id;
+                    if let Ok(value) = std::env::var("KESTREL_MOCK_DELAY_MS")
+                        && let Ok(ms) = value.parse::<u64>()
+                    {
+                        async_io::Timer::after(std::time::Duration::from_millis(ms)).await;
+                    }
                     connection.send_notification(SessionNotification::new(
                         session_id.clone(),
                         SessionUpdate::AgentThoughtChunk(ContentChunk::new(ContentBlock::Text(

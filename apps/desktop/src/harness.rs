@@ -4,7 +4,7 @@
 //! prompts to [`AcpHarness`], and folds streaming events back into that
 //! transcript. Permission prompts round-trip through the same path.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -194,7 +194,8 @@ pub(crate) struct HarnessState {
     pub commands: Vec<String>,
     pub running: bool,
     pub session_id: Option<String>,
-    pending_prompt: Option<String>,
+    pending_prompts: VecDeque<String>,
+    prompt_sent: bool,
     generation: u64,
     pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
@@ -211,7 +212,8 @@ impl Default for HarnessState {
             commands: Vec::new(),
             running: false,
             session_id: None,
-            pending_prompt: None,
+            pending_prompts: VecDeque::new(),
+            prompt_sent: false,
             generation: 0,
             started_tools: HashMap::new(),
             restarts: 0,
@@ -387,12 +389,16 @@ impl KestrelApp {
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
         let title = session_title(&text);
         let summary = session_summary(&text);
+        let was_running = self.harness.running;
         self.harness.transcript.push(ChatItem::User {
             text: text.clone(),
             at_ms: now_ms(),
         });
         self.harness.running = true;
-        self.harness.pending_prompt = Some(text);
+        if !was_running {
+            self.harness.prompt_sent = false;
+        }
+        self.harness.pending_prompts.push_back(text);
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
             session.summary = summary;
@@ -420,7 +426,7 @@ impl KestrelApp {
     /// Called before switching projects, sessions or harnesses so the previous
     /// conversation is not left marked as running forever.
     pub(crate) fn interrupt_live_turn(&mut self, cx: &mut Context<Self>) {
-        let live = self.harness.running || self.harness.pending_prompt.is_some();
+        let live = self.harness.running || !self.harness.pending_prompts.is_empty();
         if !live {
             return;
         }
@@ -431,7 +437,8 @@ impl KestrelApp {
             harness.cancel();
         }
         self.harness.running = false;
-        self.harness.pending_prompt = None;
+        self.harness.prompt_sent = false;
+        self.harness.pending_prompts.clear();
         self.update_active_session(|session| {
             if matches!(
                 session.status,
@@ -480,6 +487,7 @@ impl KestrelApp {
         if let Some(store) = &self.store {
             let _ = store.save_transcript(&current_id, &current);
         }
+        self.upload_remote_transcript(&current_id, &current);
         self.harness.transcripts.insert(current_id, current);
     }
 
@@ -504,7 +512,8 @@ impl KestrelApp {
         });
         self.harness.transcript = loaded.unwrap_or_default();
         self.harness.started_tools.clear();
-        self.harness.pending_prompt = None;
+        self.harness.pending_prompts.clear();
+        self.harness.prompt_sent = false;
         self.harness.running = false;
         self.harness.usage = None;
     }
@@ -569,7 +578,10 @@ impl KestrelApp {
     }
 
     fn dispatch_pending_prompt(&mut self) {
-        let Some(text) = self.harness.pending_prompt.take() else {
+        if self.harness.prompt_sent || self.harness.session_id.is_none() {
+            return;
+        }
+        let Some(text) = self.harness.pending_prompts.pop_front() else {
             return;
         };
         let title = session_title(&text);
@@ -584,12 +596,22 @@ impl KestrelApp {
             .as_ref()
             .map(|harness| harness.prompt(text.clone()))
             .unwrap_or(false);
-        if !sent {
+        if sent {
+            self.harness.prompt_sent = true;
+            self.harness.running = true;
+            self.update_active_session(|session| {
+                if session.status != SessionStatus::Running {
+                    session.status = SessionStatus::Running;
+                }
+            });
+        } else {
             self.harness.transcript.push(ChatItem::Error {
                 message: "Could not send the prompt: the harness is not running.".into(),
                 at_ms: now_ms(),
             });
             self.harness.running = false;
+            self.harness.prompt_sent = false;
+            self.harness.pending_prompts.clear();
         }
     }
 
@@ -610,7 +632,7 @@ impl KestrelApp {
                     && let Some(action) = self.pending_remote_session.take()
                 {
                     self.start_remote_session(action, cx);
-                } else if self.harness.session_id.is_some() {
+                } else if !self.harness.pending_prompts.is_empty() {
                     self.dispatch_pending_prompt();
                 }
             }
@@ -627,13 +649,21 @@ impl KestrelApp {
                     }
                 }
                 self.harness.session_id = Some(session_id);
-                if self.harness.pending_prompt.is_some() {
+                if !self.harness.pending_prompts.is_empty() {
                     self.dispatch_pending_prompt();
                 }
             }
             HarnessEvent::SessionLoaded { session_id } => {
                 self.harness.session_id = Some(session_id);
-                if self.harness.pending_prompt.is_some() {
+                self.update_active_session(|session| {
+                    if matches!(
+                        session.status,
+                        SessionStatus::Waiting | SessionStatus::Running
+                    ) {
+                        session.status = SessionStatus::Done;
+                    }
+                });
+                if !self.harness.pending_prompts.is_empty() {
                     self.dispatch_pending_prompt();
                 }
             }
@@ -664,6 +694,7 @@ impl KestrelApp {
             } => {
                 if self.is_current_session(&session_id) {
                     self.harness.running = false;
+                    self.harness.prompt_sent = false;
                     self.finish_streaming();
                     let cancelled = stop_reason == "cancelled";
                     self.update_active_session(|session| {
@@ -681,11 +712,14 @@ impl KestrelApp {
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
+                    self.dispatch_pending_prompt();
                 }
             }
             HarnessEvent::Error { message } => {
                 let was_running = self.harness.running;
                 self.harness.running = false;
+                self.harness.prompt_sent = false;
+                self.harness.pending_prompts.clear();
                 self.finish_streaming();
                 if message.contains("Could not load session") {
                     self.harness.session_id = None;
@@ -724,6 +758,8 @@ impl KestrelApp {
                 self.harness.harness = None;
                 self.harness.session_id = None;
                 self.harness.running = false;
+                self.harness.prompt_sent = false;
+                self.harness.pending_prompts.clear();
                 self.finish_streaming();
                 self.harness.status = HarnessStatus::Exited(reason.clone());
                 self.update_active_session(|session| {
@@ -956,10 +992,54 @@ impl KestrelApp {
         }
     }
 
-    pub(crate) fn save_current_transcript(&self) {
+    pub(crate) fn save_current_transcript(&mut self) {
+        let session_id = self.session().id.clone();
+        let transcript = self.harness.transcript.clone();
         if let Some(store) = &self.store {
-            let _ = store.save_transcript(&self.session().id, &self.harness.transcript);
+            let _ = store.save_transcript(&session_id, &transcript);
         }
+        self.upload_remote_transcript(&session_id, &transcript);
+    }
+
+    /// Mirror the rendered transcript to the relay so another device or a
+    /// backup can recover the conversation even when OpenCode is unavailable.
+    fn upload_remote_transcript(&mut self, session_id: &str, transcript: &[ChatItem]) {
+        if transcript.is_empty() {
+            return;
+        }
+        let Some(session) = self
+            .all_sessions
+            .iter()
+            .find(|session| {
+                session.id == session_id || session.acp_session_id.as_deref() == Some(session_id)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        let Some(host_id) = session.origin.host_id().map(str::to_string) else {
+            return;
+        };
+        let Some(host) = self.remote_host(&host_id) else {
+            return;
+        };
+        let Ok(token) = self.remote_token(&host_id) else {
+            return;
+        };
+        let Ok(payload) = serde_json::to_value(transcript) else {
+            return;
+        };
+        let session_id = session
+            .acp_session_id
+            .clone()
+            .unwrap_or_else(|| session.id.clone());
+        std::thread::spawn(move || {
+            if let Err(error) =
+                crate::remote::save_transcript(&host.url, &token, &session_id, &payload)
+            {
+                crate::logging::warn(&format!("remote transcript: {error}"));
+            }
+        });
     }
 
     pub(crate) fn save_stashed_transcripts(&self) {
