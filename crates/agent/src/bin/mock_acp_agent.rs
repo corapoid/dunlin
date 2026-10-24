@@ -8,11 +8,11 @@
 //! `mock_acp_agent`.
 
 use agent_client_protocol::schema::v1::{
-    AgentCapabilities, ContentBlock, ContentChunk, InitializeRequest, InitializeResponse,
-    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest,
-    PromptResponse, RequestPermissionOutcome, RequestPermissionRequest, SessionNotification,
-    SessionUpdate, StopReason, TextContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
-    UsageUpdate,
+    AgentCapabilities, ContentBlock, ContentChunk, Diff, InitializeRequest, InitializeResponse,
+    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry,
+    PlanEntryPriority, PlanEntryStatus, PromptRequest, PromptResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, SessionNotification, SessionUpdate, StopReason, TextContent,
+    ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, UsageUpdate,
 };
 use agent_client_protocol::{Agent, Result, Stdio};
 
@@ -62,10 +62,45 @@ fn main() -> Result<()> {
                             TextContent::new("The mock agent needs permission to write a file."),
                         ))),
                     ))?;
+                    async_io::Timer::after(std::time::Duration::from_millis(60)).await;
                     connection.send_notification(SessionNotification::new(
                         session_id.clone(),
                         SessionUpdate::UsageUpdate(UsageUpdate::new(1_200, 200_000)),
                     ))?;
+                    connection.send_notification(SessionNotification::new(
+                        session_id.clone(),
+                        SessionUpdate::Plan(Plan::new(vec![
+                            PlanEntry::new(
+                                "Inspect the workspace",
+                                PlanEntryPriority::High,
+                                PlanEntryStatus::Completed,
+                            ),
+                            PlanEntry::new(
+                                "Write hello.txt",
+                                PlanEntryPriority::Medium,
+                                PlanEntryStatus::InProgress,
+                            ),
+                            PlanEntry::new(
+                                "Verify the change",
+                                PlanEntryPriority::Low,
+                                PlanEntryStatus::Pending,
+                            ),
+                        ])),
+                    ))?;
+                    async_io::Timer::after(std::time::Duration::from_millis(40)).await;
+                    connection.send_notification(SessionNotification::new(
+                        session_id.clone(),
+                        SessionUpdate::ToolCall(
+                            ToolCall::new("mock-write-1", "Write hello.txt")
+                                .kind(agent_client_protocol::schema::v1::ToolKind::Edit)
+                                .status(ToolCallStatus::InProgress)
+                                .content(vec![ToolCallContent::Diff(
+                                    Diff::new("/tmp/kestrel-smoke/hello.txt", "Hello from Kestrel\n")
+                                        .old_text(String::new()),
+                                )]),
+                        ),
+                    ))?;
+                    async_io::Timer::after(std::time::Duration::from_millis(80)).await;
 
                     let tool_call = ToolCallUpdate::new(
                         "mock-write-1",
@@ -120,6 +155,52 @@ fn main() -> Result<()> {
                                 ),
                             };
 
+                            let denied = matches!(stop_reason, StopReason::Refusal);
+                            async_io::Timer::after(std::time::Duration::from_millis(40)).await;
+                            connection.send_notification(SessionNotification::new(
+                                session_id.clone(),
+                                SessionUpdate::Plan(Plan::new(vec![
+                                    PlanEntry::new(
+                                        "Inspect the workspace",
+                                        PlanEntryPriority::High,
+                                        PlanEntryStatus::Completed,
+                                    ),
+                                    PlanEntry::new(
+                                        "Write hello.txt",
+                                        PlanEntryPriority::Medium,
+                                        if denied {
+                                            PlanEntryStatus::Pending
+                                        } else {
+                                            PlanEntryStatus::Completed
+                                        },
+                                    ),
+                                    PlanEntry::new(
+                                        "Verify the change",
+                                        PlanEntryPriority::Low,
+                                        if denied {
+                                            PlanEntryStatus::Pending
+                                        } else {
+                                            PlanEntryStatus::Completed
+                                        },
+                                    ),
+                                ])),
+                            ))?;
+                            connection.send_notification(SessionNotification::new(
+                                session_id.clone(),
+                                SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                                    "mock-write-1",
+                                    ToolCallUpdateFields::new()
+                                        .status(if denied {
+                                            ToolCallStatus::Failed
+                                        } else {
+                                            ToolCallStatus::Completed
+                                        })
+                                        .content(vec![ToolCallContent::from(ContentBlock::Text(
+                                            TextContent::new(text),
+                                        ))]),
+                                )),
+                            ))?;
+                            async_io::Timer::after(std::time::Duration::from_millis(30)).await;
                             connection.send_notification(SessionNotification::new(
                                 session_id,
                                 SessionUpdate::AgentMessageChunk(ContentChunk::new(

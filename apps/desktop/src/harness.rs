@@ -315,6 +315,7 @@ impl KestrelApp {
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
         let title = session_title(&text);
+        let summary = session_summary(&text);
         self.harness.transcript.push(ChatItem::User {
             text: text.clone(),
             at_ms: now_ms(),
@@ -323,6 +324,7 @@ impl KestrelApp {
         self.harness.pending_prompt = Some(text);
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
+            session.summary = summary;
             if session.title == "New session" {
                 session.title = title;
             }
@@ -648,7 +650,12 @@ impl KestrelApp {
             HarnessUpdate::Plan(items) => {
                 if let Some(ChatItem::Plan {
                     items: existing, ..
-                }) = self.harness.transcript.last_mut()
+                }) = self
+                    .harness
+                    .transcript
+                    .iter_mut()
+                    .rev()
+                    .find(|item| matches!(item, ChatItem::Plan { .. }))
                 {
                     *existing = items;
                 } else {
@@ -903,6 +910,16 @@ fn session_title(prompt: &str) -> String {
     }
 }
 
+/// Collapse a prompt into the one-line description shown on graph and trace roots.
+fn session_summary(prompt: &str) -> String {
+    let text = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.chars().count() > 180 {
+        format!("{}…", text.chars().take(180).collect::<String>())
+    } else {
+        text
+    }
+}
+
 pub(crate) fn harness_command(name: &str, custom: &str) -> String {
     match name {
         "OpenCode" => "opencode acp".into(),
@@ -948,7 +965,10 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChatItem, command_available, harness_command, session_title, transcript_markdown};
+    use super::{
+        ChatItem, command_available, harness_command, session_summary, session_title,
+        transcript_markdown,
+    };
 
     #[test]
     fn title_uses_the_first_line() {
@@ -964,6 +984,17 @@ mod tests {
             session_title("  review   my   changes  "),
             "review my changes"
         );
+    }
+
+    #[test]
+    fn summary_collapses_and_limits_prompt_text() {
+        assert_eq!(
+            session_summary("  Review\n the   working tree  "),
+            "Review the working tree"
+        );
+        let long = session_summary(&"a".repeat(300));
+        assert_eq!(long.chars().count(), 181);
+        assert!(long.ends_with('…'));
     }
 
     #[test]

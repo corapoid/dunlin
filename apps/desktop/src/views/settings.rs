@@ -98,6 +98,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .size(px(22.))
                         .rounded(px(6.))
                         .bg(p.fg)
+                        .text_color(p.bg)
                         .flex()
                         .items_center()
                         .justify_center()

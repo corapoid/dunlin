@@ -270,7 +270,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 SpanKind::Llm,
                 SpanStatus::Done,
                 truncate(text, 200),
-                next.saturating_sub(start).max(100),
+                next.saturating_sub(start).max(1),
             ),
             ChatItem::Thought { text, .. } => (
                 "Reasoning".to_string(),
@@ -278,7 +278,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 SpanKind::Llm,
                 SpanStatus::Done,
                 truncate(text, 200),
-                next.saturating_sub(start).max(100),
+                next.saturating_sub(start).max(1),
             ),
             ChatItem::Tool {
                 view, duration_ms, ..
@@ -288,7 +288,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 SpanKind::Tool,
                 tool_span_status(view.status),
                 truncate(&view.detail, 200),
-                (*duration_ms).max(50),
+                (*duration_ms).max(1),
             ),
             ChatItem::Plan { items, .. } => (
                 "Plan".to_string(),
@@ -307,7 +307,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                         }),
                 ),
                 format!("{} steps", items.len()),
-                next.saturating_sub(start).max(100),
+                next.saturating_sub(start).max(1),
             ),
             ChatItem::Permission {
                 title, resolved, ..
@@ -323,7 +323,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 resolved
                     .clone()
                     .unwrap_or_else(|| "Awaiting a decision".into()),
-                next.saturating_sub(start).max(100),
+                next.saturating_sub(start).max(1),
             ),
             ChatItem::Error { message, .. } => (
                 "Error".to_string(),
@@ -331,7 +331,7 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 SpanKind::Waiting,
                 SpanStatus::Failed,
                 truncate(message, 200),
-                next.saturating_sub(start).max(100),
+                next.saturating_sub(start).max(1),
             ),
             ChatItem::User { .. } => continue,
         };

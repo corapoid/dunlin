@@ -377,6 +377,7 @@ fn empty_state(status: &HarnessStatus, cx: &mut Context<KestrelApp>, p: &Palette
                 .size(px(42.))
                 .rounded(px(12.))
                 .bg(p.fg)
+                .text_color(p.bg)
                 .flex()
                 .items_center()
                 .justify_center()

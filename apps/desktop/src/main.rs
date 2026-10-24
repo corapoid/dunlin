@@ -14,7 +14,7 @@ use kestrel_ui::component::TitleBar;
 use kestrel_ui::*;
 
 fn main() {
-    application().with_assets(assets::Assets).run(|cx| {
+    application().with_assets(assets::AllAssets).run(|cx| {
         kestrel_ui::init(cx);
 
         open_window(

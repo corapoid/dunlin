@@ -17,15 +17,31 @@ pub(crate) fn render(
     let p = palette(cx);
     let project = this.project().clone();
     let session = this.session().clone();
-    let nodes = if this.harness.transcript.is_empty() {
-        crate::demo::agent_nodes()
-    } else {
+    let running = if session.status == kestrel_domain::SessionStatus::Running {
         crate::projection::nodes(&this.harness.transcript, &project, &session)
+            .iter()
+            .filter(|node| node.status == kestrel_domain::AgentStatus::Running)
+            .count()
+    } else {
+        0
     };
-    let running = nodes
-        .iter()
-        .filter(|node| node.status == kestrel_domain::AgentStatus::Running)
-        .count();
+    let (badge_bg, badge_fg, badge_label) = if this.harness.transcript.is_empty() {
+        (p.amber_soft, p.amber, "preview".to_string())
+    } else {
+        match session.status {
+            kestrel_domain::SessionStatus::Running if running > 0 => {
+                (p.green_soft, p.green, format!("{running} agents"))
+            }
+            kestrel_domain::SessionStatus::Running => {
+                (p.green_soft, p.green, "running".to_string())
+            }
+            kestrel_domain::SessionStatus::Waiting => {
+                (p.amber_soft, p.amber, "waiting".to_string())
+            }
+            kestrel_domain::SessionStatus::Failed => (p.red_soft, p.red, "failed".to_string()),
+            _ => (p.muted, p.muted_fg, "idle".to_string()),
+        }
+    };
 
     let left = div()
         .flex_1()
@@ -38,6 +54,7 @@ pub(crate) fn render(
                 .size(px(20.))
                 .rounded(px(6.))
                 .bg(p.fg)
+                .text_color(p.bg)
                 .flex()
                 .items_center()
                 .justify_center()
@@ -156,17 +173,17 @@ pub(crate) fn render(
                 .h(px(22.))
                 .px(px(7.))
                 .rounded_full()
-                .bg(p.green_soft)
+                .bg(badge_bg)
                 .flex()
                 .items_center()
                 .gap(px(5.))
-                .child(dot(p.green, 5.0))
+                .child(dot(badge_fg, 5.0))
                 .child(
                     div()
                         .text_size(px(9.5))
                         .font_family("Geist Mono")
-                        .text_color(p.green)
-                        .child(format!("{running} agents")),
+                        .text_color(badge_fg)
+                        .child(badge_label),
                 ),
         )
         .child(
