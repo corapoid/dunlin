@@ -134,4 +134,5 @@ jobs:
             dist/SHA256SUMS \
             --title "$APP_NAME $VERSION" \
             --notes-file "$NOTES" \
-            --target "$GITHUB_SHA"
+            --target "$GITHUB_SHA" \
+            $([[ "$VERSION" == *-* ]] && echo "--prerelease")
