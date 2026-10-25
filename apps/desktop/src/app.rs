@@ -7195,7 +7195,7 @@ pub(crate) fn format_ms(ms: u64) -> String {
 mod tests {
     use super::{
         Command, CommandItem, StoredSettings, command_matches, display_path, editor_language,
-        format_bytes, path_inside, session_index_after_delete,
+        format_bytes, migrate_data_dir, path_inside, session_index_after_delete,
     };
     use dunlin_domain::{MainView, PermissionMode};
     use dunlin_ui::assets::IconName;
@@ -7303,6 +7303,35 @@ mod tests {
         assert!(path_inside(&root, &root.join("src/main.rs")));
         assert!(path_inside(&root, &root.join("README.md")));
         assert!(!path_inside(&root, &outside));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrates_the_legacy_data_directory() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("dunlin-migrate-{unique}"));
+        let legacy = root.join("Kestrel");
+        let current = root.join("Dunlin");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("kestrel.db"), b"database").unwrap();
+        std::fs::write(legacy.join("kestrel.db-wal"), b"wal").unwrap();
+
+        let migrated = migrate_data_dir(&legacy, &current);
+
+        assert_eq!(migrated, current);
+        assert!(!legacy.exists());
+        assert_eq!(
+            std::fs::read(current.join("dunlin.db")).unwrap(),
+            b"database"
+        );
+        assert_eq!(
+            std::fs::read(current.join("dunlin.db-wal")).unwrap(),
+            b"wal"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }
