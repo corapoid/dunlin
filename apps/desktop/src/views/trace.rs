@@ -4,20 +4,20 @@
 
 use std::time::Duration;
 
-use kestrel_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::Icon;
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 
-use crate::app::{KestrelApp, TraceFilter, format_ms, format_tokens, span_color};
+use crate::app::{DunlinApp, TraceFilter, format_ms, format_tokens, span_color};
 
 const LABEL_WIDTH: f32 = 296.0;
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     _window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let preview = this.harness.transcript.is_empty();
@@ -346,7 +346,7 @@ pub(crate) fn render(
 fn zoom_button(
     icon_name: IconName,
     delta: f32,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     div()
@@ -385,7 +385,7 @@ fn span_row(
     row_h: f32,
     total_ms: f32,
     p: &Palette,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let active = selected == Some(index);
     let color = span_color(p, span.kind);
@@ -554,7 +554,7 @@ fn grid_lines(p: &Palette) -> AnyElement {
 fn span_detail(
     span: &TraceSpan,
     spans: &[TraceSpan],
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let color = span_color(p, span.kind);

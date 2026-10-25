@@ -1,4 +1,4 @@
-//! ACP harness integration for Kestrel.
+//! ACP harness integration for Dunlin.
 //!
 //! The runtime boundary is deliberately small: a worker thread owns the ACP
 //! connection, the UI sends [`HarnessCommand`]s and receives [`HarnessEvent`]s
@@ -30,8 +30,8 @@ use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult,
 };
 use async_channel::{Receiver, Sender};
+use dunlin_domain::{ToolKind, ToolStatus};
 use futures_util::{SinkExt, StreamExt};
-use kestrel_domain::{ToolKind, ToolStatus};
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -70,7 +70,7 @@ impl HarnessConfig {
                 command: command.into(),
             },
             cwd: cwd.into(),
-            client_name: "Kestrel".into(),
+            client_name: "Dunlin".into(),
         }
     }
 
@@ -87,7 +87,7 @@ impl HarnessConfig {
                 project_id: project_id.into(),
             },
             cwd: cwd.into(),
-            client_name: "Kestrel".into(),
+            client_name: "Dunlin".into(),
         }
     }
 
@@ -255,7 +255,7 @@ impl AcpHarness {
             let next_request = next_request.clone();
             let remote = config.is_remote();
             thread::Builder::new()
-                .name("kestrel-acp".into())
+                .name("dunlin-acp".into())
                 .spawn(move || {
                     if remote {
                         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -475,10 +475,10 @@ async fn run(
                     .send_request(
                         InitializeRequest::new(ProtocolVersion::V1).client_info(
                             agent_client_protocol::schema::v1::Implementation::new(
-                                "Kestrel",
+                                "Dunlin",
                                 env!("CARGO_PKG_VERSION"),
                             )
-                            .title("Kestrel"),
+                            .title("Dunlin"),
                         ),
                     )
                     .block_task()

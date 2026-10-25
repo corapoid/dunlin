@@ -1,5 +1,5 @@
 [package]
-name = "kestrel-domain"
+name = "dunlin-domain"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

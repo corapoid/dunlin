@@ -30,7 +30,7 @@ async fn run(
 
     Client
         .builder()
-        .name("kestrel-smoke")
+        .name("dunlin-smoke")
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {
                 match &notification.update {

@@ -1,18 +1,18 @@
 [package]
-name = "kestrel-relay"
+name = "dunlin-relay"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "kestrel-relay"
+name = "dunlin-relay"
 path = "src/main.rs"
 
 [dependencies]
-kestrel-workspace.workspace = true
-kestrel-usage.workspace = true
-kestrel-domain.workspace = true
+dunlin-workspace.workspace = true
+dunlin-usage.workspace = true
+dunlin-domain.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "io-util", "time", "sync", "signal"] }
 rusqlite = { version = "0.37", features = ["bundled"] }

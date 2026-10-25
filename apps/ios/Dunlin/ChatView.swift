@@ -30,7 +30,7 @@ struct ChatView: View {
             Divider()
 
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask Kestrel to build, fix, or explain…", text: $draft, axis: .vertical)
+                TextField("Ask Dunlin to build, fix, or explain…", text: $draft, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
                 Button {

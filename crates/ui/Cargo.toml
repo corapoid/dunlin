@@ -1,5 +1,5 @@
 [package]
-name = "kestrel-ui"
+name = "dunlin-ui"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

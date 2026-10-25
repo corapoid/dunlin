@@ -85,24 +85,24 @@ impl Config {
     }
 
     pub fn apply_env(&mut self) {
-        if let Ok(value) = std::env::var("KESTREL_RELAY_LISTEN") {
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_LISTEN") {
             self.listen = value;
         }
-        if let Ok(value) = std::env::var("KESTREL_RELAY_DB") {
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_DB") {
             self.db = PathBuf::from(value);
         }
-        if let Ok(value) = std::env::var("KESTREL_RELAY_HARNESS") {
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_HARNESS") {
             self.harness = value;
         }
-        if let Ok(value) = std::env::var("KESTREL_RELAY_LINGER_SECS")
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_LINGER_SECS")
             && let Ok(seconds) = value.parse::<u64>()
         {
             self.linger_secs = seconds.clamp(30, 24 * 60 * 60);
         }
-        if let Ok(value) = std::env::var("KESTREL_RELAY_SANDBOX") {
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_SANDBOX") {
             self.sandbox = parse_bool(&value);
         }
-        if let Ok(value) = std::env::var("KESTREL_RELAY_STORE_TRANSCRIPTS") {
+        if let Ok(value) = std::env::var("DUNLIN_RELAY_STORE_TRANSCRIPTS") {
             self.store_transcripts = parse_bool(&value);
         }
     }
@@ -118,10 +118,21 @@ fn parse_bool(value: &str) -> bool {
 pub fn default_db() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
-        if cfg!(target_os = "macos") {
-            return home.join("Library/Application Support/Kestrel/relay.db");
+        let (current, legacy) = if cfg!(target_os = "macos") {
+            (
+                home.join("Library/Application Support/Dunlin/relay.db"),
+                home.join("Library/Application Support/Kestrel/relay.db"),
+            )
+        } else {
+            (
+                home.join(".local/share/dunlin/relay.db"),
+                home.join(".local/share/kestrel/relay.db"),
+            )
+        };
+        if !current.exists() && legacy.exists() {
+            let _ = std::fs::rename(&legacy, &current);
         }
-        return home.join(".local/share/kestrel/relay.db");
+        return current;
     }
     PathBuf::from("relay.db")
 }

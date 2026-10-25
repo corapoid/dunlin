@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 enum Keychain {
-    private static let service = "dev.kestrel.remote.ios"
+    private static let service = "dev.dunlin.remote.ios"
 
     static func save(_ token: String, account: String) throws {
         let data = Data(token.utf8)

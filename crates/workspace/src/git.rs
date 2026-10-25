@@ -1,6 +1,6 @@
 //! Thin wrapper around the system `git` CLI.
 //!
-//! Kestrel deliberately shells out instead of linking libgit2: the CLI is
+//! Dunlin deliberately shells out instead of linking libgit2: the CLI is
 //! already the source of truth for credentials, hooks and worktree config, and
 //! it keeps the binary small. All calls run off the UI thread.
 
@@ -367,8 +367,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("kestrel-git-{}-{unique}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("dunlin-git-{}-{unique}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let root = root.to_string_lossy().to_string();
@@ -389,8 +388,8 @@ mod tests {
         };
 
         run(&["init", "-q"]);
-        run(&["config", "user.name", "Kestrel Test"]);
-        run(&["config", "user.email", "test@kestrel.invalid"]);
+        run(&["config", "user.name", "Dunlin Test"]);
+        run(&["config", "user.email", "test@dunlin.invalid"]);
         run(&["config", "commit.gpgsign", "false"]);
         std::fs::write(std::path::Path::new(&root).join("hello.txt"), "one\ntwo\n").unwrap();
 

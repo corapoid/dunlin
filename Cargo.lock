@@ -1527,6 +1527,107 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "dunlin"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dunlin-agent",
+ "dunlin-domain",
+ "dunlin-storage",
+ "dunlin-ui",
+ "dunlin-usage",
+ "dunlin-workspace",
+ "gpui-kit",
+ "notify",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "serde",
+ "serde_json",
+ "ureq",
+ "uuid",
+]
+
+[[package]]
+name = "dunlin-agent"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "async-channel",
+ "async-io",
+ "dunlin-domain",
+ "futures-util",
+ "http",
+ "serde",
+ "similar",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
+name = "dunlin-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "uuid",
+]
+
+[[package]]
+name = "dunlin-relay"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "dunlin-domain",
+ "dunlin-usage",
+ "dunlin-workspace",
+ "futures-util",
+ "rand 0.9.5",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml 0.8.23",
+ "uuid",
+]
+
+[[package]]
+name = "dunlin-storage"
+version = "0.1.0"
+dependencies = [
+ "dunlin-domain",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "dunlin-ui"
+version = "0.1.0"
+dependencies = [
+ "gpui-kit",
+]
+
+[[package]]
+name = "dunlin-usage"
+version = "0.1.0"
+dependencies = [
+ "dunlin-domain",
+ "serde_json",
+]
+
+[[package]]
+name = "dunlin-workspace"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dwrote"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3608,108 +3709,6 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "kestrel"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "gpui-kit",
- "kestrel-agent",
- "kestrel-domain",
- "kestrel-storage",
- "kestrel-ui",
- "kestrel-usage",
- "kestrel-workspace",
- "notify",
- "notify-rust",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "serde",
- "serde_json",
- "ureq",
- "uuid",
-]
-
-[[package]]
-name = "kestrel-agent"
-version = "0.1.0"
-dependencies = [
- "agent-client-protocol",
- "async-channel",
- "async-io",
- "futures-util",
- "http",
- "kestrel-domain",
- "serde",
- "similar",
- "tokio",
- "tokio-tungstenite",
-]
-
-[[package]]
-name = "kestrel-domain"
-version = "0.1.0"
-dependencies = [
- "serde",
- "uuid",
-]
-
-[[package]]
-name = "kestrel-relay"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "futures-util",
- "kestrel-domain",
- "kestrel-usage",
- "kestrel-workspace",
- "rand 0.9.5",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "tokio",
- "toml 0.8.23",
- "uuid",
-]
-
-[[package]]
-name = "kestrel-storage"
-version = "0.1.0"
-dependencies = [
- "kestrel-domain",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "kestrel-ui"
-version = "0.1.0"
-dependencies = [
- "gpui-kit",
-]
-
-[[package]]
-name = "kestrel-usage"
-version = "0.1.0"
-dependencies = [
- "kestrel-domain",
- "serde_json",
-]
-
-[[package]]
-name = "kestrel-workspace"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

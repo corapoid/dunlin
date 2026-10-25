@@ -1,4 +1,4 @@
-//! Kestrel design system.
+//! Dunlin design system.
 //!
 //! The visual language mirrors Kobra's calm, shadcn-neutral surfaces and uses
 //! Geist for UI text and Geist Mono for code/metadata. All tokens are defined
@@ -13,7 +13,7 @@ use gpui_kit::*;
 /// Monospaced text size shared by editors, diffs and code chips.
 static CODE_FONT_SIZE: AtomicU32 = AtomicU32::new(13.0f32.to_bits());
 
-/// Semantic colours used across Kestrel, in addition to the GPUI Kit theme.
+/// Semantic colours used across Dunlin, in addition to the GPUI Kit theme.
 #[derive(Clone, Copy)]
 pub struct Palette {
     pub bg: Hsla,
@@ -152,7 +152,7 @@ const FONTS: [&[u8]; 6] = [
     include_bytes!("../../../assets/fonts/GeistMono-Medium.ttf"),
 ];
 
-/// Register bundled fonts and install Kestrel's tokens over GPUI Kit.
+/// Register bundled fonts and install Dunlin's tokens over GPUI Kit.
 pub fn install(cx: &mut App) {
     cx.text_system()
         .add_fonts(FONTS.iter().map(|bytes| Cow::Borrowed(*bytes)).collect())
@@ -161,7 +161,7 @@ pub fn install(cx: &mut App) {
     apply(cx);
 }
 
-/// Re-apply Kestrel's palette after a light/dark switch.
+/// Re-apply Dunlin's palette after a light/dark switch.
 pub fn apply(cx: &mut App) {
     let p = palette(cx);
     Theme::update(cx, |theme| {
@@ -250,7 +250,7 @@ pub fn apply(cx: &mut App) {
     });
 }
 
-/// Switch appearance, then restore Kestrel's tokens over the loaded theme.
+/// Switch appearance, then restore Dunlin's tokens over the loaded theme.
 pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
     Theme::change(mode, window, cx);
     apply(cx);

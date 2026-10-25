@@ -12,11 +12,11 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use kestrel_domain::ProviderUsage;
-use kestrel_workspace::fs as workspace_fs;
-use kestrel_workspace::git;
-use kestrel_workspace::search;
-use kestrel_workspace::tree::FileTree;
+use dunlin_domain::ProviderUsage;
+use dunlin_workspace::fs as workspace_fs;
+use dunlin_workspace::git;
+use dunlin_workspace::search;
+use dunlin_workspace::tree::FileTree;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -217,7 +217,7 @@ async fn pair(
 ) -> Result<Json<PairResponse>, ApiError> {
     let device_name = request.device_name.trim();
     let device_name = if device_name.is_empty() {
-        "Kestrel device"
+        "Dunlin device"
     } else {
         device_name
     };
@@ -282,7 +282,7 @@ async fn usage(
     {
         return Ok(Json(usages.clone()));
     }
-    let usages = run_blocking(|| Ok(kestrel_usage::probe_all())).await?;
+    let usages = run_blocking(|| Ok(dunlin_usage::probe_all())).await?;
     if let Ok(mut cache) = state.usage_cache.lock() {
         *cache = Some((Instant::now(), usages.clone()));
     }
@@ -571,7 +571,7 @@ struct UploadResponse {
 }
 
 /// Store a locally attached file inside the project so the remote agent can
-/// read it. Attachments are namespaced under `.kestrel/attachments`.
+/// read it. Attachments are namespaced under `.dunlin/attachments`.
 async fn fs_upload(
     AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
@@ -586,7 +586,7 @@ async fn fs_upload(
         return Err(ApiError::bad_request("Attachment is larger than 8 MiB"));
     }
     let name = sanitize_attachment_name(&request.name);
-    let relative = format!(".kestrel/attachments/{}-{name}", uuid::Uuid::now_v7());
+    let relative = format!(".dunlin/attachments/{}-{name}", uuid::Uuid::now_v7());
     let full = FsPath::new(&project.path).join(&relative);
     if let Some(parent) = full.parent() {
         std::fs::create_dir_all(parent)
@@ -626,12 +626,12 @@ fn exclude_attachments_from_git(project_path: &str) {
         let _ = std::fs::create_dir_all(parent);
     }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    if !existing.lines().any(|line| line.trim() == ".kestrel/") {
+    if !existing.lines().any(|line| line.trim() == ".dunlin/") {
         let mut next = existing;
         if !next.is_empty() && !next.ends_with('\n') {
             next.push('\n');
         }
-        next.push_str(".kestrel/\n");
+        next.push_str(".dunlin/\n");
         let _ = std::fs::write(path, next);
     }
 }

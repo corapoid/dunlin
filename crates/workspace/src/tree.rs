@@ -189,7 +189,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-tree-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-tree-{unique}"));
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src/main.rs"), "").unwrap();
 

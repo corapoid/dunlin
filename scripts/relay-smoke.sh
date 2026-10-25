@@ -9,10 +9,10 @@ cd "$ROOT"
 
 export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
 
-cargo build -p kestrel-relay
-cargo build -p kestrel-agent --bins
+cargo build -p dunlin-relay
+cargo build -p dunlin-agent --bins
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/kestrel-relay-smoke.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/dunlin-relay-smoke.XXXXXX")"
 PORT=$((8900 + RANDOM % 90))
 DB="$TMP/relay.db"
 RELAY_PID=""
@@ -26,20 +26,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-./target/debug/kestrel-relay init --db "$DB" >/dev/null
-./target/debug/kestrel-relay project add kestrel "$ROOT" --user admin --db "$DB" >/dev/null
-PRJ="$(./target/debug/kestrel-relay project list --db "$DB" | sed -n 's/^\(prj-[^ ]*\).*/\1/p' | head -1)"
+./target/debug/dunlin-relay init --db "$DB" >/dev/null
+./target/debug/dunlin-relay project add dunlin "$ROOT" --user admin --db "$DB" >/dev/null
+PRJ="$(./target/debug/dunlin-relay project list --db "$DB" | sed -n 's/^\(prj-[^ ]*\).*/\1/p' | head -1)"
 [[ -n "$PRJ" ]] || { echo "could not read project id" >&2; exit 1; }
 
-KESTREL_RELAY_HARNESS="$ROOT/target/debug/mock_acp_agent" \
-  ./target/debug/kestrel-relay serve --db "$DB" --listen "127.0.0.1:$PORT" >"$TMP/relay.log" 2>&1 &
+DUNLIN_RELAY_HARNESS="$ROOT/target/debug/mock_acp_agent" \
+  ./target/debug/dunlin-relay serve --db "$DB" --listen "127.0.0.1:$PORT" >"$TMP/relay.log" 2>&1 &
 RELAY_PID=$!
 sleep 1
 
 pair() {
   local user="$1" device="$2"
   local code
-  code="$(./target/debug/kestrel-relay pair "$user" --ttl 10 --db "$DB" | sed -n 's/.*: \([A-Z0-9]*\)$/\1/p' | head -1)"
+  code="$(./target/debug/dunlin-relay pair "$user" --ttl 10 --db "$DB" | sed -n 's/.*: \([A-Z0-9]*\)$/\1/p' | head -1)"
   curl -sS -X POST "http://127.0.0.1:$PORT/v1/pair" \
     -H 'Content-Type: application/json' \
     -d "{\"code\":\"$code\",\"device_name\":\"$device\"}"
@@ -67,8 +67,8 @@ curl -sS "http://127.0.0.1:$PORT/v1/sessions/$SESSION_ID/transcript" -H "Authori
 
 curl -sS "http://127.0.0.1:$PORT/v1/usage" -H "Authorization: Bearer $ADMIN_TOKEN" | grep -q '"OpenCode"' || { echo "usage endpoint failed" >&2; exit 1; }
 
-./target/debug/kestrel-relay user add anna --db "$DB" >/dev/null
-./target/debug/kestrel-relay grant kestrel anna --db "$DB" >/dev/null
+./target/debug/dunlin-relay user add anna --db "$DB" >/dev/null
+./target/debug/dunlin-relay grant dunlin anna --db "$DB" >/dev/null
 ANNA_TOKEN="$(pair anna "Anna iPhone" | json_field '["token"]')"
 
 echo "[smoke] anna creates an isolated session"
@@ -82,7 +82,7 @@ ANNA_COUNT="$(curl -sS "http://127.0.0.1:$PORT/v1/sessions?project=$PRJ" -H "Aut
   exit 1
 }
 
-./target/debug/kestrel-relay user add bob --db "$DB" >/dev/null
+./target/debug/dunlin-relay user add bob --db "$DB" >/dev/null
 BOB_TOKEN="$(pair bob "Bob iPhone" | json_field '["token"]')"
 BOB_PROJECTS="$(curl -sS "http://127.0.0.1:$PORT/v1/projects" -H "Authorization: Bearer $BOB_TOKEN")"
 [[ "$BOB_PROJECTS" == "[]" ]] || { echo "bob should not see projects: $BOB_PROJECTS" >&2; exit 1; }

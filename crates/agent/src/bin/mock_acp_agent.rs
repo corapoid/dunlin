@@ -4,7 +4,7 @@
 //! answer a prompt by asking the client for permission before replying. The
 //! client's choice decides whether the mock reports success or refusal.
 //!
-//! Run it over stdio; Kestrel spawns it like any other ACP harness:
+//! Run it over stdio; Dunlin spawns it like any other ACP harness:
 //! `mock_acp_agent`.
 
 use agent_client_protocol::schema::v1::{
@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     async_io::block_on(
         Agent
             .builder()
-            .name("kestrel-mock-agent")
+            .name("dunlin-mock-agent")
             .on_receive_request(
                 async |request: InitializeRequest,
                        responder,
@@ -36,10 +36,10 @@ fn main() -> Result<()> {
                             .agent_capabilities(AgentCapabilities::new())
                             .agent_info(
                                 agent_client_protocol::schema::v1::Implementation::new(
-                                    "Kestrel Mock",
+                                    "Dunlin Mock",
                                     "0.1.0",
                                 )
-                                .title("Kestrel Mock"),
+                                .title("Dunlin Mock"),
                             ),
                     )
                 },
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
                     agent_client_protocol::Client,
                 >| {
                     let session_id = request.session_id;
-                    if let Ok(value) = std::env::var("KESTREL_MOCK_DELAY_MS")
+                    if let Ok(value) = std::env::var("DUNLIN_MOCK_DELAY_MS")
                         && let Ok(ms) = value.parse::<u64>()
                     {
                         async_io::Timer::after(std::time::Duration::from_millis(ms)).await;
@@ -127,7 +127,7 @@ fn main() -> Result<()> {
                                 .kind(agent_client_protocol::schema::v1::ToolKind::Edit)
                                 .status(ToolCallStatus::InProgress)
                                 .content(vec![ToolCallContent::Diff(
-                                    Diff::new("/tmp/kestrel-smoke/hello.txt", "Hello from Kestrel\n")
+                                    Diff::new("/tmp/dunlin-smoke/hello.txt", "Hello from Dunlin\n")
                                         .old_text(String::new()),
                                 )]),
                         ),

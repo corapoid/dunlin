@@ -606,7 +606,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let user = store.create_user("marek", "member").unwrap();
         let other = store.create_user("anna", "member").unwrap();
-        let project = store.create_project("kestrel", "/tmp/kestrel").unwrap();
+        let project = store.create_project("dunlin", "/tmp/dunlin").unwrap();
         store.grant(&project.id, &user.id).unwrap();
 
         assert!(
@@ -641,7 +641,7 @@ mod tests {
     fn stores_and_cascades_transcripts() {
         let store = Store::open_in_memory().unwrap();
         let user = store.create_user("marek", "member").unwrap();
-        let project = store.create_project("kestrel", "/tmp/kestrel").unwrap();
+        let project = store.create_project("dunlin", "/tmp/dunlin").unwrap();
         store.grant(&project.id, &user.id).unwrap();
         let (device, _) = store.create_device(&user.id, "Mac").unwrap();
         store

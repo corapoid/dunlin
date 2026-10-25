@@ -1,21 +1,21 @@
-//! Settings sheet. Everything that changes how Kestrel connects to a harness,
+//! Settings sheet. Everything that changes how Dunlin connects to a harness,
 //! asks for permissions or measures usage lives here.
 
-use kestrel_domain::{MainView, ProjectTone, UsageSource};
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::ThemeMode;
-use kestrel_ui::component::input::Input;
-use kestrel_ui::component::{ActiveTheme, Icon};
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_domain::{MainView, ProjectTone, UsageSource};
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::ThemeMode;
+use dunlin_ui::component::input::Input;
+use dunlin_ui::component::{ActiveTheme, Icon};
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 
-use crate::app::{KestrelApp, SettingsTab, tone_color, tone_soft};
-use kestrel_domain::PermissionMode;
+use crate::app::{DunlinApp, SettingsTab, tone_color, tone_soft};
+use dunlin_domain::PermissionMode;
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let tab = this.settings_tab;
@@ -75,7 +75,7 @@ pub(crate) fn render(
         .into_any_element()
 }
 
-fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let mut nav = div()
         .w(px(186.))
@@ -202,7 +202,7 @@ fn settings_nav(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .into_any_element()
 }
 
-fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let (title, subtitle) = match this.settings_tab {
         SettingsTab::General => (
@@ -211,7 +211,7 @@ fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
         ),
         SettingsTab::Harnesses => (
             "Harnesses",
-            "Connect Kestrel to ACP agents. OpenCode is the default.",
+            "Connect Dunlin to ACP agents. OpenCode is the default.",
         ),
         SettingsTab::Permissions => ("Permissions", "Decide what an agent may do without asking."),
         SettingsTab::Remote => (
@@ -278,7 +278,7 @@ fn settings_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
         .into_any_element()
 }
 
-fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let dark = cx.theme().is_dark();
     let view = this.default_view;
@@ -481,7 +481,7 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                     .text_size(px(11.5))
                     .line_height(relative(1.5))
                     .text_color(p.blue)
-                    .child("Kestrel never uploads project contents. Harness adapters run as local child processes and speak ACP over stdio."),
+                    .child("Dunlin never uploads project contents. Harness adapters run as local child processes and speak ACP over stdio."),
             ),
     );
 
@@ -492,13 +492,13 @@ fn theme_card(
     dark: bool,
     selected: bool,
     window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let preview = if dark {
-        kestrel_ui::theme::dark()
+        dunlin_ui::theme::dark()
     } else {
-        kestrel_ui::theme::light()
+        dunlin_ui::theme::light()
     };
     let mode = if dark {
         ThemeMode::Dark
@@ -606,7 +606,7 @@ fn theme_card(
         .into_any_element()
 }
 
-fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let current = this.default_harness.clone();
     let custom_command =
@@ -897,7 +897,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .text_size(px(11.0))
                         .line_height(relative(1.45))
                         .text_color(p.muted_fg)
-                        .child("Kestrel spawns this command over stdio and speaks ACP. Select Custom ACP above to use it."),
+                        .child("Dunlin spawns this command over stdio and speaks ACP. Select Custom ACP above to use it."),
                 ),
         );
 
@@ -1012,7 +1012,7 @@ fn harnesses(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
     body.into_any_element()
 }
 
-fn permissions(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let current = this.permission_mode;
     let modes = [
@@ -1166,7 +1166,7 @@ fn permissions(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
     body.into_any_element()
 }
 
-fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let word_wrap = this.word_wrap;
     let autosave = this.autosave;
@@ -1186,7 +1186,7 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                 .bg(p.card)
                 .child(setting_row(
                     "UI font",
-                    "Bundled with Kestrel. No paid license required.",
+                    "Bundled with Dunlin. No paid license required.",
                     value_chip("Geist", &p),
                     &p,
                 ))
@@ -1313,7 +1313,7 @@ fn editor(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     body.into_any_element()
 }
 
-fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let mut usages = Vec::new();
     if let Some(live) = this.session_usage() {
@@ -1519,7 +1519,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
                             .text_size(px(11.0))
                             .line_height(relative(1.5))
                             .text_color(p.amber.opacity(0.9))
-                            .child("Context usage is live by ACP. Provider windows are read where the harness runs: on this Mac for local projects, or on the relay for remote projects. Codex uses its local app-server, Claude Code requires a `user:profile` login, and OpenCode stays estimated until it exposes subscription data. Kestrel never uploads project data to obtain usage."),
+                            .child("Context usage is live by ACP. Provider windows are read where the harness runs: on this Mac for local projects, or on the relay for remote projects. Codex uses its local app-server, Claude Code requires a `user:profile` login, and OpenCode stays estimated until it exposes subscription data. Dunlin never uploads project data to obtain usage."),
                     ),
             ),
     );
@@ -1527,7 +1527,7 @@ fn usage(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
     body.into_any_element()
 }
 
-fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn advanced(_this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
 
     let body = div()
@@ -1581,7 +1581,7 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .on_click(cx.listener(|this, _, _, cx| {
                             let path = crate::logging::log_path();
                             cx.reveal_path(&path);
-                            this.set_notice("Revealed the Kestrel log", cx);
+                            this.set_notice("Revealed the Dunlin log", cx);
                         }))
                         .child(Icon::new(IconName::FolderOpen).size(px(10.)).text_color(p.muted_fg))
                         .child(
@@ -1681,7 +1681,7 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                                 .text_size(px(12.0))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(p.fg)
-                                .child("Kestrel 0.1.0"),
+                                .child(format!("Dunlin {}", env!("CARGO_PKG_VERSION"))),
                         )
                         .child(
                             div()
@@ -1697,14 +1697,14 @@ fn advanced(_this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement 
                         .text_size(px(11.0))
                         .font_family("Geist Mono")
                         .text_color(p.muted_fg)
-                        .child("Apache-2.0"),
+                        .child("MIT"),
                 ),
         );
 
     body.into_any_element()
 }
 
-fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let loading = this.remote_loading;
 
@@ -1739,7 +1739,7 @@ fn remote_settings(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEl
                         .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
-                        .child("Run `kestrel-relay pair <user>` on the machine that hosts your projects, then enter the code below."),
+                        .child("Run `dunlin-relay pair <user>` on the machine that hosts your projects, then enter the code below."),
                 ),
         );
     } else {
@@ -2008,8 +2008,8 @@ fn divider(p: &Palette) -> AnyElement {
 fn toggle_switch(
     id: &'static str,
     value: bool,
-    action: fn(&mut KestrelApp),
-    cx: &mut Context<KestrelApp>,
+    action: fn(&mut DunlinApp),
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     div()
@@ -2077,7 +2077,7 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn stepper(this: &mut KestrelApp, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let size = this.code_font_size;
     div()
         .h(px(21.))

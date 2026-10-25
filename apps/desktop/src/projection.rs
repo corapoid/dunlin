@@ -6,8 +6,8 @@
 //! deterministic, and persisted transcripts produce the same shapes after a
 //! restart.
 
-use kestrel_agent::PlanStatus;
-use kestrel_domain::{
+use dunlin_agent::PlanStatus;
+use dunlin_domain::{
     AgentKind, AgentNode, AgentStatus, Project, SessionStatus, SessionSummary, SpanKind,
     SpanStatus, ToolKind, ToolStatus, TraceSpan,
 };
@@ -447,17 +447,17 @@ fn truncate(text: &str, max: usize) -> String {
 mod tests {
     use super::{nodes, spans, truncate};
     use crate::harness::ChatItem;
-    use kestrel_agent::{PlanItem, PlanStatus, ToolCallView};
-    use kestrel_domain::{
+    use dunlin_agent::{PlanItem, PlanStatus, ToolCallView};
+    use dunlin_domain::{
         Project, ProjectTone, SessionOrigin, SessionStatus, SessionSummary, SpanKind, ToolKind,
         ToolStatus,
     };
 
     fn project() -> Project {
         Project {
-            id: "kestrel".into(),
-            name: "Kestrel".into(),
-            path: "/tmp/kestrel".into(),
+            id: "dunlin".into(),
+            name: "Dunlin".into(),
+            path: "/tmp/dunlin".into(),
             branch: Some("main".into()),
             tone: ProjectTone::Teal,
             pinned: false,
@@ -472,7 +472,7 @@ mod tests {
     fn session() -> SessionSummary {
         SessionSummary {
             id: "ses-1".into(),
-            project_id: "kestrel".into(),
+            project_id: "dunlin".into(),
             title: "Fix the build".into(),
             status: SessionStatus::Running,
             harness: "OpenCode".into(),
@@ -511,7 +511,7 @@ mod tests {
         let nodes = nodes(&[], &project(), &session());
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].id, "root");
-        assert_eq!(nodes[0].status, kestrel_domain::AgentStatus::Running);
+        assert_eq!(nodes[0].status, dunlin_domain::AgentStatus::Running);
     }
 
     #[test]
@@ -532,14 +532,14 @@ mod tests {
         let nodes = nodes(&transcript, &project(), &session());
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[1].parent.as_deref(), Some("root"));
-        assert_eq!(nodes[2].status, kestrel_domain::AgentStatus::Running);
+        assert_eq!(nodes[2].status, dunlin_domain::AgentStatus::Running);
     }
 
     #[test]
     fn tools_become_nodes_when_there_is_no_plan() {
         let nodes = nodes(&[tool()], &project(), &session());
         assert_eq!(nodes.len(), 2);
-        assert_eq!(nodes[1].kind, kestrel_domain::AgentKind::Tool);
+        assert_eq!(nodes[1].kind, dunlin_domain::AgentKind::Tool);
     }
 
     #[test]

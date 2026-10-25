@@ -1,4 +1,4 @@
-//! Kestrel relay: accounts, pairing, project grants and ACP-over-WebSocket.
+//! Dunlin relay: accounts, pairing, project grants and ACP-over-WebSocket.
 //!
 //! The relay stores only metadata (users, devices, grants and a session index).
 //! Prompts, tool output and transcripts stay in OpenCode and in the clients.
@@ -37,29 +37,29 @@ fn main() {
     };
 
     if let Err(error) = result {
-        eprintln!("kestrel-relay: {error}");
+        eprintln!("dunlin-relay: {error}");
         std::process::exit(1);
     }
 }
 
 fn print_help() {
     println!(
-        "kestrel-relay — remote ACP server for Kestrel\n\
+        "dunlin-relay — remote ACP server for Dunlin\n\
          \n\
          Usage:\n\
-           kestrel-relay init [--db PATH]\n\
-           kestrel-relay user add NAME [--admin]\n\
-           kestrel-relay user list\n\
-           kestrel-relay project add NAME PATH [--user USER]...\n\
-           kestrel-relay project list\n\
-           kestrel-relay grant PROJECT USER\n\
-           kestrel-relay pair USER [--ttl MINUTES]\n\
-           kestrel-relay devices USER\n\
-           kestrel-relay revoke DEVICE_ID\n\
-           kestrel-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD]\n\
+           dunlin-relay init [--db PATH]\n\
+           dunlin-relay user add NAME [--admin]\n\
+           dunlin-relay user list\n\
+           dunlin-relay project add NAME PATH [--user USER]...\n\
+           dunlin-relay project list\n\
+           dunlin-relay grant PROJECT USER\n\
+           dunlin-relay pair USER [--ttl MINUTES]\n\
+           dunlin-relay devices USER\n\
+           dunlin-relay revoke DEVICE_ID\n\
+           dunlin-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD]\n\
          \n\
          Defaults:\n\
-           db       ~/Library/Application Support/Kestrel/relay.db (macOS)\n\
+           db       ~/Library/Application Support/Dunlin/relay.db (macOS)\n\
            listen   127.0.0.1:8787\n\
            harness  opencode acp"
     );
@@ -68,7 +68,7 @@ fn print_help() {
 fn cmd_init(args: &[String]) -> Result<(), String> {
     let db = flag(args, "--db")
         .map(PathBuf::from)
-        .unwrap_or_else(default_db);
+        .unwrap_or_else(config::default_db);
     if db.exists() && !has_flag(args, "--force") {
         return Err(format!(
             "{} already exists (use --force to add another admin)",
@@ -86,11 +86,11 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
     println!("Admin user: {} ({})", admin.name, admin.id);
     println!("Pairing code: {code}  (valid until {expires})");
     println!(
-        "Pair a device with: kestrel-relay pair {} --db {}",
+        "Pair a device with: dunlin-relay pair {} --db {}",
         admin.name,
         db.display()
     );
-    println!("Serve with: kestrel-relay serve --db {}", db.display());
+    println!("Serve with: dunlin-relay serve --db {}", db.display());
     Ok(())
 }
 
@@ -118,7 +118,7 @@ fn cmd_user(args: &[String]) -> Result<(), String> {
             }
             Ok(())
         }
-        _ => Err("usage: kestrel-relay user add NAME [--admin] | user list".into()),
+        _ => Err("usage: dunlin-relay user add NAME [--admin] | user list".into()),
     }
 }
 
@@ -167,7 +167,7 @@ fn cmd_project(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         _ => {
-            Err("usage: kestrel-relay project add NAME PATH [--user USER]... | project list".into())
+            Err("usage: dunlin-relay project add NAME PATH [--user USER]... | project list".into())
         }
     }
 }
@@ -212,7 +212,7 @@ fn cmd_pair(args: &[String]) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     println!("Pairing code for {}: {code}", user.name);
     println!("Expires in {ttl} minutes ({expires}).");
-    println!("Open Kestrel → Remote → Pair device and enter this code.");
+    println!("Open Dunlin → Remote → Pair device and enter this code.");
     Ok(())
 }
 
@@ -277,7 +277,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         .is_empty()
     {
         return Err(format!(
-            "{} has no users. Run `kestrel-relay init --db {}` first.",
+            "{} has no users. Run `dunlin-relay init --db {}` first.",
             config.db.display(),
             config.db.display()
         ));
@@ -332,22 +332,11 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 fn open_store_for(args: &[String]) -> Result<Store, String> {
     let path = flag(args, "--db")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("KESTREL_RELAY_DB").map(PathBuf::from))
-        .unwrap_or_else(default_db);
+        .or_else(|| std::env::var_os("DUNLIN_RELAY_DB").map(PathBuf::from))
+        .unwrap_or_else(config::default_db);
     Store::open(&path).map_err(|error| error.to_string())
 }
 
 fn has_flag(args: &[String], name: &str) -> bool {
     args.iter().any(|arg| arg == name)
-}
-
-fn default_db() -> PathBuf {
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        if cfg!(target_os = "macos") {
-            return home.join("Library/Application Support/Kestrel/relay.db");
-        }
-        return home.join(".local/share/kestrel/relay.db");
-    }
-    PathBuf::from("relay.db")
 }

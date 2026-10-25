@@ -1,4 +1,4 @@
-//! Shared domain vocabulary for Kestrel.
+//! Shared domain vocabulary for Dunlin.
 //!
 //! These types are deliberately UI-agnostic: they are persisted by the storage
 //! layer, produced by the ACP adapter and projected into chat, graph and trace

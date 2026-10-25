@@ -1,9 +1,9 @@
 //! Provider usage probes.
 //!
-//! Kestrel keeps the UI responsive by running every probe on the background
+//! Dunlin keeps the UI responsive by running every probe on the background
 //! executor. Codex exposes a local JSON-RPC app-server with real rate-limit
 //! windows; Claude Code keeps its OAuth token in the macOS keychain but only
-//! grants usage scopes after a re-login, so Kestrel reports that state instead
+//! grants usage scopes after a re-login, so Dunlin reports that state instead
 //! of inventing percentages. OpenCode has no subscription API over ACP yet and
 //! stays clearly marked as estimated.
 
@@ -13,7 +13,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use kestrel_domain::{ProjectTone, ProviderUsage, UsageSource, UsageWindow};
+use dunlin_domain::{ProjectTone, ProviderUsage, UsageSource, UsageWindow};
 use serde_json::{Value, json};
 
 /// Probe every provider that can be read locally.
@@ -80,7 +80,7 @@ fn unavailable(provider: &str, plan: &str, detail: &str, accent: ProjectTone) ->
 }
 
 fn codex_binary() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("KESTREL_CODEX_BIN")
+    if let Ok(path) = std::env::var("DUNLIN_CODEX_BIN")
         && Path::new(&path).is_file()
     {
         return Some(PathBuf::from(path));
@@ -199,7 +199,7 @@ fn codex_rate_limits(binary: &Path) -> Result<CodexLimits, String> {
         "id": 1,
         "method": "initialize",
         "params": {
-            "clientInfo": { "name": "kestrel", "version": env!("CARGO_PKG_VERSION") }
+            "clientInfo": { "name": "dunlin", "version": env!("CARGO_PKG_VERSION") }
         }
     });
     let read = json!({ "id": 2, "method": "account/rateLimits/read", "params": null });
@@ -355,7 +355,7 @@ fn format_remaining(seconds: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{format_remaining, plan_label, window_label};
-    use kestrel_domain::UsageSource;
+    use dunlin_domain::UsageSource;
 
     #[test]
     fn formats_rate_limit_windows() {

@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 mod app;
 mod demo;
@@ -11,17 +11,27 @@ mod views;
 mod watch;
 mod window_state;
 
-use app::KestrelApp;
-use kestrel_ui::component::TitleBar;
-use kestrel_ui::*;
+use app::DunlinApp;
+use dunlin_ui::component::TitleBar;
+use dunlin_ui::*;
 
 fn main() {
     application().with_assets(assets::AllAssets).run(|cx| {
-        kestrel_ui::init(cx);
+        cx.set_app_identity("dev.dunlin.ide", "Dunlin");
+        dunlin_ui::init(cx);
         logging::init();
 
         let window_bounds = window_state::load()
-            .map(window_state::to_bounds)
+            .map(|geometry| {
+                let displays: Vec<window_state::DisplayRect> = cx
+                    .displays()
+                    .iter()
+                    .map(|display| {
+                        window_state::DisplayRect::from_bounds(&display.visible_bounds())
+                    })
+                    .collect();
+                window_state::to_bounds(window_state::clamp(geometry, &displays))
+            })
             .unwrap_or_else(|| {
                 WindowBounds::Windowed(Bounds::new(
                     point(px(120.), px(90.)),
@@ -36,8 +46,8 @@ fn main() {
                 ..TitleBar::window_options()
             },
             cx,
-            |window, cx| cx.new(|cx| KestrelApp::new(window, cx)),
+            |window, cx| cx.new(|cx| DunlinApp::new(window, cx)),
         )
-        .expect("failed to open the Kestrel window");
+        .expect("failed to open the Dunlin window");
     });
 }

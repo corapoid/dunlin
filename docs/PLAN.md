@@ -1,22 +1,22 @@
-# Kestrel — plan techniczny
+# Dunlin — plan techniczny
 
-Ten dokument opisuje kierunek rozwoju Kestrela po wersji `0.1`: docelowy model
+Ten dokument opisuje kierunek rozwoju Dunlina po wersji `0.1`: docelowy model
 usług, decyzje architektoniczne i kolejność prac. Roadmapa z konkretnymi
 kamieniami milowymi jest w [`ROADMAP.md`](ROADMAP.md).
 
 ## Zasady
 
-1. Kestrel pozostaje natywną aplikacją macOS w Rust/GPUI. Nie wprowadzamy
+1. Dunlin pozostaje natywną aplikacją macOS w Rust/GPUI. Nie wprowadzamy
    Electrona ani Monaco.
 2. Widok Markdown ma być wizualny, ale bez webview: edytor blokowy oparty o AST
    Markdown, z możliwością przełączenia na surowy tekst.
 3. Computer use dostaje osobny helper w Swift/AppKit. Dzięki temu uprawnienia
    Accessibility i Screen Recording są przyznawane helperowi, a nie całej
    aplikacji — tak jak robi to Orca.
-4. Automatyzacje mogą działać przy zamkniętym Kestrelu: lokalnie przez
+4. Automatyzacje mogą działać przy zamkniętym Dunlinu: lokalnie przez
    LaunchAgent, zdalnie przez scheduler w relayu.
 5. SSH jest transportem do istniejącego remote mode: OpenSSH ControlMaster +
-   bootstrap `kestrel-relay` na hoście. Pełny parity z relayem, bez drugiego
+   bootstrap `dunlin-relay` na hoście. Pełny parity z relayem, bez drugiego
    backendu plików.
 6. „Zapisz jako artefakt” to jawne polecenie agenta. Artefakt jest osobnym
    obiektem sesji, nie przypadkowym plikiem w repo.
@@ -42,7 +42,7 @@ crates/ssh          OpenSSH ControlMaster, bootstrap relay
 crates/mcp          lokalny serwer narzędzi dla harnessów
 ```
 
-`KestrelApp` nie może dalej rosnąć w jednym pliku. `app.rs` zostaje
+`DunlinApp` nie może dalej rosnąć w jednym pliku. `app.rs` zostaje
 rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`.
 
 ## Model danych
@@ -52,7 +52,7 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 - `Project` — istniejący workspace (lokalny, relay, SSH).
 - `ProjectGroup` — istniejące sekcje.
 - `ChatSpace` — czat bez projektu; prywatny scratch workspace w
-  `Application Support/Kestrel/chats/<id>`.
+  `Application Support/Dunlin/chats/<id>`.
 - `ProjectSettings` — nadpisania: harness, model, permission mode, env, skills,
   automation defaults.
 - `SshHost` — host, user, port, klucz/agent, jump host, relay bootstrap.
@@ -90,7 +90,7 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 
 ### Computer use
 
-- `Kestrel Computer Use.app` — osobny bundle id, Swift/AppKit.
+- `Dunlin Computer Use.app` — osobny bundle id, Swift/AppKit.
 - Accessibility API do drzewa, ScreenCaptureKit do zrzutów, CGEvent do inputu.
 - Status TCC, otwieranie System Settings, reset uprawnień.
 - Main app rozmawia z helperem po lokalnym IPC z tokenem.
@@ -100,7 +100,7 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 ### SSH
 
 - OpenSSH `ControlMaster`/`ControlPersist`, `ssh -G` do rozwiązywania configu.
-- Bootstrap `kestrel-relay` na hoście (upload binarki, uruchomienie, tunel
+- Bootstrap `dunlin-relay` na hoście (upload binarki, uruchomienie, tunel
   lokalny). Dalej działa istniejący remote backend.
 - Passphrase w Keychain; known_hosts i host-key verification obowiązkowe.
 - Fallback „plain SSH” tylko dla terminala/przeglądania, bez pełnego parity.
@@ -116,7 +116,7 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 
 - Standard `SKILL.md` + YAML frontmatter.
 - Rooty: `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`,
-  `.agents/skills`, `.claude/skills`, `.kestrel/skills`.
+  `.agents/skills`, `.claude/skills`, `.dunlin/skills`.
 - Włączanie per projekt przez materializację symlinków do rootów harnessa lub
   listę w konfiguracji.
 - Dodawanie z folderu/repo, edycja, walidacja, hash, ostrzeżenia o skryptach.

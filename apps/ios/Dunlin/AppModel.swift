@@ -12,7 +12,7 @@ final class AppModel: ObservableObject {
 
     let acp = ACPClient()
 
-    private let serversKey = "kestrel.servers"
+    private let serversKey = "dunlin.servers"
 
     init() {
         if let data = UserDefaults.standard.data(forKey: serversKey),

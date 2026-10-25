@@ -1,4 +1,4 @@
-//! Local persistence for Kestrel.
+//! Local persistence for Dunlin.
 //!
 //! SQLite in WAL mode keeps writes cheap and crash-safe. Projects, sessions and
 //! the rendered transcript are persisted; graph and trace projections will be
@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use kestrel_domain::{Project, ProjectGroup, SessionSummary};
+use dunlin_domain::{Project, ProjectGroup, SessionSummary};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -202,7 +202,7 @@ impl Store {
                 name: row.get(1)?,
                 path: row.get(2)?,
                 branch: row.get(3)?,
-                tone: serde_json::from_str(&tone).unwrap_or(kestrel_domain::ProjectTone::Blue),
+                tone: serde_json::from_str(&tone).unwrap_or(dunlin_domain::ProjectTone::Blue),
                 pinned: row.get::<_, i64>(5)? != 0,
                 trusted: row.get::<_, i64>(6)? != 0,
                 running_sessions: 0,
@@ -228,7 +228,7 @@ impl Store {
             Ok(ProjectGroup {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                tone: serde_json::from_str(&tone).unwrap_or(kestrel_domain::ProjectTone::Blue),
+                tone: serde_json::from_str(&tone).unwrap_or(dunlin_domain::ProjectTone::Blue),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -320,8 +320,7 @@ impl Store {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
                 title: row.get(2)?,
-                status: serde_json::from_str(&status)
-                    .unwrap_or(kestrel_domain::SessionStatus::Done),
+                status: serde_json::from_str(&status).unwrap_or(dunlin_domain::SessionStatus::Done),
                 harness: row.get(4)?,
                 model: row.get(5)?,
                 branch: row.get(6)?,
@@ -331,7 +330,7 @@ impl Store {
                 tokens: row.get::<_, i64>(10)? as u64,
                 summary: row.get(11)?,
                 origin: serde_json::from_str(&origin)
-                    .unwrap_or(kestrel_domain::SessionOrigin::Local),
+                    .unwrap_or(dunlin_domain::SessionOrigin::Local),
                 acp_session_id: row.get(13)?,
             })
         };
@@ -425,15 +424,13 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kestrel_domain::{
-        PermissionMode, ProjectTone, RemoteProject, SessionOrigin, SessionStatus,
-    };
+    use dunlin_domain::{PermissionMode, ProjectTone, RemoteProject, SessionOrigin, SessionStatus};
 
     fn project() -> Project {
         Project {
-            id: "kestrel".into(),
-            name: "Kestrel".into(),
-            path: "/tmp/kestrel".into(),
+            id: "dunlin".into(),
+            name: "Dunlin".into(),
+            path: "/tmp/dunlin".into(),
             branch: Some("main".into()),
             tone: ProjectTone::Teal,
             pinned: true,
@@ -448,7 +445,7 @@ mod tests {
     fn session() -> SessionSummary {
         SessionSummary {
             id: "ses-1".into(),
-            project_id: "kestrel".into(),
+            project_id: "dunlin".into(),
             title: "Verify permissions".into(),
             status: SessionStatus::Waiting,
             harness: "OpenCode".into(),
@@ -471,10 +468,10 @@ mod tests {
         store.upsert_session(&session()).unwrap();
         let projects = store.projects().unwrap();
         assert_eq!(projects.len(), 1);
-        assert_eq!(projects[0].name, "Kestrel");
+        assert_eq!(projects[0].name, "Dunlin");
         assert_eq!(projects[0].tone, ProjectTone::Teal);
 
-        let sessions = store.sessions(Some("kestrel")).unwrap();
+        let sessions = store.sessions(Some("dunlin")).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].status, SessionStatus::Waiting);
         assert_eq!(sessions[0].tokens, 1_024);
@@ -615,7 +612,7 @@ mod tests {
         store.upsert_session(&session()).unwrap();
         store.save_transcript("ses-1", &vec!["x"]).unwrap();
 
-        store.delete_project("kestrel").unwrap();
+        store.delete_project("dunlin").unwrap();
         assert!(store.projects().unwrap().is_empty());
         assert!(store.sessions(None).unwrap().is_empty());
         let transcript: Option<Vec<String>> = store.load_transcript("ses-1").unwrap();

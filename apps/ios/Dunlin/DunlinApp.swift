@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct KestrelApp: App {
+struct DunlinApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
@@ -23,7 +23,7 @@ struct RootView: View {
                 ProjectsView()
             }
         }
-        .alert("Kestrel", isPresented: Binding(
+        .alert("Dunlin", isPresented: Binding(
             get: { model.error != nil },
             set: { if !$0 { model.error = nil } }
         )) {

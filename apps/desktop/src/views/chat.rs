@@ -1,21 +1,21 @@
 //! Chat is the primary surface: a calm conversation, inline agent work,
 //! permission gates and the composer that drives the selected harness.
 
-use kestrel_agent::{PermissionChoice, PermissionKind, PlanItem, PlanStatus, ToolCallView};
-use kestrel_domain::ToolStatus;
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::Icon;
-use kestrel_ui::component::input::Textarea;
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_agent::{PermissionChoice, PermissionKind, PlanItem, PlanStatus, ToolCallView};
+use dunlin_domain::ToolStatus;
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
+use dunlin_ui::component::input::Textarea;
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 
-use crate::app::{KestrelApp, SettingsTab, format_duration, format_ms, format_tokens, tool_icon};
+use crate::app::{DunlinApp, SettingsTab, format_duration, format_ms, format_tokens, tool_icon};
 use crate::harness::{ChatItem, HarnessStatus, QueuedPrompt};
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let context = context_bar(this, cx);
@@ -35,7 +35,7 @@ pub(crate) fn render(
         .into_any_element()
 }
 
-fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn context_bar(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let session = this.session();
     let status = &this.harness.status;
@@ -210,7 +210,7 @@ fn context_bar(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
 fn suggestion_chip(
     label: &str,
     prompt: &str,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let prompt = prompt.to_string();
@@ -242,7 +242,7 @@ fn suggestion_chip(
         .into_any_element()
 }
 
-fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let items = this.harness.transcript.clone();
     let running = this.harness.running;
@@ -344,7 +344,7 @@ fn conversation(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
 fn empty_state(
     status: &HarnessStatus,
     remote: bool,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let (status_color, status_soft) = harness_tone(p, status);
@@ -409,9 +409,9 @@ fn empty_state(
                         .line_height(relative(1.55))
                         .text_color(p.muted_fg)
                         .child(if remote {
-                            "Kestrel drives the relay harness over ACP. Files, prompts and permission decisions stay on your server."
+                            "Dunlin drives the relay harness over ACP. Files, prompts and permission decisions stay on your server."
                         } else {
-                            "Kestrel drives your harness over ACP. Prompts, tool calls and permission decisions stay on this machine."
+                            "Dunlin drives your harness over ACP. Prompts, tool calls and permission decisions stay on this machine."
                         }),
                 ),
         );
@@ -459,7 +459,7 @@ fn starter_row(
     subtitle: &str,
     icon_name: IconName,
     color: Hsla,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let prompt = subtitle.to_string();
@@ -529,12 +529,12 @@ fn starter_row(
 fn agent_group(
     items: &[ChatItem],
     base: usize,
-    session: &kestrel_domain::SessionSummary,
+    session: &dunlin_domain::SessionSummary,
     status: &HarnessStatus,
     reasoning_open: bool,
     expanded: Option<usize>,
     running: bool,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let mut body = div().pl(px(33.)).flex().flex_col().gap(px(14.));
@@ -634,7 +634,7 @@ fn agent_group(
         .into_any_element()
 }
 
-fn user_message(index: usize, text: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn user_message(index: usize, text: &str, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let copy_text = text.to_string();
     let retry_text = text.to_string();
     let edit_text = text.to_string();
@@ -764,7 +764,7 @@ fn agent_avatar(p: &Palette) -> AnyElement {
 }
 
 fn agent_header(
-    session: &kestrel_domain::SessionSummary,
+    session: &dunlin_domain::SessionSummary,
     status: &HarnessStatus,
     running: bool,
     p: &Palette,
@@ -785,7 +785,7 @@ fn agent_header(
                 .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
-                .child("Kestrel"),
+                .child("Dunlin"),
         )
         .child(
             div()
@@ -847,7 +847,7 @@ fn agent_header(
         .into_any_element()
 }
 
-fn thought_card(text: &str, open: bool, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let lines: Vec<&str> = text
         .lines()
         .filter(|line| !line.trim().is_empty())
@@ -959,7 +959,7 @@ fn tool_card(
     tool: &ToolCallView,
     duration_ms: u64,
     expanded: Option<usize>,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let is_open = expanded == Some(index);
@@ -1142,7 +1142,7 @@ fn tool_card(
     card.into_any_element()
 }
 
-fn diff_block(index: usize, patch: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let copied = patch.to_string();
     let mut lines = div().flex().flex_col();
     for line in patch.lines().take(600) {
@@ -1314,7 +1314,7 @@ fn permission_card(
     title: &str,
     options: &[PermissionChoice],
     resolved: Option<&str>,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let denied = resolved
@@ -1587,11 +1587,7 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
         .into_any_element()
 }
 
-fn composer(
-    this: &mut KestrelApp,
-    _window: &mut Window,
-    cx: &mut Context<KestrelApp>,
-) -> AnyElement {
+fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let remote = this.project().is_remote();
     let harness = if remote {
@@ -1881,7 +1877,7 @@ fn composer(
                                     p.muted_fg.opacity(0.65)
                                 })
                                 .child(status.detail().unwrap_or_else(|| {
-                                    "Kestrel can make mistakes. Review tool calls before approving."
+                                    "Dunlin can make mistakes. Review tool calls before approving."
                                         .into()
                                 })),
                         ),
@@ -1890,7 +1886,7 @@ fn composer(
         .into_any_element()
 }
 
-fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let mut rows = div()
         .id("prompt-queue-rows")
         .max_h(px(158.))
@@ -2084,9 +2080,9 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<KestrelApp>, p: &Palett
 fn attachment_button(
     icon_name: IconName,
     label: &str,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
-    action: fn(&mut KestrelApp, &mut Window, &mut Context<KestrelApp>),
+    action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
 ) -> AnyElement {
     let label_owned = label.to_string();
     div()

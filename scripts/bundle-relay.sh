@@ -5,10 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-cargo build --release -p kestrel-relay
+cargo build --release -p dunlin-relay
 mkdir -p dist
-cp target/release/kestrel-relay dist/kestrel-relay
-chmod +x dist/kestrel-relay
+cp target/release/dunlin-relay dist/dunlin-relay
+chmod +x dist/dunlin-relay
 
-echo "Built dist/kestrel-relay"
-echo "Run: ./dist/kestrel-relay serve"
+echo "Built dist/dunlin-relay"
+echo "Run: ./dist/dunlin-relay serve"

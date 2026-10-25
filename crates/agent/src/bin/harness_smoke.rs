@@ -1,8 +1,8 @@
 //! End-to-end smoke test for the reusable ACP harness.
 //!
-//! Usage: `cargo run -p kestrel-agent --bin harness_smoke -- "opencode acp" "Reply with: HARNESS OK"`
+//! Usage: `cargo run -p dunlin-agent --bin harness_smoke -- "opencode acp" "Reply with: HARNESS OK"`
 
-use kestrel_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate};
+use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate};
 use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,8 +105,8 @@ fn handle(
                 .find(|option| {
                     matches!(
                         option.kind,
-                        kestrel_agent::PermissionKind::AllowOnce
-                            | kestrel_agent::PermissionKind::AllowAlways
+                        dunlin_agent::PermissionKind::AllowOnce
+                            | dunlin_agent::PermissionKind::AllowAlways
                     )
                 })
                 .or_else(|| options.first());

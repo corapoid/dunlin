@@ -1,21 +1,23 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
-use kestrel_domain::*;
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::diff::{Diff, DiffFile, DiffState};
-use kestrel_ui::component::input::{
+use dunlin_domain::*;
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::diff::{Diff, DiffFile, DiffState};
+use dunlin_ui::component::input::{
     Editor, EditorState, Input, InputEvent, InputState, Position, TextareaState,
 };
-use kestrel_ui::component::{ActiveTheme, Icon, ThemeMode};
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_ui::component::{ActiveTheme, Icon, ThemeMode};
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{harness, logging, projection, remote, views, watch, window_state};
-use kestrel_workspace::tree::FileTree;
-use kestrel_workspace::{git, search};
+use dunlin_workspace::tree::FileTree;
+use dunlin_workspace::{git, search};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SettingsTab {
@@ -64,7 +66,7 @@ impl SettingsTab {
     }
 }
 
-/// Everything Kestrel remembers between launches. Stored as one JSON value in
+/// Everything Dunlin remembers between launches. Stored as one JSON value in
 /// SQLite so new fields can be added without another migration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -302,7 +304,7 @@ pub(crate) struct RemotePicker {
     pub error: Option<String>,
 }
 
-pub(crate) struct KestrelApp {
+pub(crate) struct DunlinApp {
     pub view: MainView,
     pub view_epoch: u64,
     pub default_view: MainView,
@@ -412,11 +414,11 @@ pub(crate) struct KestrelApp {
     pub branches: Vec<String>,
     pub commit_input: Entity<InputState>,
 
-    pub store: Option<kestrel_storage::Store>,
+    pub store: Option<dunlin_storage::Store>,
     pub harness: harness::HarnessState,
 }
 
-impl KestrelApp {
+impl DunlinApp {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let store = open_store();
         logging::info(&format!("data {}", data_dir_display()));
@@ -463,7 +465,7 @@ impl KestrelApp {
         }
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Ask Kestrel to build, fix, or explain…")
+                .placeholder("Ask Dunlin to build, fix, or explain…")
                 .rows(2)
         });
         let composer_subscription = cx.subscribe_in(
@@ -761,7 +763,7 @@ impl KestrelApp {
             harness: harness::HarnessState::default(),
         };
 
-        kestrel_ui::theme::set_mode(
+        dunlin_ui::theme::set_mode(
             if stored.dark {
                 ThemeMode::Dark
             } else {
@@ -770,7 +772,7 @@ impl KestrelApp {
             Some(window),
             cx,
         );
-        kestrel_ui::theme::set_code_font_size(stored.code_font_size, cx);
+        dunlin_ui::theme::set_code_font_size(stored.code_font_size, cx);
 
         let first_session = app.session().id.clone();
         app.load_transcript(&first_session);
@@ -838,13 +840,15 @@ impl KestrelApp {
                 this.app_active = window.is_window_active();
             }));
 
-        if let Ok(prompt) = std::env::var("KESTREL_AUTOPROMPT")
+        if let Ok(prompt) = std::env::var("DUNLIN_AUTOPROMPT")
             && !prompt.trim().is_empty()
         {
             app.composer
                 .update(cx, |state, cx| state.set_value(prompt, window, cx));
             app.send_prompt(window, cx);
         }
+
+        install_close_guard(window, cx);
 
         app
     }
@@ -2058,7 +2062,7 @@ impl KestrelApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let pair = remote::pair(&url_for_task, &code, "Kestrel on macOS")?;
+                    let pair = remote::pair(&url_for_task, &code, "Dunlin on macOS")?;
                     remote::save_token(&host_id_for_task, &pair.token)?;
                     Ok::<_, String>((pair, host_id_for_task))
                 })
@@ -2310,7 +2314,7 @@ impl KestrelApp {
     /// Ask for confirmation before removing a project.
     pub(crate) fn request_delete_project(&mut self, index: usize, cx: &mut Context<Self>) {
         if self.projects.len() <= 1 {
-            self.set_notice("Keep at least one project in Kestrel", cx);
+            self.set_notice("Keep at least one project in Dunlin", cx);
             return;
         }
         let Some(project) = self.projects.get(index) else {
@@ -2514,7 +2518,7 @@ impl KestrelApp {
 
     fn delete_project(&mut self, id: &str, cx: &mut Context<Self>) {
         if self.projects.len() <= 1 {
-            self.set_notice("Keep at least one project in Kestrel", cx);
+            self.set_notice("Keep at least one project in Dunlin", cx);
             return;
         }
         let Some(index) = self.projects.iter().position(|project| project.id == id) else {
@@ -3580,7 +3584,7 @@ impl KestrelApp {
         cx.spawn(async move |this, cx| {
             let usages = cx
                 .background_executor()
-                .spawn(async move { kestrel_usage::probe_all() })
+                .spawn(async move { dunlin_usage::probe_all() })
                 .await;
             this.update(cx, |this, cx| {
                 for usage in &usages {
@@ -3888,7 +3892,7 @@ impl KestrelApp {
     /// Step the code font size and apply it to editors and diffs immediately.
     pub(crate) fn adjust_code_font_size(&mut self, delta: f32, cx: &mut Context<Self>) {
         self.code_font_size = (self.code_font_size + delta).clamp(10.0, 20.0);
-        kestrel_ui::theme::set_code_font_size(self.code_font_size, cx);
+        dunlin_ui::theme::set_code_font_size(self.code_font_size, cx);
         self.persist_settings(cx);
         cx.notify();
     }
@@ -4472,8 +4476,8 @@ impl KestrelApp {
             label: &'static str,
             hint: Option<&'static str>,
             danger: bool,
-            cx: &mut Context<KestrelApp>,
-            action: fn(&mut KestrelApp, &mut Window, &mut Context<KestrelApp>),
+            cx: &mut Context<DunlinApp>,
+            action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
         ) -> AnyElement {
             let p = palette(cx);
             div()
@@ -4640,7 +4644,7 @@ impl KestrelApp {
                             .text_size(px(12.0))
                             .line_height(relative(1.55))
                             .text_color(p.muted_fg)
-                            .child("Kestrel runs an ACP harness against a folder on your Mac. Open a repository to start, or connect a self-hosted relay."),
+                            .child("Dunlin runs an ACP harness against a folder on your Mac. Open a repository to start, or connect a self-hosted relay."),
                     ),
             )
             .child(
@@ -4702,7 +4706,7 @@ impl KestrelApp {
                     .text_size(px(10.5))
                     .font_family("Geist Mono")
                     .text_color(p.muted_fg.opacity(0.65))
-                    .child("A folder is all Kestrel needs · your data stays on this Mac"),
+                    .child("A folder is all Dunlin needs · your data stays on this Mac"),
             )
             .into_any_element()
     }
@@ -5135,7 +5139,7 @@ impl KestrelApp {
                         div()
                             .text_size(px(11.0))
                             .text_color(p.muted_fg)
-                            .child("Add one with `kestrel-relay project add`."),
+                            .child("Add one with `dunlin-relay project add`."),
                     ),
             );
         } else {
@@ -5564,7 +5568,7 @@ impl KestrelApp {
         };
         let selected_harness = project.settings.harness.clone();
         let selected_permission = project.settings.permission_mode;
-        type ChipAction = Box<dyn Fn(&mut KestrelApp, &mut Context<KestrelApp>)>;
+        type ChipAction = Box<dyn Fn(&mut DunlinApp, &mut Context<DunlinApp>)>;
 
         let chip =
             |id: String, label: &str, active: bool, cx: &mut Context<Self>, action: ChipAction| {
@@ -6254,7 +6258,7 @@ impl KestrelApp {
             PendingDelete::Project { name, .. } => (
                 "Remove project?".to_string(),
                 format!(
-                    "“{name}” will be removed from Kestrel. The folder stays on disk, but its sessions and transcripts will be deleted."
+                    "“{name}” will be removed from Dunlin. The folder stays on disk, but its sessions and transcripts will be deleted."
                 ),
                 "Remove project",
             ),
@@ -6584,6 +6588,12 @@ impl KestrelApp {
     fn status_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let session = self.session();
+        let branch = if self.git.branch.trim().is_empty() {
+            session.branch.clone().unwrap_or_else(|| "main".into())
+        } else {
+            self.git.branch.clone()
+        };
+        let change_count = self.git.changes.len();
         div()
             .h(px(27.))
             .flex_shrink_0()
@@ -6606,7 +6616,7 @@ impl KestrelApp {
                         div()
                             .font_family("Geist Mono")
                             .text_color(p.fg.opacity(0.8))
-                            .child(session.branch.clone().unwrap_or_else(|| "main".into())),
+                            .child(branch),
                     ),
             )
             .child(
@@ -6614,18 +6624,15 @@ impl KestrelApp {
                     .flex()
                     .items_center()
                     .gap(px(5.))
-                    .child(icon(IconName::ArrowUp, 10.0, p.muted_fg))
-                    .child("2")
-                    .child(icon(IconName::ArrowDown, 10.0, p.muted_fg))
-                    .child("0"),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .child(icon(IconName::CircleCheck, 11.0, p.green))
-                    .child("0 problems"),
+                    .child(icon(IconName::FileDiff, 10.5, p.muted_fg))
+                    .child(format!(
+                        "{change_count} {}",
+                        if change_count == 1 {
+                            "change"
+                        } else {
+                            "changes"
+                        }
+                    )),
             )
             .child(div().w(px(1.)).h(px(12.)).bg(p.border))
             .child({
@@ -6684,7 +6691,7 @@ impl KestrelApp {
     }
 }
 
-impl Render for KestrelApp {
+impl Render for DunlinApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let geometry = window_state::from_bounds(window.window_bounds());
         if self.last_window_geometry != Some(geometry) {
@@ -6716,7 +6723,11 @@ impl Render for KestrelApp {
             self.session_header(cx)
         };
         let main_panel = self.main_panel(window, cx);
-        let status_bar = self.status_bar(cx);
+        let status_bar = if self.projects.is_empty() {
+            None
+        } else {
+            Some(self.status_bar(cx))
+        };
         let settings = self
             .settings_open
             .then(|| views::settings::render(self, window, cx));
@@ -6778,7 +6789,7 @@ impl Render for KestrelApp {
                             .child(main_panel),
                     ),
             )
-            .child(status_bar)
+            .children(status_bar)
             .children(session_menu)
             .children(settings)
             .children(palette)
@@ -6795,7 +6806,7 @@ impl Render for KestrelApp {
     }
 }
 
-impl Drop for KestrelApp {
+impl Drop for DunlinApp {
     fn drop(&mut self) {
         self.save_current_transcript();
         self.save_stashed_transcripts();
@@ -6831,12 +6842,42 @@ fn editor_language(path: &str) -> &'static str {
 }
 
 pub(crate) fn data_dir() -> Option<PathBuf> {
-    std::env::var_os("KESTREL_DATA_DIR")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join("Library/Application Support/Kestrel"))
-        })
+    if let Some(path) = std::env::var_os("DUNLIN_DATA_DIR") {
+        return Some(PathBuf::from(path));
+    }
+    let home = std::env::var_os("HOME")?;
+    let base = PathBuf::from(home).join("Library/Application Support");
+    let dir = base.join("Dunlin");
+    if !dir.exists() {
+        let legacy = base.join("Kestrel");
+        if legacy.is_dir() {
+            return Some(migrate_data_dir(&legacy, &dir));
+        }
+    }
+    Some(dir)
+}
+
+/// Move the pre-rename data directory in place so an existing install keeps
+/// its projects, sessions and settings after upgrading to Dunlin.
+fn migrate_data_dir(legacy: &Path, current: &Path) -> PathBuf {
+    if let Err(error) = fs::rename(legacy, current) {
+        logging::warn(&format!(
+            "could not migrate {} to {}: {error}",
+            legacy.display(),
+            current.display()
+        ));
+        return legacy.to_path_buf();
+    }
+
+    for suffix in ["", "-wal", "-shm"] {
+        let from = current.join(format!("kestrel.db{suffix}"));
+        let to = current.join(format!("dunlin.db{suffix}"));
+        if from.exists() && !to.exists() {
+            let _ = fs::rename(from, to);
+        }
+    }
+    logging::info("migrated local data from Kestrel to Dunlin");
+    current.to_path_buf()
 }
 
 pub(crate) fn data_dir_display() -> String {
@@ -6857,16 +6898,28 @@ pub(crate) fn storage_size() -> u64 {
     let Some(directory) = data_dir() else {
         return 0;
     };
-    ["kestrel.db", "kestrel.db-wal", "kestrel.db-shm"]
-        .iter()
-        .filter_map(|name| std::fs::metadata(directory.join(name)).ok())
-        .map(|metadata| metadata.len())
-        .sum()
+    [
+        "dunlin.db",
+        "dunlin.db-wal",
+        "dunlin.db-shm",
+        "kestrel.db",
+        "kestrel.db-wal",
+        "kestrel.db-shm",
+    ]
+    .iter()
+    .filter_map(|name| std::fs::metadata(directory.join(name)).ok())
+    .map(|metadata| metadata.len())
+    .sum()
 }
 
-fn open_store() -> Option<kestrel_storage::Store> {
+fn open_store() -> Option<dunlin_storage::Store> {
     let base = data_dir()?;
-    match kestrel_storage::Store::open(base.join("kestrel.db")) {
+    let database = if base.join("dunlin.db").exists() || !base.join("kestrel.db").exists() {
+        base.join("dunlin.db")
+    } else {
+        base.join("kestrel.db")
+    };
+    match dunlin_storage::Store::open(database) {
         Ok(store) => Some(store),
         Err(error) => {
             logging::error(&format!("could not open database: {error}"));
@@ -6874,6 +6927,39 @@ fn open_store() -> Option<kestrel_storage::Store> {
             None
         }
     }
+}
+
+/// Ask before closing the window while an ACP turn is still streaming. The
+/// turn cannot survive the process, so the only safe options are to wait or to
+/// cancel explicitly.
+fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinApp>) {
+    let handle = cx.entity().downgrade();
+    let confirmed = Rc::new(Cell::new(false));
+    window.on_window_should_close(cx, move |window, cx| {
+        let busy = handle
+            .read_with(cx, |this, _| this.harness.running)
+            .unwrap_or(false);
+        if !busy || confirmed.get() {
+            return true;
+        }
+
+        let receiver = window.prompt(
+            PromptLevel::Warning,
+            "An agent turn is still running",
+            Some("Quitting now cancels the turn. The transcript saved so far is kept."),
+            &["Keep Running", "Quit Anyway"],
+            cx,
+        );
+        let confirmed = confirmed.clone();
+        cx.spawn(async move |cx| {
+            if receiver.await == Ok(1) {
+                confirmed.set(true);
+                cx.update(|cx| cx.quit());
+            }
+        })
+        .detach();
+        false
+    });
 }
 
 fn remote_session_summary(
@@ -6940,7 +7026,7 @@ fn blank_session(project_id: &str, harness: &str, branch: Option<String>) -> Ses
         cost_usd: 0.0,
         duration_secs: 0,
         tokens: 0,
-        summary: "No messages yet. Ask Kestrel to build, fix, or explain something.".into(),
+        summary: "No messages yet. Ask Dunlin to build, fix, or explain something.".into(),
         origin: SessionOrigin::Local,
         acp_session_id: None,
     }
@@ -7111,8 +7197,8 @@ mod tests {
         Command, CommandItem, StoredSettings, command_matches, display_path, editor_language,
         format_bytes, path_inside, session_index_after_delete,
     };
-    use kestrel_domain::{MainView, PermissionMode};
-    use kestrel_ui::assets::IconName;
+    use dunlin_domain::{MainView, PermissionMode};
+    use dunlin_ui::assets::IconName;
     use std::path::Path;
 
     fn item(label: &str, keywords: &str, hint: Option<&str>) -> CommandItem {
@@ -7195,11 +7281,11 @@ mod tests {
     #[test]
     fn prompts_use_relative_paths_inside_the_project() {
         assert_eq!(
-            display_path("/work/kestrel", Path::new("/work/kestrel/src/main.rs")),
+            display_path("/work/dunlin", Path::new("/work/dunlin/src/main.rs")),
             "src/main.rs"
         );
         assert_eq!(
-            display_path("/work/kestrel", Path::new("/tmp/notes.md")),
+            display_path("/work/dunlin", Path::new("/tmp/notes.md")),
             "/tmp/notes.md"
         );
     }
@@ -7210,9 +7296,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-paths-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-paths-{unique}"));
         std::fs::create_dir_all(root.join("src")).unwrap();
-        let outside = std::env::temp_dir().join(format!("kestrel-outside-{unique}.txt"));
+        let outside = std::env::temp_dir().join(format!("dunlin-outside-{unique}.txt"));
 
         assert!(path_inside(&root, &root.join("src/main.rs")));
         assert!(path_inside(&root, &root.join("README.md")));

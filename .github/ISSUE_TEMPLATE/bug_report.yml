@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in Dunlin does not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. For security issues, use the private
+        reporting link in `SECURITY.md` instead of this form.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a folder
+        2. Select the OpenCode harness
+        3. Send a prompt that edits a file
+        4. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Dunlin version
+      description: Shown in the About window, the DMG name, or `git describe --tags`.
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and chip
+      placeholder: macOS 15.4, Apple M3
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Where does it happen?
+      options:
+        - Local project
+        - Remote relay project
+        - iOS client
+        - Settings or onboarding
+        - Build or release tooling
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: harness
+    attributes:
+      label: Harness
+      placeholder: OpenCode, Claude Code, Codex, custom ACP or none
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: |
+        The app log is at `~/Library/Logs/Dunlin/dunlin.log`. Remove prompt
+        text or secrets before pasting. Drag screenshots into this field.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I removed secrets and private code from the report.
+          required: true

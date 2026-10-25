@@ -2,7 +2,7 @@
 //!
 //! The desktop talks to the relay over HTTP for pairing, project discovery,
 //! sessions, files, search and git. ACP itself uses a separate WebSocket
-//! connection managed by `kestrel-agent`.
+//! connection managed by `dunlin-agent`.
 
 use std::path::Path;
 use std::process::Command;
@@ -10,17 +10,18 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use kestrel_domain::{ProviderUsage, RemoteProject};
-use kestrel_workspace::fs::{FileContents, FileStat};
-use kestrel_workspace::git::GitStatus;
-use kestrel_workspace::search::SearchHit;
-use kestrel_workspace::tree::FileTree;
-use kestrel_workspace::{fs as workspace_fs, git, search};
+use dunlin_domain::{ProviderUsage, RemoteProject};
+use dunlin_workspace::fs::{FileContents, FileStat};
+use dunlin_workspace::git::GitStatus;
+use dunlin_workspace::search::SearchHit;
+use dunlin_workspace::tree::FileTree;
+use dunlin_workspace::{fs as workspace_fs, git, search};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
+const KEYCHAIN_SERVICE: &str = "dev.dunlin.remote";
+const LEGACY_KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RemoteHost {
@@ -176,18 +177,25 @@ pub(crate) fn save_token(host_id: &str, token: &str) -> Result<(), String> {
 }
 
 pub(crate) fn load_token(host_id: &str) -> Result<Option<String>, String> {
-    if let Ok(token) = std::env::var("KESTREL_REMOTE_TOKEN") {
+    if let Ok(token) = std::env::var("DUNLIN_REMOTE_TOKEN") {
         return Ok(Some(token));
     }
+    if let Some(token) = read_token(KEYCHAIN_SERVICE, host_id)? {
+        return Ok(Some(token));
+    }
+    let Some(token) = read_token(LEGACY_KEYCHAIN_SERVICE, host_id)? else {
+        return Ok(None);
+    };
+    // Move tokens saved by the pre-rename build into the new service. A
+    // failure here is harmless: the token is still returned for this launch.
+    let _ = save_token(host_id, &token);
+    delete_token_for(LEGACY_KEYCHAIN_SERVICE, host_id);
+    Ok(Some(token))
+}
+
+fn read_token(service: &str, host_id: &str) -> Result<Option<String>, String> {
     let output = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            host_id,
-            "-w",
-        ])
+        .args(["find-generic-password", "-s", service, "-a", host_id, "-w"])
         .output()
         .map_err(|error| format!("Could not access the macOS keychain: {error}"))?;
     if output.status.success() {
@@ -205,14 +213,13 @@ pub(crate) fn load_token(host_id: &str) -> Result<Option<String>, String> {
 }
 
 pub(crate) fn delete_token(host_id: &str) {
+    delete_token_for(KEYCHAIN_SERVICE, host_id);
+    delete_token_for(LEGACY_KEYCHAIN_SERVICE, host_id);
+}
+
+fn delete_token_for(service: &str, host_id: &str) {
     let _ = Command::new("security")
-        .args([
-            "delete-generic-password",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            host_id,
-        ])
+        .args(["delete-generic-password", "-s", service, "-a", host_id])
         .status();
 }
 
@@ -701,7 +708,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-backend-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-backend-{unique}"));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("hello.txt"), "hi").unwrap();
         let backend = WorkspaceBackend::Local {
@@ -720,7 +727,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-conflict-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-conflict-{unique}"));
         fs::create_dir_all(&root).unwrap();
         let path = root.join("hello.txt");
         fs::write(&path, "one").unwrap();

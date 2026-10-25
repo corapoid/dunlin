@@ -3,17 +3,17 @@
 
 use std::time::Duration;
 
-use kestrel_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::Icon;
-use kestrel_ui::*;
+use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
+use dunlin_ui::*;
 
-use crate::app::{KestrelApp, agent_status_palette, format_duration, tone_color, tool_icon};
+use crate::app::{DunlinApp, agent_status_palette, format_duration, tone_color, tool_icon};
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     _window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let preview = this.harness.transcript.is_empty();
@@ -232,7 +232,7 @@ pub(crate) fn render(
     root.into_any_element()
 }
 
-fn zoom_button(icon_name: IconName, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn zoom_button(icon_name: IconName, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let delta = if icon_name == IconName::ZoomIn {
         0.1
     } else {
@@ -263,7 +263,7 @@ fn graph_canvas(
     nodes: &[AgentNode],
     selected: Option<usize>,
     following: bool,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let width = 1150.0f32;
@@ -431,7 +431,7 @@ fn node_card(
     node: &AgentNode,
     selected: bool,
     following: bool,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
@@ -440,9 +440,9 @@ fn node_card(
     let accent = tone_color(
         p,
         match node.kind {
-            AgentKind::Orchestrator => kestrel_domain::ProjectTone::Blue,
-            AgentKind::Subagent => kestrel_domain::ProjectTone::Violet,
-            AgentKind::Tool => kestrel_domain::ProjectTone::Teal,
+            AgentKind::Orchestrator => dunlin_domain::ProjectTone::Blue,
+            AgentKind::Subagent => dunlin_domain::ProjectTone::Violet,
+            AgentKind::Tool => dunlin_domain::ProjectTone::Teal,
         },
     );
     let base_y = node.y;
@@ -663,7 +663,7 @@ fn legend_item(label: &str, color: Hsla, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn node_detail(node: &AgentNode, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+fn node_detail(node: &AgentNode, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
     let detail = div()
         .absolute()

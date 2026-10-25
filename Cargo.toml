@@ -6,18 +6,20 @@ members = ["apps/desktop", "crates/*"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"
-license = "Apache-2.0"
+license = "MIT"
+authors = ["Dunlin contributors"]
+repository = "https://github.com/corapoid/dunlin"
+homepage = "https://github.com/corapoid/dunlin"
 
 [workspace.dependencies]
 gpui-kit = "0.8.0"
-kestrel-ui = { path = "crates/ui" }
-kestrel-domain = { path = "crates/domain" }
-kestrel-agent = { path = "crates/agent" }
-kestrel-storage = { path = "crates/storage" }
-kestrel-workspace = { path = "crates/workspace" }
-kestrel-usage = { path = "crates/usage" }
+dunlin-ui = { path = "crates/ui" }
+dunlin-domain = { path = "crates/domain" }
+dunlin-agent = { path = "crates/agent" }
+dunlin-storage = { path = "crates/storage" }
+dunlin-workspace = { path = "crates/workspace" }
+dunlin-usage = { path = "crates/usage" }
 notify = "8.2"
-notify-rust = { version = "4.18", default-features = false }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder", "NSDockTile"] }
 objc2-foundation = { version = "0.3", features = ["NSString"] }
@@ -43,10 +45,10 @@ gpui-pre-platform = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
-kestrel = { debug = 2 }
-kestrel-ui = { debug = 2 }
-kestrel-domain = { debug = 2 }
-kestrel-agent = { debug = 2 }
+dunlin = { debug = 2 }
+dunlin-ui = { debug = 2 }
+dunlin-domain = { debug = 2 }
+dunlin-agent = { debug = 2 }
 
 [profile.release]
 lto = "thin"

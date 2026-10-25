@@ -196,7 +196,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-search-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-search-{unique}"));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join(".env"), "SECRET=1\n").unwrap();
         fs::write(root.join("main.rs"), "let secret = 1;\n").unwrap();

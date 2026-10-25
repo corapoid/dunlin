@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Package the Kestrel binary as a native macOS .app bundle.
+# Package the Dunlin binary as a native macOS .app bundle.
 #
 # Usage:
 #   ./scripts/bundle-macos.sh              # use target/release, then target/debug
 #   ./scripts/bundle-macos.sh --build      # cargo build --release first
-#   KESTREL_CODESIGN_IDENTITY="Developer ID Application: ..." \
+#   DUNLIN_CODESIGN_IDENTITY="Developer ID Application: ..." \
 #     ./scripts/bundle-macos.sh --build
 set -euo pipefail
 
@@ -17,43 +17,46 @@ if [[ "${1:-}" == "--build" ]]; then
 fi
 
 if [[ "$BUILD" == "1" ]]; then
-  cargo build --release -p kestrel
+  cargo build --release -p dunlin
 fi
 
-BIN="${KESTREL_BIN:-}"
+BIN="${DUNLIN_BIN:-}"
 if [[ -z "$BIN" ]]; then
-  if [[ -x "target/release/kestrel" ]]; then
-    BIN="target/release/kestrel"
-  elif [[ -x "target/debug/kestrel" ]]; then
-    BIN="target/debug/kestrel"
+  if [[ -x "target/release/dunlin" ]]; then
+    BIN="target/release/dunlin"
+  elif [[ -x "target/debug/dunlin" ]]; then
+    BIN="target/debug/dunlin"
   else
-    echo "No Kestrel binary found. Run: cargo build -p kestrel" >&2
+    echo "No Dunlin binary found. Run: cargo build -p dunlin" >&2
     exit 1
   fi
 fi
 
-APP_NAME="${KESTREL_APP_NAME:-Kestrel}"
-BUNDLE_ID="${KESTREL_BUNDLE_ID:-dev.kestrel.ide}"
-VERSION="${KESTREL_VERSION:-0.1.0}"
-BUILD_NUMBER="${KESTREL_BUILD:-1}"
+APP_NAME="${DUNLIN_APP_NAME:-Dunlin}"
+BUNDLE_ID="${DUNLIN_BUNDLE_ID:-dev.dunlin.ide}"
+VERSION="${DUNLIN_VERSION:-0.1.0}"
+BUILD_NUMBER="${DUNLIN_BUILD:-1}"
 APP="dist/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 ICONSET="dist/$APP_NAME.iconset"
-MASTER="dist/kestrel-icon.png"
+MASTER="dist/dunlin-icon.png"
 
 rm -rf "$APP" "$ICONSET"
 mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "dist"
 
 cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
+cp LICENSE THIRD_PARTY_NOTICES.md "$RESOURCES/"
+cp licenses/Apache-2.0.txt "$RESOURCES/Apache-2.0.txt"
+cp assets/fonts/OFL.txt "$RESOURCES/Geist-OFL.txt"
 
 # Render the bundled SVG icon and expand it into an .icns.
 if command -v qlmanage >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
-  qlmanage -t -s 1024 -o dist assets/kestrel-icon.svg >/dev/null 2>&1
-  if [[ -f "dist/kestrel-icon.svg.png" ]]; then
-    mv "dist/kestrel-icon.svg.png" "$MASTER"
+  qlmanage -t -s 1024 -o dist assets/dunlin-icon.svg >/dev/null 2>&1
+  if [[ -f "dist/dunlin-icon.svg.png" ]]; then
+    mv "dist/dunlin-icon.svg.png" "$MASTER"
     for size in 16 32 128 256 512; do
       sips -z "$size" "$size" "$MASTER" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
       double=$((size * 2))
@@ -100,7 +103,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
 </plist>
 PLIST
 
-IDENTITY="${KESTREL_CODESIGN_IDENTITY:--}"
+IDENTITY="${DUNLIN_CODESIGN_IDENTITY:--}"
 if [[ "$IDENTITY" == "-" ]]; then
   codesign --force --deep --sign "$IDENTITY" "$APP"
 else
@@ -111,5 +114,5 @@ touch "$APP"
 echo "Built $APP"
 echo "Open with: open \"$APP\""
 if [[ "$IDENTITY" == "-" ]]; then
-  echo "Signed ad hoc. Set KESTREL_CODESIGN_IDENTITY for Developer ID signing and notarization."
+  echo "Signed ad hoc. Set DUNLIN_CODESIGN_IDENTITY for Developer ID signing and notarization."
 fi

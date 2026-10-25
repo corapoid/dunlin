@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Kestrel</string>
+	<string>Dunlin</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,6 +50,6 @@
 		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Kestrel connects to your self-hosted relay on the local network.</string>
+	<string>Dunlin connects to your self-hosted relay on the local network.</string>
 </dict>
 </plist>

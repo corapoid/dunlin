@@ -18,8 +18,8 @@ jobs:
   release:
     runs-on: macos-15
     env:
-      APP_NAME: ${{ vars.APP_NAME || 'Kestrel' }}
-      BUNDLE_ID: ${{ vars.BUNDLE_ID || 'dev.kestrel.ide' }}
+      APP_NAME: ${{ vars.APP_NAME || 'Dunlin' }}
+      BUNDLE_ID: ${{ vars.BUNDLE_ID || 'dev.dunlin.ide' }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -47,10 +47,10 @@ jobs:
 
       - name: Build
         env:
-          KESTREL_APP_NAME: ${{ env.APP_NAME }}
-          KESTREL_BUNDLE_ID: ${{ env.BUNDLE_ID }}
-          KESTREL_VERSION: ${{ steps.version.outputs.version }}
-          KESTREL_BUILD: ${{ github.run_number }}
+          DUNLIN_APP_NAME: ${{ env.APP_NAME }}
+          DUNLIN_BUNDLE_ID: ${{ env.BUNDLE_ID }}
+          DUNLIN_VERSION: ${{ steps.version.outputs.version }}
+          DUNLIN_BUILD: ${{ github.run_number }}
         run: |
           ./scripts/bundle-macos.sh --build
           ./scripts/bundle-relay.sh
@@ -69,13 +69,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')"
           test -n "$IDENTITY"
-          echo "KESTREL_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "DUNLIN_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Re-sign app
         if: ${{ env.APPLE_CERTIFICATE != '' }}
         run: |
           codesign --force --options runtime --timestamp \
-            --sign "$KESTREL_CODESIGN_IDENTITY" "dist/$APP_NAME.app"
+            --sign "$DUNLIN_CODESIGN_IDENTITY" "dist/$APP_NAME.app"
 
       - name: Package
         run: |
@@ -83,9 +83,9 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           ZIP="dist/$APP_NAME-$VERSION-macos-arm64.zip"
           DMG="dist/$APP_NAME-$VERSION-macos-arm64.dmg"
-          RELAY="dist/kestrel-relay-$VERSION-macos-arm64.tar.gz"
+          RELAY="dist/dunlin-relay-$VERSION-macos-arm64.tar.gz"
           ditto -c -k --keepParent "$APP" "$ZIP"
-          tar -czf "$RELAY" -C dist kestrel-relay
+          tar -czf "$RELAY" -C dist dunlin-relay
           mkdir -p dist/dmg
           cp -R "$APP" dist/dmg/
           ln -s /Applications dist/dmg/Applications
@@ -105,7 +105,7 @@ jobs:
           rm -f "$ZIP"
           ditto -c -k --keepParent "$APP" "$ZIP"
           shasum -a 256 "$ZIP" "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
-            "dist/kestrel-relay-$VERSION-macos-arm64.tar.gz" > dist/SHA256SUMS
+            "dist/dunlin-relay-$VERSION-macos-arm64.tar.gz" > dist/SHA256SUMS
 
       - name: Publish
         env:
@@ -130,7 +130,7 @@ jobs:
           gh release create "$TAG" \
             "dist/$APP_NAME-$VERSION-macos-arm64.zip" \
             "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
-            "dist/kestrel-relay-$VERSION-macos-arm64.tar.gz" \
+            "dist/dunlin-relay-$VERSION-macos-arm64.tar.gz" \
             dist/SHA256SUMS \
             --title "$APP_NAME $VERSION" \
             --notes-file "$NOTES" \

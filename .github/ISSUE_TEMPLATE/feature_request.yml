@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest a capability or a change in behavior
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the workflow that is slow, missing or confusing.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should Dunlin do? A rough sketch is enough.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing tools, workarounds or other designs you have tried.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chat and ACP harnesses
+        - Projects, explorer and editor
+        - Search
+        - Git
+        - Agent graph and trace
+        - Remote relay and iOS
+        - Settings and accessibility
+        - Performance
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and discussions first.
+          required: true
+        - label: This is not a request to bundle a proprietary harness or model.
+          required: true

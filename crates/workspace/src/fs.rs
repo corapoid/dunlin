@@ -184,7 +184,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("kestrel-fs-{name}-{unique}"));
+        let root = std::env::temp_dir().join(format!("dunlin-fs-{name}-{unique}"));
         fs::create_dir_all(&root).unwrap();
         root
     }

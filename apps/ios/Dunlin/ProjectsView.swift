@@ -35,7 +35,7 @@ struct ProjectsView: View {
                 }
             }
         }
-        .navigationTitle("Kestrel")
+        .navigationTitle("Dunlin")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink {

@@ -3,23 +3,23 @@
 
 use std::path::Path;
 
-use kestrel_domain::*;
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::Icon;
-use kestrel_ui::component::input::Input;
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_domain::*;
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
+use dunlin_ui::component::input::Input;
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 
 use crate::app::{
-    ContextMenuState, ContextTarget, KestrelApp, SettingsTab, status_palette, tone_color, tone_soft,
+    ContextMenuState, ContextTarget, DunlinApp, SettingsTab, status_palette, tone_color, tone_soft,
 };
 use crate::harness::HarnessStatus;
-use kestrel_workspace::tree::FileEntry;
+use dunlin_workspace::tree::FileEntry;
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     _window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let body = match this.section {
@@ -62,7 +62,7 @@ pub(crate) fn render(
     root.into_any_element()
 }
 
-fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let project = this.project();
     let tone = tone_color(&p, project.tone);
@@ -170,7 +170,7 @@ fn project_switcher(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
         .into_any_element()
 }
 
-fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let (title, count) = match this.section {
         SidebarSection::Projects => ("Projects", Some(this.projects.len())),
@@ -324,7 +324,7 @@ fn section_header(this: &KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
         .into_any_element()
 }
 
-fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let mut list = div().flex().flex_col().gap(px(2.)).px(px(6.)).pb(px(10.));
     let groups = this.project_groups.clone();
@@ -474,7 +474,7 @@ fn group_header(
     group: &ProjectGroup,
     count: usize,
     collapsed: bool,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let id = group.id.clone();
@@ -552,9 +552,9 @@ fn group_header(
 }
 
 fn project_row(
-    this: &KestrelApp,
+    this: &DunlinApp,
     index: usize,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let Some(project) = this.projects.get(index) else {
@@ -732,9 +732,9 @@ fn project_row(
 }
 
 fn project_group_picker(
-    this: &KestrelApp,
+    this: &DunlinApp,
     index: usize,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let current = this
@@ -857,7 +857,7 @@ fn project_group_picker(
         .into_any_element()
 }
 
-fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let project_name = this.project().name.clone();
     let branch = this
@@ -925,7 +925,7 @@ fn files_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement
 fn file_rows(
     entries: &[FileEntry],
     selected: Option<&str>,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> Vec<AnyElement> {
     let p = palette(cx);
     let mut rows = Vec::new();
@@ -1002,7 +1002,7 @@ fn file_rows(
     rows
 }
 
-fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let root = this.project().path.clone();
     let query = this.search_query.clone();
@@ -1193,7 +1193,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
     root_el.into_any_element()
 }
 
-fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let branch = if this.git.branch.is_empty() {
         this.project()
@@ -1619,7 +1619,7 @@ fn source_control_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> A
     .into_any_element()
 }
 
-fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let selected = this.selected_session;
     let sessions = this.sessions.clone();
@@ -1800,7 +1800,7 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
     .into_any_element()
 }
 
-fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn usage_footer(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let mut usages = Vec::new();
     if let Some(live) = this.session_usage() {
@@ -1999,9 +1999,9 @@ fn usage_footer(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
 }
 
 fn project_menu_row(
-    this: &KestrelApp,
+    this: &DunlinApp,
     index: usize,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let Some(project) = this.projects.get(index) else {
@@ -2091,7 +2091,7 @@ fn project_menu_row(
         .into_any_element()
 }
 
-fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElement {
+fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let trusted = this.project().trusted;
     let pinned = this.project().pinned;

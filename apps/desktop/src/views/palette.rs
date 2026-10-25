@@ -1,18 +1,18 @@
 //! The ⌘K command palette: a calm, keyboard-first launcher for navigation,
 //! project switching and workspace actions.
 
-use kestrel_ui::assets::IconName;
-use kestrel_ui::component::Icon;
-use kestrel_ui::component::input::Input;
-use kestrel_ui::prelude::FluentBuilder as _;
-use kestrel_ui::*;
+use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
+use dunlin_ui::component::input::Input;
+use dunlin_ui::prelude::FluentBuilder as _;
+use dunlin_ui::*;
 
-use crate::app::KestrelApp;
+use crate::app::DunlinApp;
 
 pub(crate) fn render(
-    this: &mut KestrelApp,
+    this: &mut DunlinApp,
     _window: &mut Window,
-    cx: &mut Context<KestrelApp>,
+    cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
     let show_shortcuts = this.show_shortcut_hints;

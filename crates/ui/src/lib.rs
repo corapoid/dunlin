@@ -9,7 +9,7 @@ pub use widgets::*;
 
 pub fn init(cx: &mut App) {
     // GPUI Kit owns the theme, input, dock and command registries. Install it
-    // before Kestrel overrides any tokens.
+    // before Dunlin overrides any tokens.
     gpui_kit::init(cx);
     theme::install(cx);
 }

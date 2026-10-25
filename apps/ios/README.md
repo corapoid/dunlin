@@ -1,6 +1,6 @@
-# Kestrel for iOS
+# Dunlin for iOS
 
-A native SwiftUI client for a self-hosted Kestrel relay. It connects over
+A native SwiftUI client for a self-hosted Dunlin relay. It connects over
 ACP-over-WebSocket, lists the projects the paired user can access, opens or
 continues remote sessions, streams agent messages and answers permission
 requests.
@@ -10,7 +10,7 @@ requests.
 - Xcode 15 or newer with an iOS 17 simulator.
 - `xcodegen` (`brew install xcodegen`) to generate the project from
   `project.yml`.
-- A running `kestrel-relay` reachable from the simulator or device.
+- A running `dunlin-relay` reachable from the simulator or device.
 
 > Xcode is **not installed** on the machine where this scaffold was created, so
 > the app has not been compiled yet. The Rust relay and the macOS client are
@@ -22,7 +22,7 @@ requests.
 brew install xcodegen
 cd apps/ios
 xcodegen
-open Kestrel.xcodeproj
+open Dunlin.xcodeproj
 ```
 
 Choose an iPhone simulator and run. In the simulator, `http://127.0.0.1:8787`
@@ -42,9 +42,9 @@ Then enter `https://<machine>.<tailnet>.ts.net` in the pairing screen.
 On the relay host:
 
 ```sh
-kestrel-relay user add marek
-kestrel-relay project add kestrel /path/to/repo --user marek
-kestrel-relay pair marek --ttl 10
+dunlin-relay user add marek
+dunlin-relay project add dunlin /path/to/repo --user marek
+dunlin-relay pair marek --ttl 10
 ```
 
 Enter the relay URL and the one-time code in the app. The relay returns a

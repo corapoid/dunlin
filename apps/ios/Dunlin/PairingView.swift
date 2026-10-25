@@ -21,7 +21,7 @@ struct PairingView: View {
                 TextField("ABC12345", text: $code)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                Text("Run `kestrel-relay pair <user>` on the server.")
+                Text("Run `dunlin-relay pair <user>` on the server.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -45,7 +45,7 @@ struct PairingView: View {
                 .disabled(model.loading || code.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .navigationTitle("Connect to Kestrel")
+        .navigationTitle("Connect to Dunlin")
     }
 }
 

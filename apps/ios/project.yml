@@ -1,6 +1,6 @@
-name: Kestrel
+name: Dunlin
 options:
-  bundleIdPrefix: dev.kestrel
+  bundleIdPrefix: dev.dunlin
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -10,17 +10,17 @@ settings:
     SWIFT_VERSION: "5.9"
 
 targets:
-  Kestrel:
+  Dunlin:
     type: application
     platform: iOS
     sources:
-      - path: Kestrel
+      - path: Dunlin
         excludes:
           - Info.plist
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.kestrel.ios
-        INFOPLIST_FILE: Kestrel/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: dev.dunlin.ios
+        INFOPLIST_FILE: Dunlin/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic

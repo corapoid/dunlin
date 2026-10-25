@@ -1,4 +1,4 @@
-# Kestrel — roadmapa
+# Dunlin — roadmapa
 
 Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
 
@@ -50,6 +50,9 @@ artefakty i wizualny edytor Markdown.
   CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
 - [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
   upgrade bazy, duży projekt, remote beta.
+- [ ] **R12. Bezpieczeństwo publicznego repo** — `SECURITY.md`, `CODEOWNERS`,
+  dependency review, secret scanning, CodeQL/cargo-deny, branch protection,
+  wymagane review dla ścieżek agent/network/auth, podpisane commity/release.
 
 Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
 unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
@@ -129,12 +132,16 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 ## M3a — Warsztat
 
 - [ ] **7. Git v2** (L)
-  - branch create/switch, log, stash, konflikty, worktree.
+  - branch create/switch, log, stash, konflikty, worktree,
+  - **git graph w głównym panelu** (DAG, refs, diff, checkout/merge/rebase/cherry-pick),
+  - **inline git blame** na linii kursora z hoverem na commit.
 - [ ] **8. Global search** (M)
   - FTS5 transkrypty/sesje + pliki, filtry, snippety.
 - [ ] **25. Terminal** (L)
   - PTY, VT, taby/splity, scrollback, search, linki, shell integration;
-  - lokalny, SSH, relay; powiadomienie o końcu długiej komendy.
+  - lokalny, SSH, relay; powiadomienie o końcu długiej komendy,
+  - spike: `libghostty-vt` vs `alacritty_terminal` (Ghostty jako referencja
+    renderowania/VT, bez zależności od webowego libghostty).
 - [ ] **26. Autowykrywanie komend** (S/M)
   - package.json, Cargo.toml, Makefile, justfile, pyproject, skrypty;
   - panel „Run”, ostatnie komendy.
@@ -176,3 +183,24 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 - [ ] **21. Sharing artefaktów** (M)
 - [ ] **20/13. Accessibility i gęstość UI** (M)
 - [ ] **iOS** — sync grup/usage/artefaktów, powiadomienia, build z Xcode.
+
+## M6 — Multi-agent orchestration
+
+Cel: agenci nie tylko współistnieją w sesjach, ale przekazują sobie pracę przez
+widoczny, kontrolowany graf. To rozwinięcie graph/trace i odpowiedź na potrzebę
+orkiestracji znaną z Orca/Augment Intent, ale oparte o ACP i nasze worktree.
+
+- [ ] **M6.1. Message bus** (L) — strukturalne wiadomości między sesjami,
+  inbox człowieka, trwałość w SQLite, uprawnienia nadawcy/odbiorcy.
+- [ ] **M6.2. Coordinator** (XL) — spec/task → dekompozycja → zależności →
+  przydział do harnessów/modeli; każdy subtask w osobnym worktree.
+- [ ] **M6.3. Handoff i review** (L) — zakończenie zadania automatycznie
+  uruchamia review/merge; konflikty: auto → agent → człowiek.
+- [ ] **M6.4. Model routing i budżet** (M) — model per rola, limity kosztu,
+  usage attribution per task.
+- [ ] **M6.5. Living spec / task board** (M) — spec aktualizowany przez agentów,
+  widok zależności i statusów w grafie.
+- [ ] **M6.6. Human gates** (M) — zatwierdzanie handoffów, merge i kosztownych
+  decyzji; pełny audit trail.
+
+Zależności: terminal, Git worktree, skills, automations, usage i graph.

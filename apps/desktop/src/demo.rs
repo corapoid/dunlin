@@ -1,4 +1,4 @@
-use kestrel_domain::*;
+use dunlin_domain::*;
 pub fn agent_nodes() -> Vec<AgentNode> {
     let node = |id: &str,
                 parent: Option<&str>,
@@ -361,7 +361,7 @@ pub fn trace_spans() -> Vec<TraceSpan> {
             2,
             0.00,
             0,
-            "shell · cargo check -p kestrel-agents",
+            "shell · cargo check -p dunlin-agents",
         ),
         span(
             "s14",
@@ -408,7 +408,7 @@ pub fn trace_spans() -> Vec<TraceSpan> {
         span(
             "s17",
             Some("s16"),
-            "cargo test -p kestrel-agents",
+            "cargo test -p dunlin-agents",
             "Test",
             SpanKind::Tool,
             SpanStatus::Running,

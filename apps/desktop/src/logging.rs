@@ -1,8 +1,8 @@
 //! Local diagnostics log.
 //!
-//! Kestrel writes lifecycle, harness and error messages to
-//! `~/Library/Logs/Kestrel/kestrel.log`. Prompt text and tool payloads are
-//! deliberately excluded; set `KESTREL_TRACE_HARNESS=1` for raw events on
+//! Dunlin writes lifecycle, harness and error messages to
+//! `~/Library/Logs/Dunlin/dunlin.log`. Prompt text and tool payloads are
+//! deliberately excluded; set `DUNLIN_TRACE_HARNESS=1` for raw events on
 //! stderr when debugging locally.
 
 use std::fs::{self, File, OpenOptions};
@@ -11,17 +11,17 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kestrel_agent::{HarnessEvent, HarnessUpdate};
+use dunlin_agent::{HarnessEvent, HarnessUpdate};
 
 static LOG: OnceLock<Mutex<Option<File>>> = OnceLock::new();
 
 pub(crate) fn log_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("KESTREL_LOG_FILE") {
+    if let Some(path) = std::env::var_os("DUNLIN_LOG_FILE") {
         return PathBuf::from(path);
     }
     std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Library/Logs/Kestrel/kestrel.log"))
-        .unwrap_or_else(|| PathBuf::from("kestrel.log"))
+        .map(|home| PathBuf::from(home).join("Library/Logs/Dunlin/dunlin.log"))
+        .unwrap_or_else(|| PathBuf::from("dunlin.log"))
 }
 
 pub(crate) fn init() {
@@ -47,7 +47,7 @@ pub(crate) fn init() {
         write("PANIC", &info.to_string());
         default_hook(info);
     }));
-    info("Kestrel starting");
+    info("Dunlin starting");
 }
 
 pub(crate) fn info(message: &str) {
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn log_path_is_stable() {
-        assert!(log_path().to_string_lossy().ends_with("kestrel.log"));
+        assert!(log_path().to_string_lossy().ends_with("dunlin.log"));
         assert!(!display_path().is_empty());
     }
 }

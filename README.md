@@ -1,68 +1,166 @@
-# Kestrel
+<p align="center">
+  <img src="assets/dunlin-icon.svg" alt="Dunlin" width="84" />
+</p>
 
-A fast, native, agent-first IDE written in Rust. Kestrel pairs a calm, keyboard-driven workspace with a real [Agent Client Protocol](https://agentclientprotocol.com) client, so the same app can drive OpenCode, Claude Code, Codex, or any custom ACP harness.
+<h1 align="center">Dunlin</h1>
 
-No Electron. No webview. No Monaco. The entire UI is GPUI, the data layer is SQLite, and source control shells out to the system `git`.
+<p align="center">
+  A native, agent-first IDE for macOS.<br/>
+  Built in Rust and GPUI. No Electron, no webview, no Monaco.
+</p>
 
-## Status
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2ea44f" />
+  <img alt="Platform: macOS 15+ Apple Silicon" src="https://img.shields.io/badge/macOS%2015%2B-Apple%20Silicon-111111" />
+  <img alt="Status: public beta" src="https://img.shields.io/badge/status-public%20beta-f0a020" />
+</p>
 
-Kestrel is an early MVP that runs natively on macOS. The chat surface is wired to live ACP sessions, including streaming messages, thoughts, tool calls, plans, usage updates and permission prompts. Files open in a lightweight syntax-highlighted editor with dirty tracking, `⌘S` save, optional autosave, an unsaved-changes prompt and external-change detection. New files are created through the native save panel. Transcripts can be copied as Markdown from the session menu. Projects, sessions and transcripts persist across launches; sessions and projects can be removed with a confirmation step, and settings, theme, the last open project and session, and the window frame are restored on startup.
+<p align="center">
+  <img src="docs/screenshots/chat.png" alt="A permission request inside a Dunlin conversation" width="100%" />
+</p>
 
-Prompt queueing keeps follow-up instructions when the current turn is still running; entries can be edited, reordered or removed before dispatch. A debounced project watcher refreshes the explorer and source control after external edits. Turns and permission requests raise a macOS notification when the window is in the background, and waiting sessions update the Dock badge. Missing project folders are flagged in the sidebar with a **Locate folder…** recovery action.
+Dunlin pairs a calm, keyboard-driven workspace with a real
+[Agent Client Protocol](https://agentclientprotocol.com) client. One app can
+drive OpenCode, Claude Code, Codex or any custom ACP harness, with streaming
+messages, plans, tool calls, diffs and permission requests rendered as native
+UI instead of a terminal transcript.
 
-The living plan is in [`docs/PLAN.md`](docs/PLAN.md); the implementation order and current state are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The first public beta is intentionally small: **macOS 15+, Apple Silicon, local
+projects and a self-hosted relay beta**. The iOS client is a scaffold and is not
+part of this release.
 
-Projects can be organised into user-defined groups such as **Private** and **Work** from the Projects sidebar. Groups collapse, persist across launches, and can be renamed or deleted without deleting their projects. Use the `…` action on a project to move it between groups, or **New group…** to add a section.
+## Why Dunlin
 
-Kestrel can also connect a project to a self-hosted relay. The relay owns the working tree, git, search and the ACP harness, while the macOS client keeps the full explorer, editor, source control, search, chat, graph and trace surfaces. Remote sessions live on the server, so they keep running when the Mac is closed and can be continued from another paired device. A native SwiftUI iOS client is included as a scaffold in `apps/ios`; it needs Xcode, which is not installed on the current machine.
+- **Truly native.** The entire interface is GPUI. The SQLite database is local,
+  source control uses the system `git`, and there is no browser runtime in the
+  loop.
+- **ACP first.** Dunlin speaks the structured Agent Client Protocol directly.
+  Tool calls and permission requests become real cards and diffs, not ANSI
+  text to parse.
+- **Local-first.** Projects, sessions and transcripts stay on your Mac. There
+  is no telemetry, no bundled model and no account.
+- **Built for follow-ups.** Queue prompts while a turn is running, edit or
+  retry a message, copy the agent's answer, and revisit the transcript later.
+- **Self-hosted remote.** Pair another Mac or iPhone with your own relay.
+  Sessions keep running on the relay, and another device can take over.
 
-The agent graph and trace waterfall are projections of the live transcript. Plan steps or recent tool calls become graph nodes; timestamps and tool durations become trace spans. Empty sessions show a labelled preview of the surfaces until the first prompt arrives.
+## A tour
 
-Source control reads the system `git` CLI: branch, staged and unstaged entries, per-file line counts, stage/unstage, discard, stage all, commits, amend, fast-forward pull, push and branch switching. Every change opens a read-only unified diff. Source control refreshes when an agent turn finishes. The explorer rescans too, and an open editor with no unsaved edits reloads from disk. Project search runs on GPUI's background executor and skips build, VCS and secret files. Codex subscription windows are read live from the local Codex app-server; Claude Code reports when it needs a `user:profile` login, and OpenCode stays explicitly estimated. Local projects keep all of this on the machine; remote projects use the self-hosted relay described below.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/onboarding.png" alt="Dunlin onboarding" />
+      <br/><sub><b>Open a folder.</b> No demo projects, no hidden workspace. A folder is all Dunlin needs.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/settings.png" alt="Dunlin settings" />
+      <br/><sub><b>Make it yours.</b> Theme, harness, permissions, notifications and keyboard hints.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/graph.png" alt="Dunlin agent graph" />
+      <br/><sub><b>See the plan.</b> Plan steps and tool calls become a live agent graph.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/trace.png" alt="Dunlin trace waterfall" />
+      <br/><sub><b>See the time.</b> Every turn, model call, tool and permission becomes a trace span.</sub>
+    </td>
+  </tr>
+</table>
 
-## Requirements
+## Features
 
-- macOS 15 or newer
+### Chat and harnesses
+
+- Streaming assistant output, reasoning, plans, tool calls and usage updates.
+- Permission cards with allow-once, always-allow and reject choices.
+- Unified diffs previewed inline before or after a tool writes a file.
+- Prompt queue with edit, reorder, remove and clear while a turn is running.
+- Message actions: copy, retry and edit. Agent responses can be copied as
+  Markdown.
+- Session history with persisted transcripts and interruption recovery.
+- OpenCode (default), Claude Code, Codex and custom ACP commands. Each project
+  can override the harness and permission mode.
+
+### Workspace
+
+- File explorer with a debounced watcher and missing-folder recovery.
+- Syntax-highlighted editor with dirty tracking, `⌘S`, optional autosave,
+  external-change detection and conflict recovery.
+- Project search that skips build, VCS and secret files.
+- Source control backed by the system `git`: status, stage, unstage, discard,
+  commit, amend, pull, push, branches and read-only diffs.
+- Agent graph and trace waterfall projected from the live transcript.
+- Project groups, pinned ordering and per-project settings.
+
+### Remote relay
+
+- Self-hosted `dunlin-relay` with accounts, devices and project grants.
+- One-time pairing codes; device tokens live in the macOS Keychain.
+- ACP over WebSocket with session leases and explicit takeover.
+- Transcript snapshots so another device can show history.
+- macOS seatbelt sandbox for the harness, denying other projects and common
+  credential stores.
+
+## Install
+
+### Download the beta
+
+The current beta is ad-hoc signed because there is no Apple Developer ID yet.
+macOS Gatekeeper may ask you to approve the app in
+**System Settings → Privacy & Security**.
+
+Release artifacts are published on the
+[releases page](https://github.com/corapoid/dunlin/releases):
+
+- `Dunlin-<version>-macos-arm64.dmg`
+- `Dunlin-<version>-macos-arm64.zip`
+- `dunlin-relay-<version>-macos-arm64.tar.gz`
+- `SHA256SUMS`
+
+The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
+supported in 0.1.
+
+### Build from source
+
+Requirements:
+
+- macOS 15 or newer on Apple Silicon
 - Rust 1.92 or newer (`rustup` recommended)
-- A harness that speaks ACP over stdio. OpenCode is the default: `opencode acp`.
-- `git` on `PATH` for source control
-
-## Build and run
+- `git` on `PATH`
+- An ACP harness for real agent work, for example `opencode acp`
 
 ```sh
-cargo run -p kestrel
+git clone https://github.com/corapoid/dunlin.git
+cd dunlin
+cargo run -p dunlin
 ```
 
-The first launch creates `~/Library/Application Support/Kestrel/kestrel.db` and shows the onboarding screen. Open a folder to create the first project; nothing is read from the build directory. Set `KESTREL_DATA_DIR` to use a different data directory.
+The first launch creates `~/Library/Application Support/Dunlin/dunlin.db` and
+shows onboarding. Set `DUNLIN_DATA_DIR` to use a different data directory.
 
-For a release build:
-
-```sh
-cargo build --release -p kestrel
-```
-
-## macOS app bundle
+To build a local app bundle:
 
 ```sh
 ./scripts/bundle-macos.sh --build
-open dist/Kestrel.app
+open dist/Dunlin.app
 ```
 
-The script copies the release binary, renders `assets/kestrel-icon.svg` into an `.icns`, writes `Info.plist`, and applies an ad-hoc signature. For distribution, sign with a Developer ID and notarize:
+The script renders `assets/dunlin-icon.svg`, writes `Info.plist`, copies the
+license notices into the bundle and applies an ad-hoc signature. To sign with a
+Developer ID:
 
 ```sh
-KESTREL_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+DUNLIN_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   ./scripts/bundle-macos.sh --build
-ditto -c -k --keepParent dist/Kestrel.app dist/Kestrel.app.zip
-xcrun notarytool submit dist/Kestrel.app.zip --keychain-profile KESTREL --wait
-xcrun stapler staple dist/Kestrel.app
 ```
-
-Notarization packaging is intentionally manual for now.
 
 ## Harnesses
 
-Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit the custom ACP command. Kestrel checks whether each command is installed and connects automatically when a harness is selected.
+Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit the
+custom ACP command. Dunlin checks whether each command is installed and
+connects when a project opens.
 
 | Harness | Command |
 | --- | --- |
@@ -71,35 +169,28 @@ Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit 
 | OpenAI Codex | `codex-acp` |
 | Custom ACP | Any command that speaks ACP over stdio |
 
-The default is OpenCode. Selecting a different harness restarts the ACP process when auto-connect is enabled. Each project can override the harness and permission mode from **Project settings…** in its context menu; global settings remain the fallback.
-
-Permission requests are surfaced as cards in the chat. The permissions tab controls whether Kestrel asks, auto-approves, or runs read-only.
+The default is OpenCode. Permission modes are **Ask every time**, **Read-only**
+and **Auto-approve**. ACP permissions are never auto-approved by the relay.
 
 ## Remote relay
 
-`kestrel-relay` is a small self-hosted server. It stores accounts, devices, project grants, a session index and — by default — transcript snapshots. OpenCode remains the source of truth for live sessions; the relay's snapshot lets another device show history and provides a backup. No prompt or tool payload is written to the relay log.
-
-The relay spawns one ACP harness per connection and exposes it over WebSocket, so the macOS app and the iPhone share the same remote sessions.
+`dunlin-relay` is a small self-hosted server. It stores accounts, devices,
+project grants, a session index and, by default, transcript snapshots. OpenCode
+remains the source of truth for live sessions; the relay's snapshot lets another
+device show history and provides a backup.
 
 Build and initialise it on the machine that has the repositories:
 
 ```sh
-cargo build -p kestrel-relay
-./target/debug/kestrel-relay init
-./target/debug/kestrel-relay user add marek
-./target/debug/kestrel-relay project add kestrel /Users/me/git/kestrel --user marek
-./target/debug/kestrel-relay pair marek --ttl 10
-./target/debug/kestrel-relay serve
+cargo build -p dunlin-relay
+./target/debug/dunlin-relay init
+./target/debug/dunlin-relay user add marek
+./target/debug/dunlin-relay project add dunlin /Users/me/git/dunlin --user marek
+./target/debug/dunlin-relay pair marek --ttl 10
+./target/debug/dunlin-relay serve
 ```
 
-For a standalone release binary:
-
-```sh
-./scripts/bundle-relay.sh
-./dist/kestrel-relay serve
-```
-
-Optional `~/.config/kestrel/relay.toml`:
+Optional `~/.config/dunlin/relay.toml`:
 
 ```toml
 listen = "127.0.0.1:8787"
@@ -109,85 +200,104 @@ sandbox = true          # macOS seatbelt: deny other projects and credentials
 store_transcripts = true
 ```
 
-`serve --config ~/.config/kestrel/relay.toml` uses it. CLI flags and `KESTREL_RELAY_*` environment variables override the file.
+`serve --config ~/.config/dunlin/relay.toml` uses it. CLI flags and
+`DUNLIN_RELAY_*` environment variables override the file.
 
-`serve` listens on `127.0.0.1:8787` by default. For a phone or another Mac, expose it over Tailscale:
+`serve` listens on `127.0.0.1:8787` by default. For a phone or another Mac,
+expose it over Tailscale:
 
 ```sh
 tailscale serve --bg --https=443 http://127.0.0.1:8787
 ```
 
-Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in **Settings → Remote** on macOS, or in the iOS app. A paired device receives its own token; revoke it with `kestrel-relay revoke <device-id>`.
+Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
+**Settings → Remote** on macOS, or in the iOS app. A paired device receives its
+own token; revoke it with `dunlin-relay revoke <device-id>`.
 
-Remote projects support the full macOS surface: explorer, editor with save, search, source control, diffs, chat, permissions, graph and trace. The only difference from a local project is that files and the session live on the relay. A session can be opened on one device at a time; if another device is active, use **Take over session** in the session menu or the **Take over** button on iOS. ACP permissions are never auto-approved by the relay. Composer attachments are uploaded to `.kestrel/attachments` on the relay and kept out of `git status` through `.git/info/exclude`.
+Remote projects support the full macOS surface: explorer, editor with save,
+search, source control, diffs, chat, permissions, graph and trace. A session can
+be opened on one device at a time; if another device is active, use **Take over
+session** in the session menu or the **Take over** button on iOS. Composer
+attachments are uploaded to `.dunlin/attachments` on the relay and kept out of
+`git status` through `.git/info/exclude`.
 
-Saves use an optimistic modification-time check on both local and remote files. If a file changed since it was opened, Kestrel blocks the save and offers **Reload** (take the newer version) or **Overwrite** (force the local buffer).
+If the client disconnects while a turn is running, the relay keeps the harness
+alive for `linger_secs` (15 minutes by default) so the turn can finish and the
+result is persisted. Permission requests raised during that window are
+auto-cancelled. Set `linger_secs` or `DUNLIN_RELAY_LINGER_SECS` to change the
+window.
 
-If the client disconnects while a turn is running, the relay keeps the harness alive for `linger_secs` (15 minutes by default) so the turn can finish and the result is persisted by OpenCode. Permission requests raised during that window are auto-cancelled. Set `linger_secs` in the relay config or `KESTREL_RELAY_LINGER_SECS` to change the window.
+Users are isolated: each account sees only granted projects and its own
+sessions. All relay users currently share the OpenCode credentials installed on
+the server. The macOS relay runs each harness under a seatbelt profile that
+denies other project roots and common credential stores (`.ssh`, `.gnupg`,
+`.aws`, browser profiles, Documents/Desktop/Downloads). This is a best-effort
+privacy boundary, not a container; use separate OS accounts or containers for
+hard isolation.
 
-Users are isolated: each account sees only granted projects and its own sessions. All relay users currently share the OpenCode credentials installed on the server. On macOS the relay runs each harness under a seatbelt profile that denies other project roots and common credential stores (`.ssh`, `.gnupg`, `.aws`, browser profiles, Documents/Desktop/Downloads). This is a best-effort privacy boundary, not a container; disable it with `sandbox = false` if a harness needs broader filesystem access, and use separate OS accounts or containers for hard isolation.
+The relay database is not encrypted at rest. Set `store_transcripts = false` to
+keep only metadata, and use FileVault or an encrypted volume on the relay host.
 
-Transcript snapshots are stored in the relay's SQLite database. Set `store_transcripts = false` in the relay config (or `KESTREL_RELAY_STORE_TRANSCRIPTS=0`) to keep only metadata. The database is not encrypted at rest; use FileVault or an encrypted volume on the relay host.
+## How Dunlin compares with Orca
 
-## iOS
+[Orca](https://github.com/stablyai/orca) is an excellent, much more mature
+AI orchestrator and the closest point of reference for this project. It is also
+MIT-licensed. The comparison below is about fit, not quality.
 
-The SwiftUI client lives in `apps/ios`. It supports pairing, projects, sessions, chat, permissions and takeover. Generate the Xcode project with XcodeGen:
+| | **Dunlin 0.1 beta** | **Orca** |
+| --- | --- | --- |
+| Foundation | Rust + GPUI; no browser runtime | Electron + Chromium |
+| Agent integration | Structured ACP client | CLI agents in terminal sessions |
+| Parallel worktrees | Planned | Yes, a core feature |
+| Terminal | Planned | Ghostty-class terminal with splits |
+| Git | Status, commit, push, branches, diffs | Worktrees, PRs, Linear, diff annotation |
+| Agent graph and trace | Live projections of the transcript | Session and task views |
+| Remote | Self-hosted relay with session takeover | SSH worktrees, mobile companion |
+| Mobile | iOS scaffold; not in 0.1 | Shipped iOS and Android apps |
+| Platforms | macOS 15+, Apple Silicon | macOS, Windows, Linux |
+| Maturity | Early public beta | Mature, shipping daily |
+| License | MIT | MIT |
 
-```sh
-brew install xcodegen
-cd apps/ios && xcodegen && open Kestrel.xcodeproj
-```
+**Choose Orca** if you want terminal-native agents, parallel worktrees, a mature
+mobile companion, SSH hosts or Windows/Linux support today.
 
-See `apps/ios/README.md` for simulator and Tailscale setup. Xcode is required and is not installed on the current machine, so the iOS target has only been syntax-checked.
+**Dunlin may fit** if you want a native ACP client that treats tool calls and
+permissions as structured UI, a small local-first workspace, and a self-hosted
+relay you can run yourself.
 
-## Keyboard
+If Dunlin is missing something you need, open an issue. The roadmap is public
+and intentionally honest about what is not built yet.
 
-| Shortcut | Action |
-| --- | --- |
-| `⌘K` | Command palette |
-| `⌘1` / `⌘2` / `⌘3` | Chat / agent graph / trace |
-| `⌘,` | Settings |
-| `⌘O` | Add a project folder |
-| `⌘N` | New session |
-| `⌘⇧F` | Project search |
-| `⌘⇧L` | Toggle light and dark theme |
-| `⌘S` | Save the open file |
-| `⌘↵` | Send prompt |
-| `Esc` | Close palette, settings, diff, inspector or project menu |
+## What is not in 0.1
 
-## Architecture
+- iOS build and sync (the SwiftUI client is a scaffold).
+- Terminal and shell integration.
+- Computer use.
+- Automations, skills and artifacts.
+- Visual Markdown editor.
+- Parallel worktrees and multi-agent orchestration.
+- Universal or Intel builds.
 
-```
-apps/desktop        GPUI application, views, git and search integration
-apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
-crates/ui           Kobra-themed design system on top of GPUI Kit
-crates/domain       Shared project, session, usage, graph and trace types
-crates/workspace    Tree, search, git and filesystem operations shared by local and remote
-crates/agent        Reusable ACP client running on a dedicated worker thread
-crates/relay        Self-hosted relay: accounts, pairing, grants, ACP-over-WS and workspace APIs
-crates/storage      SQLite persistence (WAL, foreign keys, migrations)
-```
-
-The ACP worker owns all protocol I/O. The UI sends commands and receives events over channels, so a slow model or child process never blocks the render thread. Permission handlers respond from a spawned task to keep the ACP dispatch loop moving.
-
-Data lives in SQLite with WAL enabled. Projects and sessions are upserted as they change; transcripts are saved when a turn finishes, when a permission is resolved, when switching sessions and on shutdown. Settings are stored as JSON in the same database, so new options can be added without a schema migration. Settings → Advanced can clear every conversation while keeping projects and settings.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the release gate and the next
+milestones, and [`docs/PLAN.md`](docs/PLAN.md) for the architecture.
 
 ## Development
 
-Run the full test suite:
-
 ```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets
 cargo test --workspace
+./scripts/relay-smoke.sh
 ```
 
 The agent crate includes deterministic smoke tools:
 
 ```sh
 # End-to-end ACP turn against a real harness
-cargo run -p kestrel-agent --bin harness_smoke -- "opencode acp" "Reply with: HARNESS OK"
+cargo run -p dunlin-agent --bin harness_smoke -- "opencode acp" "Reply with: HARNESS OK"
 
 # Permission round-trip against the bundled mock agent
-cargo build -p kestrel-agent --bins
+cargo build -p dunlin-agent --bins
 ./target/debug/permission_smoke allow
 ./target/debug/permission_smoke reject
 
@@ -197,20 +307,54 @@ cargo build -p kestrel-agent --bins
 
 Useful diagnostics:
 
-- `KESTREL_TRACE_HARNESS=1` logs every harness event to stderr.
-- `KESTREL_HARNESS_COMMAND="..."` overrides the configured harness command for one run.
-- `KESTREL_DATA_DIR=/path` redirects the SQLite database.
-- `KESTREL_LOG_FILE=/path` redirects the lifecycle log (default `~/Library/Logs/Kestrel/kestrel.log`).
-- `KESTREL_CODEX_BIN=/path/to/codex` overrides Codex detection for live usage probes.
-- `KESTREL_AUTOPROMPT="..."` sends a prompt once the harness connects; useful for smoke tests.
-- `KESTREL_RELAY_DB=/path` and `KESTREL_RELAY_LISTEN=addr` configure the relay.
-- `KESTREL_RELAY_HARNESS="opencode acp"` sets the command the relay spawns.
-- `KESTREL_RELAY_LINGER_SECS=900` keeps an in-flight turn alive after disconnect.
-- `KESTREL_RELAY_SANDBOX=0` disables the macOS seatbelt profile.
-- `KESTREL_RELAY_STORE_TRANSCRIPTS=0` keeps only relay metadata.
-- `KESTREL_RELAY_DEBUG=1` prints the sandbox profile and forwards harness stderr.
-- `KESTREL_REMOTE_TOKEN=...` is a test-only fallback for the macOS remote token.
+- `DUNLIN_TRACE_HARNESS=1` logs every harness event to stderr.
+- `DUNLIN_HARNESS_COMMAND="..."` overrides the configured harness command for one run.
+- `DUNLIN_DATA_DIR=/path` redirects the SQLite database.
+- `DUNLIN_LOG_FILE=/path` redirects the lifecycle log (default `~/Library/Logs/Dunlin/dunlin.log`).
+- `DUNLIN_CODEX_BIN=/path/to/codex` overrides Codex detection for live usage probes.
+- `DUNLIN_AUTOPROMPT="..."` sends a prompt once the harness connects.
+- `DUNLIN_RELAY_DB=/path` and `DUNLIN_RELAY_LISTEN=addr` configure the relay.
+- `DUNLIN_RELAY_HARNESS="opencode acp"` sets the command the relay spawns.
+- `DUNLIN_RELAY_LINGER_SECS=900` keeps an in-flight turn alive after disconnect.
+- `DUNLIN_RELAY_SANDBOX=0` disables the macOS seatbelt profile.
+- `DUNLIN_RELAY_STORE_TRANSCRIPTS=0` keeps only relay metadata.
+- `DUNLIN_RELAY_DEBUG=1` prints the sandbox profile and forwards harness stderr.
+- `DUNLIN_REMOTE_TOKEN=...` is a test-only fallback for the macOS remote token.
+
+## Architecture
+
+```
+apps/desktop        GPUI application, views, git, search and local state
+apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
+crates/ui           Design system on top of GPUI Kit
+crates/domain       Shared project, session, usage, graph and trace types
+crates/workspace    Tree, search, git and filesystem operations
+crates/agent        Reusable ACP client on a dedicated worker thread
+crates/relay        Self-hosted relay: accounts, pairing, grants, ACP-over-WS
+crates/storage      SQLite persistence (WAL, foreign keys, migrations)
+```
+
+The ACP worker owns all protocol I/O. The UI sends commands and receives events
+over channels, so a slow model or child process never blocks the render thread.
+Permission handlers respond from a spawned task to keep the ACP dispatch loop
+moving.
+
+Data lives in SQLite with WAL enabled. Projects and sessions are upserted as
+they change; transcripts are saved when a turn finishes, when a permission is
+resolved, when switching sessions and on shutdown. Settings are stored as JSON
+in the same database, so new options can be added without a schema migration.
+
+## Security
+
+Please report vulnerabilities privately as described in
+[`SECURITY.md`](SECURITY.md). Do not open a public issue for a security problem.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). The project is early; small, focused
+pull requests are easiest to review.
 
 ## License
 
-Apache-2.0.
+Dunlin is released under the [MIT License](LICENSE). Bundled fonts and
+dependencies are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

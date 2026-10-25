@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use kestrel_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, PermissionKind};
+use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, PermissionKind};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "allow".into());
@@ -102,7 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn mock_agent_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Ok(path) = std::env::var("KESTREL_MOCK_AGENT") {
+    if let Ok(path) = std::env::var("DUNLIN_MOCK_AGENT") {
         return Ok(PathBuf::from(path));
     }
     let exe = std::env::current_exe()?;
@@ -114,7 +114,7 @@ fn mock_agent_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         Ok(candidate)
     } else {
         Err(format!(
-            "mock agent not found at {}; build it with `cargo build -p kestrel-agent --bins`",
+            "mock agent not found at {}; build it with `cargo build -p dunlin-agent --bins`",
             candidate.display()
         )
         .into())

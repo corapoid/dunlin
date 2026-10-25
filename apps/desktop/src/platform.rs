@@ -1,25 +1,17 @@
 //! Small macOS integrations that do not belong to a single view.
 
-/// Show a native notification. Failures are logged, never fatal: a missing
-/// notification permission must not interrupt an agent turn.
-pub(crate) fn notify(title: &str, body: &str) {
-    // `mac-notification-sys` asks LaunchServices for the bundle identifier. A
-    // bare `target/debug/kestrel` has none, and macOS reacts by opening a
-    // "Choose Application" panel. Skip notifications outside a real app bundle;
-    // the release app always runs from `Kestrel.app/Contents/MacOS`.
-    let in_bundle = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.to_str().map(str::to_string))
-        .is_some_and(|path| path.contains(".app/Contents/MacOS/"));
-    if !in_bundle {
-        crate::logging::info("notification skipped: not running from an app bundle");
-        return;
-    }
-    let mut notification = notify_rust::Notification::new();
-    notification.appname("Kestrel").summary(title).body(body);
-    if let Err(error) = notification.show() {
-        crate::logging::warn(&format!("notification: {error}"));
-    }
+use dunlin_ui::*;
+
+/// Show a native notification through GPUI's `UNUserNotificationCenter`
+/// integration. Authorization is requested lazily on the first notification;
+/// development binaries without an app bundle are ignored by the platform.
+pub(crate) fn notify(cx: &App, title: &str, body: &str) {
+    cx.show_system_notification(SystemNotification {
+        tag: format!("dunlin-{}", uuid::Uuid::now_v7()).into(),
+        title: title.to_string().into(),
+        body: body.to_string().into(),
+        actions: Vec::new(),
+    });
 }
 
 /// Set or clear the Dock badge. Must be called on the main thread.

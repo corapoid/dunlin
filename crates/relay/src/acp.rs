@@ -61,7 +61,7 @@ pub async fn bridge(
         &project.path,
         &other_projects,
     );
-    let stderr = if std::env::var_os("KESTREL_RELAY_DEBUG").is_some() {
+    let stderr = if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
         Stdio::inherit()
     } else {
         Stdio::null()
@@ -743,7 +743,7 @@ fn harness_command(
     if config.sandbox && cfg!(target_os = "macos") && Path::new("/usr/bin/sandbox-exec").is_file() {
         let mut command = Command::new("/usr/bin/sandbox-exec");
         let profile = sandbox_profile(project_path, other_projects, &config.harness);
-        if std::env::var_os("KESTREL_RELAY_DEBUG").is_some() {
+        if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
             eprintln!("[relay] sandbox profile:\n{profile}");
         }
         command.arg("-p").arg(profile).arg(program).args(args);

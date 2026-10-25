@@ -8,15 +8,15 @@ use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use kestrel_agent::{
+use dunlin_agent::{
     AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, PermissionChoice, PermissionKind,
     PlanItem, PlanStatus, ToolCallDelta, ToolCallView,
 };
-use kestrel_domain::{PermissionMode, SessionStatus, ToolStatus};
-use kestrel_ui::*;
+use dunlin_domain::{PermissionMode, SessionStatus, ToolStatus};
+use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::app::{KestrelApp, PendingRemoteSession};
+use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
 
 /// One rendered entry in the conversation.
@@ -284,7 +284,7 @@ impl HarnessState {
     }
 }
 
-impl KestrelApp {
+impl DunlinApp {
     /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
         if self.harness.status.is_busy() {
@@ -353,7 +353,7 @@ impl KestrelApp {
             return;
         }
 
-        let command = std::env::var("KESTREL_HARNESS_COMMAND")
+        let command = std::env::var("DUNLIN_HARNESS_COMMAND")
             .ok()
             .filter(|command| !command.trim().is_empty())
             .unwrap_or_else(|| {
@@ -711,9 +711,9 @@ impl KestrelApp {
     /// Notify only when the window is in the background and the user kept
     /// desktop notifications enabled. The Dock badge is updated separately so
     /// it stays visible while the app is active too.
-    fn notify_if_background(&self, title: &str, body: &str) {
+    fn notify_if_background(&self, title: &str, body: &str, cx: &App) {
         if self.notifications_enabled && !self.app_active {
-            crate::platform::notify(title, body);
+            crate::platform::notify(cx, title, body);
         }
     }
 
@@ -763,7 +763,7 @@ impl KestrelApp {
     }
 
     fn handle_harness_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
-        if std::env::var_os("KESTREL_TRACE_HARNESS").is_some() {
+        if std::env::var_os("DUNLIN_TRACE_HARNESS").is_some() {
             eprintln!("[harness] {event:?}");
         }
         logging::harness_event(&event);
@@ -833,6 +833,7 @@ impl KestrelApp {
                     self.notify_if_background(
                         "Permission requested",
                         &format!("{title} · {session_title}"),
+                        cx,
                     );
                 } else if let Some(harness) = self.harness.harness.as_ref() {
                     // A prompt from a session we left behind must not block the
@@ -869,6 +870,7 @@ impl KestrelApp {
                             "Turn complete"
                         },
                         &session_title,
+                        cx,
                     );
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
@@ -896,7 +898,7 @@ impl KestrelApp {
                     message: message.clone(),
                     at_ms: now_ms(),
                 });
-                self.notify_if_background("Kestrel needs attention", &message);
+                self.notify_if_background("Dunlin needs attention", &message, cx);
                 if matches!(self.harness.status, HarnessStatus::Starting) {
                     self.harness.status = HarnessStatus::Failed(message.clone());
                     self.update_active_session(|session| {
@@ -1134,7 +1136,7 @@ impl KestrelApp {
 
     pub(crate) fn update_active_session(
         &mut self,
-        update: impl FnOnce(&mut kestrel_domain::SessionSummary),
+        update: impl FnOnce(&mut dunlin_domain::SessionSummary),
     ) {
         let Some(session) = self.sessions.get_mut(self.selected_session) else {
             return;
@@ -1151,7 +1153,7 @@ impl KestrelApp {
         self.persist_session(&stored);
     }
 
-    pub(crate) fn persist_session(&self, session: &kestrel_domain::SessionSummary) {
+    pub(crate) fn persist_session(&self, session: &dunlin_domain::SessionSummary) {
         if let Some(store) = &self.store {
             let _ = store.upsert_session(session);
         }
@@ -1396,7 +1398,7 @@ mod tests {
     #[test]
     fn detects_executables_on_path() {
         assert!(command_available("sh"));
-        assert!(!command_available("kestrel-definitely-not-installed"));
+        assert!(!command_available("dunlin-definitely-not-installed"));
     }
 
     #[test]
@@ -1427,9 +1429,9 @@ mod tests {
                 at_ms: 2,
             },
             ChatItem::Plan {
-                items: vec![kestrel_agent::PlanItem {
+                items: vec![dunlin_agent::PlanItem {
                     content: "Read files".into(),
-                    status: kestrel_agent::PlanStatus::Completed,
+                    status: dunlin_agent::PlanStatus::Completed,
                 }],
                 at_ms: 3,
             },

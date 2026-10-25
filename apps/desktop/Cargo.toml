@@ -1,24 +1,23 @@
 [package]
-name = "kestrel"
+name = "dunlin"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "kestrel"
+name = "dunlin"
 path = "src/main.rs"
 
 [dependencies]
 gpui-kit.workspace = true
-kestrel-ui.workspace = true
-kestrel-domain.workspace = true
-kestrel-agent.workspace = true
-kestrel-storage.workspace = true
-kestrel-workspace.workspace = true
-kestrel-usage.workspace = true
+dunlin-ui.workspace = true
+dunlin-domain.workspace = true
+dunlin-agent.workspace = true
+dunlin-storage.workspace = true
+dunlin-workspace.workspace = true
+dunlin-usage.workspace = true
 notify.workspace = true
-notify-rust.workspace = true
 objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-foundation.workspace = true

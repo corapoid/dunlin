@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use kestrel_agent::{AcpHarness, HarnessConfig, HarnessEvent};
+use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
