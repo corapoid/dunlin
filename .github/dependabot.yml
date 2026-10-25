@@ -1,16 +1,103 @@
 version: 2
+
 updates:
   - package-ecosystem: cargo
     directory: "/"
+    target-branch: "main"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Warsaw"
+    open-pull-requests-limit: 8
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "cargo"
+      include: "scope"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
-      rust-dependencies:
+      gpui:
+        patterns:
+          - "gpui*"
+        update-types:
+          - "minor"
+          - "patch"
+      agent-protocol:
+        patterns:
+          - "agent-client-protocol*"
+        update-types:
+          - "minor"
+          - "patch"
+      runtime:
+        patterns:
+          - "tokio*"
+          - "axum"
+          - "hyper*"
+          - "tower*"
+          - "rustls*"
+          - "futures-*"
+        update-types:
+          - "minor"
+          - "patch"
+      storage-and-serialization:
+        patterns:
+          - "rusqlite"
+          - "serde*"
+          - "thiserror"
+          - "uuid"
+        update-types:
+          - "minor"
+          - "patch"
+      remaining-patches:
         patterns:
           - "*"
+        exclude-patterns:
+          - "gpui*"
+          - "agent-client-protocol*"
+          - "tokio*"
+          - "axum"
+          - "hyper*"
+          - "tower*"
+          - "rustls*"
+          - "futures-*"
+          - "rusqlite"
+          - "serde*"
+          - "thiserror"
+          - "uuid"
+        update-types:
+          - "patch"
+
   - package-ecosystem: github-actions
     directory: "/"
+    target-branch: "main"
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Warsaw"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+      - "github_actions"
+    commit-message:
+      prefix: "actions"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

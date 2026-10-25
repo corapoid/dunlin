@@ -65,7 +65,8 @@ jobs:
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
           security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          read -r -a EXISTING_KEYCHAINS <<< "$(security list-keychains -d user | tr -d '"')"
+          security list-keychains -d user -s "$KEYCHAIN" "${EXISTING_KEYCHAINS[@]}"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')"
           test -n "$IDENTITY"
@@ -114,6 +115,10 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
           NOTES="dist/release-notes.md"
+          RELEASE_FLAGS=()
+          if [[ "$VERSION" == *-* ]]; then
+            RELEASE_FLAGS+=(--prerelease)
+          fi
           {
             echo "$APP_NAME $VERSION"
             echo
@@ -135,4 +140,4 @@ jobs:
             --title "$APP_NAME $VERSION" \
             --notes-file "$NOTES" \
             --target "$GITHUB_SHA" \
-            $([[ "$VERSION" == *-* ]] && echo "--prerelease")
+            "${RELEASE_FLAGS[@]}"
