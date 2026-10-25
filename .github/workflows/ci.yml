@@ -9,11 +9,22 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Lint workflows
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        run: |
+          brew install actionlint
+          actionlint
 
       - uses: dtolnay/rust-toolchain@stable
         with:

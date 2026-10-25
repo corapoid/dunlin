@@ -11,12 +11,17 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   release:
     runs-on: macos-15
+    timeout-minutes: 60
     env:
       APP_NAME: ${{ vars.APP_NAME || 'Dunlin' }}
       BUNDLE_ID: ${{ vars.BUNDLE_ID || 'dev.dunlin.ide' }}

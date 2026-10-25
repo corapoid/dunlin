@@ -22,18 +22,18 @@ updates:
       semver-major-days: 30
       semver-minor-days: 7
       semver-patch-days: 3
+    # Minor and major Rust updates stay as individual PRs: many of our
+    # dependencies are still 0.x, where a minor bump is a breaking change.
     groups:
       gpui:
         patterns:
           - "gpui*"
         update-types:
-          - "minor"
           - "patch"
       agent-protocol:
         patterns:
           - "agent-client-protocol*"
         update-types:
-          - "minor"
           - "patch"
       runtime:
         patterns:
@@ -44,7 +44,6 @@ updates:
           - "rustls*"
           - "futures-*"
         update-types:
-          - "minor"
           - "patch"
       storage-and-serialization:
         patterns:
@@ -53,7 +52,6 @@ updates:
           - "thiserror"
           - "uuid"
         update-types:
-          - "minor"
           - "patch"
       remaining-patches:
         patterns:
