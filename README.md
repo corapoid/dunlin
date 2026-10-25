@@ -13,6 +13,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2ea44f" />
   <img alt="Platform: macOS 15+ Apple Silicon" src="https://img.shields.io/badge/macOS%2015%2B-Apple%20Silicon-111111" />
   <img alt="Status: public beta" src="https://img.shields.io/badge/status-public%20beta-f0a020" />
+  <a href="https://github.com/corapoid/dunlin/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corapoid/dunlin/actions/workflows/ci.yml/badge.svg" /></a>
 </p>
 
 <p align="center">
