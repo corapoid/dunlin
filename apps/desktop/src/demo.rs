@@ -13,6 +13,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             running_sessions: 2,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         },
         Project {
             id: "atlas".into(),
@@ -25,6 +26,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             running_sessions: 1,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         },
         Project {
             id: "pulse".into(),
@@ -37,6 +39,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             running_sessions: 0,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         },
         Project {
             id: "tokens".into(),
@@ -49,6 +52,7 @@ pub fn projects(root: &str) -> Vec<Project> {
             running_sessions: 0,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         },
     ]
 }

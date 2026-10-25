@@ -88,6 +88,34 @@ pub struct Project {
     pub remote: Option<RemoteProject>,
     #[serde(default)]
     pub group_id: Option<Id>,
+    #[serde(default)]
+    pub settings: ProjectSettings,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PermissionMode {
+    #[default]
+    Ask,
+    ReadOnly,
+    AutoApprove,
+}
+
+impl PermissionMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            PermissionMode::Ask => "Ask every time",
+            PermissionMode::ReadOnly => "Read-only",
+            PermissionMode::AutoApprove => "Auto-approve",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ProjectSettings {
+    #[serde(default)]
+    pub harness: Option<String>,
+    #[serde(default)]
+    pub permission_mode: Option<PermissionMode>,
 }
 
 /// A user-defined section in the project switcher, such as Private or Work.

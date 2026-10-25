@@ -138,6 +138,15 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 5 {
+            self.connection.execute_batch(
+                r#"
+                ALTER TABLE projects ADD COLUMN settings TEXT;
+
+                PRAGMA user_version = 5;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
@@ -148,10 +157,11 @@ impl Store {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
+        let settings = serde_json::to_string(&project.settings)?;
         self.connection.execute(
             r#"
-            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote, group_id)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote, group_id, settings)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
@@ -160,7 +170,8 @@ impl Store {
                 pinned = excluded.pinned,
                 trusted = excluded.trusted,
                 remote = excluded.remote,
-                group_id = excluded.group_id
+                group_id = excluded.group_id,
+                settings = excluded.settings
             "#,
             params![
                 project.id,
@@ -172,6 +183,7 @@ impl Store {
                 project.trusted as i64,
                 remote,
                 project.group_id,
+                settings,
             ],
         )?;
         Ok(())
@@ -179,11 +191,12 @@ impl Store {
 
     pub fn projects(&self) -> Result<Vec<Project>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name, path, branch, tone, pinned, trusted, remote, group_id FROM projects ORDER BY created_at",
+            "SELECT id, name, path, branch, tone, pinned, trusted, remote, group_id, settings FROM projects ORDER BY created_at",
         )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(4)?;
             let remote: Option<String> = row.get(7)?;
+            let settings: Option<String> = row.get(9)?;
             Ok(Project {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -197,6 +210,10 @@ impl Store {
                     .as_deref()
                     .and_then(|value| serde_json::from_str(value).ok()),
                 group_id: row.get(8)?,
+                settings: settings
+                    .as_deref()
+                    .and_then(|value| serde_json::from_str(value).ok())
+                    .unwrap_or_default(),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -408,7 +425,9 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kestrel_domain::{ProjectTone, RemoteProject, SessionOrigin, SessionStatus};
+    use kestrel_domain::{
+        PermissionMode, ProjectTone, RemoteProject, SessionOrigin, SessionStatus,
+    };
 
     fn project() -> Project {
         Project {
@@ -422,6 +441,7 @@ mod tests {
             running_sessions: 0,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         }
     }
 
@@ -511,6 +531,19 @@ mod tests {
         store.delete_project_group("group-work").unwrap();
         assert!(store.project_groups().unwrap().is_empty());
         assert!(store.projects().unwrap()[0].group_id.is_none());
+    }
+
+    #[test]
+    fn round_trips_project_overrides() {
+        let store = Store::open_in_memory().unwrap();
+        let mut project = project();
+        project.settings.harness = Some("Claude Code".into());
+        project.settings.permission_mode = Some(PermissionMode::ReadOnly);
+        store.upsert_project(&project).unwrap();
+
+        let stored = &store.projects().unwrap()[0].settings;
+        assert_eq!(stored.harness.as_deref(), Some("Claude Code"));
+        assert_eq!(stored.permission_mode, Some(PermissionMode::ReadOnly));
     }
 
     #[test]

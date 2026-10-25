@@ -465,6 +465,7 @@ mod tests {
             running_sessions: 0,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         }
     }
 

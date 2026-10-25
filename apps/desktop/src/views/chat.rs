@@ -1600,7 +1600,7 @@ fn composer(
         this.default_harness.clone()
     };
     let model = this.session().model.clone();
-    let permission = this.permission_mode;
+    let permission = this.effective_permission_mode();
     let status = this.harness.status.clone();
     let (status_color, status_soft) = harness_tone(&p, &status);
     let running = this.harness.running;

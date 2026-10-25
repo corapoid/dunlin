@@ -9,7 +9,8 @@ use kestrel_ui::component::{ActiveTheme, Icon};
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 
-use crate::app::{KestrelApp, PermissionMode, SettingsTab, tone_color, tone_soft};
+use crate::app::{KestrelApp, SettingsTab, tone_color, tone_soft};
+use kestrel_domain::PermissionMode;
 
 pub(crate) fn render(
     this: &mut KestrelApp,

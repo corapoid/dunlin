@@ -2354,10 +2354,8 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.project_menu_open = false;
-                    this.settings_open = true;
-                    this.settings_tab = SettingsTab::General;
-                    cx.notify();
+                    let index = this.selected_project;
+                    this.open_project_settings(index, cx);
                 }))
                 .child(
                     Icon::new(IconName::Settings)

@@ -16,6 +16,7 @@ Zrealizowane w pierwszym kroku M1:
 - edycja i ponowienie promptu, podgląd unified diff przy tool callu,
 - prawy klik na projektach i sesjach,
 - inspector jako overlay w wąskim oknie,
+- per-project override harnessu i permission mode,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 
 Następne w M1: menu kontekstowe, pełne zwijanie sidebara, tokeny typografii w
@@ -62,7 +63,10 @@ agenta.
 ## M2 — Projekty, statystyki, onboarding
 
 - [ ] **10. Ustawienia per projekt** (M)
-  - harness/model/permission/env/skills, precedence global → grupa → projekt.
+  - [x] override harness i permission mode, modal w menu projektu,
+  - [x] precedence global → projekt,
+  - [ ] model, env, ustawienia per grupa,
+  - [ ] automatyczne zastosowanie bez restartu harnessu.
 - [ ] **11. Grupy v2** (M)
   - drag & drop, kolejność, kolory, zagnieżdżanie, sync relay/iOS.
 - [ ] **12/28/31. Usage i statystyki** (XL)

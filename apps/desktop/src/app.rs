@@ -64,23 +64,6 @@ impl SettingsTab {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum PermissionMode {
-    Ask,
-    ReadOnly,
-    AutoApprove,
-}
-
-impl PermissionMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            PermissionMode::Ask => "Ask every time",
-            PermissionMode::ReadOnly => "Read-only",
-            PermissionMode::AutoApprove => "Auto-approve",
-        }
-    }
-}
-
 /// Everything Kestrel remembers between launches. Stored as one JSON value in
 /// SQLite so new fields can be added without another migration.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -329,6 +312,7 @@ pub(crate) struct KestrelApp {
     pub group_prompt: Option<GroupPrompt>,
     pub toast: Option<Toast>,
     pub context_menu: Option<ContextMenuState>,
+    pub project_settings_target: Option<usize>,
     pub group_input: Entity<InputState>,
     _group_subscription: Subscription,
     pub selected_project: usize,
@@ -657,6 +641,7 @@ impl KestrelApp {
             group_prompt: None,
             toast: None,
             context_menu: None,
+            project_settings_target: None,
             group_input,
             _group_subscription: group_subscription,
             selected_project: 0,
@@ -849,6 +834,21 @@ impl KestrelApp {
     pub(crate) fn project_path_missing(&self) -> bool {
         let project = self.project();
         !project.is_remote() && !Path::new(&project.path).is_dir()
+    }
+
+    pub(crate) fn effective_harness(&self) -> String {
+        self.project()
+            .settings
+            .harness
+            .clone()
+            .unwrap_or_else(|| self.default_harness.clone())
+    }
+
+    pub(crate) fn effective_permission_mode(&self) -> PermissionMode {
+        self.project()
+            .settings
+            .permission_mode
+            .unwrap_or(self.permission_mode)
     }
 
     pub(crate) fn session(&self) -> &SessionSummary {
@@ -1694,6 +1694,7 @@ impl KestrelApp {
             running_sessions: 0,
             remote: None,
             group_id: None,
+            settings: Default::default(),
         };
         if let Some(store) = &self.store {
             let _ = store.upsert_project(&project);
@@ -1901,6 +1902,68 @@ impl KestrelApp {
             self.collapsed_project_groups.push(id.to_string());
         }
         self.persist_settings(cx);
+        cx.notify();
+    }
+
+    pub(crate) fn open_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.context_menu = None;
+        self.project_menu_open = false;
+        self.project_settings_target = Some(index);
+        cx.notify();
+    }
+
+    pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
+        self.project_settings_target = None;
+        cx.notify();
+    }
+
+    fn store_project_settings(&mut self, index: usize) {
+        let Some(project) = self.projects.get(index) else {
+            return;
+        };
+        let stored = project.clone();
+        if let Some(store) = &self.store {
+            let _ = store.upsert_project(&stored);
+        }
+    }
+
+    pub(crate) fn set_project_harness(
+        &mut self,
+        index: usize,
+        harness: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(project) = self.projects.get_mut(index) {
+            project.settings.harness = harness;
+        }
+        self.store_project_settings(index);
+        self.persist_settings(cx);
+        self.notice = Some("Project harness updated · restart the harness to apply".into());
+        cx.notify();
+    }
+
+    pub(crate) fn set_project_permission(
+        &mut self,
+        index: usize,
+        mode: Option<PermissionMode>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(project) = self.projects.get_mut(index) {
+            project.settings.permission_mode = mode;
+        }
+        self.store_project_settings(index);
+        self.persist_settings(cx);
+        self.notice = Some("Project permission mode updated".into());
+        cx.notify();
+    }
+
+    pub(crate) fn reset_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
+        if let Some(project) = self.projects.get_mut(index) {
+            project.settings = ProjectSettings::default();
+        }
+        self.store_project_settings(index);
+        self.persist_settings(cx);
+        self.notice = Some("Project overrides cleared".into());
         cx.notify();
     }
 
@@ -2116,6 +2179,7 @@ impl KestrelApp {
                 path: info.path.clone(),
             }),
             group_id: None,
+            settings: Default::default(),
         };
         if let Some(store) = &self.store {
             let _ = store.upsert_project(&project);
@@ -2180,7 +2244,7 @@ impl KestrelApp {
         }
 
         let branch = self.project().branch.clone();
-        let session = blank_session(&project_id, &self.default_harness, branch);
+        let session = blank_session(&project_id, &self.effective_harness(), branch);
         self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.persist_session(&session);
@@ -2311,7 +2375,7 @@ impl KestrelApp {
 
         let project_id = self.project().id.clone();
         let branch = self.project().branch.clone();
-        let session = blank_session(&project_id, &self.default_harness, branch);
+        let session = blank_session(&project_id, &self.effective_harness(), branch);
         self.persist_session(&session);
         self.all_sessions.push(session.clone());
         self.sessions.push(session.clone());
@@ -2383,7 +2447,7 @@ impl KestrelApp {
             } else {
                 let project_id = self.project().id.clone();
                 let branch = self.project().branch.clone();
-                let session = blank_session(&project_id, &self.default_harness, branch);
+                let session = blank_session(&project_id, &self.effective_harness(), branch);
                 self.persist_session(&session);
                 self.all_sessions.push(session.clone());
                 self.sessions.push(session);
@@ -2854,7 +2918,11 @@ impl KestrelApp {
         }
 
         if self.sessions.is_empty() {
-            let session = blank_session(&project_id, &self.default_harness, project.branch.clone());
+            let session = blank_session(
+                &project_id,
+                &self.effective_harness(),
+                project.branch.clone(),
+            );
             self.persist_session(&session);
             self.all_sessions.push(session.clone());
             self.sessions.push(session);
@@ -5359,6 +5427,251 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    fn project_settings_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(index) = self.project_settings_target else {
+            return div().into_any_element();
+        };
+        let Some(project) = self.projects.get(index).cloned() else {
+            return div().into_any_element();
+        };
+        let selected_harness = project.settings.harness.clone();
+        let selected_permission = project.settings.permission_mode;
+        type ChipAction = Box<dyn Fn(&mut KestrelApp, &mut Context<KestrelApp>)>;
+
+        let chip =
+            |id: String, label: &str, active: bool, cx: &mut Context<Self>, action: ChipAction| {
+                div()
+                    .id(id)
+                    .h(px(25.))
+                    .px(px(8.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(if active { p.blue } else { p.border })
+                    .bg(if active { p.blue_soft } else { p.card })
+                    .flex()
+                    .items_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(move |this, _, _, cx| action(this, cx)))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(if active { p.blue } else { p.fg })
+                            .child(label.to_string()),
+                    )
+            };
+
+        div()
+            .id("project-settings-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .bg(p.overlay)
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_click(cx.listener(|this, _, _, cx| this.close_project_settings(cx)))
+            .child(
+                div()
+                    .id("project-settings-modal")
+                    .w(px(460.))
+                    .rounded(px(12.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .p(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                Icon::new(IconName::FolderCog)
+                                    .size(px(14.))
+                                    .text_color(p.muted_fg),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(13.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(p.fg)
+                                    .child(project.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .id("project-settings-close")
+                                    .size(px(22.))
+                                    .rounded(px(4.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.hover))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close_project_settings(cx);
+                                    }))
+                                    .child(
+                                        Icon::new(IconName::X).size(px(12.)).text_color(p.muted_fg),
+                                    ),
+                            ),
+                    )
+                    .child(div().text_size(px(11.0)).text_color(p.muted_fg).child(
+                        "Overrides apply to this project. Global settings remain the fallback.",
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family("Geist Mono")
+                            .text_color(p.muted_fg)
+                            .child("HARNESS"),
+                    )
+                    .child({
+                        let mut row = div().flex().flex_wrap().gap(px(4.));
+                        row = row.child(chip(
+                            "project-harness-default".into(),
+                            "Default",
+                            selected_harness.is_none(),
+                            cx,
+                            Box::new(move |this, cx| this.set_project_harness(index, None, cx)),
+                        ));
+                        for name in ["OpenCode", "Claude Code", "OpenAI Codex", "Custom ACP"] {
+                            let active = selected_harness.as_deref() == Some(name);
+                            row = row.child(chip(
+                                format!("project-harness-{name}"),
+                                name,
+                                active,
+                                cx,
+                                Box::new(move |this, cx| {
+                                    this.set_project_harness(index, Some(name.to_string()), cx)
+                                }),
+                            ));
+                        }
+                        row
+                    })
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .font_family("Geist Mono")
+                            .text_color(p.muted_fg)
+                            .child("PERMISSIONS"),
+                    )
+                    .child({
+                        let mut row = div().flex().flex_wrap().gap(px(4.));
+                        row = row.child(chip(
+                            "project-permission-default".into(),
+                            "Default",
+                            selected_permission.is_none(),
+                            cx,
+                            Box::new(move |this, cx| this.set_project_permission(index, None, cx)),
+                        ));
+                        for mode in [
+                            PermissionMode::Ask,
+                            PermissionMode::ReadOnly,
+                            PermissionMode::AutoApprove,
+                        ] {
+                            let active = selected_permission == Some(mode);
+                            row = row.child(chip(
+                                format!("project-permission-{}", mode.label()),
+                                mode.label(),
+                                active,
+                                cx,
+                                Box::new(move |this, cx| {
+                                    this.set_project_permission(index, Some(mode), cx)
+                                }),
+                            ));
+                        }
+                        row
+                    })
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(p.muted_fg.opacity(0.8))
+                            .child("Harness changes apply the next time the harness starts."),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .id("project-settings-reset")
+                                    .h(px(26.))
+                                    .px(px(8.))
+                                    .rounded(px(5.))
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .hover(move |style| style.bg(p.red_soft))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.reset_project_settings(index, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(p.red)
+                                            .child("Reset overrides"),
+                                    ),
+                            )
+                            .child(div().flex_1())
+                            .when(index == self.selected_project, |this| {
+                                this.child(
+                                    div()
+                                        .id("project-settings-restart")
+                                        .h(px(26.))
+                                        .px(px(8.))
+                                        .rounded(px(5.))
+                                        .border_1()
+                                        .border_color(p.border)
+                                        .flex()
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .hover(move |style| style.bg(p.hover))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.close_project_settings(cx);
+                                            this.restart_harness(cx);
+                                        }))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .text_color(p.fg)
+                                                .child("Restart harness"),
+                                        ),
+                                )
+                            })
+                            .child(
+                                div()
+                                    .id("project-settings-done")
+                                    .h(px(26.))
+                                    .px(px(10.))
+                                    .rounded(px(5.))
+                                    .bg(p.fg)
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close_project_settings(cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(p.bg)
+                                            .child("Done"),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn context_menu_overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let Some(state) = self.context_menu else {
@@ -5433,6 +5746,13 @@ impl KestrelApp {
                                 cx.notify();
                             }),
                         ))
+                        .child(
+                            item("ctx-project-settings", "Project settings…", p.fg).on_click(
+                                cx.listener(move |this, _, _, cx| {
+                                    this.open_project_settings(index, cx);
+                                }),
+                            ),
+                        )
                         .child(
                             item(
                                 "ctx-project-pin",
@@ -6289,6 +6609,9 @@ impl Render for KestrelApp {
             .context_menu
             .as_ref()
             .map(|_| self.context_menu_overlay(window, cx));
+        let project_settings = self
+            .project_settings_target
+            .map(|_| self.project_settings_modal(cx));
 
         div()
             .relative()
@@ -6335,6 +6658,7 @@ impl Render for KestrelApp {
             .children(group_modal)
             .children(toast)
             .children(context_menu)
+            .children(project_settings)
     }
 }
 
@@ -6659,10 +6983,10 @@ pub(crate) fn format_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, CommandItem, PermissionMode, StoredSettings, command_matches, display_path,
-        editor_language, format_bytes, path_inside, session_index_after_delete,
+        Command, CommandItem, StoredSettings, command_matches, display_path, editor_language,
+        format_bytes, path_inside, session_index_after_delete,
     };
-    use kestrel_domain::MainView;
+    use kestrel_domain::{MainView, PermissionMode};
     use kestrel_ui::assets::IconName;
     use std::path::Path;
 

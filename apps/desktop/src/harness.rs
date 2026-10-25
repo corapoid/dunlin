@@ -12,7 +12,7 @@ use kestrel_agent::{
     AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, PermissionChoice, PermissionKind,
     PlanItem, PlanStatus, ToolCallDelta, ToolCallView,
 };
-use kestrel_domain::{SessionStatus, ToolStatus};
+use kestrel_domain::{PermissionMode, SessionStatus, ToolStatus};
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
@@ -357,7 +357,7 @@ impl KestrelApp {
             .ok()
             .filter(|command| !command.trim().is_empty())
             .unwrap_or_else(|| {
-                harness_command(&self.default_harness, &self.custom_harness_command)
+                harness_command(&self.effective_harness(), &self.custom_harness_command)
             });
         self.start_harness(HarnessConfig::new(command, cwd), None, cx);
     }
@@ -1061,8 +1061,8 @@ impl KestrelApp {
         title: String,
         options: Vec<PermissionChoice>,
     ) {
-        let auto = match self.permission_mode {
-            crate::app::PermissionMode::AutoApprove => options
+        let auto = match self.effective_permission_mode() {
+            PermissionMode::AutoApprove => options
                 .iter()
                 .find(|option| option.kind == PermissionKind::AllowAlways)
                 .or_else(|| {
@@ -1071,7 +1071,7 @@ impl KestrelApp {
                         .find(|option| option.kind == PermissionKind::AllowOnce)
                 })
                 .cloned(),
-            crate::app::PermissionMode::ReadOnly => options
+            PermissionMode::ReadOnly => options
                 .iter()
                 .find(|option| {
                     matches!(
@@ -1080,7 +1080,7 @@ impl KestrelApp {
                     )
                 })
                 .cloned(),
-            crate::app::PermissionMode::Ask => None,
+            PermissionMode::Ask => None,
         };
 
         if let Some(choice) = auto {

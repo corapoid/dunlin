@@ -71,7 +71,7 @@ Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit 
 | OpenAI Codex | `codex-acp` |
 | Custom ACP | Any command that speaks ACP over stdio |
 
-The default is OpenCode. Selecting a different harness restarts the ACP process when auto-connect is enabled.
+The default is OpenCode. Selecting a different harness restarts the ACP process when auto-connect is enabled. Each project can override the harness and permission mode from **Project settings…** in its context menu; global settings remain the fallback.
 
 Permission requests are surfaced as cards in the chat. The permissions tab controls whether Kestrel asks, auto-approves, or runs read-only.
 
