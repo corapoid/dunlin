@@ -1,0 +1,85 @@
+---
+import { site } from "../lib/site";
+
+const steps = [
+  {
+    number: "01",
+    title: "Open a folder.",
+    body: "Point Dunlin at a local repository. No workspace import, no hidden project file, no demo data.",
+  },
+  {
+    number: "02",
+    title: "Choose a harness.",
+    body: "OpenCode by default. Claude Code, Codex or any custom ACP command, with a per project override.",
+  },
+  {
+    number: "03",
+    title: "Ship the turn.",
+    body: "Review the diff, commit and push. The transcript, graph and trace stay attached to the session.",
+  },
+];
+---
+
+<section class="border-b border-line">
+  <div class="page-container py-24 md:py-32">
+    <div class="grid gap-8 lg:grid-cols-[1fr_0.52fr] lg:items-end">
+      <div>
+        <p class="eyebrow text-clay" data-reveal>
+          03 / How it works
+        </p>
+        <h2
+          class="mt-6 max-w-[760px] font-serif text-5xl leading-[0.98] tracking-[-0.04em] sm:text-6xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          From folder to turn in three steps.
+        </h2>
+      </div>
+      <p
+        class="max-w-md text-base leading-7 text-ink/65"
+        data-reveal
+        style="--reveal-delay: 120ms"
+      >
+        Dunlin does not ask you to rebuild your workflow around it. It connects
+        to the harness and repository you already have.
+      </p>
+    </div>
+
+    <div class="mt-14 grid border-t border-line md:grid-cols-3">
+      {steps.map((step, index) => (
+        <div
+          class:list={[
+            "border-b border-line py-8 md:border-b-0 md:py-10",
+            index > 0 && "md:border-l md:border-line md:pl-8",
+            index < steps.length - 1 && "md:pr-8",
+          ]}
+          data-reveal
+          style={`--reveal-delay: ${index * 80}ms`}
+        >
+          <p class="font-serif text-5xl leading-none tracking-[-0.04em] text-clay/70">
+            {step.number}
+          </p>
+          <h3 class="mt-8 text-xl font-semibold tracking-tight text-ink">
+            {step.title}
+          </h3>
+          <p class="mt-3 max-w-xs text-sm leading-6 text-ink/65">{step.body}</p>
+        </div>
+      ))}
+    </div>
+
+    <div class="mt-10 flex flex-wrap items-center gap-3" data-reveal>
+      <a
+        href={`${site.github}#build-and-run`}
+        target="_blank"
+        rel="noreferrer"
+        class="text-link"
+      >
+        Read the quick start
+        <span aria-hidden="true">↗</span>
+      </a>
+      <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+        No account · no config file · no browser
+      </span>
+    </div>
+  </div>
+</section>

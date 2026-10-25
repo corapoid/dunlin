@@ -1,0 +1,32 @@
+---
+import Base from "../layouts/Base.astro";
+import BirdMark from "../components/BirdMark.astro";
+---
+
+<Base
+  title="Page not found — Dunlin"
+  description="This page is not part of the Dunlin site."
+  noindex
+>
+  <section class="relative flex min-h-[78vh] items-center overflow-hidden pb-20 pt-32">
+    <BirdMark class="pointer-events-none absolute -right-16 bottom-0 w-[460px] text-ink/[0.05]" />
+    <div class="page-container relative">
+      <p class="eyebrow text-clay">404 · Not found</p>
+      <h1 class="mt-6 max-w-[720px] font-serif text-6xl leading-[0.94] tracking-[-0.04em] sm:text-7xl">
+        This page flew away.
+      </h1>
+      <p class="mt-6 max-w-md text-base leading-7 text-ink/65">
+        The link may be old, or the page may not exist yet. The app is still
+        where you left it.
+      </p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a href="/" class="btn-primary">
+          Back to Dunlin
+        </a>
+        <a href="/download" class="btn-secondary">
+          Download the beta
+        </a>
+      </div>
+    </div>
+  </section>
+</Base>

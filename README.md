@@ -291,6 +291,18 @@ cargo test --workspace
 ./scripts/relay-smoke.sh
 ```
 
+The marketing site lives in [`web/`](web). It is a static Astro build with
+React islands, Tailwind CSS and self-hosted fonts:
+
+```sh
+cd web
+npm install
+npm run dev
+```
+
+See [`web/README.md`](web/README.md) for the design notes, social card and
+deployment instructions.
+
 The agent crate includes deterministic smoke tools:
 
 ```sh
@@ -327,6 +339,7 @@ Useful diagnostics:
 ```
 apps/desktop        GPUI application, views, git, search and local state
 apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
+web                 Astro marketing site (static build, React islands)
 crates/ui           Design system on top of GPUI Kit
 crates/domain       Shared project, session, usage, graph and trace types
 crates/workspace    Tree, search, git and filesystem operations

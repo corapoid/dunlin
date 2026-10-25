@@ -72,6 +72,78 @@ updates:
         update-types:
           - "patch"
 
+  - package-ecosystem: npm
+    directory: "/web"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Warsaw"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+      - "web"
+    commit-message:
+      prefix: "web"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      astro:
+        patterns:
+          - "astro"
+          - "@astrojs/*"
+        update-types:
+          - "minor"
+          - "patch"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+      tooling:
+        patterns:
+          - "typescript"
+          - "prettier"
+          - "prettier-plugin-astro"
+          - "postcss"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "vite"
+          - "sharp"
+          - "oxc-transform-react"
+        update-types:
+          - "patch"
+      remaining-patches:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "astro"
+          - "@astrojs/*"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "typescript"
+          - "prettier"
+          - "prettier-plugin-astro"
+          - "postcss"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "vite"
+          - "sharp"
+          - "oxc-transform-react"
+        update-types:
+          - "patch"
+
   - package-ecosystem: github-actions
     directory: "/"
     target-branch: "main"

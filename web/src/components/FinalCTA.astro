@@ -1,0 +1,54 @@
+---
+import BirdMark from "./BirdMark.astro";
+import { site } from "../lib/site";
+---
+
+<section class="relative overflow-hidden bg-clay-soft/45">
+  <BirdMark class="pointer-events-none absolute -bottom-20 -right-12 w-[420px] text-clay/[0.12]" />
+  <div class="page-container relative py-24 text-center md:py-32">
+    <p class="eyebrow justify-center text-clay" data-reveal>
+      07 / Get started
+    </p>
+    <h2
+      class="mx-auto mt-6 max-w-[780px] font-serif text-5xl leading-[0.96] tracking-[-0.04em] sm:text-6xl md:text-7xl"
+      data-reveal
+      style="--reveal-delay: 60ms"
+    >
+      Bring your agents home.
+    </h2>
+    <p
+      class="mx-auto mt-6 max-w-[520px] text-base leading-7 text-ink/65"
+      data-reveal
+      style="--reveal-delay: 120ms"
+    >
+      Download the Dunlin beta and open your first folder. No account, no
+      onboarding sequence, no browser in the loop.
+    </p>
+    <div
+      class="mt-9 flex flex-wrap items-center justify-center gap-3"
+      data-reveal
+      style="--reveal-delay: 180ms"
+    >
+      <a href="/download" class="btn-primary">
+        Download the beta
+        <span aria-hidden="true">↓</span>
+      </a>
+      <a
+        href={site.github}
+        target="_blank"
+        rel="noreferrer"
+        class="btn-secondary"
+      >
+        View on GitHub
+        <span aria-hidden="true">↗</span>
+      </a>
+    </div>
+    <p
+      class="mt-8 font-mono text-[11px] uppercase tracking-[0.12em] text-ink/40"
+      data-reveal
+      style="--reveal-delay: 240ms"
+    >
+      Free beta · Apple Silicon · macOS 15+ · MIT
+    </p>
+  </div>
+</section>

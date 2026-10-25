@@ -1,0 +1,105 @@
+---
+import { site } from "../lib/site";
+
+const points = [
+  "Pair with a one-time code; tokens live in the macOS Keychain.",
+  "Every account sees only the projects you grant it.",
+  "One active session lease, with an explicit takeover flow.",
+  "Transcript snapshots let another device catch up.",
+  "Harness runs under a macOS seatbelt profile on the relay.",
+];
+---
+
+<section id="remote" class="border-b border-line">
+  <div class="page-container py-24 md:py-32">
+    <div class="grid gap-14 lg:grid-cols-12 lg:items-center lg:gap-12">
+      <div class="lg:col-span-6">
+        <p class="eyebrow text-clay" data-reveal>
+          05 / Remote
+        </p>
+        <h2
+          class="mt-6 max-w-[620px] font-serif text-5xl leading-[0.98] tracking-[-0.04em] sm:text-6xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          Your machine, on your terms.
+        </h2>
+        <p
+          class="mt-7 max-w-[560px] text-base leading-7 text-ink/65"
+          data-reveal
+          style="--reveal-delay: 120ms"
+        >
+          Dunlin does not run a hosted cloud. The optional relay is a small
+          server you own. Pair a device, grant a project, and keep the session
+          alive when the laptop closes.
+        </p>
+
+        <ul class="mt-8 space-y-3" data-reveal style="--reveal-delay: 180ms">
+          {points.map((point) => (
+            <li class="flex items-start gap-3 text-sm leading-6 text-ink/70">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-moss"></span>
+              {point}
+            </li>
+          ))}
+        </ul>
+
+        <a
+          href={`${site.github}#remote-relay`}
+          target="_blank"
+          rel="noreferrer"
+          class="text-link mt-8"
+        >
+          Read the relay guide
+          <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+
+      <div class="lg:col-span-6" data-reveal style="--reveal-delay: 100ms">
+        <div class="overflow-hidden rounded-2xl border border-line bg-paper-soft shadow-[0_30px_80px_rgba(18,17,14,0.1)]">
+          <div class="flex items-center justify-between border-b border-line px-5 py-4">
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/35">
+              dunlin-relay
+            </span>
+            <span class="flex items-center gap-2 rounded-full bg-moss-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-moss">
+              <span class="size-1.5 rounded-full bg-moss"></span>
+              paired
+            </span>
+          </div>
+          <div class="bg-night p-5 font-mono text-[11px] leading-6 text-paper/65 sm:p-6">
+            <p>
+              <span class="text-moss">$</span> dunlin-relay serve
+            </p>
+            <p class="mt-2 text-paper/35">relay listening on 127.0.0.1:8787</p>
+            <p class="mt-4">
+              <span class="text-moss">$</span> dunlin-relay pair marek --ttl 10
+            </p>
+            <p class="mt-2 text-paper/35">one-time pairing code</p>
+            <p class="mt-1 text-lg tracking-[0.22em] text-amber">7K2Q-9M4P</p>
+            <p class="mt-4 text-paper/35">Mac · iPhone · paired devices</p>
+            <p class="mt-1 text-paper/75">session lease · mark · 120s</p>
+            <p class="mt-1 text-paper/75">
+              project grant · dunlin · read/write
+            </p>
+            <p class="mt-4 flex items-center gap-2 text-moss">
+              <span class="pulse-dot size-1.5 rounded-full bg-moss"></span>
+              harness alive · seatbelt on
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3">
+            <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-ink/35">
+              optional · self-hosted
+            </span>
+            <a
+              href={`${site.github}#remote-relay`}
+              target="_blank"
+              rel="noreferrer"
+              class="text-xs font-semibold text-ink underline decoration-ink/20 underline-offset-4 transition-colors duration-500 ease-fluid hover:text-clay"
+            >
+              Setup guide
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

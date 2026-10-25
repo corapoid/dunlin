@@ -1,0 +1,203 @@
+---
+import Base from "../layouts/Base.astro";
+import { site } from "../lib/site";
+---
+
+<Base
+  title="Download Dunlin 0.1.0-beta.1 for macOS"
+  description="Download the Dunlin public beta for macOS 15+ on Apple Silicon. Free, open source, and ad-hoc signed until the Apple Developer ID is available."
+>
+  <section class="relative overflow-hidden pb-16 pt-32 sm:pt-36 lg:pb-24 lg:pt-44">
+    <div class="page-container">
+      <div class="grid gap-14 lg:grid-cols-12 lg:gap-12">
+        <div class="lg:col-span-7">
+          <p class="eyebrow text-clay" data-reveal>
+            <span class="size-1.5 rounded-full bg-clay"></span>
+            Public beta · {site.version}
+          </p>
+          <h1
+            class="mt-6 max-w-[720px] font-serif text-6xl leading-[0.94] tracking-[-0.045em] sm:text-7xl"
+            data-reveal
+            style="--reveal-delay: 60ms"
+          >
+            Download Dunlin.
+          </h1>
+          <p
+            class="mt-7 max-w-[560px] text-base leading-7 text-ink/65 sm:text-lg sm:leading-8"
+            data-reveal
+            style="--reveal-delay: 120ms"
+          >
+            The first public beta is a native macOS app for Apple Silicon. Open
+            a folder, connect an ACP harness, and keep the whole turn in one
+            window.
+          </p>
+
+          <div
+            class="mt-9 flex flex-wrap items-center gap-3"
+            data-reveal
+            style="--reveal-delay: 180ms"
+          >
+            <a href={site.downloadDmg} class="btn-primary" download>
+              Download DMG
+              <span aria-hidden="true">↓</span>
+            </a>
+            <a href={site.downloadZip} class="btn-secondary" download>
+              Download ZIP
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+          <p
+            class="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-muted"
+            data-reveal
+            style="--reveal-delay: 220ms"
+          >
+            macOS 15+ · Apple Silicon · ad-hoc signed
+          </p>
+        </div>
+
+        <div class="lg:col-span-5" data-reveal style="--reveal-delay: 100ms">
+          <div class="overflow-hidden rounded-2xl border border-line bg-paper-soft">
+            <div class="flex items-center justify-between border-b border-line px-5 py-4">
+              <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/35">
+                Release
+              </span>
+              <span class="rounded-full bg-moss-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-moss">
+                beta
+              </span>
+            </div>
+            <dl class="divide-y divide-line">
+              <div class="flex items-center justify-between gap-4 px-5 py-4">
+                <dt class="text-sm text-ink/50">Version</dt>
+                <dd class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink/80">
+                  {site.version}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-5 py-4">
+                <dt class="text-sm text-ink/50">Architecture</dt>
+                <dd class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink/80">
+                  arm64
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-5 py-4">
+                <dt class="text-sm text-ink/50">Minimum</dt>
+                <dd class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink/80">
+                  macOS 15
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-5 py-4">
+                <dt class="text-sm text-ink/50">Checksums</dt>
+                <dd>
+                  <a
+                    href={site.checksums}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink underline decoration-ink/20 underline-offset-4 hover:text-clay"
+                  >
+                    SHA256
+                  </a>
+                </dd>
+              </div>
+            </dl>
+            <div class="border-t border-line bg-paper px-5 py-4">
+              <p class="text-xs leading-5 text-ink/55">
+                Need the relay too?{" "}
+                <a
+                  href={site.downloadRelay}
+                  class="font-semibold text-ink underline decoration-ink/20 underline-offset-4 hover:text-clay"
+                >
+                  Download dunlin-relay
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="border-y border-line bg-paper-soft/50">
+    <div class="page-container py-20 md:py-24">
+      <div class="grid gap-12 lg:grid-cols-2 lg:gap-16">
+        <div data-reveal>
+          <p class="eyebrow text-clay">Before you install</p>
+          <h2 class="mt-5 font-serif text-4xl leading-none tracking-[-0.03em] sm:text-5xl">
+            A short checklist.
+          </h2>
+          <ul class="mt-8 space-y-4 text-sm leading-6 text-ink/70">
+            <li class="flex gap-3">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-moss"></span>
+              macOS 15 or newer on an Apple Silicon Mac.
+            </li>
+            <li class="flex gap-3">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-moss"></span>
+              An ACP harness, such as{" "}
+              <span class="font-mono text-ink">opencode acp</span>.
+            </li>
+            <li class="flex gap-3">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-moss"></span>
+              Git on your PATH for source control.
+            </li>
+            <li class="flex gap-3">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-clay"></span>
+              No Intel build and no iOS app in this beta.
+            </li>
+          </ul>
+        </div>
+
+        <div data-reveal style="--reveal-delay: 100ms">
+          <p class="eyebrow text-clay">Install</p>
+          <h2 class="mt-5 font-serif text-4xl leading-none tracking-[-0.03em] sm:text-5xl">
+            Drag, open, approve.
+          </h2>
+          <ol class="mt-8 space-y-4 text-sm leading-6 text-ink/70">
+            <li class="flex gap-4">
+              <span class="font-mono text-xs text-clay">01</span>
+              Open the DMG and drag Dunlin to Applications.
+            </li>
+            <li class="flex gap-4">
+              <span class="font-mono text-xs text-clay">02</span>
+              Open Dunlin. macOS may block the ad-hoc signed beta.
+            </li>
+            <li class="flex gap-4">
+              <span class="font-mono text-xs text-clay">03</span>
+              Go to System Settings, Privacy &amp; Security, and choose Open
+              Anyway.
+            </li>
+            <li class="flex gap-4">
+              <span class="font-mono text-xs text-clay">04</span>
+              Pick a folder and a harness. That is the setup.
+            </li>
+          </ol>
+          <p class="mt-6 rounded-xl border border-clay/20 bg-clay-soft/40 px-4 py-3 text-xs leading-5 text-ink/60">
+            This build is ad-hoc signed because there is no Apple Developer ID
+            yet. It is still the same app that will be signed and notarized once
+            the account is available.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-container py-20 md:py-24">
+    <div class="flex flex-col items-start justify-between gap-6 border-t border-line pt-8 sm:flex-row sm:items-center">
+      <div>
+        <p class="font-serif text-3xl tracking-[-0.03em] sm:text-4xl">
+          Prefer to build it yourself?
+        </p>
+        <p class="mt-2 text-sm leading-6 text-ink/60">
+          Clone the repository and run{" "}
+          <span class="font-mono text-ink">cargo run -p dunlin</span>.
+        </p>
+      </div>
+      <a
+        href={site.github}
+        target="_blank"
+        rel="noreferrer"
+        class="btn-secondary"
+      >
+        View source
+        <span aria-hidden="true">↗</span>
+      </a>
+    </div>
+  </section>
+</Base>

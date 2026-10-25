@@ -1,0 +1,107 @@
+---
+import { site } from "../lib/site";
+
+const faqs = [
+  {
+    question: "What do I need to run Dunlin?",
+    answer:
+      "macOS 15 or newer on Apple Silicon, plus an ACP harness such as OpenCode. Git is optional for source control. Dunlin is a native app, so there is no Node runtime or browser to install.",
+  },
+  {
+    question: "Which harnesses are supported?",
+    answer:
+      "OpenCode is the default. Claude Code and Codex work through their ACP adapters, and you can point Dunlin at any command that speaks ACP over stdio. Each project can override the global harness and permission mode.",
+  },
+  {
+    question: "Is Dunlin free?",
+    answer:
+      "Yes. Dunlin is free and open source under the MIT license. There is no account, no trial and no paid tier in the current beta.",
+  },
+  {
+    question: "Does Dunlin send my code anywhere?",
+    answer:
+      "Dunlin has no telemetry and no bundled model. Local projects stay on your Mac and are handled by the harness you install. If you connect a self-hosted relay, files and sessions travel only to the server you run.",
+  },
+  {
+    question: "Does it work on Intel Macs?",
+    answer:
+      "Not in 0.1. The beta is arm64 only, for Apple Silicon. Intel support is not on the release gate.",
+  },
+  {
+    question: "Why does macOS warn when I open the beta?",
+    answer:
+      "The current beta is ad-hoc signed because there is no Apple Developer ID yet. Open System Settings, go to Privacy & Security, and approve Dunlin. Signed and notarized builds will replace this once the developer account is available.",
+  },
+  {
+    question: "Can I keep using my terminal?",
+    answer:
+      "Dunlin is not a terminal replacement. It runs ACP harnesses, not arbitrary shell sessions. A terminal and command discovery are on the roadmap; the current beta focuses on chat, files, Git, graph and trace.",
+  },
+  {
+    question: "Is there an iOS app?",
+    answer:
+      "There is a SwiftUI client scaffold in the repository, but it is not part of the 0.1 beta. Remote Mac to Mac sessions work through the relay today.",
+  },
+];
+---
+
+<section id="faq" class="border-b border-line">
+  <div class="page-container py-24 md:py-32">
+    <div class="grid gap-12 lg:grid-cols-[0.75fr_1.25fr] lg:gap-16">
+      <div>
+        <p class="eyebrow text-clay" data-reveal>
+          06 / Questions
+        </p>
+        <h2
+          class="mt-6 font-serif text-5xl leading-[0.98] tracking-[-0.04em] sm:text-6xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          The honest answers.
+        </h2>
+        <p
+          class="mt-6 max-w-xs text-base leading-7 text-ink/60"
+          data-reveal
+          style="--reveal-delay: 120ms"
+        >
+          Dunlin is an early beta. Here is what works today, and what does not.
+        </p>
+        <a
+          href={site.github}
+          target="_blank"
+          rel="noreferrer"
+          class="text-link mt-8"
+          data-reveal
+          style="--reveal-delay: 180ms"
+        >
+          Ask on GitHub
+          <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+
+      <div class="border-t border-line">
+        {faqs.map((faq, index) => (
+          <details
+            class="faq-item border-b border-line py-5"
+            data-reveal
+            style={`--reveal-delay: ${index * 40}ms`}
+          >
+            <summary class="flex items-center justify-between gap-6 text-base font-semibold leading-6 text-ink">
+              {faq.question}
+              <span
+                class="faq-plus relative flex size-5 shrink-0 items-center justify-center text-ink/40"
+                aria-hidden="true"
+              >
+                <span class="absolute h-px w-4 bg-current"></span>
+                <span class="absolute h-4 w-px bg-current"></span>
+              </span>
+            </summary>
+            <p class="max-w-2xl pt-3 text-sm leading-6 text-ink/65">
+              {faq.answer}
+            </p>
+          </details>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>

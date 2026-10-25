@@ -1,0 +1,58 @@
+---
+import Legal from "../layouts/Legal.astro";
+import { site } from "../lib/site";
+---
+
+<Legal
+  title="Privacy"
+  description="Dunlin does not collect analytics, telemetry, or accounts. The website is static and sets no cookies."
+  eyebrow="Legal · Privacy"
+>
+  <h2>Short version</h2>
+  <p>
+    Dunlin does not collect analytics, telemetry, or personal data. There is no
+    account and no sign in. The website is static and sets no cookies.
+  </p>
+
+  <h2>This website</h2>
+  <p>
+    The site is a static marketing page. Fonts are self hosted. There is no
+    third party analytics, advertising, or tracking script. The hosting provider
+    may keep standard access logs (IP address, user agent, requested URL) for
+    security and operations. Those logs are controlled by the host, not by
+    Dunlin.
+  </p>
+
+  <h2>Downloads</h2>
+  <p>
+    Downloads are served by GitHub Releases. GitHub may process request data
+    under its own privacy policy. Dunlin does not receive a notification when
+    you download a release.
+  </p>
+
+  <h2>The app</h2>
+  <ul>
+    <li>
+      Projects, sessions, transcripts and settings are stored locally in SQLite.
+    </li>
+    <li>No prompt, tool payload, or project file is sent to Dunlin servers.</li>
+    <li>
+      The harness you choose runs as a local child process. Its own privacy
+      policy and network behavior apply.
+    </li>
+    <li>
+      If you connect a relay, files and sessions go only to the server you run.
+      The relay operator controls that data.
+    </li>
+    <li>Relay tokens are stored in the macOS Keychain.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>
+    Questions or corrections: open an issue at
+    <a href={site.github} target="_blank" rel="noreferrer">
+      {site.github.replace("https://", "")}
+    </a>
+    .
+  </p>
+</Legal>

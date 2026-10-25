@@ -1,0 +1,76 @@
+---
+import "@fontsource-variable/manrope";
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource/geist-mono/400.css";
+import "../styles/global.css";
+import { getImage } from "astro:assets";
+import chatImport from "../assets/screenshots/chat.png";
+import BirdMark from "../components/BirdMark.astro";
+
+const chat = await getImage({
+  src: chatImport,
+  width: 900,
+  format: "webp",
+  quality: 86,
+});
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Dunlin — social card</title>
+  </head>
+  <body class="overflow-hidden bg-paper text-ink">
+    <main class="relative h-[630px] w-[1200px] overflow-hidden bg-paper">
+      <BirdMark class="pointer-events-none absolute -right-20 -top-20 w-[430px] text-ink/[0.06]" />
+      <div class="absolute inset-x-12 top-10 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <img
+            src="/brand/dunlin-icon.svg"
+            alt=""
+            width="34"
+            height="34"
+            class="size-[34px] rounded-[9px]"
+          />
+          <span class="text-lg font-semibold tracking-tight">Dunlin</span>
+        </div>
+        <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/40">
+          Native ACP workspace · macOS
+        </span>
+      </div>
+
+      <div class="absolute bottom-10 left-12 top-28 grid w-[560px] content-center gap-5">
+        <h1 class="font-serif text-7xl leading-[0.92] tracking-[-0.045em]">
+          Your coding agents.
+          <br />
+          In a real Mac app.
+        </h1>
+        <p class="max-w-[470px] text-lg leading-7 text-ink/65">
+          Chat, permissions, diffs, Git and traces. Rust and GPUI, without
+          Electron.
+        </p>
+        <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/40">
+          Free and open source · MIT · Apple Silicon
+        </p>
+      </div>
+
+      <div class="absolute -right-10 top-24 w-[660px] rotate-[-2deg] overflow-hidden rounded-2xl border border-night-line bg-night shadow-[0_30px_80px_rgba(18,17,14,0.25)]">
+        <img
+          src={chat.src}
+          alt=""
+          width="900"
+          height="569"
+          class="block h-auto w-full"
+        />
+      </div>
+
+      <div class="absolute bottom-10 right-12 flex items-center gap-2 rounded-full border border-ink/10 bg-paper-soft px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink/50">
+        <span class="size-1.5 rounded-full bg-moss"></span>
+        dunlin.sh
+      </div>
+    </main>
+  </body>
+</html>

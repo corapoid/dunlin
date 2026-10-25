@@ -1,0 +1,163 @@
+---
+import { getImage } from "astro:assets";
+import chatImport from "../assets/screenshots/chat.png";
+import graphImport from "../assets/screenshots/graph.png";
+import traceImport from "../assets/screenshots/trace.png";
+import AppShowcase from "./AppShowcase";
+import BirdMark from "./BirdMark.astro";
+import { site } from "../lib/site";
+
+const chat = await getImage({
+  src: chatImport,
+  width: 1600,
+  format: "webp",
+  quality: 82,
+});
+const graph = await getImage({
+  src: graphImport,
+  width: 1600,
+  format: "webp",
+  quality: 82,
+});
+const trace = await getImage({
+  src: traceImport,
+  width: 1600,
+  format: "webp",
+  quality: 82,
+});
+
+const shots = {
+  chat: {
+    src: chat.src,
+    alt: "Dunlin chat with a permission request for writing a file",
+  },
+  graph: {
+    src: graph.src,
+    alt: "Dunlin agent graph showing an orchestrator and three plan steps",
+  },
+  trace: {
+    src: trace.src,
+    alt: "Dunlin trace waterfall showing a turn, reasoning, plan, tool and permission",
+  },
+};
+---
+
+<section class="relative overflow-hidden pb-20 pt-32 sm:pt-36 lg:pb-28 lg:pt-44">
+  <BirdMark class="pointer-events-none absolute -right-24 -top-12 hidden w-[420px] text-ink/[0.045] lg:block" />
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="page-container relative">
+    <div class="grid items-center gap-14 lg:grid-cols-12 lg:gap-6">
+      <div class="lg:col-span-6">
+        <p class="eyebrow text-muted" data-reveal>
+          <span class="pulse-dot size-1.5 rounded-full bg-moss"></span>
+          Native ACP workspace for macOS
+        </p>
+
+        <h1
+          class="hero-heading mt-6 font-serif text-5xl leading-[0.94] tracking-[-0.045em] sm:text-6xl lg:text-7xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          Your coding agents.
+          <br />
+          In a real Mac app.
+        </h1>
+
+        <p
+          class="mt-7 max-w-[580px] text-base leading-7 text-ink/70 sm:text-lg sm:leading-8"
+          data-reveal
+          style="--reveal-delay: 140ms"
+        >
+          Dunlin connects OpenCode, Claude Code, Codex and any ACP harness to
+          one fast Rust and GPUI workspace. Chat, permissions, diffs, Git and
+          traces, without Electron.
+        </p>
+
+        <div
+          class="mt-9 flex flex-wrap items-center gap-3"
+          data-reveal
+          style="--reveal-delay: 220ms"
+        >
+          <a href="/download" class="btn-primary">
+            Download the beta
+            <span aria-hidden="true">↓</span>
+          </a>
+          <a
+            href={site.github}
+            target="_blank"
+            rel="noreferrer"
+            class="btn-secondary"
+          >
+            View on GitHub
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+
+        <div
+          class="mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted"
+          data-reveal
+          style="--reveal-delay: 300ms"
+        >
+          <span>Free and open source</span>
+          <span class="size-1 rounded-full bg-ink/20"></span>
+          <span>Apple Silicon</span>
+          <span class="size-1 rounded-full bg-ink/20"></span>
+          <span>macOS 15+</span>
+        </div>
+      </div>
+
+      <div
+        class="min-w-0 lg:col-span-6 lg:-mr-8 xl:-mr-14"
+        data-reveal
+        style="--reveal-delay: 120ms"
+      >
+        <AppShowcase client:load shots={shots} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="marquee overflow-hidden border-y border-line bg-paper-soft/45 py-4">
+  <div class="marquee-track flex w-max items-center gap-10 font-mono text-[11px] uppercase tracking-[0.16em] text-ink/45">
+    {[
+      "OpenCode",
+      "Claude Code",
+      "Codex",
+      "Custom ACP",
+      "Any ACP harness",
+      "Local projects",
+      "Remote relay",
+      "Git",
+      "Search",
+      "Agent graph",
+      "Trace waterfall",
+    ].map((item) => (
+      <span class="flex items-center gap-10 whitespace-nowrap">
+        {item}
+        <span class="size-1 rounded-full bg-clay/60"></span>
+      </span>
+    ))}
+    {[
+      "OpenCode",
+      "Claude Code",
+      "Codex",
+      "Custom ACP",
+      "Any ACP harness",
+      "Local projects",
+      "Remote relay",
+      "Git",
+      "Search",
+      "Agent graph",
+      "Trace waterfall",
+    ].map((item) => (
+      <span
+        class="flex items-center gap-10 whitespace-nowrap"
+        aria-hidden="true"
+      >
+        {item}
+        <span class="size-1 rounded-full bg-clay/60"></span>
+      </span>
+    ))}
+  </div>
+</div>

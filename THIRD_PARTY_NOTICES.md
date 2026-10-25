@@ -50,3 +50,9 @@ and are governed by their own licenses and terms.
 
 The macOS application uses Apple system frameworks under the SDK license that
 ships with Xcode.
+
+## Website
+
+The marketing site in `web/` is built with Astro, React, Tailwind CSS, Motion
+and Phosphor Icons. It bundles Manrope, Instrument Serif and Geist Mono. The
+license texts are in `web/public/licenses/`.

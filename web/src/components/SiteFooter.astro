@@ -1,0 +1,187 @@
+---
+import { navLinks, site } from "../lib/site";
+
+const year = new Date().getFullYear();
+---
+
+<footer class="relative overflow-hidden border-t border-line bg-paper-deep/40">
+  <div class="page-container relative py-16 md:py-20">
+    <div class="grid gap-12 lg:grid-cols-[1.3fr_1fr]">
+      <div>
+        <a href="/" class="inline-flex items-center gap-3">
+          <img
+            src="/brand/dunlin-icon.svg"
+            alt=""
+            width="40"
+            height="40"
+            class="size-10 rounded-xl"
+          />
+          <span class="text-lg font-semibold tracking-tight">Dunlin</span>
+        </a>
+        <p class="mt-5 max-w-sm text-sm leading-6 text-muted">
+          A native, agent-first IDE for macOS. Built with Rust and GPUI, without
+          Electron, a webview, or Monaco.
+        </p>
+        <p class="mt-5 font-mono text-xs uppercase tracking-[0.14em] text-ink/45">
+          Free and open source · MIT
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
+        <div>
+          <p class="font-mono text-xs uppercase tracking-[0.14em] text-muted">
+            Product
+          </p>
+          <ul class="mt-4 space-y-2.5 text-sm">
+            {navLinks.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+            <li>
+              <a
+                href="/download"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Download
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p class="font-mono text-xs uppercase tracking-[0.14em] text-muted">
+            Resources
+          </p>
+          <ul class="mt-4 space-y-2.5 text-sm">
+            <li>
+              <a
+                href={site.github}
+                target="_blank"
+                rel="noreferrer"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                GitHub
+              </a>
+            </li>
+            <li>
+              <a
+                href={site.releases}
+                target="_blank"
+                rel="noreferrer"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Releases
+              </a>
+            </li>
+            <li>
+              <a
+                href={site.roadmap}
+                target="_blank"
+                rel="noreferrer"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Roadmap
+              </a>
+            </li>
+            <li>
+              <a
+                href={site.security}
+                target="_blank"
+                rel="noreferrer"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Security
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+          <p class="font-mono text-xs uppercase tracking-[0.14em] text-muted">
+            Legal
+          </p>
+          <ul class="mt-4 space-y-2.5 text-sm">
+            <li>
+              <a
+                href="/privacy"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Privacy
+              </a>
+            </li>
+            <li>
+              <a
+                href="/terms"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                Terms
+              </a>
+            </li>
+            <li>
+              <a
+                href={site.license}
+                target="_blank"
+                rel="noreferrer"
+                class="text-ink/75 transition-colors duration-500 ease-fluid hover:text-clay"
+              >
+                MIT License
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-16 flex flex-col gap-3 border-t border-line pt-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+      <p>
+        © {year} Dunlin contributors. Not affiliated with OpenCode, Anthropic,
+        or OpenAI.
+      </p>
+      <p class="font-mono uppercase tracking-[0.14em] text-muted">
+        Made on a Mac, for Macs
+      </p>
+    </div>
+    <p class="mt-4 max-w-3xl text-[11px] leading-5 text-muted">
+      Typefaces:
+      <a
+        class="underline decoration-ink/15 underline-offset-4 hover:text-clay"
+        href="/licenses/manrope-OFL.txt"
+      >
+        Manrope
+      </a>
+      ,
+      <a
+        class="underline decoration-ink/15 underline-offset-4 hover:text-clay"
+        href="/licenses/instrument-serif-OFL.txt"
+      >
+        Instrument Serif
+      </a>
+      and
+      <a
+        class="underline decoration-ink/15 underline-offset-4 hover:text-clay"
+        href="/licenses/geist-OFL.txt"
+      >
+        Geist Mono
+      </a>
+      (SIL OFL 1.1). Icons:
+      <a
+        class="underline decoration-ink/15 underline-offset-4 hover:text-clay"
+        href="/licenses/phosphor-MIT.txt"
+      >
+        Phosphor
+      </a>
+      (MIT). The site is built with Astro, React, Tailwind CSS and Motion.
+    </p>
+  </div>
+
+  <div
+    aria-hidden="true"
+    class="pointer-events-none select-none whitespace-nowrap px-4 pb-2 text-center font-serif text-[24vw] leading-[0.72] tracking-[-0.06em] text-ink/[0.045]"
+  >
+    Dunlin
+  </div>
+</footer>

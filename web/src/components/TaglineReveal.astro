@@ -1,0 +1,48 @@
+---
+const words = [
+  ["Your", "agents."],
+  ["Your", "files."],
+  ["Your", "machine."],
+];
+---
+
+<section class="border-b border-line">
+  <div class="page-container py-24 md:py-32 lg:py-40">
+    <div class="grid gap-12 lg:grid-cols-[1fr_0.42fr] lg:items-end">
+      <div>
+        <p class="eyebrow text-clay" data-reveal>
+          01 / The promise
+        </p>
+        <p
+          class="mt-8 max-w-[900px] font-serif text-5xl leading-[1.02] tracking-[-0.04em] sm:text-6xl lg:text-7xl"
+          aria-label="Your agents. Your files. Your machine."
+        >
+          {words.map((line) => (
+            <span class="block" aria-hidden="true">
+              {line.map((word, index) => (
+                <>
+                  <span class="word" data-word>
+                    {word}
+                  </span>
+                  {index < line.length - 1 ? " " : ""}
+                </>
+              ))}
+            </span>
+          ))}
+        </p>
+      </div>
+
+      <div class="lg:pb-2" data-reveal style="--reveal-delay: 120ms">
+        <p class="max-w-sm text-base leading-7 text-ink/65">
+          A local workspace that treats agents as first-class citizens, not
+          terminal tabs. Your code stays where it belongs, and every turn is
+          something you can inspect.
+        </p>
+        <div class="mt-6 h-px w-16 bg-clay"></div>
+        <p class="mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/40">
+          Native · local · inspectable
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

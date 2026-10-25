@@ -1,0 +1,319 @@
+---
+import BentoCard from "./BentoCard.astro";
+import BirdMark from "./BirdMark.astro";
+---
+
+<section id="features" class="border-b border-line">
+  <div class="page-container py-24 md:py-32">
+    <div class="grid gap-8 lg:grid-cols-[1fr_0.52fr] lg:items-end">
+      <div>
+        <p class="eyebrow text-clay" data-reveal>
+          02 / The workspace
+        </p>
+        <h2
+          class="mt-6 max-w-[780px] font-serif text-5xl leading-[0.98] tracking-[-0.04em] sm:text-6xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          Everything in one window.
+        </h2>
+      </div>
+      <p
+        class="max-w-md text-base leading-7 text-ink/65"
+        data-reveal
+        style="--reveal-delay: 120ms"
+      >
+        The agent, the file, the diff, the graph and the commit. Dunlin keeps
+        the whole turn in view instead of scattering it across tabs.
+      </p>
+    </div>
+
+    <div class="mt-14 grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <BentoCard
+        class="lg:col-span-7"
+        index="01 / ACP"
+        title="ACP, not ANSI."
+        description="Dunlin speaks the Agent Client Protocol directly. Tool calls, plans, diffs and permission requests become structured UI instead of terminal text to parse."
+        dark
+      >
+        <div class="rounded-xl border border-night-line bg-[#09090b] p-3 font-mono text-[11px] leading-5 text-paper/65">
+          <div class="flex items-center justify-between gap-3 text-paper/35">
+            <span class="flex items-center gap-2">
+              <span class="size-1.5 rounded-full bg-moss"></span>
+              OpenCode · ACP
+            </span>
+            <span>streaming</span>
+          </div>
+          <div class="mt-3 rounded-lg bg-white/[0.045] px-3 py-2 text-paper/75">
+            Add a command palette shortcut for recent projects.
+          </div>
+          <div class="mt-3 space-y-1.5">
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2">
+                <span class="text-moss">✓</span>
+                Inspect the workspace
+              </span>
+              <span class="text-paper/25">done</span>
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2">
+                <span class="text-amber">◌</span>
+                Write hello.txt
+              </span>
+              <span class="text-amber/70">in progress</span>
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <span class="flex items-center gap-2">
+                <span class="text-paper/20">○</span>
+                Verify the change
+              </span>
+              <span class="text-paper/25">queued</span>
+            </div>
+          </div>
+          <div class="mt-3 rounded-lg border border-amber/25 bg-amber/[0.08] px-3 py-2">
+            <div class="flex items-center justify-between text-amber">
+              <span>Permission requested</span>
+              <span class="text-amber/60">waiting</span>
+            </div>
+            <div class="mt-2 flex gap-1.5 text-[10px]">
+              <span class="rounded-full bg-paper px-2 py-1 font-semibold text-ink">
+                Allow once
+              </span>
+              <span class="rounded-full border border-paper/15 px-2 py-1 text-paper/60">
+                Always allow
+              </span>
+              <span class="rounded-full border border-paper/15 px-2 py-1 text-paper/60">
+                Reject
+              </span>
+            </div>
+          </div>
+        </div>
+      </BentoCard>
+
+      <BentoCard
+        class="lg:col-span-5"
+        index="02 / Queue"
+        title="A queue that keeps up."
+        description="Keep sending follow-ups while a turn is running. Edit, reorder or drop prompts before they dispatch."
+      >
+        <div class="rounded-xl border border-line bg-paper p-3 font-mono text-[11px] text-ink/65">
+          <div class="flex items-center justify-between text-[10px] uppercase tracking-[0.12em] text-ink/35">
+            <span>Prompt queue</span>
+            <span>3 queued</span>
+          </div>
+          <div class="mt-3 space-y-1.5">
+            <div class="flex items-center gap-2 rounded-lg border border-clay/30 bg-clay-soft/60 px-2.5 py-2">
+              <span class="grid size-3 shrink-0 grid-cols-2 gap-0.5 opacity-40">
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+              </span>
+              <span class="min-w-0 flex-1 truncate text-ink/80">
+                Add keyboard hints toggle
+              </span>
+              <span class="text-clay">↵</span>
+            </div>
+            <div class="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2">
+              <span class="grid size-3 shrink-0 grid-cols-2 gap-0.5 opacity-30">
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+              </span>
+              <span class="min-w-0 flex-1 truncate">Retry the failed test</span>
+              <span class="text-ink/25">↑↓</span>
+            </div>
+            <div class="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 opacity-60">
+              <span class="grid size-3 shrink-0 grid-cols-2 gap-0.5 opacity-30">
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+                <span class="size-1 rounded-full bg-ink"></span>
+              </span>
+              <span class="min-w-0 flex-1 truncate">
+                Review the diff before commit
+              </span>
+              <span class="text-ink/25">↑↓</span>
+            </div>
+          </div>
+        </div>
+      </BentoCard>
+
+      <BentoCard
+        class="lg:col-span-5"
+        index="03 / Graph"
+        title="See the whole turn."
+        description="Plan steps and tool calls become a live agent graph. The trace waterfall shows where the time actually went."
+      >
+        <div class="relative h-[236px] overflow-hidden rounded-xl border border-line bg-paper p-3">
+          <svg
+            class="absolute inset-0 size-full text-ink/15"
+            viewBox="0 0 400 236"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M200 66V112M200 112H78V154M200 112H322V154M200 112V154"
+              stroke="currentColor"
+              stroke-width="1"
+            />
+            <path
+              d="M78 154V184M200 154V184M322 154V184"
+              stroke="currentColor"
+              stroke-width="1"
+              stroke-dasharray="2 4"
+            />
+          </svg>
+          <div class="absolute left-1/2 top-3 w-[150px] -translate-x-1/2 rounded-lg border border-line bg-paper-soft px-2.5 py-2 text-center">
+            <p class="font-mono text-[9px] uppercase tracking-[0.12em] text-ink/35">
+              Orchestrator
+            </p>
+            <p class="mt-1 text-[11px] font-medium text-ink/75">
+              Add command palette
+            </p>
+          </div>
+          <div class="absolute left-3 top-[154px] w-[96px] rounded-lg border border-moss/25 bg-moss-soft/70 px-2 py-1.5">
+            <p class="font-mono text-[9px] uppercase tracking-[0.1em] text-moss">
+              Inspect
+            </p>
+            <p class="mt-0.5 text-[10px] text-ink/55">workspace</p>
+          </div>
+          <div class="absolute left-1/2 top-[154px] w-[96px] -translate-x-1/2 rounded-lg border border-clay/30 bg-clay-soft/70 px-2 py-1.5">
+            <p class="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em] text-clay">
+              <span class="pulse-dot size-1 rounded-full bg-clay"></span>
+              Write
+            </p>
+            <p class="mt-0.5 text-[10px] text-ink/55">hello.txt</p>
+          </div>
+          <div class="absolute right-3 top-[154px] w-[96px] rounded-lg border border-line bg-paper-soft px-2 py-1.5">
+            <p class="font-mono text-[9px] uppercase tracking-[0.1em] text-ink/35">
+              Verify
+            </p>
+            <p class="mt-0.5 text-[10px] text-ink/55">change</p>
+          </div>
+          <div class="absolute bottom-2 left-3 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.1em] text-ink/35">
+            <span class="size-1 rounded-full bg-moss"></span>4 nodes · 1 running
+          </div>
+        </div>
+      </BentoCard>
+
+      <BentoCard
+        class="lg:col-span-7"
+        index="04 / Remote"
+        title="Remote, on your terms."
+        description="Pair another Mac or iPhone with your own relay. Sessions keep running on the relay, and another device can take over with an explicit lease."
+      >
+        <div class="rounded-xl border border-night-line bg-night p-4">
+          <div class="flex items-center gap-2">
+            <div class="rounded-lg border border-paper/10 bg-white/[0.04] px-3 py-2">
+              <p class="font-mono text-[9px] uppercase tracking-[0.12em] text-paper/35">
+                Mac
+              </p>
+              <p class="mt-1 text-[11px] text-paper/75">This laptop</p>
+            </div>
+            <div class="relative flex-1 border-t border-dashed border-paper/20">
+              <span class="absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-moss"></span>
+            </div>
+            <div class="rounded-lg border border-moss/30 bg-moss/10 px-3 py-2">
+              <p class="font-mono text-[9px] uppercase tracking-[0.12em] text-moss">
+                Relay
+              </p>
+              <p class="mt-1 text-[11px] text-paper/75">Self-hosted</p>
+            </div>
+            <div class="relative flex-1 border-t border-dashed border-paper/20">
+              <span class="absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet"></span>
+            </div>
+            <div class="rounded-lg border border-paper/10 bg-white/[0.04] px-3 py-2">
+              <p class="font-mono text-[9px] uppercase tracking-[0.12em] text-paper/35">
+                iPhone
+              </p>
+              <p class="mt-1 text-[11px] text-paper/75">Same session</p>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em]">
+            <span class="rounded-full border border-paper/10 px-2 py-1 text-paper/45">
+              Pairing code
+            </span>
+            <span class="rounded-full border border-paper/10 px-2 py-1 text-paper/45">
+              Keychain token
+            </span>
+            <span class="rounded-full border border-paper/10 px-2 py-1 text-paper/45">
+              Session lease
+            </span>
+            <span class="rounded-full border border-moss/25 bg-moss/10 px-2 py-1 text-moss">
+              Seatbelt sandbox
+            </span>
+          </div>
+        </div>
+      </BentoCard>
+
+      <BentoCard
+        class="lg:col-span-7"
+        index="05 / Git"
+        title="Git in the same window."
+        description="Status, staged changes, unified diffs, commit, amend, pull and push. Dunlin uses the system git binary, so your existing setup still works."
+      >
+        <div class="rounded-xl border border-line bg-paper p-3 font-mono text-[11px] leading-5">
+          <div class="flex items-center justify-between text-[10px] text-ink/35">
+            <span>src/app.rs</span>
+            <span class="flex items-center gap-2">
+              <span class="text-moss">+18</span>
+              <span class="text-clay">−4</span>
+            </span>
+          </div>
+          <div class="mt-2 border-t border-line pt-2 text-ink/45">
+            <p>@@ -112,7 +112,9 @@</p>
+            <p class="rounded bg-moss/10 px-1 text-moss">
+              + if self.harness.running {"{"}
+            </p>
+            <p class="rounded bg-moss/10 px-1 text-moss">
+              + self.save_current_transcript();
+            </p>
+            <p class="rounded bg-moss/10 px-1 text-moss">+ {"}"}</p>
+            <p class="rounded bg-clay/10 px-1 text-clay">
+              - self.close_window();
+            </p>
+            <p class="text-ink/30">self.persist_settings(cx);</p>
+          </div>
+          <div class="mt-3 flex items-center justify-between border-t border-line pt-2">
+            <span class="text-[10px] text-ink/35">main · 2 changes</span>
+            <span class="rounded-full bg-ink px-2.5 py-1 text-[10px] font-semibold text-paper-soft">
+              Commit
+            </span>
+          </div>
+        </div>
+      </BentoCard>
+
+      <BentoCard
+        class="lg:col-span-5"
+        index="06 / Local"
+        title="Local by default."
+        description="No account, no telemetry, no bundled model. Your projects, sessions and transcripts stay on your Mac."
+        dark
+      >
+        <div class="relative min-h-[210px] overflow-hidden rounded-xl border border-night-line bg-[#09090b] p-4">
+          <BirdMark class="absolute -bottom-10 -right-8 w-48 text-paper/[0.07]" />
+          <p class="font-serif text-6xl leading-none text-paper-soft">0</p>
+          <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-paper/35">
+            telemetry events
+          </p>
+          <ul class="mt-5 space-y-2 text-[11px] text-paper/60">
+            <li class="flex items-center gap-2">
+              <span class="text-moss">✓</span>
+              No account or sign in
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-moss">✓</span>
+              No bundled model
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-moss">✓</span>
+              Code stays on this Mac
+            </li>
+          </ul>
+        </div>
+      </BentoCard>
+    </div>
+  </div>
+</section>

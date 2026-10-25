@@ -1,0 +1,89 @@
+---
+import BirdMark from "./BirdMark.astro";
+import { site } from "../lib/site";
+
+const specs = [
+  ["UI", "Rust + GPUI"],
+  ["Protocol", "ACP over stdio"],
+  ["State", "SQLite in WAL mode"],
+  ["Git", "System git binary"],
+  ["Remote", "Self-hosted relay"],
+  ["Build", "One arm64 app"],
+];
+---
+
+<section id="native" class="relative overflow-hidden bg-night text-paper-soft">
+  <BirdMark class="pointer-events-none absolute -right-20 top-1/2 w-[540px] -translate-y-1/2 text-paper/[0.045]" />
+  <div class="page-container relative py-24 md:py-32">
+    <div class="grid gap-14 lg:grid-cols-12 lg:gap-10">
+      <div class="lg:col-span-7">
+        <p class="eyebrow text-clay" data-reveal>
+          04 / Native
+        </p>
+        <h2
+          class="mt-6 max-w-[760px] font-serif text-5xl leading-[0.96] tracking-[-0.04em] text-paper-soft sm:text-6xl"
+          data-reveal
+          style="--reveal-delay: 60ms"
+        >
+          No browser in the middle.
+        </h2>
+        <p
+          class="mt-7 max-w-[590px] text-base leading-7 text-paper/60 sm:text-lg sm:leading-8"
+          data-reveal
+          style="--reveal-delay: 120ms"
+        >
+          Dunlin is a Rust and GPUI application. The interface renders natively,
+          sessions live in SQLite, and Git runs through the system binary. There
+          is no Electron shell, no bundled Chromium, and no Monaco.
+        </p>
+
+        <div
+          class="mt-10 flex flex-wrap items-center gap-3"
+          data-reveal
+          style="--reveal-delay: 180ms"
+        >
+          <a
+            href={`${site.github}/blob/main/docs/PLAN.md`}
+            target="_blank"
+            rel="noreferrer"
+            class="btn-secondary border-paper/20 text-paper-soft hover:border-paper/60 hover:bg-white/5"
+          >
+            Read the architecture
+            <span aria-hidden="true">↗</span>
+          </a>
+          <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-paper/35">
+            Open source · MIT
+          </span>
+        </div>
+      </div>
+
+      <div class="lg:col-span-5" data-reveal style="--reveal-delay: 100ms">
+        <div class="rounded-2xl border border-night-line bg-night-soft">
+          <div class="flex items-center justify-between border-b border-night-line px-5 py-4">
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-paper/35">
+              Under the hood
+            </span>
+            <span class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-moss">
+              <span class="pulse-dot size-1.5 rounded-full bg-moss"></span>
+              native
+            </span>
+          </div>
+          <dl>
+            {specs.map(([label, value]) => (
+              <div class="flex items-center justify-between gap-4 border-b border-night-line px-5 py-4 last:border-b-0">
+                <dt class="text-sm text-paper/45">{label}</dt>
+                <dd class="text-right font-mono text-[11px] uppercase tracking-[0.1em] text-paper/80">
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <p class="mt-4 text-xs leading-5 text-paper/35">
+          No Node runtime. No webview. No hidden second renderer. Just a Mac app
+          talking to the harness over ACP.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

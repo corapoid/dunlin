@@ -4,6 +4,13 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Static marketing site in `web/` with a native product showcase, a download
+  page, privacy and terms pages, and a generated social card.
+
 ## [0.1.0-beta.1] — 2026-10-25
 
 The first public macOS beta. Dunlin is an early, opinionated release: local

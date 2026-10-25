@@ -1,0 +1,30 @@
+---
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  eyebrow?: string;
+}
+
+const { title, description, eyebrow = "Legal" } = Astro.props;
+---
+
+<Base title={`${title} — Dunlin`} description={description}>
+  <section class="pb-24 pt-32 sm:pt-36 lg:pb-32 lg:pt-44">
+    <div class="page-container">
+      <div class="max-w-3xl">
+        <p class="eyebrow text-clay">{eyebrow}</p>
+        <h1 class="mt-6 font-serif text-5xl leading-none tracking-[-0.04em] sm:text-6xl">
+          {title}
+        </h1>
+        <p class="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-ink/40">
+          Last updated: October 25, 2026
+        </p>
+        <div class="legal-copy mt-12 border-t border-line pt-10">
+          <slot />
+        </div>
+      </div>
+    </div>
+  </section>
+</Base>
