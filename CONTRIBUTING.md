@@ -67,6 +67,18 @@ Developer ID certificate.
 - Do not add a dependency for something the standard library or an existing
   crate already does well. New dependencies need a reason in the pull request.
 
+## Dependency updates
+
+Dependabot is enabled for Cargo and GitHub Actions and runs weekly on Monday at
+06:00 Europe/Warsaw. Patch updates are grouped by area; minor and major updates
+stay as separate pull requests because many Rust dependencies are still on
+`0.x`, where a minor bump can be breaking.
+
+`test` and `dependency-review` are required checks on `main`. Dependabot
+auto-merges GitHub Actions minor/patch updates and Cargo patch updates once
+those checks pass. Security updates are enabled independently; treat them as
+urgent and review them even when CI is green.
+
 ## Commits and pull requests
 
 - Keep commits focused and write imperative subject lines, for example
