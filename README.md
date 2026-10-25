@@ -33,7 +33,7 @@ Source control reads the system `git` CLI: branch, staged and unstaged entries, 
 cargo run -p kestrel
 ```
 
-The first launch creates `~/Library/Application Support/Kestrel/kestrel.db` and seeds the current workspace as a project. Set `KESTREL_DATA_DIR` to use a different data directory.
+The first launch creates `~/Library/Application Support/Kestrel/kestrel.db` and shows the onboarding screen. Open a folder to create the first project; nothing is read from the build directory. Set `KESTREL_DATA_DIR` to use a different data directory.
 
 For a release build:
 

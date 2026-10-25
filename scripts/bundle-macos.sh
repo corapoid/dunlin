@@ -32,18 +32,22 @@ if [[ -z "$BIN" ]]; then
   fi
 fi
 
-APP="dist/Kestrel.app"
+APP_NAME="${KESTREL_APP_NAME:-Kestrel}"
+BUNDLE_ID="${KESTREL_BUNDLE_ID:-dev.kestrel.ide}"
+VERSION="${KESTREL_VERSION:-0.1.0}"
+BUILD_NUMBER="${KESTREL_BUILD:-1}"
+APP="dist/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-ICONSET="dist/Kestrel.iconset"
+ICONSET="dist/$APP_NAME.iconset"
 MASTER="dist/kestrel-icon.png"
 
 rm -rf "$APP" "$ICONSET"
 mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "dist"
 
-cp "$BIN" "$MACOS/Kestrel"
-chmod +x "$MACOS/Kestrel"
+cp "$BIN" "$MACOS/$APP_NAME"
+chmod +x "$MACOS/$APP_NAME"
 
 # Render the bundled SVG icon and expand it into an .icns.
 if command -v qlmanage >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
@@ -55,47 +59,53 @@ if command -v qlmanage >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; t
       double=$((size * 2))
       sips -z "$double" "$double" "$MASTER" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
     done
-    iconutil -c icns "$ICONSET" -o "$RESOURCES/Kestrel.icns"
+    iconutil -c icns "$ICONSET" -o "$RESOURCES/$APP_NAME.icns"
   fi
 fi
 
-cat > "$CONTENTS/Info.plist" <<'PLIST'
+cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>Kestrel</string>
+  <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
-  <string>Kestrel</string>
+  <string>$APP_NAME</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.kestrel.ide</string>
+  <string>$BUNDLE_ID</string>
   <key>CFBundleExecutable</key>
-  <string>Kestrel</string>
+  <string>$APP_NAME</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$BUILD_NUMBER</string>
   <key>CFBundleIconFile</key>
-  <string>Kestrel</string>
+  <string>$APP_NAME</string>
   <key>LSMinimumSystemVersion</key>
   <string>15.0</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.developer-tools</string>
+  <key>LSMultipleInstancesProhibited</key>
+  <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
   <true/>
   <key>NSHumanReadableCopyright</key>
-  <string>Copyright © 2026 Kestrel contributors. Apache-2.0.</string>
+  <string>Copyright © 2026 $APP_NAME contributors. MIT.</string>
 </dict>
 </plist>
 PLIST
 
 IDENTITY="${KESTREL_CODESIGN_IDENTITY:--}"
-codesign --force --deep --sign "$IDENTITY" "$APP"
+if [[ "$IDENTITY" == "-" ]]; then
+  codesign --force --deep --sign "$IDENTITY" "$APP"
+else
+  codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
+fi
 touch "$APP"
 
 echo "Built $APP"

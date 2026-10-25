@@ -17,11 +17,57 @@ Zrealizowane do tej pory:
 - prawy klik na projektach i sesjach,
 - inspector jako overlay w wąskim oknie,
 - per-project override harnessu i permission mode,
+- ustawienie pokazywania/ukrywania hintów klawiaturowych,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 
 Następne w M1: menu kontekstowe dla plików/wiadomości/tool calls, branch od
 wiadomości, zawijanie composera, `Undo` dla projektów i sesji, pełne
 uprawnienia powiadomień oraz tokeny typografii we wszystkich widokach.
+
+## Release 0.1 — public beta gate
+
+Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
+beta. Poza zakresem: iOS, terminal, computer use, automatyzacje, skills,
+artefakty i wizualny edytor Markdown.
+
+- [ ] **R1. Nazwa i tożsamość** — finalna nazwa, bundle ID, Keychain service,
+  katalog danych, ikona, copyright.
+- [ ] **R2. Onboarding i prawdziwe dane** — usunięcie demo projektów/sesji i
+  compile-time `workspace_root`; ekran pierwszego uruchomienia.
+- [ ] **R3. Empty states** — brak projektu, brak harnessa, brak sesji, brak
+  wyników wyszukiwania.
+- [ ] **R4. Okno i aplikacja** — clamp zapisanej pozycji, jedna instancja,
+  ostrzeżenie przy zamykaniu w trakcie tury, menu About/Settings/Quit.
+- [ ] **R5. Powiadomienia** — `UNUserNotificationCenter`, autoryzacja, status,
+  link do System Settings, zachowanie przy odmowie.
+- [ ] **R6. Licencja** — MIT, `LICENSE`, `THIRD_PARTY_NOTICES`, licencja Geist,
+  zmiana `license` w Cargo i `Info.plist`.
+- [ ] **R7. Release engineering** — wersja z taga, universal/arm64 build,
+  DMG/ZIP, checksums, podpis/notaryzacja opcjonalna przez sekrety.
+- [ ] **R8. CI** — fmt, clippy, testy, relay smoke na macOS runnerze.
+- [ ] **R9. GitHub Release** — workflow `v*`, draft release, źródła + binaria.
+- [ ] **R10. Dokumentacja** — README ze screenshotami i porównaniem z Orca,
+  CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
+- [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
+  upgrade bazy, duży projekt, remote beta.
+
+Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
+unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
+
+## Po 0.1 — kolejne etapy
+
+- usage scanners Claude/Codex/OpenCode i dashboard,
+- terminal + autowykrywanie komend,
+- Git v2 + global search,
+- Markdown source/preview → block editor,
+- standalone chat,
+- artefakty,
+- katalog skills,
+- automatyzacje,
+- SSH hosty,
+- computer use + helper TCC,
+- graph/trace advanced,
+- iOS build i sync.
 
 ## M1 — Codzienna praca i zaufanie
 

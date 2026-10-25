@@ -13,7 +13,7 @@ use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{demo, harness, logging, projection, remote, views, watch, window_state};
+use crate::{harness, logging, projection, remote, views, watch, window_state};
 use kestrel_workspace::tree::FileTree;
 use kestrel_workspace::{git, search};
 
@@ -86,6 +86,7 @@ pub(crate) struct StoredSettings {
     pub section: SidebarSection,
     pub sidebar_collapsed: bool,
     pub notifications_enabled: bool,
+    pub show_shortcut_hints: bool,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
     pub remote_hosts: Vec<remote::RemoteHost>,
@@ -104,6 +105,7 @@ impl Default for StoredSettings {
             word_wrap: false,
             autosave: false,
             notifications_enabled: true,
+            show_shortcut_hints: true,
             code_font_size: 13.0,
             allow_network: false,
             reasoning_open: false,
@@ -306,6 +308,7 @@ pub(crate) struct KestrelApp {
     pub default_view: MainView,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
+    pub fallback_project: Project,
     pub project_groups: Vec<ProjectGroup>,
     pub collapsed_project_groups: Vec<String>,
     pub project_group_editor: Option<usize>,
@@ -355,6 +358,7 @@ pub(crate) struct KestrelApp {
     pub word_wrap: bool,
     pub autosave: bool,
     pub notifications_enabled: bool,
+    pub show_shortcut_hints: bool,
     pub code_font_size: f32,
     pub allow_network: bool,
     pub remote_hosts: Vec<remote::RemoteHost>,
@@ -414,9 +418,8 @@ pub(crate) struct KestrelApp {
 
 impl KestrelApp {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let root = workspace_root();
         let store = open_store();
-        logging::info(&format!("workspace {root} · data {}", data_dir_display()));
+        logging::info(&format!("data {}", data_dir_display()));
         let stored = store
             .as_ref()
             .and_then(|store| store.load_setting::<StoredSettings>("app").ok().flatten())
@@ -425,24 +428,26 @@ impl KestrelApp {
             .as_ref()
             .and_then(|store| store.project_groups().ok())
             .unwrap_or_default();
-        let (projects, mut all_sessions) = match store.as_ref() {
-            Some(store) => {
-                let mut projects = store.projects().unwrap_or_default();
-                if projects.is_empty() {
-                    projects = demo::projects(&root)
-                        .into_iter()
-                        .filter(|project| Path::new(&project.path).is_dir())
-                        .collect();
-                    if projects.is_empty() {
-                        projects = demo::projects(&root);
-                    }
-                    for project in &projects {
-                        let _ = store.upsert_project(project);
-                    }
-                }
-                (projects, store.sessions(None).unwrap_or_default())
-            }
-            None => (demo::projects(&root), demo::sessions()),
+        let projects = store
+            .as_ref()
+            .map(|store| store.projects().unwrap_or_default())
+            .unwrap_or_default();
+        let mut all_sessions = store
+            .as_ref()
+            .map(|store| store.sessions(None).unwrap_or_default())
+            .unwrap_or_default();
+        let fallback_project = Project {
+            id: "none".into(),
+            name: "Welcome".into(),
+            path: String::new(),
+            branch: None,
+            tone: ProjectTone::Blue,
+            pinned: false,
+            trusted: false,
+            running_sessions: 0,
+            remote: None,
+            group_id: None,
+            settings: Default::default(),
         };
         // A live turn cannot survive a restart, so clear statuses that imply one.
         for session in &mut all_sessions {
@@ -473,20 +478,25 @@ impl KestrelApp {
                 }
             },
         );
-        let file_tree = if projects[0].is_remote() {
-            FileTree {
-                root: projects[0].path.clone(),
+        let file_tree = projects
+            .first()
+            .map(|project| {
+                if project.is_remote() {
+                    FileTree {
+                        root: project.path.clone(),
+                        entries: Vec::new(),
+                        error: None,
+                    }
+                } else {
+                    FileTree::load(project.path.clone())
+                }
+            })
+            .unwrap_or_else(|| FileTree {
+                root: String::new(),
                 entries: Vec::new(),
                 error: None,
-            }
-        } else {
-            FileTree::load(projects[0].path.clone())
-        };
-        let search_hits = if projects[0].is_remote() {
-            Vec::new()
-        } else {
-            demo::search_hits(&projects[0].path)
-        };
+            });
+        let search_hits = Vec::new();
 
         let search_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -605,21 +615,31 @@ impl KestrelApp {
             },
         );
 
-        let first_project = projects[0].id.clone();
-        let first_is_remote = projects[0].is_remote();
-        let mut sessions: Vec<SessionSummary> = all_sessions
-            .iter()
-            .filter(|session| {
-                session.project_id == first_project
-                    && (!first_is_remote || session.origin.is_remote())
+        let mut sessions: Vec<SessionSummary> = projects
+            .first()
+            .map(|project| {
+                all_sessions
+                    .iter()
+                    .filter(|session| {
+                        session.project_id == project.id
+                            && (!project.is_remote() || session.origin.is_remote())
+                    })
+                    .cloned()
+                    .collect()
             })
-            .cloned()
-            .collect();
-        if sessions.is_empty() && !first_is_remote {
+            .unwrap_or_default();
+        if let Some(project) = projects.first()
+            && sessions.is_empty()
+            && !project.is_remote()
+        {
             let session = blank_session(
-                &first_project,
-                &stored.default_harness,
-                projects[0].branch.clone(),
+                &project.id,
+                project
+                    .settings
+                    .harness
+                    .as_deref()
+                    .unwrap_or(&stored.default_harness),
+                project.branch.clone(),
             );
             if let Some(store) = &store {
                 let _ = store.upsert_session(&session);
@@ -635,6 +655,7 @@ impl KestrelApp {
             default_view: stored.default_view,
             section: stored.section,
             projects,
+            fallback_project,
             project_groups,
             collapsed_project_groups: stored.collapsed_project_groups.clone(),
             project_group_editor: None,
@@ -654,7 +675,7 @@ impl KestrelApp {
             } else {
                 None
             },
-            usages: demo::usage(),
+            usages: Vec::new(),
             remote_usages: HashMap::new(),
             usage_loading: false,
             composer,
@@ -686,6 +707,7 @@ impl KestrelApp {
             word_wrap: stored.word_wrap,
             autosave: stored.autosave,
             notifications_enabled: stored.notifications_enabled,
+            show_shortcut_hints: stored.show_shortcut_hints,
             code_font_size: stored.code_font_size,
             allow_network: stored.allow_network,
             remote_hosts: stored.remote_hosts.clone(),
@@ -780,7 +802,7 @@ impl KestrelApp {
             app.connect_harness(cx);
         }
         app.restart_file_watcher();
-        if !restored_project {
+        if !restored_project && !app.projects.is_empty() {
             app.refresh_git_status(cx);
         }
         app.persist_settings(cx);
@@ -828,7 +850,9 @@ impl KestrelApp {
     }
 
     pub(crate) fn project(&self) -> &Project {
-        &self.projects[self.selected_project]
+        self.projects
+            .get(self.selected_project)
+            .unwrap_or(&self.fallback_project)
     }
 
     pub(crate) fn project_path_missing(&self) -> bool {
@@ -1476,14 +1500,14 @@ impl KestrelApp {
             }
             Command::CopyTrace => {
                 let session = self.session().clone();
-                let spans = if self.harness.transcript.is_empty() {
-                    demo::trace_spans()
+                let spans = projection::spans(&self.harness.transcript, &session);
+                if spans.is_empty() {
+                    self.set_notice("No trace to copy yet", cx);
                 } else {
-                    projection::spans(&self.harness.transcript, &session)
-                };
-                let json = serde_json::to_string_pretty(&spans).unwrap_or_default();
-                cx.write_to_clipboard(ClipboardItem::new_string(json));
-                self.set_notice("Copied trace JSON", cx);
+                    let json = serde_json::to_string_pretty(&spans).unwrap_or_default();
+                    cx.write_to_clipboard(ClipboardItem::new_string(json));
+                    self.set_notice("Copied trace JSON", cx);
+                }
             }
             Command::SwitchProject(index) => self.select_project(index, cx),
             Command::CloseInspector => {
@@ -2711,13 +2735,9 @@ impl KestrelApp {
     pub(crate) fn run_search(&mut self, cx: &mut Context<Self>) {
         let query = self.search_query.trim().to_string();
         if query.is_empty() {
-            self.search_hits = if self.project().is_remote() {
-                Vec::new()
-            } else {
-                demo::search_hits(&self.project().path)
-            };
+            self.search_hits = Vec::new();
             self.search_loading = false;
-            self.notice = Some("Showing recent matches. Type a query and press Enter.".into());
+            self.notice = Some("Type a query and press Enter.".into());
             cx.notify();
             return;
         }
@@ -2839,11 +2859,7 @@ impl KestrelApp {
         } else {
             FileTree::load(path.clone())
         };
-        self.search_hits = if !project.is_remote() && path == workspace_root() {
-            demo::search_hits(&path)
-        } else {
-            Vec::new()
-        };
+        self.search_hits = Vec::new();
         self.search_query.clear();
         self.search_loading = false;
         self.close_inspector();
@@ -3457,6 +3473,7 @@ impl KestrelApp {
             word_wrap: self.word_wrap,
             autosave: self.autosave,
             notifications_enabled: self.notifications_enabled,
+            show_shortcut_hints: self.show_shortcut_hints,
             code_font_size: self.code_font_size,
             allow_network: self.allow_network,
             reasoning_open: self.reasoning_open,
@@ -4539,7 +4556,7 @@ impl KestrelApp {
                         "session-menu-new",
                         IconName::Plus,
                         "New session",
-                        Some("⌘N"),
+                        self.show_shortcut_hints.then_some("⌘N"),
                         false,
                         cx,
                         |this, _, cx| {
@@ -4583,7 +4600,117 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    fn onboarding(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(px(0.))
+            .items_center()
+            .justify_center()
+            .gap(px(18.))
+            .child(
+                div()
+                    .size(px(54.))
+                    .rounded(px(15.))
+                    .bg(p.fg)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(Icon::new(IconName::Bird).size(px(27.)).text_color(p.bg)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .text_size(px(19.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.fg)
+                            .child("Open your first project"),
+                    )
+                    .child(
+                        div()
+                            .max_w(px(420.))
+                            .text_center()
+                            .text_size(px(12.0))
+                            .line_height(relative(1.55))
+                            .text_color(p.muted_fg)
+                            .child("Kestrel runs an ACP harness against a folder on your Mac. Open a repository to start, or connect a self-hosted relay."),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .id("onboarding-open-folder")
+                            .h(px(32.))
+                            .px(px(12.))
+                            .rounded(px(7.))
+                            .bg(p.fg)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .cursor_pointer()
+                            .hover(move |style| style.opacity(0.9))
+                            .on_click(cx.listener(|this, _, _, cx| this.open_folder(cx)))
+                            .child(Icon::new(IconName::FolderOpen).size(px(12.5)).text_color(p.bg))
+                            .child(
+                                div()
+                                    .text_size(px(11.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.bg)
+                                    .child("Open folder…"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("onboarding-remote")
+                            .h(px(32.))
+                            .px(px(12.))
+                            .rounded(px(7.))
+                            .border_1()
+                            .border_color(p.border)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .cursor_pointer()
+                            .hover(move |style| style.bg(p.hover))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.settings_open = true;
+                                this.settings_tab = SettingsTab::Remote;
+                                cx.notify();
+                            }))
+                            .child(Icon::new(IconName::Cloud).size(px(12.5)).text_color(p.muted_fg))
+                            .child(
+                                div()
+                                    .text_size(px(11.5))
+                                    .text_color(p.fg)
+                                    .child("Connect relay…"),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .font_family("Geist Mono")
+                    .text_color(p.muted_fg.opacity(0.65))
+                    .child("A folder is all Kestrel needs · your data stays on this Mac"),
+            )
+            .into_any_element()
+    }
+
     fn main_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.projects.is_empty() {
+            return self.onboarding(cx);
+        }
         let content = match self.view {
             MainView::Chat => views::chat::render(self, window, cx),
             MainView::Graph => views::graph::render(self, window, cx),
@@ -6344,13 +6471,15 @@ impl KestrelApp {
                             }))
                             .child(icon(IconName::Save, 11.5, p.muted_fg))
                             .child(div().text_size(px(11.5)).text_color(p.fg).child("Save"))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_family("Geist Mono")
-                                    .text_color(p.muted_fg.opacity(0.7))
-                                    .child("⌘S"),
-                            ),
+                            .when(self.show_shortcut_hints, |this| {
+                                this.child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_family("Geist Mono")
+                                        .text_color(p.muted_fg.opacity(0.7))
+                                        .child("⌘S"),
+                                )
+                            }),
                     )
                     .child(
                         div()
@@ -6577,11 +6706,15 @@ impl Render for KestrelApp {
             self.last_dock_badge = badge;
         }
         let p = palette(cx);
-        let show_sidebar = !self.sidebar_collapsed;
+        let show_sidebar = !self.sidebar_collapsed && !self.projects.is_empty();
         let titlebar = views::titlebar::render(self, window, cx);
         let rail = self.rail(cx);
         let sidebar = views::sidebar::render(self, window, cx);
-        let header = self.session_header(cx);
+        let header = if self.projects.is_empty() {
+            div().into_any_element()
+        } else {
+            self.session_header(cx)
+        };
         let main_panel = self.main_panel(window, cx);
         let status_bar = self.status_bar(cx);
         let settings = self
@@ -6630,7 +6763,7 @@ impl Render for KestrelApp {
                     .flex_1()
                     .min_h(px(0.))
                     .w_full()
-                    .child(rail)
+                    .when(!self.projects.is_empty(), |this| this.child(rail))
                     .when(show_sidebar, |this| this.child(sidebar))
                     .child(
                         div()
@@ -6667,14 +6800,6 @@ impl Drop for KestrelApp {
         self.save_current_transcript();
         self.save_stashed_transcripts();
     }
-}
-
-fn workspace_root() -> String {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").to_string())
 }
 
 fn editor_language(path: &str) -> &'static str {

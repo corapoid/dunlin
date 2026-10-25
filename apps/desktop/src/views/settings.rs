@@ -441,6 +441,19 @@ fn general(this: &mut KestrelApp, window: &mut Window, cx: &mut Context<KestrelA
                 ))
                 .child(divider(&p))
                 .child(setting_row(
+                    "Show keyboard shortcuts",
+                    "Show shortcut hints in the title bar, menus and command palette. Shortcuts keep working when hidden.",
+                    toggle_switch(
+                        "shortcut-hints",
+                        this.show_shortcut_hints,
+                        |this| this.show_shortcut_hints = !this.show_shortcut_hints,
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                ))
+                .child(divider(&p))
+                .child(setting_row(
                     "Show reasoning by default",
                     "Expand the model's thinking block in chat.",
                     toggle_switch(

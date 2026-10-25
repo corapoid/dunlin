@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without the leading v (for example 0.1.0-beta.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      APP_NAME: ${{ vars.APP_NAME || 'Kestrel' }}
+      BUNDLE_ID: ${{ vars.BUNDLE_ID || 'dev.kestrel.ide' }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          KESTREL_APP_NAME: ${{ env.APP_NAME }}
+          KESTREL_BUNDLE_ID: ${{ env.BUNDLE_ID }}
+          KESTREL_VERSION: ${{ steps.version.outputs.version }}
+          KESTREL_BUILD: ${{ github.run_number }}
+        run: |
+          ./scripts/bundle-macos.sh --build
+          ./scripts/bundle-relay.sh
+
+      - name: Import signing identity
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p actions "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ {print $2; exit}')"
+          test -n "$IDENTITY"
+          echo "KESTREL_CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Re-sign app
+        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        run: |
+          codesign --force --options runtime --timestamp \
+            --sign "$KESTREL_CODESIGN_IDENTITY" "dist/$APP_NAME.app"
+
+      - name: Package
+        run: |
+          APP="dist/$APP_NAME.app"
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="dist/$APP_NAME-$VERSION-macos-arm64.zip"
+          DMG="dist/$APP_NAME-$VERSION-macos-arm64.dmg"
+          RELAY="dist/kestrel-relay-$VERSION-macos-arm64.tar.gz"
+          ditto -c -k --keepParent "$APP" "$ZIP"
+          tar -czf "$RELAY" -C dist kestrel-relay
+          mkdir -p dist/dmg
+          cp -R "$APP" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "$APP_NAME" -srcfolder dist/dmg -ov -format UDZO "$DMG"
+          shasum -a 256 "$ZIP" "$DMG" "$RELAY" > dist/SHA256SUMS
+
+      - name: Notarize
+        if: ${{ env.APPLE_CERTIFICATE != '' && env.APPLE_ID != '' }}
+        run: |
+          APP="dist/$APP_NAME.app"
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP="dist/$APP_NAME-$VERSION-macos-arm64.zip"
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$APP"
+          rm -f "$ZIP"
+          ditto -c -k --keepParent "$APP" "$ZIP"
+          shasum -a 256 "$ZIP" "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
+            "dist/kestrel-relay-$VERSION-macos-arm64.tar.gz" > dist/SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES="dist/release-notes.md"
+          {
+            echo "$APP_NAME $VERSION"
+            echo
+            echo "macOS 15+, Apple Silicon."
+            echo
+            if [[ -n "${APPLE_CERTIFICATE:-}" ]]; then
+              echo "Signed and notarized Developer ID build."
+            else
+              echo "Unsigned beta build. macOS Gatekeeper may require approval in System Settings → Privacy & Security."
+            fi
+            echo
+            echo "Artifacts: app ZIP, DMG, relay tarball, SHA256SUMS."
+          } > "$NOTES"
+          gh release create "$TAG" \
+            "dist/$APP_NAME-$VERSION-macos-arm64.zip" \
+            "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
+            "dist/kestrel-relay-$VERSION-macos-arm64.tar.gz" \
+            dist/SHA256SUMS \
+            --title "$APP_NAME $VERSION" \
+            --notes-file "$NOTES" \
+            --target "$GITHUB_SHA"

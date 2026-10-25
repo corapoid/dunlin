@@ -154,7 +154,7 @@ pub(crate) fn render(
                     .text_color(color)
                     .child(view.label()),
             )
-            .when(!compact, |this| {
+            .when(!compact && this.show_shortcut_hints, |this| {
                 this.child(
                     div()
                         .text_size(px(11.0))
@@ -188,6 +188,8 @@ pub(crate) fn render(
         center = center.child(tab);
     }
 
+    let has_projects = !this.projects.is_empty();
+    let sidebar_collapsed = this.sidebar_collapsed;
     let right = div()
         .flex_1()
         .min_w(px(0.))
@@ -213,32 +215,34 @@ pub(crate) fn render(
                         .child(badge_label),
                 ),
         )
-        .child(
-            div()
-                .id("title-sidebar")
-                .aria_label("Toggle sidebar")
-                .size(px(26.))
-                .rounded(px(7.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.sidebar_collapsed = !this.sidebar_collapsed;
-                    this.persist_settings(cx);
-                    cx.notify();
-                }))
-                .child(
-                    Icon::new(if this.sidebar_collapsed {
-                        IconName::PanelLeftOpen
-                    } else {
-                        IconName::PanelLeftClose
-                    })
-                    .size(px(13.5))
-                    .text_color(p.muted_fg),
-                ),
-        )
+        .when(has_projects, |this| {
+            this.child(
+                div()
+                    .id("title-sidebar")
+                    .aria_label("Toggle sidebar")
+                    .size(px(26.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.sidebar_collapsed = !this.sidebar_collapsed;
+                        this.persist_settings(cx);
+                        cx.notify();
+                    }))
+                    .child(
+                        Icon::new(if sidebar_collapsed {
+                            IconName::PanelLeftOpen
+                        } else {
+                            IconName::PanelLeftClose
+                        })
+                        .size(px(13.5))
+                        .text_color(p.muted_fg),
+                    ),
+            )
+        })
         .child(
             div()
                 .id("title-search")
@@ -267,7 +271,9 @@ pub(crate) fn render(
                             .child("Search"),
                     )
                 })
-                .when(!compact, |this| this.child(kbd("⌘K", p))),
+                .when(!compact && this.show_shortcut_hints, |this| {
+                    this.child(kbd("⌘K", p))
+                }),
         )
         .child(
             div()

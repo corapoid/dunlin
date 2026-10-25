@@ -15,6 +15,7 @@ pub(crate) fn render(
     cx: &mut Context<KestrelApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    let show_shortcuts = this.show_shortcut_hints;
     let items = this.filtered_commands();
     let selected = if items.is_empty() {
         0
@@ -41,7 +42,7 @@ pub(crate) fn render(
                     .h(px(40.)),
             ),
         )
-        .child(kbd("esc", p));
+        .when(show_shortcuts, |this| this.child(kbd("esc", p)));
 
     let mut list = div().flex().flex_col().gap(px(1.)).p(px(5.));
     if items.is_empty() {
@@ -72,7 +73,11 @@ pub(crate) fn render(
             let active = index == selected;
             let command = item.command;
             let label = item.label.clone();
-            let hint = item.hint.clone();
+            let hint = if show_shortcuts {
+                item.hint.clone()
+            } else {
+                None
+            };
 
             list = list.child(
                 div()
@@ -128,9 +133,11 @@ pub(crate) fn render(
         .flex()
         .items_center()
         .gap(px(12.))
-        .child(hint_pair("↑↓", "navigate", p))
-        .child(hint_pair("↵", "run", p))
-        .child(hint_pair("esc", "close", p))
+        .when(show_shortcuts, |this| {
+            this.child(hint_pair("↑↓", "navigate", p))
+                .child(hint_pair("↵", "run", p))
+                .child(hint_pair("esc", "close", p))
+        })
         .child(div().flex_1())
         .child(
             div()

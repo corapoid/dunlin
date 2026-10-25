@@ -457,13 +457,15 @@ fn projects_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                     .child("Open local folder…"),
             )
             .child(div().flex_1())
-            .child(
-                div()
-                    .text_size(px(11.0))
-                    .font_family("Geist Mono")
-                    .text_color(p.muted_fg.opacity(0.6))
-                    .child("⌘O"),
-            ),
+            .when(this.show_shortcut_hints, |this| {
+                this.child(
+                    div()
+                        .text_size(px(11.0))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg.opacity(0.6))
+                        .child("⌘O"),
+                )
+            }),
     )
     .into_any_element()
 }
@@ -1022,7 +1024,7 @@ fn search_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElemen
                 .text_size(px(11.0))
                 .font_family("Geist Mono")
                 .text_color(p.muted_fg.opacity(0.65))
-                .child("↵"),
+                .child(if this.show_shortcut_hints { "↵" } else { "" }),
         );
 
     let mut root_el = div()
@@ -2243,13 +2245,15 @@ fn project_menu(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyEleme
                         .text_color(p.fg)
                         .child("Open local folder…"),
                 )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg)
-                        .child("⌘O"),
-                ),
+                .when(this.show_shortcut_hints, |this| {
+                    this.child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_family("Geist Mono")
+                            .text_color(p.muted_fg)
+                            .child("⌘O"),
+                    )
+                }),
         )
         .child(
             div()
