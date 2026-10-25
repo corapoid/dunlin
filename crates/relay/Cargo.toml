@@ -15,13 +15,13 @@ dunlin-usage.workspace = true
 dunlin-domain.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "io-util", "time", "sync", "signal"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
-rand = "0.9"
-sha2 = "0.10"
-base64 = "0.22"
+rand = "0.10"
+sha2 = "0.11"
+base64 = "0.23"
 futures-util = "0.3"
-toml = "0.8"
+toml = "1.1"

@@ -21,7 +21,7 @@ notify.workspace = true
 objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
-base64 = "0.22"
+base64 = "0.23"
 ureq = { version = "2.12", features = ["json", "tls"] }
 uuid.workspace = true
 serde.workspace = true
