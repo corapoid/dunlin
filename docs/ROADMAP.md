@@ -27,6 +27,10 @@ wszystkich widokach.
 
 ## Release 0.1 — public beta gate
 
+Status: `0.1.0-beta.1` opublikowany 25 października 2026 jako unsigned,
+ad-hoc signed build dla macOS 15+ Apple Silicon. Kolejne poprawki beta trafiają
+na `main`, a nowy tag `v*` uruchamia release workflow.
+
 Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
 beta. Poza zakresem: iOS, terminal, computer use, automatyzacje, skills,
 artefakty i wizualny edytor Markdown.
