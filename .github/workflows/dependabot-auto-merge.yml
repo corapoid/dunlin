@@ -1,5 +1,8 @@
 name: Dependabot auto-merge
 
+# Runs in the base repository context on purpose: Dependabot PRs need a
+# write-capable token to enable auto-merge, and this workflow never checks out
+# or executes code from the pull request.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
