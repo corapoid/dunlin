@@ -4,7 +4,7 @@ Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
 
 ## Stan implementacji
 
-Zrealizowane w pierwszym kroku M1:
+Zrealizowane do tej pory:
 
 - kolejka promptów z edycją, usuwaniem, zmianą kolejności i czyszczeniem,
 - kopiowanie i ponawianie wiadomości użytkownika,
@@ -19,9 +19,9 @@ Zrealizowane w pierwszym kroku M1:
 - per-project override harnessu i permission mode,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 
-Następne w M1: menu kontekstowe, pełne zwijanie sidebara, tokeny typografii w
-wszystkich widokach, pełne uprawnienia powiadomień i akcje na odpowiedziach
-agenta.
+Następne w M1: menu kontekstowe dla plików/wiadomości/tool calls, branch od
+wiadomości, zawijanie composera, `Undo` dla projektów i sesji, pełne
+uprawnienia powiadomień oraz tokeny typografii we wszystkich widokach.
 
 ## M1 — Codzienna praca i zaufanie
 
