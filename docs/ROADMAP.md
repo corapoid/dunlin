@@ -8,7 +8,7 @@ Zrealizowane do tej pory:
 
 - kolejka promptów z edycją, usuwaniem, zmianą kolejności i czyszczeniem,
 - kopiowanie i ponawianie wiadomości użytkownika,
-- powiadomienia macOS (best-effort) i badge w Docku,
+- powiadomienia macOS przez `UNUserNotificationCenter` i badge w Docku,
 - debounced file watching dla lokalnych projektów,
 - wykrywanie brakującego folderu, badge i `Locate folder…`,
 - toast z `Undo` po usunięciu grupy,
@@ -21,8 +21,9 @@ Zrealizowane do tej pory:
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 
 Następne w M1: menu kontekstowe dla plików/wiadomości/tool calls, branch od
-wiadomości, zawijanie composera, `Undo` dla projektów i sesji, pełne
-uprawnienia powiadomień oraz tokeny typografii we wszystkich widokach.
+wiadomości, zawijanie composera, `Undo` dla projektów i sesji, status
+uprawnień powiadomień z linkiem do System Settings oraz tokeny typografii we
+wszystkich widokach.
 
 ## Release 0.1 — public beta gate
 
@@ -30,29 +31,32 @@ Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
 beta. Poza zakresem: iOS, terminal, computer use, automatyzacje, skills,
 artefakty i wizualny edytor Markdown.
 
-- [ ] **R1. Nazwa i tożsamość** — finalna nazwa, bundle ID, Keychain service,
-  katalog danych, ikona, copyright.
-- [ ] **R2. Onboarding i prawdziwe dane** — usunięcie demo projektów/sesji i
+- [x] **R1. Nazwa i tożsamość** — Dunlin, bundle ID `dev.dunlin.ide`, Keychain
+  service `dev.dunlin.remote`, katalog danych `Dunlin`, ikona, copyright.
+  Stare dane i tokeny migrują przy pierwszym uruchomieniu.
+- [x] **R2. Onboarding i prawdziwe dane** — usunięte demo projekty/sesje i
   compile-time `workspace_root`; ekran pierwszego uruchomienia.
-- [ ] **R3. Empty states** — brak projektu, brak harnessa, brak sesji, brak
-  wyników wyszukiwania.
-- [ ] **R4. Okno i aplikacja** — clamp zapisanej pozycji, jedna instancja,
-  ostrzeżenie przy zamykaniu w trakcie tury, menu About/Settings/Quit.
-- [ ] **R5. Powiadomienia** — `UNUserNotificationCenter`, autoryzacja, status,
-  link do System Settings, zachowanie przy odmowie.
-- [ ] **R6. Licencja** — MIT, `LICENSE`, `THIRD_PARTY_NOTICES`, licencja Geist,
+- [x] **R3. Empty states** — brak projektu, brak sesji, brak wyników
+  wyszukiwania; harness offline ma status i akcję ponowienia.
+- [x] **R4. Okno i aplikacja** — clamp zapisanej pozycji do widocznego ekranu,
+  jedna instancja, ostrzeżenie przy zamykaniu w trakcie tury, domyślne menu
+  aplikacji macOS.
+- [x] **R5. Powiadomienia** — `UNUserNotificationCenter`, autoryzacja przy
+  pierwszym powiadomieniu, zachowanie przy odmowie. Status i link do System
+  Settings zostają jako polishing w M1.
+- [x] **R6. Licencja** — MIT, `LICENSE`, `THIRD_PARTY_NOTICES`, licencja Geist,
   zmiana `license` w Cargo i `Info.plist`.
-- [ ] **R7. Release engineering** — wersja z taga, universal/arm64 build,
-  DMG/ZIP, checksums, podpis/notaryzacja opcjonalna przez sekrety.
-- [ ] **R8. CI** — fmt, clippy, testy, relay smoke na macOS runnerze.
-- [ ] **R9. GitHub Release** — workflow `v*`, draft release, źródła + binaria.
-- [ ] **R10. Dokumentacja** — README ze screenshotami i porównaniem z Orca,
+- [x] **R7. Release engineering** — wersja z taga, arm64 build, DMG/ZIP,
+  checksums, podpis/notaryzacja opcjonalna przez sekrety.
+- [x] **R8. CI** — fmt, clippy, testy, relay smoke na macOS runnerze.
+- [x] **R9. GitHub Release** — workflow `v*`, draft release, źródła + binaria.
+- [x] **R10. Dokumentacja** — README ze screenshotami i porównaniem z Orca,
   CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
 - [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
   upgrade bazy, duży projekt, remote beta.
-- [ ] **R12. Bezpieczeństwo publicznego repo** — `SECURITY.md`, `CODEOWNERS`,
-  dependency review, secret scanning, CodeQL/cargo-deny, branch protection,
-  wymagane review dla ścieżek agent/network/auth, podpisane commity/release.
+- [ ] **R12. Bezpieczeństwo publicznego repo** — dependency review, secret
+  scanning, CodeQL/cargo-deny, branch protection, wymagane review dla ścieżek
+  agent/network/auth, podpisane commity/release.
 
 Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
 unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
