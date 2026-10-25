@@ -3,6 +3,18 @@
 /// Show a native notification. Failures are logged, never fatal: a missing
 /// notification permission must not interrupt an agent turn.
 pub(crate) fn notify(title: &str, body: &str) {
+    // `mac-notification-sys` asks LaunchServices for the bundle identifier. A
+    // bare `target/debug/kestrel` has none, and macOS reacts by opening a
+    // "Choose Application" panel. Skip notifications outside a real app bundle;
+    // the release app always runs from `Kestrel.app/Contents/MacOS`.
+    let in_bundle = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.to_str().map(str::to_string))
+        .is_some_and(|path| path.contains(".app/Contents/MacOS/"));
+    if !in_bundle {
+        crate::logging::info("notification skipped: not running from an app bundle");
+        return;
+    }
     let mut notification = notify_rust::Notification::new();
     notification.appname("Kestrel").summary(title).body(body);
     if let Err(error) = notification.show() {

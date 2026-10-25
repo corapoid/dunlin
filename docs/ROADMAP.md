@@ -12,7 +12,10 @@ Zrealizowane w pierwszym kroku M1:
 - debounced file watching dla lokalnych projektów,
 - wykrywanie brakującego folderu, badge i `Locate folder…`,
 - toast z `Undo` po usunięciu grupy,
-- kompaktowa szerokość sidebara i ukrywanie hintów w wąskim oknie,
+- kompaktowa szerokość sidebara, zwijanie `⌘B` i ukrywanie hintów w wąskim oknie,
+- edycja i ponowienie promptu, podgląd unified diff przy tool callu,
+- prawy klik na projektach i sesjach,
+- inspector jako overlay w wąskim oknie,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 
 Następne w M1: menu kontekstowe, pełne zwijanie sidebara, tokeny typografii w
@@ -28,8 +31,9 @@ agenta.
 - [ ] **3. Akcje wiadomości** (M)
   - [x] kopiuj i ponów dla wiadomości użytkownika,
   - [x] kopiowanie odpowiedzi agenta,
-  - [ ] edytuj i wyślij, branch od wiadomości,
-  - [ ] podgląd diffa przy tool callu.
+  - [x] edytuj i wyślij,
+  - [x] podgląd unified diff przy tool callu,
+  - [ ] branch od wiadomości.
 - [x] **4. Powiadomienia macOS + badge** (M)
   - permission request i koniec tury,
   - tylko gdy okno nieaktywne, ustawienie on/off,
@@ -47,10 +51,13 @@ agenta.
   - [x] kolejka toastów i `Undo` dla usunięcia grupy,
   - [ ] `Undo` dla projektów/sesji.
 - [ ] **16. Menu kontekstowe** (M)
-  - projekt, sesja, plik, wiadomość, tool call.
+  - [x] prawy klik na projekcie i sesji,
+  - [ ] plik, wiadomość, tool call.
 - [ ] **20. Wąskie okno** (M)
   - [x] kompaktowy sidebar i ukrywanie hintów w titlebarze,
-  - [ ] zwijany sidebar, inspector jako overlay, zawijanie composera.
+  - [x] zwijany sidebar (`⌘B`, przycisk w titlebarze),
+  - [x] inspector jako overlay poniżej 1100 px,
+  - [ ] zawijanie composera.
 
 ## M2 — Projekty, statystyki, onboarding
 

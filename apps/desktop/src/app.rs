@@ -101,6 +101,7 @@ pub(crate) struct StoredSettings {
     pub view: MainView,
     pub default_view: MainView,
     pub section: SidebarSection,
+    pub sidebar_collapsed: bool,
     pub notifications_enabled: bool,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
@@ -127,6 +128,7 @@ impl Default for StoredSettings {
             view: MainView::Chat,
             default_view: MainView::Chat,
             section: SidebarSection::Files,
+            sidebar_collapsed: false,
             last_project_id: None,
             last_session_id: None,
             remote_hosts: Vec::new(),
@@ -237,6 +239,18 @@ pub(crate) enum ToastAction {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ContextTarget {
+    Project(usize),
+    Session(usize),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ContextMenuState {
+    pub target: ContextTarget,
+    pub position: Point<Pixels>,
+}
+
 /// A single executable entry in the command palette.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -246,6 +260,7 @@ pub(crate) enum Command {
     OpenFolder,
     AddRemoteProject,
     NewProjectGroup,
+    ToggleSidebar,
     ToggleTheme,
     NewSession,
     NewFile,
@@ -313,6 +328,7 @@ pub(crate) struct KestrelApp {
     pub project_group_editor: Option<usize>,
     pub group_prompt: Option<GroupPrompt>,
     pub toast: Option<Toast>,
+    pub context_menu: Option<ContextMenuState>,
     pub group_input: Entity<InputState>,
     _group_subscription: Subscription,
     pub selected_project: usize,
@@ -346,6 +362,7 @@ pub(crate) struct KestrelApp {
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
     pub session_menu_open: bool,
+    pub sidebar_collapsed: bool,
     pub pending_delete: Option<PendingDelete>,
     pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
@@ -639,6 +656,7 @@ impl KestrelApp {
             project_group_editor: None,
             group_prompt: None,
             toast: None,
+            context_menu: None,
             group_input,
             _group_subscription: group_subscription,
             selected_project: 0,
@@ -674,6 +692,7 @@ impl KestrelApp {
             permission_mode: stored.permission_mode,
             project_menu_open: false,
             session_menu_open: false,
+            sidebar_collapsed: stored.sidebar_collapsed,
             pending_delete: None,
             diff_view: None,
             auto_connect: stored.auto_connect,
@@ -1241,6 +1260,13 @@ impl KestrelApp {
                 keywords: "section folder private work group projects".into(),
             },
             CommandItem {
+                command: Command::ToggleSidebar,
+                label: "Toggle Sidebar".into(),
+                hint: Some("⌘B".into()),
+                icon: IconName::PanelLeft,
+                keywords: "hide show sidebar layout".into(),
+            },
+            CommandItem {
                 command: Command::Settings(SettingsTab::General),
                 label: "Open Settings".into(),
                 hint: Some("⌘,".into()),
@@ -1406,6 +1432,10 @@ impl KestrelApp {
             Command::OpenFolder => self.open_folder(cx),
             Command::AddRemoteProject => self.open_remote_picker(cx),
             Command::NewProjectGroup => self.open_new_group_prompt(None, window, cx),
+            Command::ToggleSidebar => {
+                self.sidebar_collapsed = !self.sidebar_collapsed;
+                self.persist_settings(cx);
+            }
             Command::ToggleTheme => {
                 toggle_mode(window, cx);
                 self.persist_settings(cx);
@@ -1575,7 +1605,10 @@ impl KestrelApp {
 
     /// Re-point a local project whose folder was moved or deleted.
     pub(crate) fn locate_project(&mut self, cx: &mut Context<Self>) {
-        let index = self.selected_project;
+        self.locate_project_at(self.selected_project, cx);
+    }
+
+    pub(crate) fn locate_project_at(&mut self, index: usize, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: false,
             directories: true,
@@ -2541,6 +2574,12 @@ impl KestrelApp {
                     self.set_view(MainView::Trace, cx);
                     true
                 }
+                "b" => {
+                    self.sidebar_collapsed = !self.sidebar_collapsed;
+                    self.persist_settings(cx);
+                    cx.notify();
+                    true
+                }
                 "," => {
                     self.settings_open = true;
                     self.settings_tab = SettingsTab::General;
@@ -2664,7 +2703,10 @@ impl KestrelApp {
     }
 
     pub(crate) fn toggle_project_pin(&mut self, cx: &mut Context<Self>) {
-        let index = self.selected_project;
+        self.toggle_project_pin_at(self.selected_project, cx);
+    }
+
+    pub(crate) fn toggle_project_pin_at(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(project) = self.projects.get_mut(index) else {
             return;
         };
@@ -3364,6 +3406,7 @@ impl KestrelApp {
                 .map(|session| session.id.clone()),
             remote_hosts: self.remote_hosts.clone(),
             collapsed_project_groups: self.collapsed_project_groups.clone(),
+            sidebar_collapsed: self.sidebar_collapsed,
         }
     }
 
@@ -4044,6 +4087,7 @@ impl KestrelApp {
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.section = section;
+                    this.sidebar_collapsed = false;
                     this.settings_open = false;
                     this.persist_settings(cx);
                     cx.notify();
@@ -4477,6 +4521,7 @@ impl KestrelApp {
             MainView::Graph => views::graph::render(self, window, cx),
             MainView::Trace => views::trace::render(self, window, cx),
         };
+        let narrow = window.viewport_size().width < px(1100.);
 
         let inspector = self
             .inspector
@@ -4484,13 +4529,25 @@ impl KestrelApp {
             .map(|inspector| self.inspector_panel(inspector, cx));
 
         let mut row = div()
+            .relative()
             .flex()
             .flex_1()
             .min_h(px(0.))
             .min_w(px(0.))
             .child(content);
         if let Some(inspector) = inspector {
-            row = row.child(inspector);
+            if narrow {
+                row = row.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(inspector),
+                );
+            } else {
+                row = row.child(inspector);
+            }
         }
         row.into_any_element()
     }
@@ -5302,6 +5359,200 @@ impl KestrelApp {
             .into_any_element()
     }
 
+    fn context_menu_overlay(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let p = palette(cx);
+        let Some(state) = self.context_menu else {
+            return div().into_any_element();
+        };
+        let viewport = window.viewport_size();
+        let width = 228.0;
+        let x = f32::from(state.position.x)
+            .min(f32::from(viewport.width) - width - 8.0)
+            .max(8.0);
+        let y = f32::from(state.position.y)
+            .min(f32::from(viewport.height) - 260.0)
+            .max(8.0);
+
+        let item = |id: &'static str, label: &str, color: Hsla| {
+            div()
+                .id(id)
+                .h(px(28.))
+                .px(px(8.))
+                .rounded(px(5.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.5))
+                        .text_color(color)
+                        .child(label.to_string()),
+                )
+        };
+
+        let menu =
+            match state.target {
+                ContextTarget::Project(index) => {
+                    let Some(project) = self.projects.get(index) else {
+                        return div().into_any_element();
+                    };
+                    let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
+                    let pinned = project.pinned;
+                    let path = project.path.clone();
+                    let name = project.name.clone();
+                    let mut menu = div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(1.))
+                        .child(
+                            div()
+                                .px(px(8.))
+                                .pt(px(3.))
+                                .pb(px(4.))
+                                .text_size(px(10.0))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(name.to_uppercase()),
+                        )
+                        .child(item("ctx-project-open", "Open project", p.fg).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.select_project(index, cx);
+                            }),
+                        ))
+                        .child(item("ctx-project-group", "Move to group…", p.fg).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.section = SidebarSection::Projects;
+                                this.project_group_editor = Some(index);
+                                this.persist_settings(cx);
+                                cx.notify();
+                            }),
+                        ))
+                        .child(
+                            item(
+                                "ctx-project-pin",
+                                if pinned {
+                                    "Unpin project"
+                                } else {
+                                    "Pin project"
+                                },
+                                p.fg,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.toggle_project_pin_at(index, cx);
+                                },
+                            )),
+                        );
+                    if missing {
+                        menu = menu.child(
+                            item("ctx-project-locate", "Locate folder…", p.amber).on_click(
+                                cx.listener(move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.locate_project_at(index, cx);
+                                }),
+                            ),
+                        );
+                    }
+                    menu = menu.child(item("ctx-project-path", "Copy path", p.fg).on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.context_menu = None;
+                            cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
+                            this.set_notice("Copied the project path", cx);
+                        }),
+                    ));
+                    menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
+                        item("ctx-project-remove", "Remove project…", p.red).on_click(cx.listener(
+                            move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.request_delete_project(index, cx);
+                            },
+                        )),
+                    )
+                }
+                ContextTarget::Session(index) => {
+                    let Some(session) = self.sessions.get(index) else {
+                        return div().into_any_element();
+                    };
+                    let title = session.title.clone();
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(1.))
+                        .child(
+                            div()
+                                .px(px(8.))
+                                .pt(px(3.))
+                                .pb(px(4.))
+                                .text_size(px(10.0))
+                                .font_family("Geist Mono")
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(title.to_uppercase()),
+                        )
+                        .child(item("ctx-session-open", "Open session", p.fg).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.select_session(index, cx);
+                            }),
+                        ))
+                        .child(
+                            item("ctx-session-new", "New session", p.fg).on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.new_session(cx);
+                                },
+                            )),
+                        )
+                        .child(div().h(px(1.)).my(px(2.)).bg(p.border))
+                        .child(
+                            item("ctx-session-delete", "Delete session…", p.red).on_click(
+                                cx.listener(move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.request_delete_session(index, cx);
+                                }),
+                            ),
+                        )
+                }
+            };
+
+        div()
+            .id("context-menu-layer")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.context_menu = None;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .id("context-menu")
+                    .absolute()
+                    .left(px(x))
+                    .top(px(y))
+                    .w(px(width))
+                    .p(px(5.))
+                    .rounded(px(9.))
+                    .border_1()
+                    .border_color(p.border_strong)
+                    .bg(p.card)
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.))
+                    .on_click(|_, _, cx| cx.stop_propagation())
+                    .child(menu),
+            )
+            .into_any_element()
+    }
+
     fn toast_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let Some(toast) = self.toast.as_ref() else {
@@ -6006,6 +6257,7 @@ impl Render for KestrelApp {
             self.last_dock_badge = badge;
         }
         let p = palette(cx);
+        let show_sidebar = !self.sidebar_collapsed;
         let titlebar = views::titlebar::render(self, window, cx);
         let rail = self.rail(cx);
         let sidebar = views::sidebar::render(self, window, cx);
@@ -6033,6 +6285,10 @@ impl Render for KestrelApp {
             .map(|_| self.editor_conflict_modal(cx));
         let group_modal = self.group_prompt.as_ref().map(|_| self.group_modal(cx));
         let toast = self.toast.as_ref().map(|_| self.toast_overlay(cx));
+        let context_menu = self
+            .context_menu
+            .as_ref()
+            .map(|_| self.context_menu_overlay(window, cx));
 
         div()
             .relative()
@@ -6052,7 +6308,7 @@ impl Render for KestrelApp {
                     .min_h(px(0.))
                     .w_full()
                     .child(rail)
-                    .child(sidebar)
+                    .when(show_sidebar, |this| this.child(sidebar))
                     .child(
                         div()
                             .flex()
@@ -6078,6 +6334,7 @@ impl Render for KestrelApp {
             .children(editor_conflict)
             .children(group_modal)
             .children(toast)
+            .children(context_menu)
     }
 }
 

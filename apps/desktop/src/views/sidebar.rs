@@ -10,7 +10,9 @@ use kestrel_ui::component::input::Input;
 use kestrel_ui::prelude::FluentBuilder as _;
 use kestrel_ui::*;
 
-use crate::app::{KestrelApp, SettingsTab, status_palette, tone_color, tone_soft};
+use crate::app::{
+    ContextMenuState, ContextTarget, KestrelApp, SettingsTab, status_palette, tone_color, tone_soft,
+};
 use crate::harness::HarnessStatus;
 use kestrel_workspace::tree::FileEntry;
 
@@ -584,6 +586,17 @@ fn project_row(
         })
         .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
         .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.context_menu = Some(ContextMenuState {
+                    target: ContextTarget::Project(index),
+                    position: event.position,
+                });
+                cx.notify();
+            }),
+        )
         .child(
             div()
                 .size(px(26.))
@@ -1648,6 +1661,17 @@ fn sessions_body(this: &mut KestrelApp, cx: &mut Context<KestrelApp>) -> AnyElem
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.select_session(index, cx);
                 }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.context_menu = Some(ContextMenuState {
+                            target: ContextTarget::Session(index),
+                            position: event.position,
+                        });
+                        cx.notify();
+                    }),
+                )
                 .child(
                     div()
                         .flex()

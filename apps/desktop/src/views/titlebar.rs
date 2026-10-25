@@ -215,6 +215,32 @@ pub(crate) fn render(
         )
         .child(
             div()
+                .id("title-sidebar")
+                .aria_label("Toggle sidebar")
+                .size(px(26.))
+                .rounded(px(7.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.sidebar_collapsed = !this.sidebar_collapsed;
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(if this.sidebar_collapsed {
+                        IconName::PanelLeftOpen
+                    } else {
+                        IconName::PanelLeftClose
+                    })
+                    .size(px(13.5))
+                    .text_color(p.muted_fg),
+                ),
+        )
+        .child(
+            div()
                 .id("title-search")
                 .aria_label("Open command palette")
                 .h(px(26.))

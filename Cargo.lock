@@ -3644,6 +3644,7 @@ dependencies = [
  "http",
  "kestrel-domain",
  "serde",
+ "similar",
  "tokio",
  "tokio-tungstenite",
 ]

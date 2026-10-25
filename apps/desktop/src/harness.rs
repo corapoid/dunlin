@@ -506,6 +506,22 @@ impl KestrelApp {
         self.send_prompt(window, cx);
     }
 
+    /// Load a previous prompt into the composer for editing without sending it.
+    pub(crate) fn edit_prompt(
+        &mut self,
+        text: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.composer.update(cx, |state, cx| {
+            state.set_value(text, window, cx);
+            state.focus(window, cx);
+        });
+        self.queue_open = false;
+        self.notice = Some("Editing a previous prompt · send to re-run it".into());
+        cx.notify();
+    }
+
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
         let title = session_title(&text);
@@ -1028,6 +1044,9 @@ impl KestrelApp {
             }
             if let Some(deletions) = delta.deletions {
                 view.deletions = deletions;
+            }
+            if let Some(diff) = delta.diff {
+                view.diff = Some(diff);
             }
             if finished && let Some(started) = self.harness.started_tools.remove(&delta.id) {
                 *duration_ms = started.elapsed().as_millis() as u64;

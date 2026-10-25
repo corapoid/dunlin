@@ -637,6 +637,7 @@ fn agent_group(
 fn user_message(index: usize, text: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
     let copy_text = text.to_string();
     let retry_text = text.to_string();
+    let edit_text = text.to_string();
     let group = format!("user-message-{index}");
     let action_group = group.clone();
 
@@ -698,6 +699,27 @@ fn user_message(index: usize, text: &str, cx: &mut Context<KestrelApp>, p: &Pale
                                 }))
                                 .child(
                                     Icon::new(IconName::Copy)
+                                        .size(px(11.))
+                                        .text_color(p.muted_fg),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id(("user-edit", index))
+                                .size(px(20.))
+                                .rounded(px(4.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .opacity(0.0)
+                                .group_hover(action_group.clone(), move |style| style.opacity(1.0))
+                                .hover(move |style| style.bg(p.card))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.edit_prompt(edit_text.clone(), window, cx);
+                                }))
+                                .child(
+                                    Icon::new(IconName::Pencil)
                                         .size(px(11.))
                                         .text_color(p.muted_fg),
                                 ),
@@ -958,6 +980,7 @@ fn tool_card(
     let detail = tool.detail.clone();
     let additions = tool.additions;
     let deletions = tool.deletions;
+    let diff = tool.diff.clone();
 
     let mut card = div()
         .rounded(px(9.))
@@ -1107,12 +1130,103 @@ fn tool_card(
             );
         }
 
+        if let Some(diff) = diff {
+            body = body.child(diff_block(index, &diff, cx, p));
+        }
+
         card = card
             .child(div().h(px(1.)).w_full().bg(p.border))
             .child(body);
     }
 
     card.into_any_element()
+}
+
+fn diff_block(index: usize, patch: &str, cx: &mut Context<KestrelApp>, p: &Palette) -> AnyElement {
+    let copied = patch.to_string();
+    let mut lines = div().flex().flex_col();
+    for line in patch.lines().take(600) {
+        let color = if line.starts_with("+++") || line.starts_with("---") {
+            p.muted_fg
+        } else if line.starts_with('+') {
+            p.green
+        } else if line.starts_with('-') {
+            p.red
+        } else if line.starts_with("@@") {
+            p.blue
+        } else {
+            p.muted_fg
+        };
+        lines = lines.child(
+            div()
+                .text_size(px(11.0))
+                .font_family("Geist Mono")
+                .line_height(relative(1.4))
+                .text_color(color)
+                .child(line.to_string()),
+        );
+    }
+
+    div()
+        .rounded(px(7.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.bg)
+        .overflow_hidden()
+        .child(
+            div()
+                .h(px(24.))
+                .px(px(7.))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .border_b_1()
+                .border_color(p.border)
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .font_family("Geist Mono")
+                        .text_color(p.muted_fg)
+                        .child("DIFF"),
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id(("tool-diff-copy", index))
+                        .h(px(18.))
+                        .px(px(5.))
+                        .rounded(px(3.))
+                        .flex()
+                        .items_center()
+                        .gap(px(3.))
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(p.hover))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
+                            this.set_notice("Copied the diff", cx);
+                        }))
+                        .child(
+                            Icon::new(IconName::Copy)
+                                .size(px(9.5))
+                                .text_color(p.muted_fg),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(p.muted_fg)
+                                .child("Copy"),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .id(("tool-diff", index))
+                .max_h(px(280.))
+                .overflow_y_scroll()
+                .p(px(7.))
+                .child(lines),
+        )
+        .into_any_element()
 }
 
 fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {

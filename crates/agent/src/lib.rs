@@ -114,6 +114,9 @@ pub struct ToolCallView {
     pub locations: Vec<String>,
     pub additions: u32,
     pub deletions: u32,
+    /// Unified diff supplied by ACP, when the tool changed a file.
+    #[serde(default)]
+    pub diff: Option<String>,
 }
 
 /// Partial update for a tool call that already exists in the conversation.
@@ -126,6 +129,8 @@ pub struct ToolCallDelta {
     pub detail: Option<String>,
     pub additions: Option<u32>,
     pub deletions: Option<u32>,
+    #[serde(default)]
+    pub diff: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -687,7 +692,7 @@ fn content_text(content: &ContentBlock) -> Option<String> {
 }
 
 fn tool_view(tool: &ToolCall) -> ToolCallView {
-    let (detail, additions, deletions) = tool_content(&tool.content);
+    let (detail, additions, deletions, diff) = tool_content(&tool.content);
     ToolCallView {
         id: tool.tool_call_id.to_string(),
         title: tool.title.clone(),
@@ -701,11 +706,12 @@ fn tool_view(tool: &ToolCall) -> ToolCallView {
             .collect(),
         additions,
         deletions,
+        diff,
     }
 }
 
 fn tool_delta(update: &ToolCallUpdate) -> ToolCallDelta {
-    let (detail, additions, deletions) = update
+    let (detail, additions, deletions, diff) = update
         .fields
         .content
         .as_ref()
@@ -719,13 +725,15 @@ fn tool_delta(update: &ToolCallUpdate) -> ToolCallDelta {
         detail: (!detail.is_empty()).then_some(detail),
         additions: (additions > 0).then_some(additions),
         deletions: (deletions > 0).then_some(deletions),
+        diff,
     }
 }
 
-fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32) {
+fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32, Option<String>) {
     let mut detail = String::new();
     let mut additions = 0;
     let mut deletions = 0;
+    let mut patch = String::new();
 
     for item in content {
         match item {
@@ -741,19 +749,35 @@ fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32) {
                 if !detail.is_empty() {
                     detail.push('\n');
                 }
-                detail.push_str(&diff.path.display().to_string());
+                let path = diff.path.display().to_string();
+                detail.push_str(&path);
                 additions += diff.new_text.lines().count() as u32;
                 deletions += diff
                     .old_text
                     .as_deref()
                     .map(|text| text.lines().count() as u32)
                     .unwrap_or(0);
+                let old = diff.old_text.as_deref().unwrap_or("");
+                let unified = similar::TextDiff::from_lines(old, &diff.new_text)
+                    .unified_diff()
+                    .context_radius(3)
+                    .header(&format!("a/{path}"), &format!("b/{path}"))
+                    .to_string();
+                if !patch.is_empty() {
+                    patch.push('\n');
+                }
+                patch.push_str(&unified);
             }
             _ => {}
         }
     }
 
-    (detail, additions, deletions)
+    (
+        detail,
+        additions,
+        deletions,
+        (!patch.is_empty()).then_some(patch),
+    )
 }
 
 fn map_tool_kind(kind: agent_client_protocol::schema::v1::ToolKind) -> ToolKind {
@@ -1020,8 +1044,23 @@ mod tests {
                 agent_client_protocol::schema::v1::TextContent::new("first line\nsecond line"),
             )),
         )];
-        let (detail, additions, deletions) = tool_content(&content);
+        let (detail, additions, deletions, diff) = tool_content(&content);
         assert_eq!(detail, "first line\nsecond line");
         assert_eq!((additions, deletions), (0, 0));
+        assert!(diff.is_none());
+    }
+
+    #[test]
+    fn builds_a_unified_diff_for_file_edits() {
+        let content = vec![ToolCallContent::Diff(
+            agent_client_protocol::schema::v1::Diff::new("/tmp/hello.rs", "one\ntwo\n")
+                .old_text("one\nthree\n"),
+        )];
+        let (detail, additions, deletions, diff) = tool_content(&content);
+        assert_eq!(detail, "/tmp/hello.rs");
+        assert_eq!((additions, deletions), (2, 2));
+        let diff = diff.expect("diff should be present");
+        assert!(diff.contains("-three"));
+        assert!(diff.contains("+two"));
     }
 }

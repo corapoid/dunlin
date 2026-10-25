@@ -498,6 +498,7 @@ mod tests {
                 locations: Vec::new(),
                 additions: 0,
                 deletions: 0,
+                diff: None,
             },
             duration_ms: 1_500,
             at_ms: 1_000,
