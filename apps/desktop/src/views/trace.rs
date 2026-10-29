@@ -378,6 +378,21 @@ fn axis_label(ms: f32) -> String {
     }
 }
 
+/// Fractions occupied by a trace bar, including zero-duration events at the
+/// end of the timeline. Never use the minimum width as a clamp lower bound:
+/// in f32, `1.0 - 0.999` is slightly less than `0.001` and reverses the bounds.
+fn span_bar_geometry(start_ms: u64, duration_ms: u64, total_ms: f32) -> (f32, f32) {
+    let total_ms = if total_ms.is_finite() && total_ms > 0.0 {
+        total_ms
+    } else {
+        1.0
+    };
+    let start = (start_ms as f32 / total_ms).clamp(0.0, 0.999);
+    let remaining = 1.0 - start;
+    let width = (duration_ms as f32 / total_ms).max(0.001).min(remaining);
+    (start, width)
+}
+
 fn span_row(
     span: &TraceSpan,
     index: usize,
@@ -390,8 +405,7 @@ fn span_row(
     let active = selected == Some(index);
     let color = span_color(p, span.kind);
     let (status_color, _status_soft) = status_palette(p, span.status);
-    let start = (span.start_ms as f32 / total_ms).clamp(0.0, 1.0);
-    let width = (span.duration_ms as f32 / total_ms).clamp(0.001, 1.0 - start.min(0.999));
+    let (start, width) = span_bar_geometry(span.start_ms, span.duration_ms, total_ms);
     let indent = 10.0 + span.depth as f32 * 10.0;
 
     let bar_width = width;
@@ -979,5 +993,39 @@ fn span_icon(kind: SpanKind) -> IconName {
         SpanKind::Waiting => IconName::Clock3,
         SpanKind::Handoff => IconName::GitFork,
         SpanKind::Compaction => IconName::Minimize2,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::span_bar_geometry;
+
+    #[test]
+    fn trace_bars_at_the_timeline_end_do_not_panic() {
+        for start_ms in [999, 1_000, 1_001] {
+            let (start, width) = span_bar_geometry(start_ms, 0, 1_000.0);
+            assert!(width > 0.0);
+            assert!(start + width <= 1.0);
+        }
+    }
+
+    #[test]
+    fn normal_trace_bar_preserves_its_position_and_duration() {
+        assert_eq!(span_bar_geometry(250, 500, 1_000.0), (0.25, 0.5));
+        assert_eq!(span_bar_geometry(0, 1_000, 1_000.0), (0.0, 1.0));
+    }
+
+    #[test]
+    fn trace_geometry_stays_finite_and_inside_the_timeline() {
+        for total in [0.0, -1.0, 1.0, 1_000.0, f32::NAN, f32::INFINITY] {
+            for start_ms in [0, 999, 1_000, u64::MAX] {
+                for duration_ms in [0, 1, 1_000, u64::MAX] {
+                    let (start, width) = span_bar_geometry(start_ms, duration_ms, total);
+                    assert!(start.is_finite() && width.is_finite());
+                    assert!(start >= 0.0 && width > 0.0);
+                    assert!(start + width <= 1.0);
+                }
+            }
+        }
     }
 }
