@@ -17,6 +17,25 @@ if [[ "${1:-}" == "--build" ]]; then
 fi
 
 if [[ "$BUILD" == "1" ]]; then
+  # Non-login shells may not include rustup's shims (especially Homebrew's
+  # keg-only rustup). Add the directory, not just an absolute cargo path:
+  # Cargo also needs to find rustc and the other toolchain executables.
+  if ! command -v cargo >/dev/null 2>&1; then
+    for rust_bin in \
+      "${CARGO_HOME:-$HOME/.cargo}/bin" \
+      /opt/homebrew/opt/rustup/bin /usr/local/opt/rustup/bin \
+      /opt/homebrew/opt/rust/bin /usr/local/opt/rust/bin \
+      /opt/homebrew/bin /usr/local/bin; do
+      if [[ -x "$rust_bin/cargo" ]]; then
+        export PATH="$rust_bin:$PATH"
+        break
+      fi
+    done
+  fi
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "Cargo was not found. Install Rust from https://rustup.rs or add its bin directory to PATH." >&2
+    exit 1
+  fi
   cargo build --release -p dunlin
 fi
 
