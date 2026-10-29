@@ -19,6 +19,9 @@ Zrealizowane do tej pory:
 - per-project override harnessu i permission mode,
 - ustawienie pokazywania/ukrywania hintów klawiaturowych,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
+- composer czata inspirowany VS Code: wyśrodkowany start rozmowy, rozwijany
+  wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
+  zmiana harnessa tworzy nową sesję, a poprzednia zachowuje swój harness.
 
 Następne w M1: menu kontekstowe dla plików/wiadomości/tool calls, branch od
 wiadomości, zawijanie composera, `Undo` dla projektów i sesji, status
@@ -123,7 +126,9 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [x] override harness i permission mode, modal w menu projektu,
   - [x] precedence global → projekt,
   - [ ] model, env, ustawienia per grupa,
-  - [ ] automatyczne zastosowanie bez restartu harnessu.
+  - [ ] pozostałe ustawienia stosowane automatycznie bez restartu harnessu;
+    wybór harnessa z composera już tworzy nową rozmowę, a domyślne ustawienia
+    globalne/projektowe dotyczą nowych sesji.
 - [ ] **11. Grupy v2** (M)
   - drag & drop, kolejność, kolory, zagnieżdżanie, sync relay/iOS.
 - [ ] **12/28/31. Usage i statystyki** (XL)
@@ -166,7 +171,18 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - v1 źródło + preview + toolbar,
   - v2 blokowy edytor wizualny + przełącznik raw.
 - [ ] **27b. Standalone chat** (M)
-  - `ChatSpace`, scratch workspace, bez projektu, lokalnie.
+  - `ChatSpace`, scratch workspace, zwykła rozmowa bez przypisanego projektu,
+  - główny composer z wyborem środowiska, harnessa, modelu i trybu pracy;
+    wspólny wzorzec UI z czatem projektowym,
+  - **picker kontekstu rozmowy „Chat / repozytorium”** jak w VS Code:
+    wyszukiwanie po nazwie i ścieżce, lista skonfigurowanych/ostatnich lokalnych
+    repozytoriów, `Open Folder…` i powrót do rozmowy bez repozytorium;
+    bez automatycznego skanowania całego dysku,
+  - repozytorium dołączane jako jawny kontekst zwykłego czata; zmiana kontekstu
+    widoczna w historii, potwierdzenie dostępu narzędzi do nowego folderu,
+  - ten picker jest przeznaczony **tylko dla standalone chat**. Sesje projektowe
+    pozostają przypisane do swojego projektu — bez cichej podmiany `cwd`,
+  - izolowana historia i drafty zwykłych rozmów, niezależne od sesji projektów.
 
 ## M4 — Zdalnie i autonomicznie
 

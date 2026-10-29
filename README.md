@@ -148,6 +148,9 @@ To build a local app bundle:
 open dist/Dunlin.app
 ```
 
+The bundling script also checks standard Rust/rustup installation directories
+if Cargo is missing from `PATH`, including Homebrew's keg-only rustup on macOS.
+
 The script renders `assets/dunlin-icon.svg`, writes `Info.plist`, copies the
 license notices into the bundle and applies an ad-hoc signature. To sign with a
 Developer ID:
@@ -172,6 +175,52 @@ connects when a project opens.
 
 The default is OpenCode. Permission modes are **Ask every time**, **Read-only**
 and **Auto-approve**. ACP permissions are never auto-approved by the relay.
+
+Click the model dropdown in the composer to choose a model advertised by the
+connected harness. Model changes are confirmed by the harness; not every ACP
+agent exposes selectable models. Local conversations resume their ACP session
+when the harness supports loading sessions. If resuming fails, the saved history
+is kept and Dunlin asks you to start a new session instead of silently resetting
+the agent's context.
+
+The chat composer has inline dropdowns for **environment**, **harness**,
+**agent mode / tool permissions** and **model**. New conversations start with a
+centered composer. **Enter** sends a message; **Shift+Enter** inserts a new line
+(`⌘Enter` also sends). Agent modes (for example Plan or Build) come from the harness,
+not from hard-coded prompts; unsupported modes are not offered. Changing the
+local harness starts a new conversation and preserves the old one. Environments
+are this Mac and paired relays; choosing another environment opens a project
+there rather than relocating a running conversation. A repository-context picker
+for project-independent chat is planned under Standalone chat in the roadmap.
+
+### OpenCode accounts and Go
+
+**OpenCode** remains the ACP harness; **OpenCode Go** (`opencode-go`) is a
+provider inside it, separate from regular `opencode` billing. For local OpenCode
+conversations, select the provider in the composer (Go is the initial filter).
+The model picker only offers that provider's enabled models also advertised by
+ACP. Its first section contains up to three recently used models, with no
+duplicates, scoped to that provider, harness and environment and saved across
+launches. Models no longer available are omitted, including from recents.
+
+Use **Connect provider account…** in the provider/model menu, or
+**Settings → Harnesses → OpenCode provider accounts**. This opens the official
+`opencode auth login` flow in macOS Terminal for the provider's integration;
+complete the browser login or API-key prompt there. Dunlin does not collect or
+store credentials. Then click **Refresh providers / models** to reload discovery
+and the existing ACP session without discarding conversation context.
+
+Switching the provider filter does not silently change a session's model:
+choose one explicitly before sending. Dunlin blocks sending through a model
+from a different provider and keeps the composer text. Account connection counts
+and advertised models do **not** confirm balance or subscription entitlement.
+On remote projects, authentication and provider configuration belong on the
+relay; Dunlin never uses this Mac's account catalog for those conversations.
+
+To remove a configured project, use **… → Remove project…** beside its entry in
+the Projects sidebar, or right-click the project. This removes its local session
+history from Dunlin, **not the folder or files on disk**. Removing a remote
+project does not delete it from the relay. You can remove the last project too.
 
 ## Remote relay
 

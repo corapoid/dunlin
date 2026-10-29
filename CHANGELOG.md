@@ -8,8 +8,38 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Added
 
+- OpenCode provider/account controls, including OpenCode Go inside the OpenCode
+  harness, official Terminal sign-in, and provider/model refresh without a new
+  conversation. Credentials stay in OpenCode.
+- Provider-filtered enabled models and three persistent, deduplicated recent
+  models per provider/harness/environment. Prevent sending through a different
+  billing provider than the selected filter, preserving the composer text.
+- VS Code-inspired chat composer with inline environment, harness, mode/approval
+  and model dropdowns; centered layout for a new conversation.
+- ACP agent-mode discovery and switching through config options or
+  `session/set_mode`, including live mode updates.
+- Standalone-chat repository-context picker specified in the roadmap (not yet
+  implemented and intentionally separate from project sessions).
+- Model picker populated by the connected ACP harness, supporting session
+  config options and the legacy model-selection extension.
+- A remove action in each project's sidebar menu, including the last project.
 - Static marketing site in `web/` with a native product showcase, a download
   page, privacy and terms pages, and a generated social card.
+
+### Fixed
+
+- Fix a trace-bar rounding panic at the end of the timeline, including the
+  startup crash when restoring the Trace view. Keep existing settings/history.
+- Send chat messages with Enter; Shift+Enter inserts a newline. Keep `⌘Enter`
+  as an alternative send shortcut.
+- Ask to save unsaved edits before switching projects or branches, removing the
+  active project, closing the window or quitting with the app menu / `⌘Q`.
+- Resume existing local ACP sessions instead of displaying old history over a
+  fresh agent context. Preserve history and report unsupported or failed loads.
+- Keep session identifiers synchronized across project switches and restore the
+  selected conversation before connecting on startup.
+- Surface local database read/write failures in a persistent warning instead of
+  silently treating them as successful saves or empty history.
 
 ## [0.1.0-beta.1] — 2026-10-25
 
