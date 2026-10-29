@@ -474,7 +474,10 @@ impl Tracker {
                 }
                 Ok(())
             }
-            "session/cancel" | "session/set_config_option" | "session/set_mode" => {
+            "session/cancel"
+            | "session/set_config_option"
+            | "session/set_mode"
+            | "session/set_model" => {
                 if let Some(session_id) = session_id(value) {
                     check_owner(state, user, &session_id, &id)?;
                     refresh_lease(state, &session_id, connection_id);

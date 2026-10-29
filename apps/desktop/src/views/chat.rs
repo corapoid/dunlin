@@ -9,7 +9,8 @@ use dunlin_ui::component::input::Textarea;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
-use crate::app::{DunlinApp, SettingsTab, format_duration, format_ms, format_tokens, tool_icon};
+use super::chat_controls;
+use crate::app::{DunlinApp, format_duration, format_ms, format_tokens, tool_icon};
 use crate::harness::{ChatItem, HarnessStatus, QueuedPrompt};
 
 pub(crate) fn render(
@@ -18,6 +19,66 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    if this.harness.transcript.is_empty() {
+        let composer = composer(this, window, cx);
+        return div()
+            .id("chat-start")
+            .flex_1()
+            .min_h(px(0.))
+            .w_full()
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .bg(p.bg)
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(824.))
+                    .px(px(22.))
+                    .pb(px(18.))
+                    .child(
+                        div()
+                            .text_size(px(25.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.fg)
+                            .child("What would you like to work on?"),
+                    )
+                    .child(
+                        div()
+                            .mt(px(7.))
+                            .text_size(px(13.))
+                            .text_color(p.muted_fg)
+                            .child(format!(
+                                "{} · Choose your environment, harness and mode below.",
+                                this.project().name
+                            )),
+                    ),
+            )
+            .child(composer)
+            .child(
+                div()
+                    .mt(px(8.))
+                    .flex()
+                    .flex_wrap()
+                    .justify_center()
+                    .gap(px(7.))
+                    .child(suggestion_chip(
+                        "Explain codebase",
+                        "Explain this project's architecture and entry points.",
+                        cx,
+                        &p,
+                    ))
+                    .child(suggestion_chip(
+                        "Review changes",
+                        "Review the working tree changes and call out risky edits.",
+                        cx,
+                        &p,
+                    )),
+            )
+            .into_any_element();
+    }
     let context = context_bar(this, cx);
     let messages = conversation(this, cx);
     let composer = composer(this, window, cx);
@@ -1589,16 +1650,7 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
 
 fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let remote = this.project().is_remote();
-    let harness = if remote {
-        "Remote".to_string()
-    } else {
-        this.default_harness.clone()
-    };
-    let model = this.session().model.clone();
-    let permission = this.effective_permission_mode();
     let status = this.harness.status.clone();
-    let (status_color, status_soft) = harness_tone(&p, &status);
     let running = this.harness.running;
     let has_text = !this.composer.read(cx).value().trim().is_empty();
     let branch = this
@@ -1607,14 +1659,17 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
         .clone()
         .unwrap_or_else(|| "main".into());
     let project = this.project().name.clone();
-    let command_count = this.harness.commands.len();
     let queued = this.harness.queued_prompts();
     let queue_open = this.queue_open;
 
     let input = Textarea::new(&this.composer)
         .appearance(false)
         .bordered(false)
-        .h(px(58.));
+        .h(px(92.));
+    let environment = chat_controls::environment(this, cx);
+    let harness = chat_controls::harness(this, cx);
+    let mode = chat_controls::mode(this, cx);
+    let model = chat_controls::model(this, cx);
 
     let card = div()
         .w_full()
@@ -1629,101 +1684,42 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
         .overflow_hidden()
         .child(
             div()
-                .h(px(30.))
+                .min_h(px(36.))
                 .px(px(9.))
+                .py(px(3.))
                 .flex()
+                .flex_wrap()
                 .items_center()
                 .gap(px(5.))
+                .bg(p.subtle)
                 .border_b_1()
                 .border_color(p.border)
+                .child(environment)
+                .child(div().w(px(1.)).h(px(14.)).bg(p.border))
                 .child(
                     div()
-                        .id("composer-harness")
-                        .h(px(20.))
                         .px(px(6.))
-                        .rounded(px(5.))
-                        .bg(status_soft)
                         .flex()
                         .items_center()
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.settings_open = true;
-                            this.settings_tab = if remote {
-                                SettingsTab::Remote
-                            } else {
-                                SettingsTab::Harnesses
-                            };
-                            cx.notify();
-                        }))
-                        .child(dot(status_color, 4.5))
+                        .gap(px(5.))
                         .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(status_color)
-                                .child(harness),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("composer-model")
-                        .h(px(20.))
-                        .px(px(6.))
-                        .rounded(px(5.))
-                        .bg(p.muted)
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.set_notice("Model selection is negotiated by the harness", cx);
-                        }))
-                        .child(
-                            Icon::new(IconName::Sparkles)
-                                .size(px(10.))
-                                .text_color(p.violet),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(p.fg.opacity(0.85))
-                                .child(model),
-                        )
-                        .child(
-                            Icon::new(IconName::ChevronDown)
-                                .size(px(9.5))
-                                .text_color(p.muted_fg),
-                        ),
-                )
-                .child(
-                    div()
-                        .id("composer-permission")
-                        .h(px(20.))
-                        .px(px(6.))
-                        .rounded(px(5.))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.settings_open = true;
-                            this.settings_tab = SettingsTab::Permissions;
-                            cx.notify();
-                        }))
-                        .child(
-                            Icon::new(IconName::ShieldCheck)
-                                .size(px(10.))
+                            Icon::new(IconName::Folder)
+                                .size(px(12.))
                                 .text_color(p.muted_fg),
                         )
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .max_w(px(180.))
+                                .truncate()
+                                .text_size(px(12.))
                                 .text_color(p.muted_fg)
-                                .child(permission.label()),
+                                .child(project.clone()),
                         ),
                 )
+                .child(harness)
+                .when(this.local_opencode(), |view| {
+                    view.child(chat_controls::provider(this, cx))
+                })
                 .child(div().flex_1())
                 .when(!queued.is_empty(), |this| {
                     this.child(
@@ -1755,28 +1751,19 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                                     .child(format!("{} queued", queued.len())),
                             ),
                     )
-                })
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.7))
-                        .child(if status.is_ready() {
-                            format!("ACP · {command_count} commands")
-                        } else {
-                            "ACP · stdio".to_string()
-                        }),
-                ),
+                }),
         )
         .child(div().px(px(10.)).pt(px(4.)).child(input))
         .child(
             div()
-                .h(px(36.))
+                .min_h(px(42.))
                 .px(px(8.))
                 .pb(px(4.))
                 .flex()
+                .flex_wrap()
                 .items_center()
                 .gap(px(3.))
+                .child(mode)
                 .child(attachment_button(
                     IconName::Paperclip,
                     "Attach",
@@ -1801,31 +1788,39 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .child(div().flex_1())
                 .child(
                     div()
-                        .id("composer-send")
-                        .size(px(27.))
-                        .rounded_full()
-                        .bg(if running { p.blue } else { p.fg })
+                        .flex_shrink_0()
                         .flex()
                         .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .when(!running && !has_text, |this| this.opacity(0.55))
-                        .hover(move |style| style.opacity(0.9))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            if this.harness.running {
-                                this.cancel_turn(cx);
-                            } else {
-                                this.send_prompt(window, cx);
-                            }
-                        }))
+                        .gap(px(5.))
+                        .child(model)
                         .child(
-                            Icon::new(if running {
-                                IconName::CircleStop
-                            } else {
-                                IconName::ArrowUp
-                            })
-                            .size(px(14.))
-                            .text_color(p.bg),
+                            div()
+                                .id("composer-send")
+                                .size(px(27.))
+                                .rounded_full()
+                                .bg(if running { p.blue } else { p.fg })
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .when(!running && !has_text, |this| this.opacity(0.55))
+                                .hover(move |style| style.opacity(0.9))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    if this.harness.running {
+                                        this.cancel_turn(cx);
+                                    } else {
+                                        this.send_prompt(window, cx);
+                                    }
+                                }))
+                                .child(
+                                    Icon::new(if running {
+                                        IconName::CircleStop
+                                    } else {
+                                        IconName::ArrowUp
+                                    })
+                                    .size(px(14.))
+                                    .text_color(p.bg),
+                                ),
                         ),
                 ),
         );
@@ -1853,6 +1848,7 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                     div()
                         .px(px(2.))
                         .flex()
+                        .flex_wrap()
                         .items_center()
                         .gap(px(6.))
                         .child(
@@ -1862,6 +1858,8 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                         )
                         .child(
                             div()
+                                .max_w(px(320.))
+                                .truncate()
                                 .text_size(px(11.0))
                                 .font_family("Geist Mono")
                                 .text_color(p.muted_fg)
@@ -1870,16 +1868,20 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                         .child(div().flex_1())
                         .child(
                             div()
+                                .max_w(px(460.))
                                 .text_size(px(11.0))
                                 .text_color(if matches!(status, HarnessStatus::Failed(_)) {
                                     p.red
                                 } else {
                                     p.muted_fg.opacity(0.65)
                                 })
-                                .child(status.detail().unwrap_or_else(|| {
-                                    "Dunlin can make mistakes. Review tool calls before approving."
-                                        .into()
-                                })),
+                                .child(format!(
+                                    "{} · {}",
+                                    status.label(),
+                                    status.detail().unwrap_or_else(|| {
+                                        "Enter to send · Shift+Enter for a new line".into()
+                                    })
+                                )),
                         ),
                 ),
         )

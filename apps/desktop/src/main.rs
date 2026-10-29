@@ -6,6 +6,7 @@ mod harness;
 mod logging;
 mod platform;
 mod projection;
+mod providers;
 mod remote;
 mod views;
 mod watch;
@@ -20,6 +21,12 @@ fn main() {
         cx.set_app_identity("dev.dunlin.ide", "Dunlin");
         dunlin_ui::init(cx);
         logging::init();
+        cx.bind_keys([KeyBinding::new("cmd-q", app::Quit, None)]);
+        cx.set_menus([Menu::new("Dunlin").items([
+            MenuItem::os_submenu("Services", SystemMenuType::Services),
+            MenuItem::separator(),
+            MenuItem::action("Quit Dunlin", app::Quit),
+        ])]);
 
         let window_bounds = window_state::load()
             .map(|geometry| {

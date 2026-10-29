@@ -63,6 +63,10 @@ fn handle(
             println!("[loaded] {session_id}");
         }
         HarnessEvent::Update { update, .. } => match update {
+            HarnessUpdate::UserMessage(text) => println!("[user] {text}"),
+            HarnessUpdate::Configuration { models, modes } => {
+                println!("[configuration] models={models:?} modes={modes:?}")
+            }
             HarnessUpdate::AgentMessage(text) => {
                 print!("{text}");
                 output.push_str(&text);
@@ -119,6 +123,11 @@ fn handle(
         HarnessEvent::Error { message } => {
             eprintln!("\n[error] {message}");
         }
+        HarnessEvent::SessionLoadFailed { message, .. }
+        | HarnessEvent::ModelChangeFailed { message, .. }
+        | HarnessEvent::ModeChangeFailed { message, .. } => eprintln!("[error] {message}"),
+        HarnessEvent::Models { state, .. } => println!("[models] {state:?}"),
+        HarnessEvent::Modes { state, .. } => println!("[modes] {state:?}"),
         HarnessEvent::Exited { reason } => {
             eprintln!("\n[exited] {reason}");
             if !*saw_session {

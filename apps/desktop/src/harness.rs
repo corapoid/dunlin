@@ -201,6 +201,12 @@ pub(crate) struct HarnessState {
     transcripts: HashMap<String, Vec<ChatItem>>,
     pub usage: Option<HarnessUsage>,
     pub commands: Vec<String>,
+    connected_harness: Option<String>,
+    pub models: Option<dunlin_agent::SessionModels>,
+    pub modes: Option<dunlin_agent::SessionModes>,
+    pub model_changing: bool,
+    pub mode_changing: bool,
+    pub local_session_loading: bool,
     pub running: bool,
     pub session_id: Option<String>,
     pending_prompts: VecDeque<QueuedPrompt>,
@@ -216,10 +222,16 @@ impl Default for HarnessState {
         Self {
             harness: None,
             status: HarnessStatus::Offline,
+            models: None,
+            modes: None,
+            model_changing: false,
+            mode_changing: false,
+            local_session_loading: false,
             transcript: Vec::new(),
             transcripts: HashMap::new(),
             usage: None,
             commands: Vec::new(),
+            connected_harness: None,
             running: false,
             session_id: None,
             pending_prompts: VecDeque::new(),
@@ -357,9 +369,11 @@ impl DunlinApp {
             .ok()
             .filter(|command| !command.trim().is_empty())
             .unwrap_or_else(|| {
-                harness_command(&self.effective_harness(), &self.custom_harness_command)
+                harness_command(&self.session_harness(), &self.custom_harness_command)
             });
-        self.start_harness(HarnessConfig::new(command, cwd), None, cx);
+        let mut config = HarnessConfig::new(command, cwd);
+        config.resume_session_id = self.session().acp_session_id.clone();
+        self.start_harness(config, None, cx);
     }
 
     fn start_harness(
@@ -379,11 +393,17 @@ impl DunlinApp {
             "starting harness: {description} · cwd {}",
             config.cwd.display()
         ));
+        self.harness.local_session_loading = !config.is_remote();
+        self.harness.connected_harness = (!config.is_remote()).then(|| self.session_harness());
+        self.harness.session_id = config.resume_session_id.clone();
+        self.harness.models = None;
+        self.harness.modes = None;
+        self.harness.mode_changing = false;
+        self.harness.model_changing = false;
         let harness = AcpHarness::spawn(config);
         let events = harness.events().clone();
         self.harness.harness = Some(harness);
         self.harness.status = HarnessStatus::Starting;
-        self.harness.session_id = None;
         self.harness.running = false;
         self.harness.commands.clear();
         self.notice = Some(match remote_name {
@@ -418,6 +438,12 @@ impl DunlinApp {
             harness.shutdown();
         }
         self.harness.status = HarnessStatus::Offline;
+        self.harness.connected_harness = None;
+        self.harness.models = None;
+        self.harness.modes = None;
+        self.harness.mode_changing = false;
+        self.harness.model_changing = false;
+        self.harness.local_session_loading = false;
         self.harness.session_id = None;
         self.harness.running = false;
         self.notice = Some("Harness disconnected".into());
@@ -438,8 +464,21 @@ impl DunlinApp {
 
     /// Send the composer contents to the active harness, connecting lazily.
     pub(crate) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.harness.local_session_loading
+            || self.harness.model_changing
+            || self.harness.mode_changing
+        {
+            self.set_notice(
+                "Wait for the session or model to finish loading before sending",
+                cx,
+            );
+            return;
+        }
         let text = self.composer.read(cx).value().trim().to_string();
         if text.is_empty() {
+            return;
+        }
+        if !self.check_provider_model(cx) {
             return;
         }
         self.composer
@@ -524,6 +563,19 @@ impl DunlinApp {
 
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
+        if !self.check_provider_model(cx) {
+            return;
+        }
+        if self.harness.local_session_loading
+            || self.harness.model_changing
+            || self.harness.mode_changing
+        {
+            self.set_notice(
+                "Wait for the session or model to finish loading before sending",
+                cx,
+            );
+            return;
+        }
         let title = session_title(&text);
         let summary = session_summary(&text);
         let was_running = self.harness.running;
@@ -546,7 +598,7 @@ impl DunlinApp {
         self.save_current_transcript();
 
         if self.harness.status.is_ready() && self.harness.session_id.is_some() {
-            self.dispatch_pending_prompt();
+            self.dispatch_pending_prompt(cx);
         } else if !self.harness.status.is_busy() && !self.remote_sessions_loading {
             self.connect_harness(cx);
         }
@@ -619,10 +671,16 @@ impl DunlinApp {
     }
 
     pub(crate) fn stash_transcript(&mut self) {
+        if self.sessions.get(self.selected_session).is_none() {
+            self.harness.transcript.clear();
+            return;
+        }
         let current_id = self.session().id.clone();
         let current = std::mem::take(&mut self.harness.transcript);
-        if let Some(store) = &self.store {
-            let _ = store.save_transcript(&current_id, &current);
+        if let Some(store) = &self.store
+            && let Err(error) = store.save_transcript(&current_id, &current)
+        {
+            self.report_storage_error("save conversation", error);
         }
         self.upload_remote_transcript(&current_id, &current);
         self.harness.transcripts.insert(current_id, current);
@@ -641,10 +699,13 @@ impl DunlinApp {
     pub(crate) fn load_transcript(&mut self, session_id: &str) {
         let loaded = self.harness.transcripts.remove(session_id).or_else(|| {
             self.store.as_ref().and_then(|store| {
-                store
-                    .load_transcript::<Vec<ChatItem>>(session_id)
-                    .ok()
-                    .flatten()
+                match store.load_transcript::<Vec<ChatItem>>(session_id) {
+                    Ok(transcript) => transcript,
+                    Err(error) => {
+                        self.report_storage_error("load conversation", error);
+                        None
+                    }
+                }
             })
         });
         self.harness.transcript = loaded.unwrap_or_default();
@@ -653,14 +714,23 @@ impl DunlinApp {
         self.harness.prompt_sent = false;
         self.harness.running = false;
         self.harness.usage = None;
+        self.harness.models = None;
+        self.harness.modes = None;
+        self.harness.mode_changing = false;
+        self.harness.model_changing = false;
+        self.harness.local_session_loading = false;
     }
 
-    /// Switch the visible conversation and start a fresh ACP session for it.
+    /// Switch the visible conversation and resume its ACP context when available.
     pub(crate) fn select_session(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.sessions.len() || index == self.selected_session {
             return;
         }
         if self.remote_sessions_loading {
+            return;
+        }
+        if self.harness.local_session_loading || self.harness.status.is_busy() {
+            self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
         self.session_menu_open = false;
@@ -691,10 +761,7 @@ impl DunlinApp {
                 self.connect_harness(cx);
             }
         } else if self.harness.status.is_ready() {
-            let path = PathBuf::from(&self.project().path);
-            if let Some(harness) = self.harness.harness.as_ref() {
-                harness.new_session(path);
-            }
+            self.activate_local_session(cx);
         } else if self.auto_connect && !self.harness.status.is_busy() {
             self.connect_harness(cx);
         }
@@ -706,6 +773,28 @@ impl DunlinApp {
 
     fn is_current_session(&self, session_id: &str) -> bool {
         self.harness.session_id.as_deref() == Some(session_id)
+    }
+
+    pub(crate) fn activate_local_session(&mut self, cx: &mut Context<Self>) {
+        if self.harness.connected_harness.as_deref() != Some(self.session_harness().as_str()) {
+            self.restart_harness(cx);
+            return;
+        }
+        let path = PathBuf::from(&self.project().path);
+        let existing = self.session().acp_session_id.clone();
+        self.harness.local_session_loading = true;
+        self.harness.session_id = existing.clone();
+        self.harness.models = None;
+        self.harness.modes = None;
+        self.harness.mode_changing = false;
+        self.harness.model_changing = false;
+        if let Some(harness) = self.harness.harness.as_ref() {
+            if let Some(id) = existing {
+                harness.load_session(id, path);
+            } else {
+                harness.new_session(path);
+            }
+        }
     }
 
     /// Notify only when the window is in the background and the user kept
@@ -723,8 +812,11 @@ impl DunlinApp {
         self.editor_stale = self.inspector.is_some() && !self.editor_dirty;
     }
 
-    fn dispatch_pending_prompt(&mut self) {
-        if self.harness.prompt_sent || self.harness.session_id.is_none() {
+    fn dispatch_pending_prompt(&mut self, cx: &mut Context<Self>) {
+        if self.harness.prompt_sent
+            || self.harness.session_id.is_none()
+            || self.harness.local_session_loading
+        {
             return;
         }
         let Some(prompt) = self.harness.pending_prompts.pop_front() else {
@@ -744,6 +836,12 @@ impl DunlinApp {
             .map(|harness| harness.prompt(text.clone()))
             .unwrap_or(false);
         if sent {
+            if let Some(models) = &self.harness.models {
+                let id = models.current.clone();
+                let scope = self.model_scope();
+                crate::providers::remember(&mut self.recent_models, &scope, &id);
+                self.persist_settings(cx);
+            }
             self.harness.prompt_sent = true;
             self.harness.running = true;
             self.update_active_session(|session| {
@@ -775,32 +873,34 @@ impl DunlinApp {
                 };
                 self.harness.restarts = 0;
                 self.notice = Some(format!("{agent} {version} connected over ACP"));
+                self.refresh_providers(cx);
                 if self.project().is_remote()
                     && let Some(action) = self.pending_remote_session.take()
                 {
                     self.start_remote_session(action, cx);
                 } else if !self.harness.pending_prompts.is_empty() {
-                    self.dispatch_pending_prompt();
+                    self.dispatch_pending_prompt(cx);
                 }
             }
             HarnessEvent::SessionCreated { session_id } => {
+                self.harness.local_session_loading = false;
                 if self.project().is_remote() {
                     self.create_remote_session_summary(&session_id, cx);
                 } else {
-                    let stored = self.sessions.get_mut(self.selected_session).map(|session| {
+                    self.update_active_session(|session| {
                         session.acp_session_id = Some(session_id.clone());
-                        session.clone()
                     });
-                    if let Some(session) = stored {
-                        self.persist_session(&session);
-                    }
                 }
                 self.harness.session_id = Some(session_id);
                 if !self.harness.pending_prompts.is_empty() {
-                    self.dispatch_pending_prompt();
+                    self.dispatch_pending_prompt(cx);
                 }
             }
             HarnessEvent::SessionLoaded { session_id } => {
+                if !self.is_current_session(&session_id) {
+                    return;
+                }
+                self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id);
                 self.update_active_session(|session| {
                     if matches!(
@@ -811,14 +911,58 @@ impl DunlinApp {
                     }
                 });
                 if !self.harness.pending_prompts.is_empty() {
-                    self.dispatch_pending_prompt();
+                    self.dispatch_pending_prompt(cx);
                 }
             }
             HarnessEvent::Update {
                 session_id, update, ..
             } => {
-                if self.is_current_session(&session_id) {
+                if self.is_current_session(&session_id) && !self.harness.local_session_loading {
                     self.apply_update(update);
+                }
+            }
+            HarnessEvent::SessionLoadFailed {
+                session_id,
+                message,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.local_session_loading = false;
+                    self.harness.session_id = None;
+                    self.harness.running = false;
+                    self.harness.prompt_sent = false;
+                    self.harness.pending_prompts.clear();
+                    self.update_active_session(|session| {
+                        session.status = SessionStatus::Interrupted
+                    });
+                    self.notice = Some(message);
+                }
+            }
+            HarnessEvent::Models { session_id, state } => {
+                if self.is_current_session(&session_id) {
+                    self.apply_models(state);
+                }
+            }
+            HarnessEvent::ModelChangeFailed {
+                session_id,
+                message,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.model_changing = false;
+                    self.notice = Some(message);
+                }
+            }
+            HarnessEvent::Modes { session_id, state } => {
+                if self.is_current_session(&session_id) {
+                    self.apply_modes(state);
+                }
+            }
+            HarnessEvent::ModeChangeFailed {
+                session_id,
+                message,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.mode_changing = false;
+                    self.notice = Some(message);
                 }
             }
             HarnessEvent::PermissionRequested {
@@ -875,7 +1019,7 @@ impl DunlinApp {
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
-                    self.dispatch_pending_prompt();
+                    self.dispatch_pending_prompt(cx);
                 }
             }
             HarnessEvent::Error { message } => {
@@ -919,6 +1063,12 @@ impl DunlinApp {
                 self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {
+                self.harness.connected_harness = None;
+                self.harness.models = None;
+                self.harness.model_changing = false;
+                self.harness.modes = None;
+                self.harness.mode_changing = false;
+                self.harness.local_session_loading = false;
                 self.harness.harness = None;
                 self.harness.session_id = None;
                 self.harness.running = false;
@@ -949,6 +1099,20 @@ impl DunlinApp {
 
     fn apply_update(&mut self, update: HarnessUpdate) {
         match update {
+            HarnessUpdate::UserMessage(text) => {
+                self.harness.transcript.push(ChatItem::User {
+                    text,
+                    at_ms: now_ms(),
+                });
+            }
+            HarnessUpdate::Configuration { models, modes } => {
+                if models.is_some() {
+                    self.apply_models(models);
+                }
+                if modes.is_some() {
+                    self.apply_modes(modes);
+                }
+            }
             HarnessUpdate::AgentMessage(text) => {
                 append_stream(
                     &mut self.harness.transcript,
@@ -1011,6 +1175,137 @@ impl DunlinApp {
                 self.harness.commands = commands;
             }
         }
+    }
+
+    fn apply_models(&mut self, mut state: Option<dunlin_agent::SessionModels>) {
+        if let Some(models) = state.as_mut() {
+            if models.choices.is_empty()
+                && let Some(previous) = self.harness.models.as_ref()
+                && previous.config_id == models.config_id
+            {
+                models.choices = previous.choices.clone();
+            }
+            let label = models
+                .choices
+                .iter()
+                .find(|choice| choice.id == models.current)
+                .map(|choice| choice.name.clone())
+                .unwrap_or_else(|| models.current.clone());
+            if self.harness.model_changing {
+                self.notice = Some(format!("Model changed to {label}"));
+            }
+            self.update_active_session(|session| session.model = label);
+        }
+        self.harness.models = state;
+        self.harness.model_changing = false;
+    }
+
+    pub(crate) fn chat_controls_busy(&self) -> bool {
+        self.harness.running
+            || self.harness.status.is_busy()
+            || self.harness.local_session_loading
+            || self.harness.model_changing
+            || self.harness.mode_changing
+            || self.remote_sessions_loading
+    }
+
+    fn apply_modes(&mut self, mut state: Option<dunlin_agent::SessionModes>) {
+        if let Some(modes) = state.as_mut() {
+            if modes.choices.is_empty()
+                && let Some(previous) = &self.harness.modes
+            {
+                modes.choices = previous.choices.clone();
+                modes.config_id = previous.config_id.clone();
+            }
+            if self.harness.mode_changing {
+                self.notice = Some(format!("Mode changed to {}", modes.label()));
+            }
+        }
+        self.harness.modes = state;
+        self.harness.mode_changing = false;
+    }
+
+    pub(crate) fn select_mode(&mut self, mode_id: &str, cx: &mut Context<Self>) {
+        if self.chat_controls_busy() {
+            return;
+        }
+        let Some(modes) = &self.harness.modes else {
+            return;
+        };
+        if modes.current == mode_id {
+            return;
+        }
+        if !modes.choices.iter().any(|choice| choice.id == mode_id) {
+            return;
+        }
+        if let (Some(harness), Some(session_id)) = (&self.harness.harness, &self.harness.session_id)
+        {
+            if harness.set_mode(
+                session_id.clone(),
+                modes.config_id.clone(),
+                mode_id.to_string(),
+            ) {
+                self.harness.mode_changing = true;
+                self.notice = Some("Changing mode…".into());
+            } else {
+                self.notice = Some("Could not change mode: the harness is disconnected".into());
+            }
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn select_chat_harness(&mut self, name: &str, cx: &mut Context<Self>) {
+        if self.chat_controls_busy()
+            || self.project().is_remote()
+            || self.projects.is_empty()
+            || self.session_harness() == name
+        {
+            return;
+        }
+        // Agent session ids cannot be moved between different harnesses.
+        // Keep the current conversation intact and explicitly start a new one.
+        self.disconnect_harness(cx);
+        self.set_project_harness(self.selected_project, Some(name.to_string()), cx);
+        self.new_session(cx);
+        if !self.auto_connect {
+            self.connect_harness(cx);
+        }
+    }
+
+    pub(crate) fn select_model(&mut self, model_id: &str, cx: &mut Context<Self>) {
+        if self.chat_controls_busy() {
+            return;
+        }
+        if !self
+            .visible_models()
+            .iter()
+            .any(|choice| choice.id == model_id)
+        {
+            return;
+        }
+        let Some(models) = self.harness.models.as_ref() else {
+            return;
+        };
+        if models.current == model_id {
+            return;
+        }
+        if !models.choices.iter().any(|choice| choice.id == model_id) {
+            return;
+        }
+        if let (Some(harness), Some(session_id)) = (&self.harness.harness, &self.harness.session_id)
+        {
+            if harness.set_model(
+                session_id.clone(),
+                models.config_id.clone(),
+                model_id.to_string(),
+            ) {
+                self.harness.model_changing = true;
+                self.notice = Some("Changing model…".into());
+            } else {
+                self.notice = Some("Could not change model: the harness is disconnected".into());
+            }
+        }
+        cx.notify();
     }
 
     fn apply_tool_delta(&mut self, delta: ToolCallDelta) {
@@ -1154,16 +1449,23 @@ impl DunlinApp {
     }
 
     pub(crate) fn persist_session(&self, session: &dunlin_domain::SessionSummary) {
-        if let Some(store) = &self.store {
-            let _ = store.upsert_session(session);
+        if let Some(store) = &self.store
+            && let Err(error) = store.upsert_session(session)
+        {
+            self.report_storage_error("save session", error);
         }
     }
 
     pub(crate) fn save_current_transcript(&mut self) {
+        if self.sessions.get(self.selected_session).is_none() {
+            return;
+        }
         let session_id = self.session().id.clone();
         let transcript = self.harness.transcript.clone();
-        if let Some(store) = &self.store {
-            let _ = store.save_transcript(&session_id, &transcript);
+        if let Some(store) = &self.store
+            && let Err(error) = store.save_transcript(&session_id, &transcript)
+        {
+            self.report_storage_error("save conversation", error);
         }
         self.upload_remote_transcript(&session_id, &transcript);
     }
@@ -1212,7 +1514,9 @@ impl DunlinApp {
     pub(crate) fn save_stashed_transcripts(&self) {
         if let Some(store) = &self.store {
             for (session_id, transcript) in &self.harness.transcripts {
-                let _ = store.save_transcript(session_id, transcript);
+                if let Err(error) = store.save_transcript(session_id, transcript) {
+                    self.report_storage_error("save conversation", error);
+                }
             }
         }
     }
@@ -1315,7 +1619,16 @@ pub(crate) fn harness_command(name: &str, custom: &str) -> String {
 
 /// Check whether the executable named by an ACP command is on `PATH`.
 pub(crate) fn command_available(command: &str) -> bool {
-    let Some(executable) = command.split_whitespace().next() else {
+    let command = command.trim_start();
+    let executable = if let Some(quote) = command.chars().next().filter(|c| *c == '\'' || *c == '"')
+    {
+        command[1..]
+            .split_once(quote)
+            .map(|(executable, _)| executable)
+    } else {
+        command.split_whitespace().next()
+    };
+    let Some(executable) = executable.filter(|executable| !executable.is_empty()) else {
         return false;
     };
     if executable.contains('/') {
@@ -1398,6 +1711,10 @@ mod tests {
     #[test]
     fn detects_executables_on_path() {
         assert!(command_available("sh"));
+        assert!(command_available("\"/bin/sh\" -c true"));
+        assert!(command_available("'/bin/sh' -c true"));
+        assert!(!command_available("\"unterminated"));
+        assert!(!command_available("\"\""));
         assert!(!command_available("dunlin-definitely-not-installed"));
     }
 

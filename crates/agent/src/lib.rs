@@ -18,6 +18,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
+mod models;
+pub use models::{ModelChoice, SessionModels, SessionModes};
+use models::{session_models, session_modes};
+
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
     AvailableCommandsUpdate, CancelNotification, ContentBlock, Error as AcpError,
@@ -27,7 +31,7 @@ use agent_client_protocol::schema::v1::{
     ToolCallStatus, ToolCallUpdate, UsageUpdate,
 };
 use agent_client_protocol::{
-    AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult,
+    AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult, UntypedMessage,
 };
 use async_channel::{Receiver, Sender};
 use dunlin_domain::{ToolKind, ToolStatus};
@@ -61,6 +65,7 @@ pub struct HarnessConfig {
     pub cwd: PathBuf,
     /// Client name reported during `initialize`.
     pub client_name: String,
+    pub resume_session_id: Option<String>,
 }
 
 impl HarnessConfig {
@@ -71,6 +76,7 @@ impl HarnessConfig {
             },
             cwd: cwd.into(),
             client_name: "Dunlin".into(),
+            resume_session_id: None,
         }
     }
 
@@ -88,6 +94,7 @@ impl HarnessConfig {
             },
             cwd: cwd.into(),
             client_name: "Dunlin".into(),
+            resume_session_id: None,
         }
     }
 
@@ -165,6 +172,7 @@ pub struct PermissionChoice {
 /// Streaming updates mapped away from the wire schema.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum HarnessUpdate {
+    UserMessage(String),
     AgentMessage(String),
     AgentThought(String),
     ToolCall(ToolCallView),
@@ -176,6 +184,10 @@ pub enum HarnessUpdate {
         cost_usd: Option<f64>,
     },
     AvailableCommands(Vec<String>),
+    Configuration {
+        models: Option<SessionModels>,
+        modes: Option<SessionModes>,
+    },
 }
 
 /// Events emitted by the harness worker.
@@ -190,6 +202,26 @@ pub enum HarnessEvent {
     },
     SessionLoaded {
         session_id: String,
+    },
+    SessionLoadFailed {
+        session_id: String,
+        message: String,
+    },
+    Models {
+        session_id: String,
+        state: Option<SessionModels>,
+    },
+    ModelChangeFailed {
+        session_id: String,
+        message: String,
+    },
+    Modes {
+        session_id: String,
+        state: Option<SessionModes>,
+    },
+    ModeChangeFailed {
+        session_id: String,
+        message: String,
     },
     Update {
         session_id: String,
@@ -226,6 +258,16 @@ pub enum HarnessCommand {
     LoadSession {
         session_id: String,
         cwd: PathBuf,
+    },
+    SetModel {
+        session_id: String,
+        config_id: Option<String>,
+        model_id: String,
+    },
+    SetMode {
+        session_id: String,
+        config_id: Option<String>,
+        mode_id: String,
     },
     RespondPermission {
         request_id: String,
@@ -302,6 +344,27 @@ impl AcpHarness {
         self.send(HarnessCommand::LoadSession {
             session_id: session_id.into(),
             cwd: cwd.into(),
+        })
+    }
+
+    pub fn set_model(
+        &self,
+        session_id: String,
+        config_id: Option<String>,
+        model_id: String,
+    ) -> bool {
+        self.send(HarnessCommand::SetModel {
+            session_id,
+            config_id,
+            model_id,
+        })
+    }
+
+    pub fn set_mode(&self, session_id: String, config_id: Option<String>, mode_id: String) -> bool {
+        self.send(HarnessCommand::SetMode {
+            session_id,
+            config_id,
+            mode_id,
         })
     }
 
@@ -502,18 +565,25 @@ async fn run(
                     })
                     .await;
 
-                let mut active_session = None;
+                let mut active_session: Option<agent_client_protocol::schema::v1::SessionId> = None;
                 if !config.is_remote() {
-                    let session = connection
-                        .send_request(NewSessionRequest::new(config.cwd.clone()))
-                        .block_task()
-                        .await?;
-                    active_session = Some(session.session_id.clone());
-                    let _ = foreground_events
-                        .send(HarnessEvent::SessionCreated {
-                            session_id: session.session_id.to_string(),
-                        })
-                        .await;
+                    if let Some(session_id) = config.resume_session_id.as_ref() {
+                        if init.agent_capabilities.load_session {
+                            match open_session(&connection, &foreground_events, config.cwd.clone(), Some(session_id.clone())).await {
+                                Ok(id) => active_session = Some(id.into()),
+                                Err(message) => {
+                                    let _ = foreground_events.send(HarnessEvent::SessionLoadFailed { session_id: session_id.clone(), message: message.to_string() }).await;
+                                }
+                            }
+                        } else {
+                            let _ = foreground_events.send(HarnessEvent::SessionLoadFailed {
+                                session_id: session_id.clone(),
+                                message: "This harness cannot resume sessions. The saved conversation is preserved; start a new session to continue.".into(),
+                            }).await;
+                        }
+                    } else {
+                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), None).await?.into());
+                    }
                 }
 
                 let mut shutting_down = false;
@@ -571,18 +641,10 @@ async fn run(
                             }
                         }
                         HarnessCommand::NewSession { cwd } => {
-                            match connection
-                                .send_request(NewSessionRequest::new(cwd))
-                                .block_task()
-                                .await
-                            {
-                                Ok(session) => {
-                                    active_session = Some(session.session_id.clone());
-                                    let _ = foreground_events
-                                        .send(HarnessEvent::SessionCreated {
-                                            session_id: session.session_id.to_string(),
-                                        })
-                                        .await;
+                            active_session = None;
+                            match open_session(&connection, &foreground_events, cwd, None).await {
+                                Ok(id) => {
+                                    active_session = Some(id.into());
                                 }
                                 Err(error) => {
                                     let _ = foreground_events
@@ -594,25 +656,85 @@ async fn run(
                             }
                         }
                         HarnessCommand::LoadSession { session_id, cwd } => {
-                            match connection
-                                .send_request(LoadSessionRequest::new(session_id.clone(), cwd))
-                                .block_task()
-                                .await
-                            {
-                                Ok(_) => {
-                                    active_session = Some(session_id.clone().into());
-                                    let _ = foreground_events
-                                        .send(HarnessEvent::SessionLoaded {
-                                            session_id: session_id.clone(),
-                                        })
-                                        .await;
+                            active_session = None;
+                            match open_session(&connection, &foreground_events, cwd, Some(session_id.clone())).await {
+                                Ok(id) => {
+                                    active_session = Some(id.into());
                                 }
                                 Err(error) => {
                                     let _ = foreground_events
-                                        .send(HarnessEvent::Error {
-                                            message: format!("Could not load session: {error}"),
+                                        .send(HarnessEvent::SessionLoadFailed {
+                                            session_id,
+                                            message: format!("Could not load session: {error}. The saved conversation is preserved."),
                                         })
                                         .await;
+                                }
+                            }
+                        }
+                        HarnessCommand::SetModel { session_id, config_id, model_id } => {
+                            let result = async {
+                                if active_session.as_ref().map(ToString::to_string).as_deref() != Some(&session_id) {
+                                    return Err(AcpError::new(-32602, "Session is no longer active"));
+                                }
+                                let request = if let Some(config_id) = config_id.as_ref() {
+                                    UntypedMessage::new("session/set_config_option", serde_json::json!({
+                                        "sessionId": session_id, "configId": config_id, "value": model_id,
+                                    }))?
+                                } else {
+                                    UntypedMessage::new("session/set_model", serde_json::json!({
+                                        "sessionId": session_id, "modelId": model_id,
+                                    }))?
+                                };
+                                connection.send_request(request).block_task().await
+                            }.await;
+                            match result {
+                                Ok(response) => {
+                                    // Older agents return an empty object on success.
+                                    let state = session_models(&response).unwrap_or(SessionModels {
+                                        config_id, current: model_id, choices: Vec::new(),
+                                    });
+                                    if let Some(modes) = session_modes(&response) {
+                                        let _ = foreground_events.send(HarnessEvent::Modes { session_id: session_id.clone(), state: Some(modes) }).await;
+                                    }
+                                    let _ = foreground_events.send(HarnessEvent::Models { session_id, state: Some(state) }).await;
+                                }
+                                Err(error) => {
+                                    let _ = foreground_events.send(HarnessEvent::ModelChangeFailed {
+                                        session_id, message: format!("Could not change model: {error}"),
+                                    }).await;
+                                }
+                            }
+                        }
+                        HarnessCommand::SetMode { session_id, config_id, mode_id } => {
+                            let result = async {
+                                if active_session.as_ref().map(ToString::to_string).as_deref() != Some(&session_id) {
+                                    return Err(AcpError::new(-32602, "Session is no longer active"));
+                                }
+                                let request = if let Some(config_id) = config_id.as_ref() {
+                                    UntypedMessage::new("session/set_config_option", serde_json::json!({
+                                        "sessionId": session_id, "configId": config_id, "value": mode_id,
+                                    }))?
+                                } else {
+                                    UntypedMessage::new("session/set_mode", serde_json::json!({
+                                        "sessionId": session_id, "modeId": mode_id,
+                                    }))?
+                                };
+                                connection.send_request(request).block_task().await
+                            }.await;
+                            match result {
+                                Ok(response) => {
+                                    if let Some(models) = session_models(&response) {
+                                        let _ = foreground_events.send(HarnessEvent::Models { session_id: session_id.clone(), state: Some(models) }).await;
+                                    }
+                                    let state = session_modes(&response).unwrap_or(SessionModes {
+                                        config_id, current: mode_id, choices: Vec::new(),
+                                    });
+                                    let _ = foreground_events.send(HarnessEvent::Modes { session_id, state: Some(state) }).await;
+                                }
+                                Err(error) => {
+                                    let _ = foreground_events.send(HarnessEvent::ModeChangeFailed {
+                                        session_id, message: format!("Could not change mode: {error}"),
+                                    }).await;
                                 }
                             }
                         }
@@ -656,8 +778,73 @@ async fn run(
     Ok(())
 }
 
+async fn open_session(
+    connection: &ConnectionTo<Agent>,
+    events: &Sender<HarnessEvent>,
+    cwd: PathBuf,
+    existing: Option<String>,
+) -> AcpResult<String> {
+    // Keep the raw response: some deployed harnesses still expose `models`,
+    // which newer ACP schemas intentionally no longer deserialize.
+    let request = if let Some(id) = existing.as_ref() {
+        UntypedMessage::new("session/load", LoadSessionRequest::new(id.clone(), cwd))?
+    } else {
+        UntypedMessage::new("session/new", NewSessionRequest::new(cwd))?
+    };
+    let response = connection.send_request(request).block_task().await?;
+    let id = existing
+        .clone()
+        .or_else(|| {
+            response
+                .get("sessionId")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .ok_or_else(|| AcpError::new(-32603, "The harness did not return a session id"))?;
+    let event = if existing.is_some() {
+        HarnessEvent::SessionLoaded {
+            session_id: id.clone(),
+        }
+    } else {
+        HarnessEvent::SessionCreated {
+            session_id: id.clone(),
+        }
+    };
+    let _ = events.send(event).await;
+    let _ = events
+        .send(HarnessEvent::Models {
+            session_id: id.clone(),
+            state: session_models(&response),
+        })
+        .await;
+    let _ = events
+        .send(HarnessEvent::Modes {
+            session_id: id.clone(),
+            state: session_modes(&response),
+        })
+        .await;
+    Ok(id)
+}
+
 fn map_notification(notification: &SessionNotification) -> Option<HarnessUpdate> {
     match &notification.update {
+        SessionUpdate::UserMessageChunk(chunk) => {
+            content_text(&chunk.content).map(HarnessUpdate::UserMessage)
+        }
+        SessionUpdate::ConfigOptionUpdate(_) => serde_json::to_value(&notification.update)
+            .ok()
+            .map(|value| HarnessUpdate::Configuration {
+                models: session_models(&value),
+                modes: session_modes(&value),
+            }),
+        SessionUpdate::CurrentModeUpdate(update) => Some(HarnessUpdate::Configuration {
+            models: None,
+            modes: Some(SessionModes {
+                config_id: None,
+                current: update.current_mode_id.to_string(),
+                choices: Vec::new(),
+            }),
+        }),
         SessionUpdate::AgentMessageChunk(chunk) => {
             content_text(&chunk.content).map(HarnessUpdate::AgentMessage)
         }
@@ -935,6 +1122,37 @@ mod tests {
 
     fn notification(update: SessionUpdate) -> SessionNotification {
         SessionNotification::new("session-1", update)
+    }
+
+    #[test]
+    fn maps_model_and_mode_configuration_updates_together() {
+        let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+            "sessionUpdate": "config_option_update",
+            "configOptions": [
+                {"id": "model", "name": "Model", "type": "select", "currentValue": "a", "options": [{"value": "a", "name": "Model A"}]},
+                {"id": "agent-mode", "name": "Mode", "category": "mode", "type": "select", "currentValue": "plan", "options": [{"value": "plan", "name": "Plan"}]}
+            ]
+        })).unwrap();
+        match map_notification(&notification(update)).unwrap() {
+            HarnessUpdate::Configuration {
+                models: Some(models),
+                modes: Some(modes),
+            } => {
+                assert_eq!(models.current, "a");
+                assert_eq!(modes.current, "plan");
+            }
+            other => panic!("unexpected update: {other:?}"),
+        }
+        let update = SessionUpdate::CurrentModeUpdate(
+            agent_client_protocol::schema::v1::CurrentModeUpdate::new("build"),
+        );
+        match map_notification(&notification(update)).unwrap() {
+            HarnessUpdate::Configuration {
+                models: None,
+                modes: Some(modes),
+            } => assert_eq!(modes.current, "build"),
+            other => panic!("unexpected mode notification: {other:?}"),
+        }
     }
 
     #[test]

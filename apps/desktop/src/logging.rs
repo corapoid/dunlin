@@ -74,6 +74,16 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
         HarnessEvent::SessionLoaded { session_id } => {
             format!("harness session loaded · {session_id}")
         }
+        HarnessEvent::SessionLoadFailed {
+            session_id,
+            message,
+        } => format!("session load failed · {session_id} · {message}"),
+        HarnessEvent::Models { session_id, .. } => format!("session models · {session_id}"),
+        HarnessEvent::Modes { session_id, .. } => format!("session modes · {session_id}"),
+        HarnessEvent::ModeChangeFailed { message, .. } => format!("mode change failed · {message}"),
+        HarnessEvent::ModelChangeFailed { message, .. } => {
+            format!("model change failed · {message}")
+        }
         HarnessEvent::Update { session_id, update } => {
             format!("harness update · {session_id} · {}", update_kind(update))
         }
@@ -98,6 +108,8 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
 
 fn update_kind(update: &HarnessUpdate) -> &'static str {
     match update {
+        HarnessUpdate::UserMessage(_) => "user message",
+        HarnessUpdate::Configuration { .. } => "configuration",
         HarnessUpdate::AgentMessage(_) => "message",
         HarnessUpdate::AgentThought(_) => "thought",
         HarnessUpdate::ToolCall(_) => "tool call",

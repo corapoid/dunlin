@@ -644,28 +644,30 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .flex()
         .flex_col()
         .gap(px(12.))
-        .child(section_label("DEFAULT HARNESS", &p));
-
-    let live_status = (current == "OpenCode").then(|| this.harness.status.clone());
+        .child(section_label("DEFAULT HARNESS", &p))
+        .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
+            "Used for new conversations. Switch the active harness from the chat composer.",
+        ));
 
     for (name, command, model, tone) in harnesses {
         let selected = current == name;
         let installed = crate::harness::command_available(&command);
-        let (status, version) = match (name, live_status.as_ref()) {
-            ("OpenCode", Some(crate::harness::HarnessStatus::Ready { version, .. })) => {
+        let live_status = (!this.project().is_remote() && this.session_harness() == name)
+            .then_some(&this.harness.status);
+        let (status, version) = match (name, live_status) {
+            (_, Some(crate::harness::HarnessStatus::Ready { version, .. })) => {
                 ("Ready".to_string(), version.clone())
             }
-            ("OpenCode", Some(crate::harness::HarnessStatus::Starting)) => {
+            (_, Some(crate::harness::HarnessStatus::Starting)) => {
                 ("Connecting".to_string(), "—".to_string())
             }
-            ("OpenCode", Some(crate::harness::HarnessStatus::Failed(_)))
-            | ("OpenCode", Some(crate::harness::HarnessStatus::Exited(_))) => {
+            (_, Some(crate::harness::HarnessStatus::Failed(_)))
+            | (_, Some(crate::harness::HarnessStatus::Exited(_))) => {
                 ("Failed".to_string(), "—".to_string())
             }
-            ("OpenCode", Some(crate::harness::HarnessStatus::Offline)) => {
+            (_, Some(crate::harness::HarnessStatus::Offline)) => {
                 ("Offline".to_string(), "—".to_string())
             }
-            ("OpenCode", None) if installed => ("Ready".to_string(), "—".to_string()),
             ("Custom ACP", _) if this.custom_harness_command.trim().is_empty() => {
                 ("Not configured".to_string(), "—".to_string())
             }
@@ -693,14 +695,12 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .gap(px(7.))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    let changed = this.default_harness != name_owned;
                     this.default_harness = name_owned.clone();
                     this.persist_settings(cx);
-                    if changed && this.auto_connect {
-                        this.restart_harness(cx);
-                    } else {
-                        this.set_notice(format!("Default harness · {name_owned}"), cx);
-                    }
+                    this.set_notice(
+                        format!("Default harness · {name_owned} · applies to new conversations"),
+                        cx,
+                    );
                 }))
                 .child(
                     div()
@@ -854,6 +854,8 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     }
 
     body = body
+        .child(section_label("OPENCODE PROVIDER ACCOUNTS", &p))
+        .child(super::chat_controls::provider_accounts(this, cx))
         .child(section_label("CUSTOM ACP COMMAND", &p))
         .child(
             div()

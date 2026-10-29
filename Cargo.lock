@@ -1559,6 +1559,7 @@ dependencies = [
  "futures-util",
  "http",
  "serde",
+ "serde_json",
  "similar",
  "tokio",
  "tokio-tungstenite",

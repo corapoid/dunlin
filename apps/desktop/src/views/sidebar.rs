@@ -833,6 +833,27 @@ fn project_group_picker(
                         .text_color(p.muted_fg)
                         .child("New"),
                 ),
+        )
+        .child(
+            div()
+                .id(("project-picker-remove", index))
+                .ml_auto()
+                .h(px(22.))
+                .px(px(6.))
+                .flex_shrink_0()
+                .rounded(px(5.))
+                .border_1()
+                .border_color(p.border)
+                .bg(p.card)
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.red_soft))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.project_group_editor = None;
+                    this.request_delete_project(index, cx);
+                }))
+                .child(div().text_size(px(10.5)).text_color(p.red).child("Remove")),
         );
 
     div()

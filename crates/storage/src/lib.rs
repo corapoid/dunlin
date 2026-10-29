@@ -480,6 +480,72 @@ mod tests {
     }
 
     #[test]
+    fn changing_project_defaults_preserves_existing_conversation_harnesses() {
+        let store = Store::open_in_memory().unwrap();
+        let mut project = project();
+        store.upsert_project(&project).unwrap();
+        let mut old = session();
+        old.harness = "Claude Code".into();
+        old.acp_session_id = Some("claude-session-1".into());
+        store.upsert_session(&old).unwrap();
+        project.settings.harness = Some("OpenAI Codex".into());
+        store.upsert_project(&project).unwrap();
+        let saved = &store.sessions(None).unwrap()[0];
+        assert_eq!(saved.harness, "Claude Code");
+        assert_eq!(saved.acp_session_id.as_deref(), Some("claude-session-1"));
+        assert_eq!(
+            store.projects().unwrap()[0].settings.harness.as_deref(),
+            Some("OpenAI Codex")
+        );
+    }
+
+    #[test]
+    fn removing_the_last_project_keeps_its_files_and_app_settings() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("dunlin-remove-project-{unique}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("keep.txt");
+        std::fs::write(&file, "user work").unwrap();
+        let store = Store::open_in_memory().unwrap();
+        let mut project = project();
+        project.path = root.to_string_lossy().to_string();
+        store.upsert_project(&project).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_setting("app", &"preferences").unwrap();
+        store.delete_project(&project.id).unwrap();
+        assert!(store.projects().unwrap().is_empty());
+        assert!(store.sessions(None).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "user work");
+        assert_eq!(
+            store.load_setting::<String>("app").unwrap().as_deref(),
+            Some("preferences")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn read_only_database_reports_failed_session_and_transcript_writes() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .connection
+            .pragma_update(None, "query_only", true)
+            .unwrap();
+        assert!(store.upsert_session(&session()).is_err());
+        assert!(
+            store
+                .save_transcript(&session().id, &vec!["unsaved"])
+                .is_err()
+        );
+        assert!(store.delete_project(&project().id).is_err());
+        assert_eq!(store.projects().unwrap().len(), 1);
+    }
+
+    #[test]
     fn round_trips_remote_projects_and_sessions() {
         let store = Store::open_in_memory().unwrap();
         let mut project = project();
