@@ -24,6 +24,8 @@ enum Action {
     ConnectProvider,
     RefreshProviders,
     Connect,
+    RefreshMcp,
+    ToggleMcp(String, bool),
 }
 
 fn trigger(id: &'static str, label: String, icon: IconName) -> Button {
@@ -55,31 +57,35 @@ fn item(
     action: Action,
 ) -> PopupMenuItem {
     let app = app.clone();
-    PopupMenuItem::element(move |_, cx| {
+    PopupMenuItem::element(move |window, cx| {
         let p = palette(cx);
-        div()
-            .min_w(px(240.))
-            .max_w(px(350.))
-            .py(px(4.))
-            .flex()
-            .flex_col()
-            .gap(px(3.))
-            .opacity(if disabled { 0.5 } else { 1.0 })
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(p.fg)
-                    .child(text.0.clone()),
-            )
-            .when(!text.1.is_empty(), |this| {
-                this.child(
+        crate::effects::menu_surface(
+            div()
+                .min_w(px(240.))
+                .max_w(px(350.))
+                .py(px(4.))
+                .flex()
+                .flex_col()
+                .gap(px(3.))
+                .opacity(if disabled { 0.5 } else { 1.0 })
+                .child(
                     div()
-                        .text_size(px(11.))
-                        .line_height(relative(1.4))
-                        .text_color(p.muted_fg)
-                        .child(text.1.clone()),
+                        .text_size(px(12.5))
+                        .text_color(p.fg)
+                        .child(text.0.clone()),
                 )
-            })
+                .when(!text.1.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .text_size(px(11.))
+                            .line_height(relative(1.4))
+                            .text_color(p.muted_fg)
+                            .child(text.1.clone()),
+                    )
+                }),
+            window,
+            cx,
+        )
     })
     .icon(icon)
     .checked(selected)
@@ -92,6 +98,7 @@ fn item(
                     this.settings_open = true;
                     cx.notify();
                 }
+                Action::RefreshMcp => this.refresh_mcp(cx),
                 _ if this.chat_controls_busy() => {
                     this.set_notice(
                         "Wait for the current operation before changing chat settings",
@@ -121,14 +128,57 @@ fn item(
                 }
                 Action::Model(id) => this.select_model(id, cx),
                 Action::Provider(id) => this.select_provider(id, cx),
-                Action::ConnectProvider => this.connect_provider(cx),
+                Action::ConnectProvider => this.connect_provider(window, cx),
                 Action::RefreshProviders => this.reload_provider_models(cx),
                 Action::Connect => this.connect_harness(cx),
+                Action::ToggleMcp(name, disabled) => this.toggle_mcp(name, *disabled, cx),
             }
             if matches!(
                 action,
                 Action::Mode(_) | Action::Permission(_) | Action::Model(_) | Action::Harness(_)
             ) {
+                this.composer
+                    .update(cx, |state, cx| state.focus(window, cx));
+            }
+        });
+    })
+}
+
+/// Compact, single-line rows without decorative icons or wire identifiers.
+fn compact_item(
+    app: &WeakEntity<DunlinApp>,
+    label: String,
+    selected: bool,
+    disabled: bool,
+    action: Action,
+) -> PopupMenuItem {
+    let app = app.clone();
+    PopupMenuItem::element(move |window, cx| {
+        crate::effects::menu_surface(
+            div()
+                .min_w(px(220.))
+                .max_w(px(350.))
+                .py(px(2.))
+                .text_size(px(12.5))
+                .text_color(palette(cx).fg)
+                .truncate()
+                .child(label.clone()),
+            window,
+            cx,
+        )
+    })
+    .checked(selected)
+    .disabled(disabled)
+    .on_click(move |_, window, cx| {
+        let _ = app.update(cx, |this, cx| {
+            match &action {
+                Action::Model(id) => this.select_model(id, cx),
+                Action::ToggleMcp(name, disabled) => this.toggle_mcp(name, *disabled, cx),
+                Action::RefreshProviders => this.reload_provider_models(cx),
+                Action::Connect => this.connect_harness(cx),
+                _ => {}
+            }
+            if matches!(action, Action::Model(_)) {
                 this.composer
                     .update(cx, |state, cx| state.focus(window, cx));
             }
@@ -361,11 +411,13 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             .models
             .as_ref()
             .filter(|models| visible.iter().any(|choice| choice.id == models.current))
-            .map(|models| models.label().to_string())
+            .map(|models| {
+                crate::providers::model_name(models.label(), this.selected_provider()).to_string()
+            })
             .unwrap_or_else(|| "Choose model".into())
     };
     let app = cx.entity().downgrade();
-    trigger("composer-model", label, IconName::Sparkles)
+    Button::new("composer-model").ghost().small().label(label).dropdown_caret(true).max_w(px(240.))
         .tooltip("Choose a model from the connected harness")
         .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
@@ -377,19 +429,16 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             let (recent, remaining) = crate::providers::sections(&choices, &this.recent_models, &scope);
             let current = this.harness.models.as_ref().map(|models| models.current.as_str());
             if !choices.is_empty() {
-                for (label, choices) in [("Recently used", recent), ("Provider models", remaining)] {
+                let models_label = if this.local_opencode() { "Provider models" } else { "Harness models" };
+                for (label, choices) in [("Recently used", recent), (models_label, remaining)] {
                     if choices.is_empty() {
                         continue;
                     }
                     menu = menu.label(label);
                     for choice in choices {
-                        menu = menu.item(item(
+                        menu = menu.item(compact_item(
                             &app,
-                            (
-                                choice.name.clone(),
-                                choice.description.clone().unwrap_or_else(|| choice.id.clone()),
-                            ),
-                            IconName::Sparkles,
+                            crate::providers::model_name(&choice.name, this.selected_provider()).to_string(),
                             Some(choice.id.as_str()) == current,
                             this.chat_controls_busy(),
                             Action::Model(choice.id.clone()),
@@ -399,30 +448,23 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             } else {
                 menu = menu
                     .label(if this.local_opencode() {
-                        this.provider_catalog.error.clone().unwrap_or_else(|| "No models available for this provider. Connect your account and refresh.".into())
+                        this.provider_catalog.error.clone().unwrap_or_else(|| if this.selected_provider() == Some(crate::providers::FREE) {
+                            "No verified free models available. Refresh providers / models; paid models will not be substituted.".into()
+                        } else { "No models available for this provider. Connect your account and refresh.".into() })
                     } else { "No selectable models advertised by the harness".into() })
-                    .item(item(
+                    .item(compact_item(
                         &app,
-                        (
-                            "Connect / retry harness".into(),
-                            "Model availability depends on your harness and provider configuration"
-                                .into(),
-                        ),
-                        IconName::RefreshCw,
+                        "Connect / retry harness".into(),
                         false,
                         this.chat_controls_busy(),
                         Action::Connect,
                     ));
             }
             if this.local_opencode() {
-                menu = menu.separator().item(item(
+                menu = menu.separator().item(compact_item(
                     &app,
-                    ("Connect provider account…".into(), "Official OpenCode sign-in in Terminal".into()),
-                    IconName::KeyRound, false, this.chat_controls_busy(), Action::ConnectProvider,
-                )).item(item(
-                    &app,
-                    ("Refresh providers / models".into(), "Use after signing in or changing accounts".into()),
-                    IconName::RefreshCw, false, this.chat_controls_busy() || this.provider_catalog.loading, Action::RefreshProviders,
+                    "Refresh providers / models".into(),
+                    false, this.chat_controls_busy() || this.provider_catalog.loading, Action::RefreshProviders,
                 ));
             }
             menu.scrollable(true).max_h(px(420.))
@@ -431,8 +473,109 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .into_any_element()
 }
 
+pub(crate) fn mcp(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let app = cx.entity().downgrade();
+    let current = this.mcp_current();
+    let label = if current && !this.mcp.loading && this.mcp.error.is_none() {
+        format!("MCP {}", this.mcp.active_count())
+    } else {
+        "MCP —".into()
+    };
+    let menu_app = app.clone();
+    trigger("composer-mcp", label, IconName::Plug)
+        .tooltip("Connected MCP servers not excluded by this session; provider/agent policies may add restrictions")
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
+            let Some(entity) = menu_app.upgrade() else {
+                return menu;
+            };
+            let this = entity.read(cx);
+            if !this.local_opencode() {
+                return menu.label("MCP inventory is managed by this harness / relay");
+            }
+            menu = menu.label("MCP · current session");
+            if this.mcp.loading {
+                menu = menu.label("Loading MCP servers…");
+            } else if this.mcp_current() {
+                if let Some(error) = &this.mcp.error {
+                    menu = menu.label(error.clone());
+                }
+                if this.mcp.servers.is_empty() {
+                    menu = menu.label("No MCP servers configured");
+                }
+                for server in &this.mcp.servers {
+                    let enabled = server.connected && !server.disabled;
+                    menu = menu.item(compact_item(
+                        &menu_app,
+                        format!("{} · {}", server.name, server.label()),
+                        enabled,
+                        this.chat_controls_busy() || this.mcp.changing || !server.toggleable,
+                        Action::ToggleMcp(server.name.clone(), enabled),
+                    ));
+                }
+            }
+            menu.separator()
+                .label("Applies next turn · no session restart")
+                .label("Earlier tool output stays in context")
+                .item(item(
+                    &menu_app,
+                    ("Refresh MCP".into(), String::new()),
+                    IconName::RefreshCw,
+                    false,
+                    this.mcp.loading || this.mcp.changing,
+                    Action::RefreshMcp,
+                ))
+                .scrollable(true)
+                .max_h(px(420.))
+        })
+        .on_open_change(move |open, _, cx| {
+            let _ = app.update(cx, |this, cx| {
+                this.chat_menu_open = *open;
+                if *open && (!this.mcp_current() || this.mcp.error.is_some()) {
+                    this.refresh_mcp(cx);
+                }
+                cx.notify();
+            });
+        })
+        .into_any_element()
+}
+
 /// Providers are inside OpenCode, never additional ACP harnesses. Remote
 /// credentials belong on the relay, not on this Mac.
+pub(crate) fn provider_controls(
+    this: &DunlinApp,
+    cx: &mut Context<DunlinApp>,
+) -> Option<AnyElement> {
+    if !this.local_opencode() {
+        return None;
+    }
+    let p = palette(cx);
+    let connected = this.provider_connected();
+    Some(
+        div()
+            .id("composer-provider-controls")
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(2.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.card)
+            .child(provider(this, cx))
+            .when(!connected && !this.provider_catalog.loading && !this.harness.status.is_busy(), |view| view.child(div().w(px(1.)).h(px(14.)).bg(p.border)).child(
+                Button::new("composer-provider-sign-in")
+                    .ghost()
+                    .small()
+                    .icon(IconName::KeyRound)
+                    .label("Sign in…")
+                    .tooltip("Authorize the selected OpenCode provider; credentials are saved by OpenCode")
+                    .disabled(this.chat_controls_busy() || this.selected_provider().is_none())
+                    .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))),
+            ))
+            .into_any_element(),
+    )
+}
+
 pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let selected = this.selected_provider();
     let label = this
@@ -442,11 +585,7 @@ pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
         .find(|provider| Some(provider.id.as_str()) == selected)
         .map(|provider| provider.name.clone())
         .unwrap_or_else(|| {
-            if selected == Some(crate::providers::GO) {
-                "OpenCode Go".into()
-            } else {
-                selected.unwrap_or("Choose provider").into()
-            }
+            crate::providers::provider_name(selected.unwrap_or("Choose provider")).into()
         });
     let app = cx.entity().downgrade();
     trigger("composer-provider", label, IconName::Cloud)
@@ -458,6 +597,22 @@ pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
             let this = entity.read(cx);
             let busy = this.chat_controls_busy();
             menu = menu.label("Provider · inside the OpenCode harness");
+            menu = menu.item(item(
+                &app,
+                (
+                    "OpenCode Free".into(),
+                    "Only verified zero-cost OpenCode models · no Go subscription".into(),
+                ),
+                IconName::Cloud,
+                this.selected_provider() == Some(crate::providers::FREE),
+                busy,
+                Action::Provider(crate::providers::FREE.into()),
+            ));
+            if this.provider_catalog.loading {
+                menu = menu.label("Loading providers…");
+            } else if let Some(error) = &this.provider_catalog.error {
+                menu = menu.label(error.clone());
+            }
             if !this
                 .provider_catalog
                 .providers
@@ -468,7 +623,7 @@ pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                     &app,
                     (
                         "OpenCode Go".into(),
-                        "Connect a Go account, then refresh".into(),
+                        "Refresh discovery or sign in to OpenCode Console".into(),
                     ),
                     IconName::Cloud,
                     this.selected_provider() == Some(crate::providers::GO),
@@ -482,8 +637,13 @@ pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                     (
                         provider.name.clone(),
                         format!(
-                            "{} · {} account connection(s)",
-                            provider.id, provider.accounts
+                            "{} · {}",
+                            if provider.connected {
+                                "Account connected"
+                            } else {
+                                "No account connected"
+                            },
+                            provider.id
                         ),
                     ),
                     IconName::Cloud,
@@ -497,8 +657,12 @@ pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                 .item(item(
                     &app,
                     (
-                        "Connect provider account…".into(),
-                        "Sign in or add an account using OpenCode in Terminal".into(),
+                        if this.provider_connected() {
+                            "Add / reconnect account…".into()
+                        } else {
+                            "Connect provider account…".into()
+                        },
+                        "Sign in or add an account without leaving Dunlin".into(),
                     ),
                     IconName::KeyRound,
                     false,
@@ -528,18 +692,18 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
     let local = this.local_opencode();
     div().flex().flex_col().gap(px(8.))
         .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
-            "OpenCode is the harness; OpenCode Go is a model provider within it. Account credentials stay in OpenCode, not in Dunlin's settings or conversation history."
+            "OpenCode is the harness. Free filters its verified zero-cost models; Go is a separate subscription provider. Account credentials stay in OpenCode, not in Dunlin's settings or conversation history."
         ))
         .when(local, |view| view
             .child(provider(this, cx))
-            .child(Button::new("provider-account-connect").label("Connect account in Terminal…").small()
+            .child(Button::new("provider-account-connect").label(if this.provider_connected() { "Add / reconnect account…" } else { "Connect account…" }).small()
                 .disabled(this.chat_controls_busy())
-                .on_click(cx.listener(|this, _, _, cx| this.connect_provider(cx))))
+                .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))))
             .child(Button::new("provider-account-refresh").label("Refresh providers / models").small()
                 .disabled(this.chat_controls_busy() || this.provider_catalog.loading)
                 .on_click(cx.listener(|this, _, _, cx| this.reload_provider_models(cx))))
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child(
-                "Finish OpenCode's official sign-in in Terminal (browser login or API key, depending on the provider), then refresh here. A listed model does not guarantee account funds or Go entitlement."
+                "Connect with an API key or browser sign-in, as supported by the provider. Models refresh automatically after connection. A listed model does not guarantee account funds or Go entitlement."
             ))
             .when_some(this.provider_catalog.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error))))
         .when(!local, |view| view.child(div().text_size(px(11.5)).text_color(p.muted_fg).child(

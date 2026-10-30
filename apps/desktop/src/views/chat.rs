@@ -5,12 +5,16 @@ use dunlin_agent::{PermissionChoice, PermissionKind, PlanItem, PlanStatus, ToolC
 use dunlin_domain::ToolStatus;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
+use dunlin_ui::component::Sizable;
+use dunlin_ui::component::button::{Button, ButtonVariants};
 use dunlin_ui::component::input::Textarea;
+use dunlin_ui::component::text::TextView;
+use dunlin_ui::component::tooltip::Tooltip;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use super::chat_controls;
-use crate::app::{DunlinApp, format_duration, format_ms, format_tokens, tool_icon};
+use crate::app::{DunlinApp, SettingsTab, format_ms, tool_icon};
 use crate::harness::{ChatItem, HarnessStatus, QueuedPrompt};
 
 pub(crate) fn render(
@@ -19,6 +23,7 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    let connection_problem = connection_problem(this, cx);
     if this.harness.transcript.is_empty() {
         let composer = composer(this, window, cx);
         return div()
@@ -32,6 +37,7 @@ pub(crate) fn render(
             .items_center()
             .justify_center()
             .bg(p.bg)
+            .children(connection_problem)
             .child(
                 div()
                     .w_full()
@@ -50,36 +56,12 @@ pub(crate) fn render(
                             .mt(px(7.))
                             .text_size(px(13.))
                             .text_color(p.muted_fg)
-                            .child(format!(
-                                "{} · Choose your environment, harness and mode below.",
-                                this.project().name
-                            )),
+                            .child("Choose your environment and agent, then send a message."),
                     ),
             )
             .child(composer)
-            .child(
-                div()
-                    .mt(px(8.))
-                    .flex()
-                    .flex_wrap()
-                    .justify_center()
-                    .gap(px(7.))
-                    .child(suggestion_chip(
-                        "Explain codebase",
-                        "Explain this project's architecture and entry points.",
-                        cx,
-                        &p,
-                    ))
-                    .child(suggestion_chip(
-                        "Review changes",
-                        "Review the working tree changes and call out risky edits.",
-                        cx,
-                        &p,
-                    )),
-            )
             .into_any_element();
     }
-    let context = context_bar(this, cx);
     let messages = conversation(this, cx);
     let composer = composer(this, window, cx);
 
@@ -90,226 +72,104 @@ pub(crate) fn render(
         .min_w(px(0.))
         .min_h(px(0.))
         .bg(p.bg)
-        .child(context)
+        .children(connection_problem)
         .child(messages)
         .child(composer)
         .into_any_element()
 }
 
-fn context_bar(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElement> {
+    let command = this.harness.missing_command.as_ref()?;
     let p = palette(cx);
-    let session = this.session();
-    let status = &this.harness.status;
-    let (status_color, _) = harness_tone(&p, status);
-    let message_count = this.harness.transcript.len();
-    let context_label = this
-        .harness
-        .usage
-        .map(|usage| {
-            format!(
-                "{} / {} ctx",
-                format_tokens(usage.used),
-                format_tokens(usage.size)
-            )
-        })
-        .unwrap_or_else(|| "context idle".into());
-
-    div()
-        .h(px(36.))
-        .flex_shrink_0()
-        .px(px(18.))
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .border_b_1()
-        .border_color(p.border)
-        .child(
-            Icon::new(IconName::MessageSquareCode)
-                .size(px(13.))
-                .text_color(p.muted_fg),
-        )
-        .child(
-            div()
-                .text_size(px(12.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.fg.opacity(0.88))
-                .child("Conversation"),
-        )
-        .child(
-            div()
-                .text_size(px(11.5))
-                .font_family("Geist Mono")
-                .text_color(p.muted_fg)
-                .child(format!(
-                    "{message_count} {}",
-                    if message_count == 1 {
-                        "entry"
-                    } else {
-                        "entries"
-                    }
-                )),
-        )
-        .child(div().w(px(1.)).h(px(12.)).bg(p.border))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .child(
-                    Icon::new(IconName::Gauge)
-                        .size(px(11.5))
-                        .text_color(p.muted_fg),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg)
-                        .child(context_label),
-                ),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .child(dot(status_color, 4.5))
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(p.muted_fg)
-                        .child(format!("{} · {}", session.harness, status.label())),
-                ),
-        )
-        .child(div().flex_1())
-        .child(suggestion_chip(
-            "Explain flow",
-            "Explain the ACP permission flow and where child-session requests are dropped.",
-            cx,
-            &p,
-        ))
-        .child(suggestion_chip(
-            "Review changes",
-            "Review the working tree changes and call out risky edits before I commit.",
-            cx,
-            &p,
-        ))
-        .child(
-            div()
-                .id("reasoning-toggle")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(6.))
-                .border_1()
-                .border_color(if this.reasoning_open {
-                    p.violet.opacity(0.35)
-                } else {
-                    p.border
-                })
-                .bg(if this.reasoning_open {
-                    p.violet_soft
-                } else {
-                    p.card
-                })
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.reasoning_open = !this.reasoning_open;
-                    cx.notify();
-                }))
-                .child(Icon::new(IconName::Brain).size(px(11.5)).text_color(
-                    if this.reasoning_open {
-                        p.violet
-                    } else {
-                        p.muted_fg
-                    },
-                ))
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(if this.reasoning_open {
-                            p.violet
-                        } else {
-                            p.muted_fg
-                        })
-                        .child("Reasoning"),
-                ),
-        )
-        .child(
-            div()
-                .id("compact-chat")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.set_notice("Context compaction is handled by the harness", cx);
-                }))
-                .child(
-                    Icon::new(IconName::Minimize2)
-                        .size(px(11.5))
-                        .text_color(p.muted_fg),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(p.muted_fg)
-                        .child("Compact"),
-                ),
-        )
-        .into_any_element()
+    let can_use_opencode =
+        this.session_harness() != "OpenCode" && crate::harness::command_available("opencode acp");
+    Some(div().w_full().px(px(22.)).py(px(12.)).flex().justify_center().flex_shrink_0().child(
+        div().w_full().max_w(px(824.)).p(px(12.)).rounded(px(9.))
+            .border_1().border_color(p.amber.opacity(0.35)).bg(p.amber_soft)
+            .flex().flex_col().gap(px(8.))
+            .child(div().text_size(px(13.)).text_color(p.amber).child(format!("{} needs an ACP adapter", this.session_harness())))
+            .child(div().text_size(px(12.)).text_color(p.muted_fg).child(
+                "The required ACP command is not installed. No connection is being retried. Your existing conversations are preserved."
+            ))
+            .child(div().text_size(px(11.5)).font_family(dunlin_ui::theme::code_font()).child(command.clone()))
+            .child(div().flex().flex_wrap().gap(px(8.))
+                .when(can_use_opencode, |view| view.child(
+                    Button::new("missing-adapter-opencode").primary().small().label("Start with OpenCode")
+                        .on_click(cx.listener(|this, _, _, cx| this.select_chat_harness("OpenCode", cx)))))
+                .child(Button::new("missing-adapter-settings").ghost().small().label("Harness settings")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.settings_open = true;
+                        this.settings_tab = SettingsTab::Harnesses;
+                        cx.notify();
+                    })))
+                .child(Button::new("missing-adapter-retry").ghost().small().label("Check again")
+                    .on_click(cx.listener(|this, _, _, cx| this.connect_harness(cx)))))
+    ).into_any_element())
 }
 
-fn suggestion_chip(
-    label: &str,
-    prompt: &str,
-    cx: &mut Context<DunlinApp>,
-    p: &Palette,
-) -> AnyElement {
-    let prompt = prompt.to_string();
+pub(crate) fn reasoning_toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
     div()
-        .id(format!("suggestion:{label}"))
+        .id("reasoning-toggle")
         .h(px(23.))
         .px(px(7.))
         .rounded(px(6.))
-        .bg(p.card)
         .border_1()
-        .border_color(p.border)
+        .border_color(if this.reasoning_open {
+            p.violet.opacity(0.35)
+        } else {
+            p.border
+        })
+        .bg(if this.reasoning_open {
+            p.violet_soft
+        } else {
+            p.card
+        })
         .flex()
         .items_center()
+        .gap(px(5.))
         .cursor_pointer()
         .hover(move |style| style.bg(p.hover))
-        .on_click(cx.listener(move |this, _, window, cx| {
-            this.composer.update(cx, |state, cx| {
-                state.set_value(prompt.clone(), window, cx);
-                state.focus(window, cx);
-            });
+        .on_click(cx.listener(|this, _, _, cx| {
+            this.reasoning_open = !this.reasoning_open;
             cx.notify();
         }))
         .child(
+            Icon::new(IconName::Brain)
+                .size(px(11.5))
+                .text_color(if this.reasoning_open {
+                    p.violet
+                } else {
+                    p.muted_fg
+                }),
+        )
+        .child(
             div()
                 .text_size(px(11.5))
-                .text_color(p.muted_fg)
-                .child(label.to_string()),
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(if this.reasoning_open {
+                    p.violet
+                } else {
+                    p.muted_fg
+                })
+                .child("Reasoning"),
         )
         .into_any_element()
 }
 
 fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let items = this.harness.transcript.clone();
+    let session = this.session().id.clone();
+    let following = this.chat_scroll.prepare(&session);
+    let scroll_probe = this.chat_scroll.handle.clone();
+    let items = crate::chat_presentation::project(
+        &this.harness.transcript,
+        this.final_answer_only,
+        this.harness.running,
+        this.stream_responses,
+    );
     let running = this.harness.running;
     let status = this.harness.status.clone();
-    let usage = this.harness.usage;
-    let session = this.session().clone();
     let reasoning_open = this.reasoning_open;
     let expanded = this.expanded_tool;
     let waiting_for_permission = items
@@ -318,6 +178,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
 
     let mut inner = div()
         .w_full()
+        .flex_shrink_0()
         .max_w(px(824.))
         .pb(px(12.))
         .flex()
@@ -329,8 +190,16 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     } else {
         let mut index = 0;
         while index < items.len() {
-            if let ChatItem::User { text, .. } = &items[index] {
-                inner = inner.child(user_message(index, text, cx, &p));
+            if let ChatItem::User { text, at_ms, .. } = &items[index] {
+                inner = inner.child(user_message(
+                    index,
+                    text,
+                    this.chat_timestamps
+                        .then(|| crate::chat_timing::local_time(*at_ms))
+                        .flatten(),
+                    cx,
+                    &p,
+                ));
                 index += 1;
                 continue;
             }
@@ -339,14 +208,29 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             while index < items.len() && !matches!(items[index], ChatItem::User { .. }) {
                 index += 1;
             }
+            let timing = start.checked_sub(1).and_then(|index| {
+                if let ChatItem::User { timing, .. } = &items[index] {
+                    *timing
+                } else {
+                    None
+                }
+            });
+            let caption = crate::chat_timing::agent_caption(
+                &items[start..index],
+                timing,
+                this.chat_timestamps,
+                this.chat_duration,
+            );
             inner = inner.child(agent_group(
                 &items[start..index],
                 start,
-                &session,
-                &status,
-                reasoning_open,
-                expanded,
-                running,
+                AgentGroupOptions {
+                    reasoning_open,
+                    expanded,
+                    session: &session,
+                    caption,
+                    logo: this.chat_logo,
+                },
                 cx,
                 &p,
             ));
@@ -354,51 +238,81 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     }
 
     if running && !waiting_for_permission {
-        inner = inner.child(running_card(usage, &p));
+        inner = inner.child(running_card(
+            this.final_answer_only,
+            this.stream_responses,
+            &p,
+        ));
     }
 
-    let bottom_hint = div()
-        .w_full()
-        .max_w(px(824.))
-        .pt(px(6.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(6.))
-        .child(
-            Icon::new(if running {
-                IconName::LoaderCircle
-            } else {
-                IconName::ArrowDown
-            })
-            .size(px(10.))
-            .text_color(p.muted_fg),
-        )
-        .child(
-            div()
-                .text_size(px(11.0))
-                .font_family("Geist Mono")
-                .text_color(p.muted_fg.opacity(0.7))
-                .child(if running {
-                    "Streaming from the harness"
-                } else {
-                    "Conversation is up to date"
-                }),
-        );
-
-    div()
+    let stream = div()
         .id("chat-stream")
         .flex_1()
         .min_h(px(0.))
         .w_full()
         .overflow_y_scroll()
+        .track_scroll(&this.chat_scroll.handle)
+        .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+            let delta = event.delta.pixel_delta(px(16.)).y;
+            if delta > px(0.) {
+                this.chat_scroll.pause_following();
+                cx.notify();
+                return;
+            }
+            if delta == px(0.) {
+                return;
+            }
+            // Read the resulting offset after GPUI's default wheel handler.
+            // Sampling during normal renders would confuse growing content
+            // with the reader deliberately scrolling away from the live edge.
+            let app = cx.entity().downgrade();
+            window.defer(cx, move |_, cx| {
+                let _ = app.update(cx, |this, cx| {
+                    this.chat_scroll.user_scrolled();
+                    cx.notify();
+                });
+            });
+        }))
         .px(px(22.))
         .py(px(18.))
         .flex()
         .flex_col()
         .items_center()
-        .child(inner)
-        .child(bottom_hint)
+        .child(inner);
+
+    div()
+        .relative()
+        .flex_1()
+        .min_h(px(0.))
+        .flex()
+        .flex_col()
+        .child(stream)
+        .when(std::env::var_os("DUNLIN_TRACE_SCROLL").is_some(), |view| view.child(
+            canvas(|_, _, _| (), move |_, _, _, _| {
+                crate::logging::info(&format!("chat scroll layout · follow {following} · offset {:.1} · maximum {:.1}", scroll_probe.offset().y / px(1.), scroll_probe.max_offset().y / px(1.)));
+            }).absolute().size(px(0.))
+        ))
+        .when(!following, |view| {
+            view.child(
+                div()
+                    .absolute()
+                    .bottom(px(8.))
+                    .left_0()
+                    .w_full()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        Button::new("chat-jump-latest")
+                            .small()
+                            .icon(IconName::ArrowDown)
+                            .label("Jump to latest")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.chat_scroll.jump_to_latest();
+                                cx.notify();
+                            })),
+                    ),
+            )
+        })
         .into_any_element()
 }
 
@@ -506,7 +420,7 @@ fn empty_state(
                 this.child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(status_color.opacity(0.75))
                         .child(detail),
                 )
@@ -586,19 +500,33 @@ fn starter_row(
         .into_any_element()
 }
 
-#[allow(clippy::too_many_arguments)]
+struct AgentGroupOptions<'a> {
+    reasoning_open: bool,
+    expanded: Option<usize>,
+    session: &'a str,
+    caption: Option<String>,
+    logo: bool,
+}
+
 fn agent_group(
     items: &[ChatItem],
     base: usize,
-    session: &dunlin_domain::SessionSummary,
-    status: &HarnessStatus,
-    reasoning_open: bool,
-    expanded: Option<usize>,
-    running: bool,
+    options: AgentGroupOptions<'_>,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
-    let mut body = div().pl(px(33.)).flex().flex_col().gap(px(14.));
+    let AgentGroupOptions {
+        reasoning_open,
+        expanded,
+        session,
+        caption,
+        logo,
+    } = options;
+    let mut body = div()
+        .pl(px(if logo { 33. } else { 0. }))
+        .flex()
+        .flex_col()
+        .gap(px(14.));
 
     for (offset, item) in items.iter().enumerate() {
         let index = base + offset;
@@ -606,11 +534,9 @@ fn agent_group(
             ChatItem::AgentText {
                 text, streaming, ..
             } => {
-                let content = if *streaming {
-                    format!("{text} ▍")
-                } else {
-                    text.clone()
-                };
+                if text.is_empty() {
+                    continue;
+                }
                 let copy_text = text.clone();
                 let group = format!("agent-text-{index}");
                 let mut text_block = div()
@@ -621,7 +547,10 @@ fn agent_group(
                     .text_size(px(13.0))
                     .line_height(relative(1.62))
                     .text_color(p.fg.opacity(0.92))
-                    .child(content);
+                    .child(markdown_text(
+                        format!("response:{session}:{index}"),
+                        text.clone(),
+                    ));
                 if !*streaming {
                     text_block = text_block.child(
                         div()
@@ -658,6 +587,13 @@ fn agent_group(
             ChatItem::Tool {
                 view, duration_ms, ..
             } => {
+                if crate::projection::child_id(&view.detail).is_some_and(|id| {
+                    items
+                        .iter()
+                        .any(|item| matches!(item,ChatItem::Child {id:child,..} if child==id))
+                }) {
+                    continue;
+                }
                 body = body.child(tool_card(index, view, *duration_ms, expanded, cx, p));
             }
             ChatItem::Plan { items, .. } => {
@@ -680,7 +616,56 @@ fn agent_group(
                 ));
             }
             ChatItem::Error { message, .. } => {
-                body = body.child(error_card(message, p));
+                if offset > 0
+                    && matches!(&items[offset - 1], ChatItem::Error { message: previous, .. } if previous == message)
+                {
+                    continue;
+                }
+                body = body.child(error_card(
+                    index,
+                    message,
+                    repeated_errors(items, offset),
+                    p,
+                ));
+            }
+            ChatItem::Child {
+                id, title, items, ..
+            } => {
+                let label = title.clone().unwrap_or_else(|| "Subagent".into());
+                let detail = items
+                    .iter()
+                    .filter_map(|item| match item {
+                        ChatItem::AgentText { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<String>();
+                let open = expanded == Some(index);
+                body = body.child(
+                    div()
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(p.border)
+                        .p(px(8.))
+                        .child(
+                            Button::new(("child-details", index))
+                                .ghost()
+                                .small()
+                                .label(format!("Subagent · {label}"))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.expanded_tool = if open { None } else { Some(index) };
+                                    cx.notify();
+                                })),
+                        )
+                        .when(open, |view| {
+                            view.child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(p.muted_fg)
+                                    .child(id.clone()),
+                            )
+                            .child(markdown_text(format!("child:{id}"), detail))
+                        }),
+                );
             }
             ChatItem::User { .. } => {}
         }
@@ -690,12 +675,31 @@ fn agent_group(
         .flex()
         .flex_col()
         .gap(px(9.))
-        .child(agent_header(session, status, running, p))
+        .child(agent_header(logo, caption, p))
         .child(body)
         .into_any_element()
 }
 
-fn user_message(index: usize, text: &str, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+fn markdown_text(id: String, text: String) -> TextView {
+    TextView::markdown(id, text)
+        .scrollable(false)
+        .selectable(true)
+        .on_link_click(|url, _, _, cx| {
+            if url::Url::parse(url)
+                .is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto"))
+            {
+                cx.open_url(url);
+            }
+        })
+}
+
+fn user_message(
+    index: usize,
+    text: &str,
+    time: Option<String>,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
     let copy_text = text.to_string();
     let retry_text = text.to_string();
     let edit_text = text.to_string();
@@ -735,9 +739,12 @@ fn user_message(index: usize, text: &str, cx: &mut Context<DunlinApp>, p: &Palet
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.75))
-                                .child("You"),
+                                .child(
+                                    time.map(|time| format!("You · {time}"))
+                                        .unwrap_or_else(|| "You".into()),
+                                ),
                         )
                         .child(div().flex_1())
                         .child(
@@ -824,23 +831,12 @@ fn agent_avatar(p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn agent_header(
-    session: &dunlin_domain::SessionSummary,
-    status: &HarnessStatus,
-    running: bool,
-    p: &Palette,
-) -> AnyElement {
-    let model = if session.model == "—" || session.model.is_empty() {
-        "Auto".to_string()
-    } else {
-        session.model.clone()
-    };
-
+fn agent_header(logo: bool, caption: Option<String>, p: &Palette) -> AnyElement {
     div()
         .flex()
         .items_center()
         .gap(px(7.))
-        .child(agent_avatar(p))
+        .when(logo, |view| view.child(agent_avatar(p)))
         .child(
             div()
                 .text_size(px(12.5))
@@ -848,63 +844,14 @@ fn agent_header(
                 .text_color(p.fg)
                 .child("Dunlin"),
         )
-        .child(
-            div()
-                .h(px(17.))
-                .px(px(5.))
-                .rounded(px(4.))
-                .bg(p.violet_soft)
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .child(
-                    Icon::new(IconName::Sparkles)
-                        .size(px(9.5))
-                        .text_color(p.violet),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.violet)
-                        .child(model),
-                ),
-        )
-        .child(
-            div()
-                .text_size(px(11.0))
-                .font_family("Geist Mono")
-                .text_color(p.muted_fg)
-                .child(format!("{} · ACP", session.harness)),
-        )
-        .child(div().flex_1())
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .child(dot(
-                    if running {
-                        p.blue
-                    } else {
-                        p.muted_fg.opacity(0.6)
-                    },
-                    4.5,
-                ))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg)
-                        .child(if running {
-                            "streaming".to_string()
-                        } else if session.duration_secs > 0 {
-                            format_duration(session.duration_secs)
-                        } else {
-                            status.label()
-                        }),
-                ),
-        )
+        .when_some(caption, |view, caption| {
+            view.child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(p.muted_fg)
+                    .child(caption),
+            )
+        })
         .into_any_element()
 }
 
@@ -950,7 +897,7 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(format!(
                             "{line_count} {}",
@@ -1032,7 +979,12 @@ fn tool_card(
     };
     let icon_name = tool_icon(tool.kind);
     let target = if tool.locations.is_empty() {
-        tool.detail.lines().next().unwrap_or("").to_string()
+        crate::projection::tool_summary(&tool.detail)
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim_start_matches(['#', ' '])
+            .to_string()
     } else {
         tool.locations.join(", ")
     };
@@ -1091,7 +1043,7 @@ fn tool_card(
                         .flex_1()
                         .min_w(px(0.))
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .truncate()
                         .child(target),
@@ -1100,14 +1052,14 @@ fn tool_card(
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.green)
                             .child(format!("+{additions}")),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.red)
                             .child(format!("−{deletions}")),
                     )
@@ -1131,7 +1083,7 @@ fn tool_card(
                         .child(
                             div()
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(status_color)
                                 .child(status.label().to_uppercase()),
                         ),
@@ -1140,7 +1092,7 @@ fn tool_card(
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.muted_fg)
                             .child(format_ms(duration_ms)),
                     )
@@ -1185,7 +1137,7 @@ fn tool_card(
                     .border_1()
                     .border_color(p.border)
                     .text_size(px(11.5))
-                    .font_family("Geist Mono")
+                    .font_family(dunlin_ui::theme::code_font())
                     .text_color(p.fg.opacity(0.75))
                     .child(format!("$ {}", tool.locations.join("  "))),
             );
@@ -1221,7 +1173,7 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
         lines = lines.child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .line_height(relative(1.4))
                 .text_color(color)
                 .child(line.to_string()),
@@ -1246,7 +1198,7 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
                 .child(
                     div()
                         .text_size(px(10.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("DIFF"),
                 )
@@ -1313,7 +1265,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("EXECUTION PLAN"),
                 )
@@ -1321,7 +1273,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(format!("{} steps", items.len())),
                 ),
@@ -1356,7 +1308,7 @@ fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(if item.status == PlanStatus::InProgress {
                             p.blue
                         } else {
@@ -1427,7 +1379,7 @@ fn permission_card(
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(accent.opacity(0.7))
                                 .child(if resolved.is_some() {
                                     "resolved"
@@ -1446,7 +1398,7 @@ fn permission_card(
                                 .flex_1()
                                 .min_w(px(0.))
                                 .text_size(px(11.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.fg.opacity(0.8))
                                 .truncate()
                                 .child(title.to_string()),
@@ -1454,7 +1406,7 @@ fn permission_card(
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.8))
                                 .child("ACP"),
                         ),
@@ -1553,7 +1505,7 @@ fn permission_card(
         buttons = buttons.child(div().flex_1()).child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(accent.opacity(0.75))
                 .child("session/request_permission"),
         );
@@ -1564,8 +1516,32 @@ fn permission_card(
     card.into_any_element()
 }
 
-fn error_card(message: &str, p: &Palette) -> AnyElement {
+fn repeated_errors(items: &[ChatItem], start: usize) -> usize {
+    let Some(ChatItem::Error { message, .. }) = items.get(start) else {
+        return 0;
+    };
+    items[start..]
+        .iter()
+        .take_while(|item| matches!(item, ChatItem::Error { message: next, .. } if next == message))
+        .count()
+}
+
+fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElement {
+    let details = message.to_string();
+    let display = if message.starts_with("ACP connection failed")
+        && message.contains("No such file or directory")
+    {
+        "The harness could not start because its ACP adapter or a required executable was missing."
+    } else {
+        message
+    };
     div()
+        .id(("chat-error", index))
+        .tooltip(move |window, cx| {
+            Tooltip::new(details.clone())
+                .max_w(px(600.))
+                .build(window, cx)
+        })
         .rounded(px(9.))
         .border_1()
         .border_color(p.red.opacity(0.35))
@@ -1586,12 +1562,23 @@ fn error_card(message: &str, p: &Palette) -> AnyElement {
                 .text_size(px(12.0))
                 .line_height(relative(1.5))
                 .text_color(p.red)
-                .child(message.to_string()),
+                .child(display.to_string())
+                .when(count > 1, |view| {
+                    view.child(
+                        div()
+                            .mt(px(5.))
+                            .text_size(px(11.))
+                            .text_color(p.muted_fg)
+                            .child(format!(
+                                "{count} previous occurrences · grouped from saved history"
+                            )),
+                    )
+                }),
         )
         .into_any_element()
 }
 
-fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> AnyElement {
+fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
     div()
         .rounded(px(9.))
         .border_1()
@@ -1618,47 +1605,28 @@ fn running_card(usage: Option<crate::harness::HarnessUsage>, p: &Palette) -> Any
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.blue)
                         .child("Agent is working"),
-                )
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.blue.opacity(0.8))
-                        .child(
-                            usage
-                                .map(|usage| {
-                                    format!(
-                                        "{} / {}",
-                                        format_tokens(usage.used),
-                                        format_tokens(usage.size)
-                                    )
-                                })
-                                .unwrap_or_else(|| "streaming".into()),
-                        ),
                 ),
         )
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.blue.opacity(0.78))
-                .child("tool calls and reasoning will appear inline"),
+                .child(if !stream {
+                    "The final answer will appear when the turn completes"
+                } else if final_only {
+                    "Response text appears as it arrives; workflow details stay in Graph / Trace"
+                } else {
+                    "tool calls and reasoning will appear inline"
+                }),
         )
         .into_any_element()
 }
 
 fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let status = this.harness.status.clone();
     let running = this.harness.running;
     let has_text = !this.composer.read(cx).value().trim().is_empty();
-    let branch = this
-        .project()
-        .branch
-        .clone()
-        .unwrap_or_else(|| "main".into());
-    let project = this.project().name.clone();
     let queued = this.harness.queued_prompts();
     let queue_open = this.queue_open;
 
@@ -1696,30 +1664,8 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .border_color(p.border)
                 .child(environment)
                 .child(div().w(px(1.)).h(px(14.)).bg(p.border))
-                .child(
-                    div()
-                        .px(px(6.))
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .child(
-                            Icon::new(IconName::Folder)
-                                .size(px(12.))
-                                .text_color(p.muted_fg),
-                        )
-                        .child(
-                            div()
-                                .max_w(px(180.))
-                                .truncate()
-                                .text_size(px(12.))
-                                .text_color(p.muted_fg)
-                                .child(project.clone()),
-                        ),
-                )
                 .child(harness)
-                .when(this.local_opencode(), |view| {
-                    view.child(chat_controls::provider(this, cx))
-                })
+                .children(chat_controls::provider_controls(this, cx))
                 .child(div().flex_1())
                 .when(!queued.is_empty(), |this| {
                     this.child(
@@ -1746,7 +1692,7 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                             .child(
                                 div()
                                     .text_size(px(11.0))
-                                    .font_family("Geist Mono")
+                                    .font_family(dunlin_ui::theme::code_font())
                                     .text_color(if queue_open { p.bg } else { p.amber })
                                     .child(format!("{} queued", queued.len())),
                             ),
@@ -1771,20 +1717,7 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                     &p,
                     |this, window, cx| this.attach_files(window, cx),
                 ))
-                .child(attachment_button(
-                    IconName::AtSign,
-                    "Mention",
-                    cx,
-                    &p,
-                    |this, window, cx| this.mention_file(window, cx),
-                ))
-                .child(attachment_button(
-                    IconName::SquareTerminal,
-                    "Tools",
-                    cx,
-                    &p,
-                    |this, window, cx| this.open_composer_tools(window, cx),
-                ))
+                .child(chat_controls::mcp(this, cx))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1844,46 +1777,16 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                     this.child(queue_panel(&queued, cx, &p))
                 })
                 .child(card)
-                .child(
-                    div()
-                        .px(px(2.))
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(6.))
-                        .child(
-                            Icon::new(IconName::GitBranch)
-                                .size(px(10.))
-                                .text_color(p.muted_fg),
-                        )
-                        .child(
-                            div()
-                                .max_w(px(320.))
-                                .truncate()
-                                .text_size(px(11.0))
-                                .font_family("Geist Mono")
-                                .text_color(p.muted_fg)
-                                .child(format!("{branch} · {project} · workspace")),
-                        )
-                        .child(div().flex_1())
-                        .child(
-                            div()
-                                .max_w(px(460.))
-                                .text_size(px(11.0))
-                                .text_color(if matches!(status, HarnessStatus::Failed(_)) {
-                                    p.red
-                                } else {
-                                    p.muted_fg.opacity(0.65)
-                                })
-                                .child(format!(
-                                    "{} · {}",
-                                    status.label(),
-                                    status.detail().unwrap_or_else(|| {
-                                        "Enter to send · Shift+Enter for a new line".into()
-                                    })
-                                )),
-                        ),
-                ),
+                .when(this.show_shortcut_hints, |view| {
+                    view.child(
+                        div()
+                            .px(px(2.))
+                            .text_right()
+                            .text_size(px(11.))
+                            .text_color(p.muted_fg.opacity(0.65))
+                            .child("Enter to send · Shift+Enter for a new line"),
+                    )
+                }),
         )
         .into_any_element()
 }
@@ -1918,7 +1821,7 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                         .w(px(16.))
                         .flex_shrink_0()
                         .text_size(px(10.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.6))
                         .child(format!("{}", index + 1)),
                 )
@@ -2026,14 +1929,14 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                 .child(
                     div()
                         .text_size(px(10.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("PROMPT QUEUE"),
                 )
                 .child(
                     div()
                         .text_size(px(10.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.6))
                         .child(queued.len().to_string()),
                 )
@@ -2119,9 +2022,34 @@ pub(crate) fn harness_tone(p: &Palette, status: &HarnessStatus) -> (Hsla, Hsla) 
     }
 }
 
-pub(crate) fn message_count_label(count: usize) -> String {
-    format!(
-        "{count} {}",
-        if count == 1 { "message" } else { "messages" }
-    )
+#[cfg(test)]
+mod tests {
+    use super::repeated_errors;
+    use crate::harness::ChatItem;
+
+    #[test]
+    fn repeated_errors_are_grouped_without_crossing_messages_or_other_errors() {
+        let error = |message: &str| ChatItem::Error {
+            message: message.into(),
+            at_ms: 1,
+        };
+        let items = vec![
+            error("missing"),
+            error("missing"),
+            error("missing"),
+            ChatItem::User {
+                text: "retry".into(),
+                timing: None,
+                at_ms: 2,
+            },
+            error("missing"),
+            error("another"),
+        ];
+        assert_eq!(repeated_errors(&items, 0), 3);
+        assert_eq!(repeated_errors(&items, 3), 0);
+        assert_eq!(repeated_errors(&items, 4), 1);
+        assert_eq!(repeated_errors(&items, 5), 1);
+        assert_eq!(repeated_errors(&items, 9), 0);
+        assert_eq!(items.len(), 6);
+    }
 }

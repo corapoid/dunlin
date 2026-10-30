@@ -3,17 +3,18 @@
 
 use std::path::Path;
 
+use crate::effects::menu_item;
 use dunlin_domain::*;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
 use dunlin_ui::component::input::Input;
+use dunlin_ui::component::menu::{ContextMenuExt, PopupMenu};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::{
     ContextMenuState, ContextTarget, DunlinApp, SettingsTab, status_palette, tone_color, tone_soft,
 };
-use crate::harness::HarnessStatus;
 use dunlin_workspace::tree::FileEntry;
 
 pub(crate) fn render(
@@ -23,6 +24,7 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let body = match this.section {
+        SidebarSection::Dashboard => projects_body(this, cx),
         SidebarSection::Projects => projects_body(this, cx),
         SidebarSection::Files => files_body(this, cx),
         SidebarSection::Search => search_body(this, cx),
@@ -33,10 +35,28 @@ pub(crate) fn render(
     let footer = usage_footer(this, cx);
     let menu = this.project_menu_open.then(|| project_menu(this, cx));
 
-    let compact = _window.viewport_size().width < px(1050.);
+    let width =
+        crate::sidebar_layout::width(this.sidebar_width, f32::from(_window.viewport_size().width));
+    let scroll = div()
+        .id("sidebar-scroll")
+        .flex_1()
+        .min_h(px(0.))
+        .overflow_y_scroll()
+        .when(this.section == SidebarSection::Files, |view| {
+            crate::explorer::drop_target(view, this.project().path.clone(), cx)
+        })
+        .child(body);
+    let scroll = if matches!(
+        this.section,
+        SidebarSection::Projects | SidebarSection::Dashboard
+    ) {
+        projects_context(scroll, None, this.project_groups.clone(), cx)
+    } else {
+        scroll.into_any_element()
+    };
     let mut root = div()
         .relative()
-        .w(px(if compact { 232. } else { 278. }))
+        .w(px(width))
         .h_full()
         .flex_shrink_0()
         .flex()
@@ -46,15 +66,9 @@ pub(crate) fn render(
         .border_color(p.border)
         .child(project_switcher(this, cx))
         .child(header)
-        .child(
-            div()
-                .id("sidebar-scroll")
-                .flex_1()
-                .min_h(px(0.))
-                .overflow_y_scroll()
-                .child(body),
-        )
-        .child(footer);
+        .child(scroll)
+        .child(footer)
+        .child(crate::sidebar_layout::handle(this, cx));
 
     if let Some(menu) = menu {
         root = root.child(menu);
@@ -66,8 +80,6 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let p = palette(cx);
     let project = this.project();
     let tone = tone_color(&p, project.tone);
-    let soft = tone_soft(&p, project.tone);
-    let monogram = monogram(&project.name);
     let running = this.running_sessions_for(&project.id);
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
 
@@ -87,26 +99,7 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             this.project_menu_open = !this.project_menu_open;
             cx.notify();
         }))
-        .child(
-            div()
-                .size(px(28.))
-                .flex_shrink_0()
-                .rounded(px(8.))
-                .bg(soft)
-                .border_1()
-                .border_color(tone.opacity(0.18))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::BOLD)
-                        .font_family("Geist Mono")
-                        .text_color(tone)
-                        .child(monogram),
-                ),
-        )
+        .child(crate::project_icons::render(this, project, 28., &p))
         .child(
             div()
                 .flex_1()
@@ -138,7 +131,7 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .truncate()
                         .child(project.path_tail().to_string()),
@@ -157,7 +150,7 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(format!("{running} live")),
                 ),
@@ -173,11 +166,12 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
 fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let (title, count) = match this.section {
+        SidebarSection::Dashboard => ("Projects", Some(this.projects.len())),
         SidebarSection::Projects => ("Projects", Some(this.projects.len())),
         SidebarSection::Files => ("Explorer", None),
         SidebarSection::Search => ("Search", Some(this.search_hits.len())),
         SidebarSection::SourceControl => ("Source control", Some(this.git.changes.len())),
-        SidebarSection::Sessions => ("Sessions", Some(this.sessions.len())),
+        SidebarSection::Sessions => ("Sessions", Some(this.visible_session_count())),
     };
 
     let right: AnyElement = match this.section {
@@ -243,7 +237,28 @@ fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         this.new_file(window, cx);
                     }))
                     .child(
-                        Icon::new(IconName::Plus)
+                        Icon::new(IconName::FilePlus)
+                            .size(px(13.))
+                            .text_color(p.muted_fg),
+                    ),
+            )
+            .child(
+                div()
+                    .id("new-folder")
+                    .aria_label("Create a new folder")
+                    .size(px(22.))
+                    .rounded(px(5.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        let parent = this.explorer_parent();
+                        this.new_explorer_entry(parent, true, window, cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::FolderPlus)
                             .size(px(13.))
                             .text_color(p.muted_fg),
                     ),
@@ -295,7 +310,8 @@ fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         _ => div().into_any_element(),
     };
 
-    div()
+    let header = div()
+        .id("sidebar-section-header")
         .h(px(34.))
         .flex_shrink_0()
         .px(px(12.))
@@ -305,7 +321,7 @@ fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.muted_fg)
                 .child(title.to_uppercase()),
@@ -314,164 +330,325 @@ fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             this.child(
                 div()
                     .text_size(px(11.0))
-                    .font_family("Geist Mono")
+                    .font_family(dunlin_ui::theme::code_font())
                     .text_color(p.muted_fg.opacity(0.7))
                     .child(count.to_string()),
             )
         })
         .child(div().flex_1())
-        .child(right)
-        .into_any_element()
+        .child(right);
+    if matches!(
+        this.section,
+        SidebarSection::Projects | SidebarSection::Dashboard
+    ) {
+        projects_context(header, None, this.project_groups.clone(), cx)
+    } else {
+        header.into_any_element()
+    }
 }
 
 fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    this.refresh_project_summaries(cx);
     let p = palette(cx);
     let mut list = div().flex().flex_col().gap(px(2.)).px(px(6.)).pb(px(10.));
+    let dragging = cx.has_active_drag();
+    if dragging {
+        list = list.child(div().p(px(9.)).mb(px(6.)).rounded(px(7.)).bg(p.blue_soft).text_size(px(11.)).text_color(p.blue).child("Move a project: drop anywhere inside its destination group. Files stay in place."));
+    }
     let groups = this.project_groups.clone();
-
-    for group in &groups {
-        let mut indices: Vec<usize> = this
-            .projects
-            .iter()
-            .enumerate()
-            .filter(|(_, project)| project.group_id.as_deref() == Some(group.id.as_str()))
-            .map(|(index, _)| index)
-            .collect();
-        indices.sort_by_key(|index| {
-            (
-                !this.projects[*index].pinned,
-                this.projects[*index].name.to_lowercase(),
-            )
-        });
-        let collapsed = this.collapsed_project_groups.contains(&group.id);
-        list = list.child(group_header(group, indices.len(), collapsed, cx, &p));
-        if collapsed {
-            continue;
-        }
-        if indices.is_empty() {
-            list = list.child(
-                div()
-                    .px(px(10.))
-                    .pb(px(4.))
-                    .text_size(px(10.5))
-                    .text_color(p.muted_fg.opacity(0.7))
-                    .child("No projects yet"),
+    let modified: std::collections::HashMap<_, _> = this
+        .repo_summaries
+        .values
+        .iter()
+        .map(|(id, summary)| (id.clone(), summary.activity.modified_ms))
+        .collect();
+    list = list.child(project_view_controls(this, cx, &p));
+    if this.project_view == crate::project_tree::View::Tree {
+        for (index, depth) in crate::project_tree::visible_groups(
+            &groups,
+            &this.projects,
+            &this.collapsed_project_groups,
+            this.project_sort,
+            &modified,
+        ) {
+            let group = &groups[index];
+            let mut indices: Vec<_> = this
+                .projects
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.group_id.as_deref() == Some(&group.id))
+                .map(|(i, _)| i)
+                .collect();
+            crate::project_tree::sort_projects(
+                &this.projects,
+                &mut indices,
+                this.project_sort,
+                &modified,
             );
-        }
-        for index in indices {
-            list = list.child(project_row(this, index, cx, &p));
-            if this.project_group_editor == Some(index) {
-                list = list.child(project_group_picker(this, index, cx, &p));
+            let descendants = crate::project_tree::descendants(&groups, &group.id);
+            let count = this
+                .projects
+                .iter()
+                .filter(|p| {
+                    p.group_id
+                        .as_ref()
+                        .is_some_and(|id| descendants.contains(id))
+                })
+                .count();
+            let collapsed = this.collapsed_project_groups.contains(&group.id);
+            let mut section =
+                project_group_drop_zone(Some(group.id.clone()), &group.name, dragging, cx, &p)
+                    .ml(px(depth.min(8) as f32 * 12.))
+                    .child(group_header(group, &groups, count, collapsed, cx, &p));
+            for index in indices.into_iter().filter(|_| !collapsed) {
+                section = section.child(project_row(this, index, cx, &p));
+                if this.project_group_editor == Some(index) {
+                    section = section.child(project_group_picker(this, index, cx, &p));
+                }
             }
+            list = list.child(section);
         }
     }
-
-    let ungrouped: Vec<usize> = this
+    let mut indices: Vec<_> = this
         .projects
         .iter()
         .enumerate()
-        .filter(|(_, project)| project.group_id.is_none())
-        .map(|(index, _)| index)
+        .filter(|(_, p)| {
+            this.project_view == crate::project_tree::View::List
+                || p.group_id
+                    .as_ref()
+                    .is_none_or(|id| !groups.iter().any(|g| &g.id == id))
+        })
+        .map(|(i, _)| i)
         .collect();
-    let mut ungrouped = ungrouped;
-    ungrouped.sort_by_key(|index| {
-        (
-            !this.projects[*index].pinned,
-            this.projects[*index].name.to_lowercase(),
-        )
-    });
-    if !groups.is_empty() && !ungrouped.is_empty() {
-        list = list.child(
+    crate::project_tree::sort_projects(&this.projects, &mut indices, this.project_sort, &modified);
+    if !indices.is_empty() || dragging {
+        let mut section = project_group_drop_zone(None, "Top level", dragging, cx, &p);
+        for index in indices {
+            section = section.child(project_row(this, index, cx, &p));
+            if this.project_view == crate::project_tree::View::List
+                && let Some(id) = &this.projects[index].group_id
+            {
+                section = section.child(
+                    div()
+                        .pl(px(40.))
+                        .pb(px(4.))
+                        .text_size(px(10.))
+                        .text_color(p.muted_fg)
+                        .child(crate::project_tree::group_path(&groups, id)),
+                );
+            }
+            if this.project_group_editor == Some(index) {
+                section = section.child(project_group_picker(this, index, cx, &p));
+            }
+        }
+        list = list.child(section);
+    }
+    list.into_any_element()
+}
+
+fn project_view_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    let mut row = div().flex().items_center().gap(px(3.)).pb(px(6.));
+    for (label, view) in [
+        ("List", crate::project_tree::View::List),
+        ("Tree", crate::project_tree::View::Tree),
+    ] {
+        row = row.child(
             div()
-                .mt(px(6.))
-                .px(px(8.))
-                .pb(px(2.))
-                .text_size(px(10.0))
-                .font_family("Geist Mono")
-                .text_color(p.muted_fg.opacity(0.7))
-                .child("UNGROUPED"),
+                .id(format!("project-view:{label}"))
+                .aria_label(format!("Show projects as {label}"))
+                .px(px(7.))
+                .py(px(4.))
+                .rounded(px(5.))
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .cursor_pointer()
+                .when(this.project_view == view, |button| {
+                    button.bg(p.muted).text_color(p.fg)
+                })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.project_view = view;
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(label),
         );
     }
-    for index in ungrouped {
-        list = list.child(project_row(this, index, cx, &p));
-        if this.project_group_editor == Some(index) {
-            list = list.child(project_group_picker(this, index, cx, &p));
-        }
-    }
+    row.child(div().flex_1())
+        .child(
+            div()
+                .id("project-sort")
+                .aria_label("Switch project sorting: name ascending or modification date descending; pinned projects stay first")
+                .px(px(6.))
+                .py(px(4.))
+                .rounded(px(5.))
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.project_sort = if this.project_sort == crate::project_tree::Sort::Name {
+                        crate::project_tree::Sort::Modified
+                    } else {
+                        crate::project_tree::Sort::Name
+                    };
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(if this.project_sort == crate::project_tree::Sort::Name {
+                    "Name ↑"
+                } else {
+                    "Modified ↓"
+                }),
+        )
+        .into_any_element()
+}
 
-    list = list.child(
-        div()
-            .id("new-project-group")
-            .mt(px(4.))
-            .h(px(30.))
-            .px(px(8.))
-            .rounded(px(7.))
-            .flex()
-            .items_center()
-            .gap(px(7.))
-            .cursor_pointer()
-            .hover(move |style| style.bg(p.hover))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.open_new_group_prompt(None, window, cx);
-            }))
-            .child(
-                Icon::new(IconName::FolderTree)
-                    .size(px(13.))
-                    .text_color(p.muted_fg),
-            )
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(p.muted_fg)
-                    .child("New group…"),
-            ),
-    );
-
-    list.child(
-        div()
-            .id("open-folder")
-            .mt(px(2.))
-            .h(px(34.))
-            .px(px(8.))
-            .rounded(px(7.))
-            .border_1()
-            .border_color(p.border)
-            .border_dashed()
-            .flex()
-            .items_center()
-            .gap(px(7.))
-            .cursor_pointer()
-            .hover(move |style| style.bg(p.hover))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.open_folder(cx);
-            }))
-            .child(
-                Icon::new(IconName::FolderPlus)
-                    .size(px(13.))
-                    .text_color(p.muted_fg),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(p.muted_fg)
-                    .child("Open local folder…"),
-            )
-            .child(div().flex_1())
-            .when(this.show_shortcut_hints, |this| {
-                this.child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.6))
-                        .child("⌘O"),
-                )
+fn projects_context(
+    view: Stateful<Div>,
+    group: Option<String>,
+    groups: Vec<ProjectGroup>,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    let app = cx.entity().downgrade();
+    view.context_menu(move |menu, window, cx| {
+        let mut menu = menu;
+        let create = app.clone();
+        let parent = group.clone();
+        menu = menu.item(
+            menu_item(move |_, _| {
+                div().px(px(4.)).py(px(3.)).child(if parent.is_some() {
+                    "New subgroup…"
+                } else {
+                    "New group…"
+                })
+            })
+            .on_click({
+                let parent = group.clone();
+                move |_, window, cx| {
+                    let _ = create.update(cx, |this, cx| {
+                        this.open_subgroup_prompt(parent.clone(), window, cx)
+                    });
+                }
             }),
-    )
+        );
+        let open = app.clone();
+        menu = menu.item(
+            menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Open local folders…")).on_click(
+                move |_, _, cx| {
+                    let _ = open.update(cx, |this, cx| this.open_folder(cx));
+                },
+            ),
+        );
+        if let Some(id) = &group {
+            let rename = app.clone();
+            let rename_id = id.clone();
+            menu = menu.separator().item(
+                menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Group settings…")).on_click(
+                    move |_, window, cx| {
+                        let _ = rename.update(cx, |this, cx| {
+                            this.open_rename_group_prompt(&rename_id, window, cx)
+                        });
+                    },
+                ),
+            );
+            let app = app.clone();
+            let id = id.clone();
+            let groups = groups.clone();
+            menu = menu.submenu("Move group to…", window, cx, move |mut menu, _, _| {
+                let root = app.clone();
+                let root_id = id.clone();
+                menu = menu.item(
+                    menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Top level")).on_click(
+                        move |_, _, cx| {
+                            let _ = root.update(cx, |this, cx| this.move_group(&root_id, None, cx));
+                        },
+                    ),
+                );
+                let excluded = crate::project_tree::descendants(&groups, &id);
+                for target in groups.iter().filter(|g| !excluded.contains(&g.id)) {
+                    let app = app.clone();
+                    let id = id.clone();
+                    let target_id = target.id.clone();
+                    let path = crate::project_tree::group_path(&groups, &target.id);
+                    menu = menu.item(
+                        menu_item(move |_, _| div().px(px(4.)).py(px(3.)).child(path.clone()))
+                            .on_click(move |_, _, cx| {
+                                let _ = app.update(cx, |this, cx| {
+                                    this.move_group(&id, Some(target_id.clone()), cx)
+                                });
+                            }),
+                    );
+                }
+                menu
+            });
+        }
+        menu
+    })
     .into_any_element()
+}
+
+fn project_group_drop_zone(
+    group: Option<String>,
+    name: &str,
+    dragging: bool,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> Stateful<Div> {
+    let key = group.as_deref().unwrap_or("ungrouped");
+    let project_group = group.clone();
+    div()
+        .id(format!("group-drop-zone:{key}"))
+        .rounded(px(8.))
+        .border_2()
+        .border_color(if dragging {
+            p.border_strong
+        } else {
+            p.border.opacity(0.)
+        })
+        .p(px(2.))
+        .flex()
+        .flex_col()
+        .gap(px(2.))
+        .when(dragging, |zone| {
+            zone.border_dashed().child(
+                div()
+                    .px(px(7.))
+                    .py(px(4.))
+                    .text_size(px(10.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(p.blue)
+                    .child(format!("Drop project → {name}")),
+            )
+        })
+        .drag_over::<crate::project_groups::ProjectDrag>(|style, _, _, cx| {
+            let p = palette(cx);
+            style.bg(p.blue_soft).border_color(p.blue).shadow(vec![
+                BoxShadow::new(px(0.), px(0.), p.blue.opacity(0.25)).blur_radius(px(8.)),
+            ])
+        })
+        .on_drop(cx.listener(
+            move |this, drag: &crate::project_groups::ProjectDrag, _, cx| {
+                cx.stop_propagation();
+                this.move_project_to_group(&drag.id, project_group.clone(), cx);
+            },
+        ))
+        .drag_over::<crate::project_groups::GroupDrag>(|style, _, _, cx| {
+            style
+                .bg(palette(cx).blue_soft)
+                .border_color(palette(cx).blue)
+        })
+        .on_drop(cx.listener(
+            move |this, drag: &crate::project_groups::GroupDrag, _, cx| {
+                cx.stop_propagation();
+                this.move_group(&drag.id, group.clone(), cx);
+            },
+        ))
 }
 
 fn group_header(
     group: &ProjectGroup,
+    groups: &[ProjectGroup],
     count: usize,
     collapsed: bool,
     cx: &mut Context<DunlinApp>,
@@ -479,22 +656,26 @@ fn group_header(
 ) -> AnyElement {
     let id = group.id.clone();
     let rename_id = group.id.clone();
+    let agent_id = group.id.clone();
     let name = group.name.clone();
     let tone = tone_color(p, group.tone);
     let hover_group = format!("project-group-{}", group.id);
 
-    div()
+    let menu_id = group.id.clone();
+    let drag = crate::project_groups::GroupDrag {
+        id: group.id.clone(),
+        name: group.name.clone(),
+    };
+    let header = div()
         .id(format!("project-group-{}", group.id))
         .group(hover_group.clone())
         .mt(px(5.))
-        .h(px(27.))
+        .flex_col()
         .px(px(7.))
         .rounded(px(6.))
         .flex()
-        .items_center()
         .gap(px(5.))
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
+        .child(div().id(format!("group-collapse-{}", group.id)).h(px(29.)).flex().items_center().gap(px(5.)).cursor_pointer().rounded(px(5.)).hover(move |style| style.bg(p.hover)).on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
         .on_click(cx.listener(move |this, _, _, cx| {
             this.toggle_project_group(&id, cx);
         }))
@@ -513,7 +694,7 @@ fn group_header(
                 .flex_1()
                 .min_w(px(0.))
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.muted_fg)
                 .truncate()
@@ -522,9 +703,18 @@ fn group_header(
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.6))
                 .child(count.to_string()),
+        )
+        .child(
+            div().id(format!("group-agent-{}", group.id)).aria_label(format!("Start agent for all {count} projects in this group and its subgroups"))
+                .size(px(18.)).rounded(px(4.)).flex().items_center().justify_center().cursor_pointer().text_color(p.muted_fg)
+                .when(count == 0, |button| button.opacity(0.35))
+                .hover(move |style| style.bg(p.hover).text_color(p.fg))
+                .on_click(cx.listener(move |this, _, _, cx| { cx.stop_propagation(); if count > 0 { this.start_group_session(&agent_id, cx); } }))
+                .tooltip(move |window, cx| dunlin_ui::component::tooltip::Tooltip::new("Start one group conversation, including subgroups. No request is sent until you write a message.").build(window, cx))
+                .child(Icon::new(IconName::Bot).size(px(12.))),
         )
         .child(
             div()
@@ -535,7 +725,7 @@ fn group_header(
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
-                .opacity(0.0)
+                .opacity(0.55)
                 .group_hover(hover_group, move |style| style.opacity(1.0))
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -547,8 +737,8 @@ fn group_header(
                         .size(px(10.5))
                         .text_color(p.muted_fg),
                 ),
-        )
-        .into_any_element()
+        ));
+    projects_context(header, Some(menu_id), groups.to_vec(), cx).into_any_element()
 }
 
 fn project_row(
@@ -563,10 +753,40 @@ fn project_row(
     let active = index == this.selected_project;
     let tone = tone_color(p, project.tone);
     let soft = tone_soft(p, project.tone);
-    let monogram = monogram(&project.name);
     let name = project.name.clone();
-    let tail = project.path_tail().to_string();
-    let branch = project.branch.clone().unwrap_or_else(|| "no branch".into());
+    let summary = this
+        .repo_summaries
+        .values
+        .get(&project.id)
+        .filter(|row| row.path == project.path);
+    let branch =
+        if active && !this.git_loading && this.git.error.is_none() && !this.git.branch.is_empty() {
+            if this.git.not_repository {
+                "No Git repository".into()
+            } else {
+                this.git.branch.clone()
+            }
+        } else if let Some(summary) = summary {
+            summary.branch.clone().unwrap_or_else(|| {
+                if summary.changes.is_some() {
+                    "No Git repository"
+                } else {
+                    "Git unavailable"
+                }
+                .into()
+            })
+        } else {
+            project.branch.clone().unwrap_or_else(|| "…".into())
+        };
+    let changes = if active && !this.git_loading && this.git.error.is_none() {
+        Some(this.git.changes.len())
+    } else {
+        summary.and_then(|row| row.changes)
+    };
+    let drag = crate::project_groups::ProjectDrag {
+        id: project.id.clone(),
+        name: name.clone(),
+    };
     let running = this.running_sessions_for(&project.id);
     let pinned = project.pinned;
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
@@ -583,6 +803,7 @@ fn project_row(
         .items_center()
         .gap(px(8.))
         .cursor_pointer()
+        .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
         .when(active, |this| {
             this.bg(p.card).border_1().border_color(p.border)
         })
@@ -599,24 +820,7 @@ fn project_row(
                 cx.notify();
             }),
         )
-        .child(
-            div()
-                .size(px(26.))
-                .flex_shrink_0()
-                .rounded(px(7.))
-                .bg(soft)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(tone)
-                        .child(monogram),
-                ),
-        )
+        .child(crate::project_icons::render(this, project, 26., p))
         .child(
             div()
                 .flex_1()
@@ -640,6 +844,7 @@ fn project_row(
                         .when(pinned, |this| {
                             this.child(Icon::new(IconName::Pin).size(px(9.)).text_color(p.muted_fg))
                         })
+                        .children(crate::local_projects::monorepo_badge(this, project, p))
                         .when(missing, |this| {
                             this.child(
                                 Icon::new(IconName::TriangleAlert)
@@ -653,28 +858,29 @@ fn project_row(
                         .flex()
                         .items_center()
                         .gap(px(5.))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_family("Geist Mono")
-                                .text_color(p.muted_fg)
-                                .truncate()
-                                .child(branch),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(p.border_strong)
-                                .child("·"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_family("Geist Mono")
-                                .text_color(p.muted_fg.opacity(0.72))
-                                .truncate()
-                                .child(tail),
-                        ),
+                        .when(this.show_project_branches, |line| {
+                            line.child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .truncate()
+                                    .child(branch),
+                            )
+                        })
+                        .when(changes.is_some_and(|count| count > 0), |view| {
+                            view.child(div().text_size(px(10.5)).text_color(p.amber).child(
+                                format!(
+                                    "{}{} uncommitted",
+                                    if this.show_project_branches {
+                                        "· "
+                                    } else {
+                                        ""
+                                    },
+                                    changes.unwrap_or(0)
+                                ),
+                            ))
+                        }),
                 ),
         )
         .when(running > 0, |this| {
@@ -691,7 +897,7 @@ fn project_row(
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(tone)
                             .child(running.to_string()),
                     ),
@@ -772,7 +978,10 @@ fn project_group_picker(
                     div()
                         .text_size(px(10.5))
                         .text_color(if selected { tone } else { p.fg })
-                        .child(group.name.clone()),
+                        .child(crate::project_tree::group_path(
+                            &this.project_groups,
+                            &group.id,
+                        )),
                 ),
         );
     }
@@ -870,7 +1079,7 @@ fn project_group_picker(
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child("MOVE TO GROUP"),
         )
@@ -887,13 +1096,31 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .clone()
         .unwrap_or_else(|| "main".into());
     let selected = this
-        .inspector
+        .explorer
+        .selected
         .as_ref()
-        .map(|inspector| inspector.path.clone());
-    let rows = file_rows(&this.file_tree.entries, selected.as_deref(), cx);
+        .filter(|(project, _, _)| project == &this.project().id)
+        .map(|(_, path, _)| path.clone())
+        .or_else(|| {
+            this.inspector
+                .as_ref()
+                .map(|inspector| inspector.path.clone())
+        });
+    let root_path = this.project().path.clone();
+    let root_select = root_path.clone();
+    let project = this.project().id.clone();
+    let app = cx.entity().downgrade();
+    let rows = file_rows(
+        &this.file_tree.entries,
+        selected.as_deref(),
+        &project,
+        &root_path,
+        cx,
+    );
 
     let mut root = div().flex().flex_col().pb(px(10.)).child(
         div()
+            .id("explorer-project-root")
             .mx(px(6.))
             .px(px(7.))
             .h(px(26.))
@@ -902,6 +1129,10 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .gap(px(5.))
             .rounded(px(6.))
             .bg(p.muted)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.select_explorer_entry(&root_select, true);
+                cx.notify();
+            }))
             .child(
                 Icon::new(IconName::ChevronDown)
                     .size(px(11.))
@@ -919,10 +1150,11 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .child(
                 div()
                     .text_size(px(11.0))
-                    .font_family("Geist Mono")
+                    .font_family(dunlin_ui::theme::code_font())
                     .text_color(p.muted_fg)
                     .child(branch),
-            ),
+            )
+            .context_menu(move |menu, _, _| creation_menu(menu, &app, &root_path)),
     );
 
     if let Some(error) = this.file_tree.error.clone() {
@@ -946,6 +1178,8 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
 fn file_rows(
     entries: &[FileEntry],
     selected: Option<&str>,
+    project: &str,
+    root: &str,
     cx: &mut Context<DunlinApp>,
 ) -> Vec<AnyElement> {
     let p = palette(cx);
@@ -953,21 +1187,24 @@ fn file_rows(
 
     for entry in entries {
         let path = entry.path.clone();
+        let select_path = path.clone();
         let name = entry.name.clone();
         let is_dir = entry.is_dir;
         let expanded = entry.expanded;
         let depth = entry.depth;
         let active = selected == Some(path.as_str());
-        let icon_name = if is_dir {
-            if expanded {
-                IconName::FolderOpen
-            } else {
-                IconName::Folder
-            }
+        let (icon_name, icon_color) = if is_dir {
+            (
+                if expanded {
+                    IconName::FolderOpen
+                } else {
+                    IconName::Folder
+                },
+                p.blue,
+            )
         } else {
-            file_icon(&name)
+            crate::file_icons::appearance(&name, &p)
         };
-        let icon_color = if is_dir { p.blue } else { p.muted_fg };
 
         let mut row = div()
             .id(format!("file-row:{path}"))
@@ -981,6 +1218,7 @@ fn file_rows(
             .when(active, |this| this.bg(p.accent))
             .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
             .on_click(cx.listener(move |this, _, window, cx| {
+                this.select_explorer_entry(&select_path, is_dir);
                 if is_dir {
                     this.toggle_folder(&path, cx);
                 } else {
@@ -1004,7 +1242,12 @@ fn file_rows(
         }
 
         row = row
-            .child(Icon::new(icon_name).size(px(12.5)).text_color(icon_color))
+            .child(
+                Icon::new(icon_name)
+                    .size(px(14.))
+                    .flex_shrink_0()
+                    .text_color(icon_color),
+            )
             .child(
                 div()
                     .text_size(px(12.5))
@@ -1013,14 +1256,77 @@ fn file_rows(
                     .child(name),
             );
 
+        let parent = if is_dir {
+            entry.path.clone()
+        } else {
+            Path::new(&entry.path)
+                .parent()
+                .unwrap_or(Path::new(root))
+                .to_string_lossy()
+                .to_string()
+        };
+        let app = cx.entity().downgrade();
+        let drag = crate::explorer::EntryDrag {
+            project: project.into(),
+            root: root.into(),
+            path: entry.path.clone(),
+            directory: is_dir,
+        };
+        let menu_path = entry.path.clone();
+        let row = crate::explorer::drop_target(row, parent.clone(), cx)
+            .on_drag(drag, |entry, _, _, cx| cx.new(|_| entry.clone()))
+            .context_menu(move |menu, _, _| {
+                entry_menu(creation_menu(menu, &app, &parent), &app, &menu_path, is_dir)
+            });
         rows.push(row.into_any_element());
 
         if is_dir && expanded {
-            rows.extend(file_rows(&entry.children, selected, cx));
+            rows.extend(file_rows(&entry.children, selected, project, root, cx));
         }
     }
 
     rows
+}
+
+fn creation_menu(mut menu: PopupMenu, app: &WeakEntity<DunlinApp>, parent: &str) -> PopupMenu {
+    for (label, directory) in [("New file…", false), ("New folder…", true)] {
+        let app = app.clone();
+        let parent = parent.to_string();
+        menu = menu.item(
+            menu_item(move |_, _| div().px(px(4.)).py(px(3.)).child(label)).on_click(
+                move |_, window, cx| {
+                    let _ = app.update(cx, |this, cx| {
+                        this.new_explorer_entry(parent.clone(), directory, window, cx)
+                    });
+                },
+            ),
+        );
+    }
+    menu
+}
+
+fn entry_menu(
+    mut menu: PopupMenu,
+    app: &WeakEntity<DunlinApp>,
+    path: &str,
+    directory: bool,
+) -> PopupMenu {
+    for (label, action) in [("Rename…", 0), ("Delete…", 1), ("Reveal in Finder", 2)] {
+        let app = app.clone();
+        let path = path.to_string();
+        menu = menu.item(
+            menu_item(move |_, _| div().px(px(4.)).py(px(3.)).child(label)).on_click(
+                move |_, window, cx| {
+                    let _ = app.update(cx, |this, cx| match action {
+                        0 => this.rename_explorer_entry(path.clone(), directory, window, cx),
+                        1 => this.delete_explorer_entry(path.clone(), window, cx),
+                        _ => this.reveal_explorer_entry(&path, cx),
+                    });
+                },
+            ),
+        );
+    }
+    menu
 }
 
 fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -1043,7 +1349,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         .suffix(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.65))
                 .child(if this.show_shortcut_hints { "↵" } else { "" }),
         );
@@ -1095,7 +1401,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(if query.is_empty() {
                             "RECENT MATCHES".to_string()
@@ -1131,6 +1437,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
             .unwrap_or_default();
         let hit_path = path.clone();
         let hit_line = line;
+        let (file_icon, file_color) = crate::file_icons::appearance(&file, &p);
 
         root_el = root_el.child(
             div()
@@ -1153,11 +1460,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                         .flex()
                         .items_center()
                         .gap(px(5.))
-                        .child(
-                            Icon::new(file_icon(&file))
-                                .size(px(11.5))
-                                .text_color(p.blue),
-                        )
+                        .child(Icon::new(file_icon).size(px(11.5)).text_color(file_color))
                         .child(
                             div()
                                 .text_size(px(12.0))
@@ -1170,7 +1473,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                                 .flex_1()
                                 .min_w(px(0.))
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.7))
                                 .truncate()
                                 .child(directory),
@@ -1178,7 +1481,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child(format!(":{line}")),
                         ),
@@ -1186,7 +1489,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .line_height(relative(1.45))
                         .truncate()
@@ -1215,7 +1518,26 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
 }
 
 fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    this.ensure_ai_commit_auth(cx);
+    let ai = this.ai_commit_available();
+    let preparing = this.ai_commit_preparing();
     let p = palette(cx);
+    if this.git.not_repository
+        || this
+            .git
+            .error
+            .as_ref()
+            .is_some_and(|error| error.contains("not a git repository"))
+    {
+        return div().p(px(14.)).flex().flex_col().gap(px(10.))
+            .child(Icon::new(IconName::GitBranch).size(px(24.)).text_color(p.muted_fg))
+            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(p.fg).child("No Git repository"))
+            .child(div().text_size(px(11.5)).line_height(relative(1.5)).text_color(p.muted_fg).child("You can edit files normally. Initialize Git here to track changes, or open an existing repository."))
+            .child(div().id("initialize-repository").px(px(10.)).py(px(7.)).rounded(px(6.)).bg(p.fg).text_color(p.bg).text_size(px(11.5)).cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| this.initialize_repository(cx)))
+                .child(if this.git_loading { "Initializing…" } else { "Initialize repository" }))
+            .into_any_element();
+    }
     let branch = if this.git.branch.is_empty() {
         this.project()
             .branch
@@ -1247,17 +1569,30 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .flex()
                 .items_center()
                 .gap(px(6.))
-                .child(
-                    Icon::new(IconName::GitBranch)
-                        .size(px(12.5))
-                        .text_color(p.blue),
-                )
+                .child(crate::branch_picker::badge(
+                    this,
+                    &this.project().id,
+                    &branch,
+                    "source-control-branch-picker",
+                    cx,
+                ))
                 .child(
                     div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.fg)
-                        .child(branch),
+                        .id("open-git-history")
+                        .aria_label("Open branch graph and history")
+                        .px(px(6.))
+                        .py(px(3.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(p.hover))
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_git_history(window, cx)),
+                        )
+                        .child(
+                            Icon::new(IconName::Waypoints)
+                                .size(px(13.))
+                                .text_color(p.muted_fg),
+                        ),
                 )
                 .child(div().flex_1())
                 .child(
@@ -1285,7 +1620,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(format!(
                             "{change_count} {}",
@@ -1297,23 +1632,25 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         )),
                 ),
         )
-        .child(
-            div()
-                .h(px(26.))
-                .px(px(6.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.sidebar)
-                .flex()
-                .items_center()
-                .child(
-                    Input::new(&this.commit_input)
-                        .appearance(false)
-                        .bordered(false)
-                        .h(px(24.)),
-                ),
-        )
+        .when(!ai, |header| {
+            header.child(
+                div()
+                    .h(px(26.))
+                    .px(px(6.))
+                    .rounded(px(5.))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.sidebar)
+                    .flex()
+                    .items_center()
+                    .child(
+                        Input::new(&this.commit_input)
+                            .appearance(false)
+                            .bordered(false)
+                            .h(px(24.)),
+                    ),
+            )
+        })
         .child(
             div()
                 .id("commit-button")
@@ -1327,7 +1664,14 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .cursor_pointer()
                 .hover(move |style| style.opacity(0.9))
                 .on_click(cx.listener(|this, _, window, cx| {
-                    this.commit_changes(window, cx);
+                    if this.ai_commit_preparing() {
+                        this.cancel_ai_commit_preparation();
+                        cx.notify();
+                    } else if this.ai_commit_available() {
+                        this.request_ai_commit(window, cx);
+                    } else {
+                        this.commit_changes(window, cx);
+                    }
                 }))
                 .child(
                     Icon::new(IconName::GitCommitHorizontal)
@@ -1339,9 +1683,36 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         .text_size(px(11.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.bg)
-                        .child("Commit staged"),
+                        .child(if preparing {
+                            "Cancel preparation"
+                        } else if ai {
+                            "Commit on AI"
+                        } else {
+                            "Commit staged"
+                        }),
                 ),
-        );
+        )
+        .child(
+            div()
+                .text_size(px(10.))
+                .text_color(p.muted_fg)
+                .truncate()
+                .child(this.ai_commit_hint()),
+        )
+        .when(this.ai_commit_has_auth(), |header| {
+            header.child(
+                div()
+                    .id("toggle-manual-commit")
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.ai_commit.manual = !this.ai_commit.manual;
+                        cx.notify();
+                    }))
+                    .child(if ai { "Manual commit" } else { "Use AI commit" }),
+            )
+        });
 
     let mut list = div().flex().flex_col().pb(px(10.)).child(header).child(
         div()
@@ -1353,7 +1724,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             .child(
                 div()
                     .text_size(px(11.0))
-                    .font_family("Geist Mono")
+                    .font_family(dunlin_ui::theme::code_font())
                     .text_color(p.muted_fg)
                     .child("CHANGES"),
             )
@@ -1496,8 +1867,8 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .gap(px(6.))
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_file(&path, window, cx);
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.open_diff(&path, staged, cx);
                     cx.notify();
                 }))
                 .child(
@@ -1511,7 +1882,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(tone)
                                 .child(label),
@@ -1522,7 +1893,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         .flex_1()
                         .min_w(px(0.))
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.fg.opacity(0.85))
                         .truncate()
                         .child(file_name),
@@ -1534,7 +1905,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.green)
                             .child(format!("+{additions}")),
                     )
@@ -1543,7 +1914,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.red)
                             .child(format!("−{deletions}")),
                     )
@@ -1618,29 +1989,11 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         );
     }
 
-    list.child(
-        div()
-            .mx(px(6.))
-            .mt(px(6.))
-            .p(px(9.))
-            .rounded(px(7.))
-            .bg(p.blue_soft)
-            .flex()
-            .items_start()
-            .gap(px(7.))
-            .child(Icon::new(IconName::Info).size(px(12.)).text_color(p.blue))
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .line_height(relative(1.5))
-                    .text_color(p.blue)
-                    .child("Status and diffs come from the system git CLI. Stage, commit and branch actions never leave this machine."),
-            ),
-    )
-    .into_any_element()
+    list.into_any_element()
 }
 
 fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    this.refresh_session_list(cx);
     let p = palette(cx);
     let selected = this.selected_session;
     let sessions = this.sessions.clone();
@@ -1649,10 +2002,26 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .flex()
         .flex_col()
         .pb(px(10.))
-        .child(group_label("TODAY", &p));
+        .when(this.visible_session_count() > 0, |list| {
+            list.child(group_label("TODAY", &p))
+        })
+        .when(this.visible_session_count() == 0, |list| {
+            list.child(
+                div()
+                    .p(px(12.))
+                    .text_size(px(11.))
+                    .text_color(p.muted_fg)
+                    .child("No conversations yet. Send a message to start one."),
+            )
+        });
 
-    for (index, session) in sessions.iter().enumerate() {
-        if index == 2 {
+    for (position, (index, session)) in sessions
+        .iter()
+        .enumerate()
+        .filter(|(_, session)| this.session_visible(session))
+        .enumerate()
+    {
+        if position == 2 {
             list = list.child(group_label("EARLIER", &p));
         }
         let active = index == selected;
@@ -1725,7 +2094,7 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .child(updated),
                         ),
@@ -1747,7 +2116,7 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 .child(
                                     div()
                                         .text_size(px(10.5))
-                                        .font_family("Geist Mono")
+                                        .font_family(dunlin_ui::theme::code_font())
                                         .text_color(status_color)
                                         .child(session.status.label().to_uppercase()),
                                 ),
@@ -1765,7 +2134,7 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             div()
                                 .flex_shrink_0()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child(format!(
                                     "${cost:.2} · {}",
@@ -1799,44 +2168,21 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         );
     }
 
-    list.child(
-        div()
-            .mx(px(12.))
-            .mt(px(10.))
-            .flex()
-            .items_center()
-            .gap(px(5.))
-            .child(
-                Icon::new(IconName::Archive)
-                    .size(px(11.))
-                    .text_color(p.muted_fg),
-            )
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(p.muted_fg)
-                    .child("Sessions are stored locally and resumable."),
-            ),
-    )
-    .into_any_element()
+    list.into_any_element()
 }
 
 fn usage_footer(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let mut usages = Vec::new();
-    if let Some(live) = this.session_usage() {
-        usages.push(live);
-    }
-    usages.extend(this.active_usages());
-    let (status_dot, status_label) = match &this.harness.status {
-        HarnessStatus::Ready { agent, version } => (p.green, format!("{agent} {version} · ACP")),
-        HarnessStatus::Starting => (p.amber, "Connecting harness…".to_string()),
-        HarnessStatus::Failed(_) => (p.red, "Harness failed".to_string()),
-        HarnessStatus::Exited(_) => (p.red, "Harness exited".to_string()),
-        HarnessStatus::Offline => (p.muted_fg, "Harness offline".to_string()),
-    };
+    let usages = this.active_usages();
+    let refreshing = this.usage_request.as_ref() == Some(&this.usage_target());
 
     let mut footer = div()
+        .h(px(if this.account_usage_collapsed {
+            36.
+        } else {
+            184.
+        }))
+        .overflow_hidden()
         .flex_shrink_0()
         .border_t_1()
         .border_color(p.border)
@@ -1854,16 +2200,37 @@ fn usage_footer(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(p.muted_fg)
                         .child(if this.project().is_remote() {
-                            "SUBSCRIPTION USAGE · RELAY"
+                            "ACCOUNT USAGE · RELAY"
                         } else {
-                            "SUBSCRIPTION USAGE"
+                            "ACCOUNT USAGE"
                         }),
                 )
                 .child(div().flex_1())
+                .child(
+                    div()
+                        .id("toggle-account-usage")
+                        .aria_label("Collapse or expand account usage")
+                        .size(px(18.))
+                        .cursor_pointer()
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.account_usage_collapsed = !this.account_usage_collapsed;
+                            this.persist_settings(cx);
+                            cx.notify();
+                        }))
+                        .child(
+                            Icon::new(if this.account_usage_collapsed {
+                                IconName::ChevronUp
+                            } else {
+                                IconName::ChevronDown
+                            })
+                            .size(px(12.))
+                            .text_color(p.muted_fg),
+                        ),
+                )
                 .child(
                     div()
                         .id("usage-details")
@@ -1880,143 +2247,152 @@ fn usage_footer(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 ),
         );
 
-    for usage in usages {
-        let Some(window) = usage.primary() else {
-            let tone = tone_color(&p, usage.accent);
-            footer = footer.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .child(dot(tone, 4.5))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.fg.opacity(0.88))
-                            .child(usage.provider.clone()),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .font_family("Geist Mono")
-                            .text_color(p.muted_fg)
-                            .child(usage.plan.clone()),
-                    ),
-            );
-            continue;
-        };
-        let tone = tone_color(&p, usage.accent);
-        let soft = tone_soft(&p, usage.accent);
-        let percent = window.used_percent.clamp(0.0, 100.0);
-        let provider = usage.provider.clone();
-        let plan = usage.plan.clone();
-        let source = match window.source {
-            UsageSource::Live => "live",
-            UsageSource::Session => "session",
-            UsageSource::Estimated => "est.",
-            UsageSource::Unavailable => "n/a",
-        };
-        let source_color = match window.source {
-            UsageSource::Live => p.green,
-            UsageSource::Session => p.blue,
-            UsageSource::Estimated => p.amber,
-            UsageSource::Unavailable => p.muted_fg,
-        };
-
-        footer = footer.child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(3.))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .child(
-                            div()
-                                .text_size(px(11.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(p.fg.opacity(0.88))
-                                .child(provider),
-                        )
-                        .child(
-                            div()
-                                .h(px(13.))
-                                .px(px(4.))
-                                .rounded(px(3.))
-                                .bg(soft)
-                                .flex()
-                                .items_center()
-                                .child(
-                                    div()
-                                        .text_size(px(10.0))
-                                        .font_family("Geist Mono")
-                                        .text_color(tone)
-                                        .child(plan),
-                                ),
-                        )
-                        .child(div().flex_1())
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .font_family("Geist Mono")
-                                .text_color(source_color)
-                                .child(source),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_family("Geist Mono")
-                                .text_color(p.muted_fg)
-                                .child(format!("{percent:.0}%")),
-                        ),
-                )
-                .child(
-                    div()
-                        .h(px(3.))
-                        .w_full()
-                        .rounded_full()
-                        .bg(p.muted)
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .h_full()
-                                .w(relative(percent / 100.0))
-                                .rounded_full()
-                                .bg(if percent > 85. { p.red } else { tone }),
-                        ),
-                ),
-        );
+    if this.account_usage_collapsed {
+        return footer.into_any_element();
     }
 
-    footer
-        .child(
+    let mut content = div()
+        .id("account-usage-rows")
+        .flex_1()
+        .min_h(px(0.))
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .gap(px(6.));
+
+    for usage in usages {
+        let tone = tone_color(&p, usage.accent);
+        content = content.child(
             div()
-                .mt(px(1.))
+                .flex_shrink_0()
                 .flex()
                 .items_center()
                 .gap(px(5.))
-                .child(dot(status_dot, 4.5))
+                .child(dot(tone, 4.5))
                 .child(
                     div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg)
-                        .child(status_label),
+                        .min_w(px(0.))
+                        .truncate()
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.fg.opacity(0.88))
+                        .child(usage.provider.clone()),
                 )
                 .child(div().flex_1())
                 .child(
                     div()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg.opacity(0.7))
-                        .child("v0.1"),
+                        .text_size(px(10.0))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(usage.plan.clone()),
                 ),
-        )
-        .into_any_element()
+        );
+        if usage.windows.is_empty() {
+            let detail = usage.detail.clone();
+            content = content.child(
+                div()
+                    .id("usage-unavailable-detail")
+                    .flex_shrink_0()
+                    .max_h(px(44.))
+                    .overflow_hidden()
+                    .tooltip(move |window, cx| {
+                        dunlin_ui::component::tooltip::Tooltip::new(detail.clone())
+                            .build(window, cx)
+                    })
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .child(usage.detail.clone()),
+            );
+        }
+        for window in &usage.windows {
+            let percent = window.used_percent.clamp(0.0, 100.0);
+
+            content = content.child(
+                div()
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .child(
+                                div()
+                                    .min_w(px(0.))
+                                    .flex_1()
+                                    .truncate()
+                                    .text_size(px(10.5))
+                                    .text_color(p.muted_fg)
+                                    .child(window.label.clone()),
+                            )
+                            .child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_size(px(10.0))
+                                    .text_color(p.muted_fg)
+                                    .child(window.resets_in.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .child(format!("{percent:.0}%")),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h(px(3.))
+                            .w_full()
+                            .rounded_full()
+                            .bg(p.muted)
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .h_full()
+                                    .w(relative(percent / 100.0))
+                                    .rounded_full()
+                                    .bg(if percent > 85. { p.red } else { tone }),
+                            ),
+                    ),
+            );
+        }
+    }
+
+    footer = footer.child(content).child(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .id("usage-refresh-inline")
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.refresh_usage(cx)))
+                    .child(if refreshing {
+                        "Refreshing…"
+                    } else {
+                        "Refresh"
+                    }),
+            )
+            .when(this.local_opencode(), |row| {
+                row.child(
+                    div()
+                        .id("usage-open-console")
+                        .text_size(px(10.5))
+                        .text_color(p.muted_fg)
+                        .cursor_pointer()
+                        .on_click(|_, _, cx| cx.open_url("https://opencode.ai/console"))
+                        .child("Open Console ↗"),
+                )
+            }),
+    );
+
+    footer.into_any_element()
 }
 
 fn project_menu_row(
@@ -2029,16 +2405,13 @@ fn project_menu_row(
         return div().into_any_element();
     };
     let active = index == this.selected_project;
-    let tone = tone_color(p, project.tone);
-    let soft = tone_soft(p, project.tone);
     let name = project.name.clone();
     let tail = project.path_tail().to_string();
-    let monogram = monogram(&name);
     let group = project
         .group_id
         .as_ref()
         .and_then(|id| this.project_groups.iter().find(|group| &group.id == id))
-        .map(|group| group.name.clone());
+        .map(|group| crate::project_tree::group_path(&this.project_groups, &group.id));
 
     div()
         .id(("project-menu-row", index))
@@ -2052,23 +2425,7 @@ fn project_menu_row(
         .when(active, |this| this.bg(p.accent))
         .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
         .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
-        .child(
-            div()
-                .size(px(20.))
-                .rounded(px(5.))
-                .bg(soft)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_size(px(10.5))
-                        .font_family("Geist Mono")
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(tone)
-                        .child(monogram),
-                ),
-        )
+        .child(crate::project_icons::render(this, project, 20., p))
         .child(
             div()
                 .min_w(px(0.))
@@ -2101,7 +2458,7 @@ fn project_menu_row(
             div()
                 .max_w(px(86.))
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.7))
                 .truncate()
                 .child(tail),
@@ -2119,6 +2476,10 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let missing = !this.project().is_remote() && !Path::new(&this.project().path).is_dir();
     let mut menu = div()
         .id("project-menu")
+        .child(crate::effects::rounded_scroll_probe(
+            &this.overlay_backdrop,
+            10.,
+        ))
         .absolute()
         .top(px(45.))
         .left(px(6.))
@@ -2138,7 +2499,7 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .px(px(8.))
                 .py(px(5.))
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child("SWITCH PROJECT"),
         );
@@ -2167,7 +2528,7 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .pt(px(5.))
                 .pb(px(2.))
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.75))
                 .truncate()
                 .child(group.name.to_uppercase()),
@@ -2201,7 +2562,7 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .pt(px(6.))
                 .pb(px(2.))
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.75))
                 .child("UNGROUPED"),
         );
@@ -2264,13 +2625,13 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                         .flex_1()
                         .text_size(px(12.0))
                         .text_color(p.fg)
-                        .child("Open local folder…"),
+                        .child("Open local folders…"),
                 )
                 .when(this.show_shortcut_hints, |this| {
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.muted_fg)
                             .child("⌘O"),
                     )
@@ -2560,7 +2921,7 @@ fn group_label(label: &str, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.75))
                 .child(label.to_string()),
         )
@@ -2602,35 +2963,4 @@ fn empty_state(icon_name: IconName, title: &str, body: &str, p: &Palette) -> Any
                 .child(body.to_string()),
         )
         .into_any_element()
-}
-
-fn monogram(name: &str) -> String {
-    let mut letters = name
-        .split_whitespace()
-        .filter_map(|word| word.chars().next())
-        .take(2)
-        .collect::<String>();
-    if letters.is_empty() {
-        letters = name.chars().take(2).collect();
-    }
-    letters.to_uppercase()
-}
-
-fn file_icon(name: &str) -> IconName {
-    let lower = name.to_lowercase();
-    if lower.ends_with(".rs") {
-        IconName::FileCode
-    } else if lower.ends_with(".toml") || lower.ends_with(".yaml") || lower.ends_with(".yml") {
-        IconName::FileCog
-    } else if lower.ends_with(".json") || lower.ends_with(".lock") {
-        IconName::FileBraces
-    } else if lower.ends_with(".md") || lower.ends_with(".txt") {
-        IconName::FileText
-    } else if lower.ends_with(".svg") || lower.ends_with(".png") || lower.ends_with(".jpg") {
-        IconName::FileImage
-    } else if lower.starts_with(".git") {
-        IconName::GitBranch
-    } else {
-        IconName::File
-    }
 }

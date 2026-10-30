@@ -2,6 +2,25 @@
 
 use dunlin_ui::*;
 
+pub(crate) fn trash(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_foundation::{NSFileManager, NSString, NSURL};
+        let path = path.to_str().ok_or("The path is not valid UTF-8")?;
+        NSFileManager::defaultManager()
+            .trashItemAtURL_resultingItemURL_error(
+                &NSURL::fileURLWithPath(&NSString::from_str(path)),
+                None,
+            )
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err("System Trash is unavailable on this platform".into())
+    }
+}
+
 /// Show a native notification through GPUI's `UNUserNotificationCenter`
 /// integration. Authorization is requested lazily on the first notification;
 /// development binaries without an app bundle are ignored by the platform.

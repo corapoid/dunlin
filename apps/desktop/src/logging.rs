@@ -99,6 +99,7 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
         HarnessEvent::PromptFinished {
             session_id,
             stop_reason,
+            ..
         } => format!("prompt finished · {session_id} · {stop_reason}"),
         HarnessEvent::Error { message } => format!("harness error · {message}"),
         HarnessEvent::Exited { reason } => format!("harness exited · {reason}"),
@@ -108,6 +109,9 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
 
 fn update_kind(update: &HarnessUpdate) -> &'static str {
     match update {
+        HarnessUpdate::MessageChunk { thought: true, .. } => "thought",
+        HarnessUpdate::MessageChunk { .. } => "message",
+        HarnessUpdate::Child { .. } => "subagent",
         HarnessUpdate::UserMessage(_) => "user message",
         HarnessUpdate::Configuration { .. } => "configuration",
         HarnessUpdate::AgentMessage(_) => "message",

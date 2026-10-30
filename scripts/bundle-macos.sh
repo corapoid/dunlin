@@ -70,6 +70,7 @@ chmod +x "$MACOS/$APP_NAME"
 cp LICENSE THIRD_PARTY_NOTICES.md "$RESOURCES/"
 cp licenses/Apache-2.0.txt "$RESOURCES/Apache-2.0.txt"
 cp assets/fonts/OFL.txt "$RESOURCES/Geist-OFL.txt"
+"$BIN" --syntax-notices > "$RESOURCES/Syntax-Notices.md"
 
 # Render the bundled SVG icon and expand it into an .icns.
 if command -v qlmanage >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then

@@ -13,6 +13,8 @@ use serde::de::DeserializeOwned;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
+    #[error("{0}")]
+    InvalidGroup(String),
     #[error("sqlite: {0}")]
     Sqlite(#[from] rusqlite::Error),
     #[error("json: {0}")]
@@ -28,6 +30,23 @@ pub struct Store {
 }
 
 impl Store {
+    /// Separate read-only handle for background statistics; never migrate or
+    /// create a database during a read.
+    pub fn read_only(path: impl AsRef<Path>) -> Result<Self> {
+        Ok(Self {
+            connection: Connection::open_with_flags(
+                path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )?,
+        })
+    }
+
+    pub fn database_path(&self) -> Option<std::path::PathBuf> {
+        self.connection
+            .path()
+            .filter(|path| !path.is_empty())
+            .map(std::path::PathBuf::from)
+    }
     /// Open (or create) a database, enabling WAL and foreign keys.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -147,6 +166,11 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 6 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch("ALTER TABLE project_groups ADD COLUMN parent_id TEXT REFERENCES project_groups(id) ON DELETE SET NULL; PRAGMA user_version = 6;")?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -220,38 +244,101 @@ impl Store {
     }
 
     pub fn project_groups(&self) -> Result<Vec<ProjectGroup>> {
-        let mut statement = self
-            .connection
-            .prepare("SELECT id, name, tone FROM project_groups ORDER BY created_at, id")?;
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, tone, parent_id FROM project_groups ORDER BY created_at, id",
+        )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(2)?;
             Ok(ProjectGroup {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 tone: serde_json::from_str(&tone).unwrap_or(dunlin_domain::ProjectTone::Blue),
+                parent_id: row.get(3)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn upsert_project_group(&self, group: &ProjectGroup) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        group
+            .validate_parent(&self.project_groups()?)
+            .map_err(StoreError::InvalidGroup)?;
+        self.write_project_group(group)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn write_project_group(&self, group: &ProjectGroup) -> Result<()> {
         let tone = serde_json::to_string(&group.tone)?;
         self.connection.execute(
             r#"
-            INSERT INTO project_groups (id, name, tone)
-            VALUES (?1, ?2, ?3)
+            INSERT INTO project_groups (id, name, tone, parent_id)
+            VALUES (?1, ?2, ?3, ?4)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
-                tone = excluded.tone
+                tone = excluded.tone,
+                parent_id = excluded.parent_id
             "#,
-            params![group.id, group.name, tone],
+            params![group.id, group.name, tone, group.parent_id],
         )?;
         Ok(())
     }
 
     pub fn delete_project_group(&self, id: &str) -> Result<()> {
-        self.connection
-            .execute("DELETE FROM project_groups WHERE id = ?1", [id])?;
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("UPDATE projects SET group_id = (SELECT parent_id FROM project_groups WHERE id = ?1) WHERE group_id = ?1", [id])?;
+        transaction.execute("UPDATE project_groups SET parent_id = (SELECT parent_id FROM project_groups WHERE id = ?1) WHERE parent_id = ?1", [id])?;
+        transaction.execute("DELETE FROM project_groups WHERE id = ?1", [id])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Undo only the original direct memberships, never histories, settings,
+    /// files or later user moves. The complete restoration is atomic.
+    pub fn restore_project_group(
+        &self,
+        group: &ProjectGroup,
+        promoted_parent: Option<&str>,
+        project_ids: &[String],
+        child_ids: &[String],
+    ) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let mut groups = self.project_groups()?;
+        if groups.iter().any(|g| g.id == group.id) {
+            return Err(StoreError::InvalidGroup("The group already exists".into()));
+        }
+        group
+            .validate_parent(&groups)
+            .map_err(StoreError::InvalidGroup)?;
+        self.write_project_group(group)?;
+        groups.push(group.clone());
+        for id in project_ids {
+            transaction.execute(
+                "UPDATE projects SET group_id = ?1 WHERE id = ?2 AND group_id IS ?3",
+                params![group.id, id, promoted_parent],
+            )?;
+        }
+        for id in child_ids {
+            if let Some(child) = groups
+                .iter()
+                .find(|g| &g.id == id && g.parent_id.as_deref() == promoted_parent)
+            {
+                let mut child = child.clone();
+                child.parent_id = Some(group.id.clone());
+                child
+                    .validate_parent(&groups)
+                    .map_err(StoreError::InvalidGroup)?;
+                transaction.execute(
+                    "UPDATE project_groups SET parent_id = ?1 WHERE id = ?2 AND parent_id IS ?3",
+                    params![group.id, id, promoted_parent],
+                )?;
+                if let Some(stored) = groups.iter_mut().find(|g| &g.id == id) {
+                    *stored = child;
+                }
+            }
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -297,6 +384,31 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    /// Insert-only, atomic history import. Existing conversations/transcripts
+    /// are never updated, even when a preview is stale or imported twice.
+    pub fn import_sessions<T: Serialize>(
+        &self,
+        rows: &[(SessionSummary, T)],
+    ) -> Result<Vec<String>> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let mut inserted = Vec::new();
+        for (session, transcript) in rows {
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+                [&session.id],
+                |r| r.get(0),
+            )?;
+            if exists {
+                continue;
+            }
+            self.upsert_session(session)?;
+            self.save_transcript(&session.id, transcript)?;
+            inserted.push(session.id.clone());
+        }
+        transaction.commit()?;
+        Ok(inserted)
     }
 
     pub fn sessions(&self, project_id: Option<&str>) -> Result<Vec<SessionSummary>> {
@@ -462,6 +574,69 @@ mod tests {
     }
 
     #[test]
+    fn history_import_is_insert_only_deduplicated_and_atomic() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        let original = session();
+        store.upsert_session(&original).unwrap();
+        store
+            .save_transcript(&original.id, &vec!["original"])
+            .unwrap();
+        let mut collision = original.clone();
+        collision.title = "must not overwrite".into();
+        let mut new = original.clone();
+        new.id = "import-new".into();
+        let rows = vec![
+            (collision, vec!["replacement"]),
+            (new.clone(), vec!["imported"]),
+            (new.clone(), vec!["duplicate"]),
+        ];
+        assert_eq!(store.import_sessions(&rows).unwrap(), vec![new.id.clone()]);
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&original.id)
+                .unwrap()
+                .unwrap(),
+            vec!["original"]
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&new.id)
+                .unwrap()
+                .unwrap(),
+            vec!["imported"]
+        );
+        assert!(store.import_sessions(&rows).unwrap().is_empty());
+        assert_eq!(
+            store
+                .sessions(None)
+                .unwrap()
+                .iter()
+                .find(|s| s.id == original.id)
+                .unwrap()
+                .title,
+            original.title
+        );
+        let mut valid = original.clone();
+        valid.id = "rollback-valid".into();
+        let mut invalid = original;
+        invalid.id = "rollback-invalid".into();
+        invalid.project_id = "missing-project".into();
+        assert!(
+            store
+                .import_sessions(&[(valid.clone(), vec!["one"]), (invalid, vec!["two"])])
+                .is_err()
+        );
+        assert!(
+            store
+                .load_transcript::<Vec<String>>(&valid.id)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(store.sessions(None).unwrap().len(), 2);
+    }
+
+    #[test]
     fn round_trips_projects_and_sessions() {
         let store = Store::open_in_memory().unwrap();
         store.upsert_project(&project()).unwrap();
@@ -577,6 +752,7 @@ mod tests {
             id: "group-work".into(),
             name: "Work".into(),
             tone: ProjectTone::Violet,
+            parent_id: None,
         };
         store.upsert_project_group(&group).unwrap();
         let mut project = project();
@@ -594,6 +770,247 @@ mod tests {
         store.delete_project_group("group-work").unwrap();
         assert!(store.project_groups().unwrap().is_empty());
         assert!(store.projects().unwrap()[0].group_id.is_none());
+    }
+
+    fn group(id: &str, parent: Option<&str>) -> ProjectGroup {
+        ProjectGroup {
+            id: id.into(),
+            name: id.into(),
+            tone: ProjectTone::Blue,
+            parent_id: parent.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn v5_migration_preserves_groups_project_settings_histories_and_transcripts() {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .connection
+            .execute_batch(
+                "ALTER TABLE project_groups DROP COLUMN parent_id; PRAGMA user_version = 5;",
+            )
+            .unwrap();
+        store.connection.execute("INSERT INTO project_groups (id, name, tone) VALUES ('legacy', 'Private', '\"Teal\"')", []).unwrap();
+        let mut project = project();
+        project.group_id = Some("legacy".into());
+        project.settings.harness = Some("Claude Code".into());
+        store.upsert_project(&project).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .save_transcript("ses-1", &vec!["user history", "assistant answer"])
+            .unwrap();
+        let settings =
+            serde_json::json!({"dark": false, "ui_font_family": "Custom", "sidebar_width": 333});
+        store.save_setting("app", &settings).unwrap();
+        store.migrate().unwrap();
+        store.migrate().unwrap();
+        let groups = store.project_groups().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert!(groups[0].parent_id.is_none());
+        assert_eq!(groups[0].name, "Private");
+        let project = &store.projects().unwrap()[0];
+        assert_eq!(project.group_id.as_deref(), Some("legacy"));
+        assert_eq!(project.settings.harness.as_deref(), Some("Claude Code"));
+        assert_eq!(store.sessions(None).unwrap()[0].tokens, session().tokens);
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>("ses-1")
+                .unwrap()
+                .unwrap(),
+            ["user history", "assistant answer"]
+        );
+        assert_eq!(
+            store.load_setting::<serde_json::Value>("app").unwrap(),
+            Some(settings)
+        );
+        assert_eq!(
+            store
+                .connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            6
+        );
+    }
+
+    #[test]
+    fn deletion_promotes_only_direct_members_and_undo_preserves_later_moves() {
+        let store = Store::open_in_memory().unwrap();
+        for group in [
+            group("root", None),
+            group("section", Some("root")),
+            group("child", Some("section")),
+            group("leaf", Some("child")),
+            group("other", None),
+        ] {
+            store.upsert_project_group(&group).unwrap();
+        }
+        let mut direct = project();
+        direct.group_id = Some("section".into());
+        store.upsert_project(&direct).unwrap();
+        let mut nested = direct.clone();
+        nested.id = "nested".into();
+        nested.path = "/unused/nested".into();
+        nested.group_id = Some("leaf".into());
+        store.upsert_project(&nested).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_transcript("ses-1", &vec!["history"]).unwrap();
+        store.delete_project_group("section").unwrap();
+        assert_eq!(
+            store
+                .projects()
+                .unwrap()
+                .iter()
+                .find(|p| p.id == direct.id)
+                .unwrap()
+                .group_id
+                .as_deref(),
+            Some("root")
+        );
+        assert_eq!(
+            store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .find(|g| g.id == "child")
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some("root")
+        );
+        assert_eq!(
+            store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .find(|g| g.id == "leaf")
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some("child")
+        );
+        direct.group_id = Some("other".into());
+        store.upsert_project(&direct).unwrap();
+        store
+            .upsert_project_group(&group("child", Some("other")))
+            .unwrap();
+        store
+            .restore_project_group(
+                &group("section", Some("root")),
+                Some("root"),
+                &[direct.id.clone()],
+                &["child".into()],
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .projects()
+                .unwrap()
+                .iter()
+                .find(|p| p.id == direct.id)
+                .unwrap()
+                .group_id
+                .as_deref(),
+            Some("other")
+        );
+        assert_eq!(
+            store
+                .projects()
+                .unwrap()
+                .iter()
+                .find(|p| p.id == nested.id)
+                .unwrap()
+                .group_id
+                .as_deref(),
+            Some("leaf")
+        );
+        assert_eq!(
+            store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .find(|g| g.id == "child")
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some("other")
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>("ses-1")
+                .unwrap()
+                .unwrap(),
+            ["history"]
+        );
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn hierarchy_updates_and_restore_are_cycle_safe_and_atomic() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project_group(&group("root", None)).unwrap();
+        store
+            .upsert_project_group(&group("child", Some("root")))
+            .unwrap();
+        assert!(
+            store
+                .upsert_project_group(&group("root", Some("child")))
+                .is_err()
+        );
+        assert!(
+            store
+                .upsert_project_group(&group("root", Some("root")))
+                .is_err()
+        );
+        assert!(
+            store
+                .upsert_project_group(&group("missing", Some("not-there")))
+                .is_err()
+        );
+        let mut project = project();
+        project.group_id = Some("root".into());
+        store.upsert_project(&project).unwrap();
+        // Restoring under an original child must not reattach that child and
+        // form a cycle, nor leave the preceding project update half-written.
+        assert!(
+            store
+                .restore_project_group(
+                    &group("restored", Some("child")),
+                    Some("root"),
+                    &[project.id.clone()],
+                    &["child".into()]
+                )
+                .is_err()
+        );
+        assert!(
+            !store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .any(|g| g.id == "restored")
+        );
+        assert_eq!(
+            store.projects().unwrap()[0].group_id.as_deref(),
+            Some("root")
+        );
+        store.delete_project_group("root").unwrap();
+        store
+            .restore_project_group(&group("root", None), None, &[project.id], &["child".into()])
+            .unwrap();
+        assert_eq!(
+            store.projects().unwrap()[0].group_id.as_deref(),
+            Some("root")
+        );
+        assert_eq!(
+            store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .find(|g| g.id == "child")
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some("root")
+        );
     }
 
     #[test]

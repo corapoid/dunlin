@@ -10,9 +10,44 @@ use dunlin_ui::component::Icon;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
-use crate::app::{DunlinApp, TraceFilter, format_ms, format_tokens, span_color};
+use crate::app::{DunlinApp, TraceFilter, format_ms, span_color};
 
 const LABEL_WIDTH: f32 = 296.0;
+
+struct Timeline {
+    total_ms: f32,
+    gaps: Vec<(u64, u64)>,
+}
+impl Timeline {
+    fn new(spans: &[TraceSpan]) -> Self {
+        let mut timeline = Self {
+            total_ms: 1.,
+            gaps: spans
+                .iter()
+                .filter(|s| s.id.starts_with("gap-"))
+                .map(|s| (s.start_ms, s.duration_ms))
+                .collect(),
+        };
+        let end = spans.iter().map(TraceSpan::end_ms).max().unwrap_or(1);
+        timeline.total_ms = timeline.compact(end).max(1) as f32;
+        timeline
+    }
+    fn compact(&self, time: u64) -> u64 {
+        time.saturating_sub(
+            self.gaps
+                .iter()
+                .map(|(start, duration)| time.saturating_sub(*start).min(*duration))
+                .sum(),
+        )
+    }
+}
+fn duration_label(span: &TraceSpan) -> String {
+    if span.duration_known {
+        format_ms(span.duration_ms)
+    } else {
+        "unknown".into()
+    }
+}
 
 pub(crate) fn render(
     this: &mut DunlinApp,
@@ -20,31 +55,28 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let preview = this.harness.transcript.is_empty();
     let session = this.session().clone();
-    let spans = if preview {
-        crate::demo::trace_spans()
-    } else {
-        crate::projection::spans(&this.harness.transcript, &session)
-    };
-    let total_ms = spans
-        .iter()
-        .map(TraceSpan::end_ms)
-        .max()
-        .unwrap_or(1)
-        .max(1) as f32;
-    let tokens = session.tokens;
+    if this.activity.prepare(&session.id) {
+        this.selected_node = None;
+        this.selected_span = None;
+    }
+    let spans = crate::projection::spans(&this.harness.transcript, &session);
+    if spans.is_empty() {
+        return super::empty_activity(
+            "No trace events yet",
+            "Send your first message in Chat. Events from this conversation will appear here.",
+            IconName::ChartNoAxesGantt,
+            cx,
+        );
+    }
+    let timeline = Timeline::new(&spans);
+    let total_ms = timeline.total_ms;
+    let tokens = spans.first().and_then(|span| span.tokens);
     let total_duration = format_ms(total_ms as u64);
     let filter = this.trace_filter;
-    let selected = this.selected_span;
-    let following = this.follow_running;
-    let zoom = this.trace_zoom;
-    let row_h = (28.0 + (zoom - 1.0) * 10.0).clamp(24.0, 36.0);
-    let filtered: Vec<TraceSpan> = spans
-        .iter()
-        .filter(|span| filter.matches(span.kind))
-        .cloned()
-        .collect();
+    let selected = this.selected_span.clone();
+    let row_h = trace_row_height(1.0);
+    let filtered = crate::activity::trace_rows(&spans, &this.activity.spans_expanded, filter);
     let total_cost: f64 = spans.iter().map(|span| span.cost_usd).sum();
     let running = spans
         .iter()
@@ -77,48 +109,36 @@ pub(crate) fn render(
                 .h(px(17.))
                 .px(px(5.))
                 .rounded_full()
-                .bg(if preview {
-                    p.amber_soft
-                } else {
-                    match session.status {
-                        SessionStatus::Running => p.green_soft,
-                        SessionStatus::Waiting => p.amber_soft,
-                        SessionStatus::Failed => p.red_soft,
-                        _ => p.muted,
-                    }
+                .bg(match session.status {
+                    SessionStatus::Running => p.green_soft,
+                    SessionStatus::Waiting => p.amber_soft,
+                    SessionStatus::Failed => p.red_soft,
+                    _ => p.muted,
                 })
                 .flex()
                 .items_center()
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
-                        .text_color(if preview {
-                            p.amber
-                        } else {
-                            match session.status {
-                                SessionStatus::Running => p.green,
-                                SessionStatus::Waiting => p.amber,
-                                SessionStatus::Failed => p.red,
-                                _ => p.muted_fg,
-                            }
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(match session.status {
+                            SessionStatus::Running => p.green,
+                            SessionStatus::Waiting => p.amber,
+                            SessionStatus::Failed => p.red,
+                            _ => p.muted_fg,
                         })
-                        .child(if preview {
-                            "PREVIEW"
-                        } else {
-                            match session.status {
-                                SessionStatus::Running => "LIVE",
-                                SessionStatus::Waiting => "WAITING",
-                                SessionStatus::Failed => "FAILED",
-                                _ => "IDLE",
-                            }
+                        .child(match session.status {
+                            SessionStatus::Running => "LIVE",
+                            SessionStatus::Waiting => "WAITING",
+                            SessionStatus::Failed => "FAILED",
+                            _ => "IDLE",
                         }),
                 ),
         )
         .child(
             div()
                 .text_size(px(11.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(format!("{} spans · {running} running", spans.len())),
         )
@@ -126,12 +146,12 @@ pub(crate) fn render(
         .child(
             div()
                 .text_size(px(11.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(format!(
-                    "{} · ${total_cost:.2} · {}",
+                    "{} active · ${total_cost:.2} · {}",
                     total_duration,
-                    format_tokens(tokens)
+                    crate::activity::token_label(tokens)
                 )),
         )
         .child(div().flex_1());
@@ -177,7 +197,7 @@ pub(crate) fn render(
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.7))
                         .child(count.to_string()),
                 ),
@@ -188,56 +208,59 @@ pub(crate) fn render(
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
             div()
-                .id("trace-follow")
+                .id("trace-collapse-requests")
                 .h(px(23.))
                 .px(px(7.))
                 .rounded(px(5.))
                 .border_1()
-                .border_color(if following {
-                    p.blue.opacity(0.3)
-                } else {
-                    p.border
-                })
-                .bg(if following { p.blue_soft } else { p.card })
+                .border_color(p.border)
+                .bg(p.card)
                 .flex()
                 .items_center()
                 .gap(px(4.))
                 .cursor_pointer()
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.follow_running = !this.follow_running;
+                    this.activity.spans_expanded.clear();
+                    this.selected_span = None;
                     cx.notify();
                 }))
                 .child(
-                    Icon::new(IconName::Crosshair)
+                    Icon::new(IconName::FoldVertical)
                         .size(px(11.))
-                        .text_color(if following { p.blue } else { p.muted_fg }),
+                        .text_color(p.muted_fg),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .text_color(if following { p.blue } else { p.muted_fg })
-                        .child("Follow"),
+                        .text_color(p.muted_fg)
+                        .child("Requests"),
                 ),
         )
         .child(
             div()
+                .id("trace-expand-all")
                 .h(px(23.))
                 .px(px(5.))
                 .rounded(px(5.))
                 .flex()
                 .items_center()
                 .gap(px(2.))
-                .child(zoom_button(IconName::ZoomOut, -0.1, cx, &p))
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.spans_expanded =
+                        crate::projection::spans(&this.harness.transcript, this.session())
+                            .into_iter()
+                            .map(|span| span.id)
+                            .collect();
+                    cx.notify();
+                }))
                 .child(
                     div()
-                        .min_w(px(32.))
-                        .text_center()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
-                        .child(format!("{:.0}%", zoom * 100.)),
-                )
-                .child(zoom_button(IconName::ZoomIn, 0.1, cx, &p)),
+                        .child("Expand all"),
+                ),
         );
 
     let header = div()
@@ -259,19 +282,27 @@ pub(crate) fn render(
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
-                        .child("SPAN"),
+                        .child("SPAN · GAPS COLLAPSED"),
                 )
                 .child(div().flex_1())
                 .child(
                     div()
                         .pr(px(10.))
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.65))
                         .child(format!("{} shown", filtered.len())),
                 ),
+        )
+        .child(
+            div()
+                .w(px(82.))
+                .flex_shrink_0()
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .child("TOKENS"),
         )
         .child(
             div()
@@ -285,7 +316,7 @@ pub(crate) fn render(
                 .children([0, 25, 50, 75, 100].map(|pct| {
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.75))
                         .child(axis_label(total_ms * pct as f32 / 100.0))
                         .into_any_element()
@@ -294,11 +325,19 @@ pub(crate) fn render(
 
     let mut rows = div().flex().flex_col();
     for span in &filtered {
-        let index = spans
+        let children = spans
             .iter()
-            .position(|candidate| candidate.id == span.id)
-            .unwrap_or(0);
-        rows = rows.child(span_row(span, index, selected, row_h, total_ms, &p, cx));
+            .any(|candidate| candidate.parent.as_ref() == Some(&span.id));
+        let expanded = span.id == "root" || this.activity.spans_expanded.contains(&span.id);
+        rows = rows.child(span_row(
+            span,
+            selected.as_deref(),
+            (children, expanded),
+            row_h,
+            &timeline,
+            &p,
+            cx,
+        ));
     }
 
     let timeline = div()
@@ -318,7 +357,8 @@ pub(crate) fn render(
         );
 
     let detail = selected
-        .and_then(|index| spans.get(index))
+        .as_ref()
+        .and_then(|id| spans.iter().find(|span| &span.id == id))
         .map(|span| span_detail(span, &spans, cx, &p));
 
     let mut body = div()
@@ -343,39 +383,16 @@ pub(crate) fn render(
         .into_any_element()
 }
 
-fn zoom_button(
-    icon_name: IconName,
-    delta: f32,
-    cx: &mut Context<DunlinApp>,
-    p: &Palette,
-) -> AnyElement {
-    div()
-        .id(if delta > 0.0 {
-            "trace-zoom-in"
-        } else {
-            "trace-zoom-out"
-        })
-        .size(px(19.))
-        .rounded(px(4.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.trace_zoom = (this.trace_zoom + delta).clamp(0.7, 1.5);
-            cx.notify();
-        }))
-        .child(Icon::new(icon_name).size(px(11.)).text_color(p.muted_fg))
-        .into_any_element()
-}
-
 fn axis_label(ms: f32) -> String {
     if ms < 1_000.0 {
         format!("{}ms", ms as u32)
     } else {
         format!("{:.1}s", ms / 1_000.0)
     }
+}
+
+fn trace_row_height(zoom: f32) -> f32 {
+    (52.0 + (zoom - 1.0) * 12.0).clamp(48.0, 60.0)
 }
 
 /// Fractions occupied by a trace bar, including zero-duration events at the
@@ -395,17 +412,25 @@ fn span_bar_geometry(start_ms: u64, duration_ms: u64, total_ms: f32) -> (f32, f3
 
 fn span_row(
     span: &TraceSpan,
-    index: usize,
-    selected: Option<usize>,
+    selected: Option<&str>,
+    disclosure: (bool, bool),
     row_h: f32,
-    total_ms: f32,
+    timeline: &Timeline,
     p: &Palette,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
-    let active = selected == Some(index);
+    let active = selected == Some(span.id.as_str());
+    let id = span.id.clone();
+    let toggle_id = span.id.clone();
     let color = span_color(p, span.kind);
     let (status_color, _status_soft) = status_palette(p, span.status);
-    let (start, width) = span_bar_geometry(span.start_ms, span.duration_ms, total_ms);
+    let mapped_start = timeline.compact(span.start_ms);
+    let mapped_end = timeline.compact(span.end_ms());
+    let (start, width) = span_bar_geometry(
+        mapped_start,
+        mapped_end.saturating_sub(mapped_start),
+        timeline.total_ms,
+    );
     let indent = 10.0 + span.depth as f32 * 10.0;
 
     let bar_width = width;
@@ -435,7 +460,7 @@ fn span_row(
         );
 
     let row = div()
-        .id(("span-row", index))
+        .id(format!("span-row:{}", span.id))
         .h(px(row_h))
         .flex_shrink_0()
         .flex()
@@ -446,10 +471,10 @@ fn span_row(
         .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
         .cursor_pointer()
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.selected_span = if this.selected_span == Some(index) {
+            this.selected_span = if this.selected_span.as_deref() == Some(id.as_str()) {
                 None
             } else {
-                Some(index)
+                Some(id.clone())
             };
             cx.notify();
         }))
@@ -463,6 +488,32 @@ fn span_row(
                 .flex()
                 .items_center()
                 .gap(px(6.))
+                .child(
+                    div()
+                        .id(format!("span-disclosure:{}", span.id))
+                        .size(px(16.))
+                        .flex_shrink_0()
+                        .when(disclosure.0 && span.id != "root", |view| {
+                            view.cursor_pointer()
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    if !this.activity.spans_expanded.remove(&toggle_id) {
+                                        this.activity.spans_expanded.insert(toggle_id.clone());
+                                    }
+                                    this.selected_span = None;
+                                    cx.notify();
+                                }))
+                                .child(
+                                    Icon::new(if disclosure.1 {
+                                        IconName::ChevronDown
+                                    } else {
+                                        IconName::ChevronRight
+                                    })
+                                    .size(px(12.))
+                                    .text_color(p.muted_fg),
+                                )
+                        }),
+                )
                 .child(
                     div()
                         .size(px(18.))
@@ -484,12 +535,15 @@ fn span_row(
                         .min_w(px(0.))
                         .flex()
                         .flex_col()
-                        .gap(px(0.))
+                        .gap(px(3.))
                         .child(
                             div()
                                 .text_size(px(11.5))
+                                .line_height(px(16.))
                                 .font_weight(
-                                    if span.kind == SpanKind::Agent || span.kind == SpanKind::Turn {
+                                    if span.kind == SpanKind::Agent
+                                        || crate::activity::is_request(span)
+                                    {
                                         FontWeight::MEDIUM
                                     } else {
                                         FontWeight::NORMAL
@@ -502,14 +556,15 @@ fn span_row(
                         .child(
                             div()
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .line_height(px(14.))
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .truncate()
                                 .child(format!(
                                     "{} · {} · {}",
                                     span.agent,
                                     span.kind.label(),
-                                    format_ms(span.duration_ms)
+                                    duration_label(span)
                                 )),
                         ),
                 )
@@ -527,6 +582,15 @@ fn span_row(
                         )
                     },
                 ),
+        )
+        .child(
+            div()
+                .w(px(82.))
+                .flex_shrink_0()
+                .text_size(px(10.5))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child(crate::activity::token_label(span.tokens)),
         )
         .child(
             div()
@@ -577,7 +641,7 @@ fn span_detail(
         .parent
         .as_ref()
         .and_then(|id| spans.iter().find(|candidate| &candidate.id == id));
-    let parent_index = parent.and_then(|p| spans.iter().position(|c| c.id == p.id));
+    let parent_id = parent.map(|p| p.id.clone());
     let children: Vec<&TraceSpan> = spans
         .iter()
         .filter(|candidate| candidate.parent.as_ref() == Some(&span.id))
@@ -641,7 +705,7 @@ fn span_detail(
                                         .child(
                                             div()
                                                 .text_size(px(10.0))
-                                                .font_family("Geist Mono")
+                                                .font_family(dunlin_ui::theme::code_font())
                                                 .text_color(status_color)
                                                 .child(span.status.label().to_uppercase()),
                                         ),
@@ -649,7 +713,7 @@ fn span_detail(
                                 .child(
                                     div()
                                         .text_size(px(11.0))
-                                        .font_family("Geist Mono")
+                                        .font_family(dunlin_ui::theme::code_font())
                                         .text_color(p.muted_fg)
                                         .child(format!("{} · {}", span.kind.label(), span.agent)),
                                 ),
@@ -694,7 +758,7 @@ fn span_detail(
             div()
                 .flex()
                 .gap(px(6.))
-                .child(metric("Duration", format_ms(span.duration_ms), p))
+                .child(metric("Duration", duration_label(span), p))
                 .child(metric("Start", format_ms(span.start_ms), p)),
         )
         .child(
@@ -702,8 +766,10 @@ fn span_detail(
                 .flex()
                 .gap(px(6.))
                 .child(metric("Cost", format!("${:.2}", span.cost_usd), p))
-                .child(metric("Tokens", format_tokens(span.tokens), p)),
+                .child(metric("Tokens", crate::activity::token_label(span.tokens), p)),
         )
+        .when(span.tokens.is_none(), |view| view.child(div().text_size(px(10.5)).line_height(relative(1.5)).text_color(p.muted_fg)
+            .child("Token consumption was not reported for this stage. Context-window occupancy is not consumption; no per-tool estimate is inferred.")))
         .child(
             div()
                 .flex()
@@ -721,7 +787,7 @@ fn span_detail(
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("PARENT"),
                 )
@@ -740,8 +806,8 @@ fn span_detail(
                         .cursor_pointer()
                         .hover(move |style| style.bg(p.hover))
                         .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(index) = parent_index {
-                                this.selected_span = Some(index);
+                            if let Some(id) = &parent_id {
+                                this.selected_span = Some(id.clone());
                                 cx.notify();
                             }
                         }))
@@ -761,7 +827,7 @@ fn span_detail(
                         .child(
                             div()
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child(format_ms(parent.duration_ms)),
                         ),
@@ -773,12 +839,12 @@ fn span_detail(
         let mut child_list = div().flex().flex_col().gap(px(2.)).child(
             div()
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(format!("CHILDREN · {}", children.len())),
         );
         for child in children.iter().take(5) {
-            let child_index = spans.iter().position(|c| c.id == child.id);
+            let child_id = child.id.clone();
             child_list = child_list.child(
                 div()
                     .id(format!("trace-child:{}", child.id))
@@ -791,10 +857,8 @@ fn span_detail(
                     .cursor_pointer()
                     .hover(move |style| style.bg(p.hover))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(index) = child_index {
-                            this.selected_span = Some(index);
-                            cx.notify();
-                        }
+                        this.selected_span = Some(child_id.clone());
+                        cx.notify();
                     }))
                     .child(
                         Icon::new(span_icon(child.kind))
@@ -812,7 +876,7 @@ fn span_detail(
                     .child(
                         div()
                             .text_size(px(10.5))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(p.muted_fg.opacity(0.7))
                             .child(format_ms(child.duration_ms)),
                     ),
@@ -921,7 +985,7 @@ fn span_detail(
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(span.id.clone()),
                 ),
@@ -959,14 +1023,14 @@ fn metric(label: &str, value: String, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(label.to_uppercase()),
         )
         .child(
             div()
                 .text_size(px(11.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.fg)
                 .child(value),
@@ -998,6 +1062,29 @@ fn span_icon(kind: SpanKind) -> IconName {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn compressing_an_hour_of_idle_preserves_order_and_raw_duration() {
+        let timeline = super::Timeline {
+            total_ms: 10_000.,
+            gaps: vec![(3_000, 3_600_000)],
+        };
+        assert_eq!(timeline.compact(2_000), 2_000);
+        assert_eq!(timeline.compact(3_000), 3_000);
+        assert_eq!(timeline.compact(3_603_000), 3_000);
+        assert_eq!(timeline.compact(3_604_000), 4_000);
+        let mapped: Vec<_> = [0, 1_000, 3_000, 30_000, 3_603_000, 3_604_000]
+            .map(|t| timeline.compact(t))
+            .into();
+        assert!(mapped.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert_eq!(timeline.gaps[0].1, 3_600_000);
+    }
+    #[test]
+    fn trace_rows_reserve_space_for_two_lines_and_padding_at_every_zoom() {
+        for zoom in [0.7, 1.0, 1.5] {
+            let height = super::trace_row_height(zoom);
+            assert!(height >= 16. + 14. + 3. + 14.);
+        }
+    }
     use super::span_bar_geometry;
 
     #[test]

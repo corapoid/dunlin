@@ -5,7 +5,7 @@
 //! transcript. Permission prompts round-trip through the same path.
 
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use dunlin_agent::{
@@ -20,10 +20,23 @@ use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
 
 /// One rendered entry in the conversation.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub(crate) struct TurnTiming {
+    pub started_at_ms: u64,
+    pub finished_at_ms: Option<u64>,
+    pub elapsed_ms: Option<u64>,
+    #[serde(default)]
+    pub usage: Option<dunlin_agent::TokenUsage>,
+    #[serde(default)]
+    pub usage_before: Option<dunlin_agent::TokenUsage>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) enum ChatItem {
     User {
         text: String,
+        #[serde(default)]
+        timing: Option<TurnTiming>,
         #[serde(default)]
         at_ms: u64,
     },
@@ -31,11 +44,15 @@ pub(crate) enum ChatItem {
         text: String,
         streaming: bool,
         #[serde(default)]
+        message_id: Option<String>,
+        #[serde(default)]
         at_ms: u64,
     },
     Thought {
         text: String,
         streaming: bool,
+        #[serde(default)]
+        message_id: Option<String>,
         #[serde(default)]
         at_ms: u64,
     },
@@ -60,6 +77,14 @@ pub(crate) enum ChatItem {
     },
     Error {
         message: String,
+        #[serde(default)]
+        at_ms: u64,
+    },
+    Child {
+        id: String,
+        parent_id: String,
+        title: Option<String>,
+        items: Vec<ChatItem>,
         #[serde(default)]
         at_ms: u64,
     },
@@ -126,6 +151,15 @@ pub(crate) fn transcript_markdown(items: &[ChatItem]) -> String {
             }
             ChatItem::Error { message, .. } => {
                 out.push_str(&format!("> **Error:** {message}\n\n"));
+            }
+            ChatItem::Child {
+                title, id, items, ..
+            } => {
+                out.push_str(&format!(
+                    "### Subagent · {}\n\n{}\n\n",
+                    title.as_deref().unwrap_or(id),
+                    transcript_markdown(items)
+                ));
             }
         }
     }
@@ -194,6 +228,17 @@ impl HarnessUsage {
     }
 }
 
+pub(crate) struct ParkedRuntime {
+    pub project: String,
+    pub root: String,
+    pub state: HarnessState,
+}
+
+fn next_generation() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(crate) struct HarnessState {
     pub harness: Option<AcpHarness>,
     pub status: HarnessStatus,
@@ -206,12 +251,15 @@ pub(crate) struct HarnessState {
     pub modes: Option<dunlin_agent::SessionModes>,
     pub model_changing: bool,
     pub mode_changing: bool,
+    pub missing_command: Option<String>,
     pub local_session_loading: bool,
     pub running: bool,
     pub session_id: Option<String>,
     pending_prompts: VecDeque<QueuedPrompt>,
     next_prompt_id: u64,
     prompt_sent: bool,
+    active_turn: Option<(usize, Instant)>,
+    token_baseline: Option<dunlin_agent::TokenUsage>,
     generation: u64,
     pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
@@ -226,6 +274,7 @@ impl Default for HarnessState {
             modes: None,
             model_changing: false,
             mode_changing: false,
+            missing_command: None,
             local_session_loading: false,
             transcript: Vec::new(),
             transcripts: HashMap::new(),
@@ -237,6 +286,8 @@ impl Default for HarnessState {
             pending_prompts: VecDeque::new(),
             next_prompt_id: 0,
             prompt_sent: false,
+            active_turn: None,
+            token_baseline: None,
             generation: 0,
             started_tools: HashMap::new(),
             restarts: 0,
@@ -245,6 +296,29 @@ impl Default for HarnessState {
 }
 
 impl HarnessState {
+    fn finish_turn_timing(&mut self, at_ms: u64) {
+        if let Some((index, start)) = self.active_turn.take()
+            && let Some(ChatItem::User {
+                timing: Some(timing),
+                ..
+            }) = self.transcript.get_mut(index)
+        {
+            timing.finished_at_ms = Some(at_ms);
+            timing.elapsed_ms = Some(start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64);
+        }
+    }
+
+    fn push_error(&mut self, message: String) {
+        if matches!(self.transcript.last(), Some(ChatItem::Error { message: previous, .. }) if previous == &message)
+        {
+            return;
+        }
+        self.transcript.push(ChatItem::Error {
+            message,
+            at_ms: now_ms(),
+        });
+    }
+
     pub(crate) fn queued_prompts(&self) -> Vec<QueuedPrompt> {
         self.pending_prompts.iter().cloned().collect()
     }
@@ -301,6 +375,29 @@ impl DunlinApp {
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
         if self.harness.status.is_busy() {
             return;
+        }
+        // Navigation is never blocked by the process budget. Idle background
+        // adapters can be evicted; running/waiting agents must not be killed.
+        if self
+            .parked_runtimes
+            .values()
+            .filter(|r| r.state.harness.is_some())
+            .count()
+            >= 7
+        {
+            let idle = self
+                .parked_runtimes
+                .iter()
+                .find(|(_, r)| {
+                    r.state.harness.is_some() && !r.state.running && !r.state.status.is_busy()
+                })
+                .map(|(id, _)| id.clone());
+            if let Some(id) = idle {
+                self.stop_parked_runtime(&id);
+            } else {
+                self.set_notice("Eight agents are already connected. Finish an agent before connecting another.", cx);
+                return;
+            }
         }
 
         let project = self.project().clone();
@@ -371,7 +468,26 @@ impl DunlinApp {
             .unwrap_or_else(|| {
                 harness_command(&self.session_harness(), &self.custom_harness_command)
             });
+        if !command_available(&command) {
+            let reason = format!(
+                "{} needs an installed ACP adapter: {command}. Install it or choose an available harness.",
+                self.session_harness()
+            );
+            // Configuration problems are not conversation messages and cannot
+            // be fixed by repeatedly spawning the same missing executable.
+            self.disconnect_harness(cx);
+            self.harness.missing_command = Some(command);
+            self.harness.pending_prompts.clear();
+            logging::warn(&reason);
+            self.notice = Some(reason);
+            cx.notify();
+            return;
+        }
+        let command = crate::harness_discovery::resolved_command(&command).unwrap_or(command);
         let mut config = HarnessConfig::new(command, cwd);
+        if let Some(path) = crate::harness_discovery::child_path() {
+            config.process_env.insert("PATH".into(), path);
+        }
         config.resume_session_id = self.session().acp_session_id.clone();
         self.start_harness(config, None, cx);
     }
@@ -382,8 +498,9 @@ impl DunlinApp {
         remote_name: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        self.harness.generation += 1;
+        self.harness.generation = next_generation();
         let generation = self.harness.generation;
+        self.harness.missing_command = None;
         if let Some(previous) = self.harness.harness.take() {
             previous.shutdown();
         }
@@ -414,11 +531,7 @@ impl DunlinApp {
         cx.spawn(async move |this, cx| {
             while let Ok(event) = events.recv().await {
                 let keep_going = this.update(cx, |this, cx| {
-                    if this.harness.generation != generation {
-                        return false;
-                    }
-                    this.handle_harness_event(event, cx);
-                    true
+                    this.route_harness_event(generation, event, cx)
                 });
                 if !matches!(keep_going, Ok(true)) {
                     break;
@@ -431,13 +544,15 @@ impl DunlinApp {
     }
 
     pub(crate) fn disconnect_harness(&mut self, cx: &mut Context<Self>) {
+        self.cancel_ai_commit_preparation();
         self.interrupt_live_turn(cx);
         logging::info("disconnecting harness");
-        self.harness.generation += 1;
+        self.harness.generation = next_generation();
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
         }
         self.harness.status = HarnessStatus::Offline;
+        self.harness.missing_command = None;
         self.harness.connected_harness = None;
         self.harness.models = None;
         self.harness.modes = None;
@@ -451,6 +566,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn restart_harness(&mut self, cx: &mut Context<Self>) {
+        self.cancel_ai_commit_preparation();
         self.interrupt_live_turn(cx);
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
@@ -462,8 +578,348 @@ impl DunlinApp {
         self.connect_harness(cx);
     }
 
+    pub(crate) fn has_running_agents(&self) -> bool {
+        self.harness.running || self.parked_runtimes.values().any(|r| r.state.running)
+    }
+
+    pub(crate) fn live_agents(&self) -> Vec<(String, String, &'static str)> {
+        let label = |state: &HarnessState, waiting: bool| {
+            if waiting && state.running {
+                Some("Waiting for permission")
+            } else if state.running {
+                Some("Working")
+            } else if state.status.is_busy() || state.local_session_loading {
+                Some("Connecting")
+            } else {
+                None
+            }
+        };
+        let mut rows = Vec::new();
+        if let Some(label) = label(
+            &self.harness,
+            self.session().status == SessionStatus::Waiting,
+        ) {
+            rows.push((self.project().id.clone(), self.session().id.clone(), label));
+        }
+        for (id, runtime) in &self.parked_runtimes {
+            let waiting = self
+                .all_sessions
+                .iter()
+                .any(|s| &s.id == id && s.status == SessionStatus::Waiting);
+            if let Some(label) = label(&runtime.state, waiting) {
+                rows.push((runtime.project.clone(), id.clone(), label));
+            }
+        }
+        rows
+    }
+
+    pub(crate) fn park_current_runtime(&mut self, cx: &mut Context<Self>) {
+        self.branch_ui.dismiss();
+        self.cancel_ai_commit_preparation();
+        if self.sessions.get(self.selected_session).is_none() {
+            return;
+        }
+        if self.project().is_remote() {
+            // Relay leases still use the existing single-connection lifecycle.
+            self.disconnect_harness(cx);
+            self.stash_transcript();
+            return;
+        }
+        self.save_current_transcript();
+        let id = self.session().id.clone();
+        self.project_session_selections
+            .insert(self.project().id.clone(), id.clone());
+        if self.harness.harness.is_none() && !self.harness.running && !self.harness.status.is_busy()
+        {
+            self.harness = Default::default();
+            return;
+        }
+        let runtime = ParkedRuntime {
+            project: self.project().id.clone(),
+            root: self.project().path.clone(),
+            state: std::mem::take(&mut self.harness),
+        };
+        self.parked_runtimes.insert(id, runtime);
+    }
+
+    pub(crate) fn restore_runtime(&mut self, id: &str) -> bool {
+        let Some(runtime) = self.parked_runtimes.remove(id) else {
+            return false;
+        };
+        if runtime.project != self.project().id || runtime.root != self.project().path {
+            return false;
+        }
+        self.harness = runtime.state;
+        true
+    }
+
+    pub(crate) fn stop_parked_runtime(&mut self, id: &str) {
+        if let Some(mut runtime) = self.parked_runtimes.remove(id) {
+            runtime.state.finish_turn_timing(now_ms());
+            if let Some(adapter) = &runtime.state.harness {
+                if runtime.state.running {
+                    adapter.cancel();
+                }
+                adapter.shutdown();
+            }
+            if let Some(store) = &self.store
+                && let Err(error) = store.save_transcript(id, &runtime.state.transcript)
+            {
+                self.report_storage_error("save background conversation", error);
+            }
+            if runtime.state.running
+                && let Some(session) = self.all_sessions.iter_mut().find(|s| s.id == id)
+            {
+                session.status = SessionStatus::Interrupted;
+                let session = session.clone();
+                self.persist_session(&session);
+            }
+        }
+    }
+
+    pub(crate) fn stop_project_runtimes(&mut self, project: &str, cx: &mut Context<Self>) {
+        if self.project().id == project
+            || self
+                .group_contexts
+                .get(&self.session().id)
+                .is_some_and(|context| context.roots.iter().any(|r| r.id == project))
+        {
+            self.disconnect_harness(cx);
+        }
+        let ids: Vec<_> = self
+            .parked_runtimes
+            .iter()
+            .filter(|(id, r)| {
+                r.project == project
+                    || self
+                        .group_contexts
+                        .get(*id)
+                        .is_some_and(|context| context.roots.iter().any(|r| r.id == project))
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            self.stop_parked_runtime(&id);
+        }
+    }
+
+    pub(crate) fn save_and_shutdown_background_agents(&self) {
+        if let Some(store) = &self.store {
+            for (id, runtime) in &self.parked_runtimes {
+                if let Err(error) = store.save_transcript(id, &runtime.state.transcript) {
+                    self.report_storage_error("save background conversation", error);
+                }
+            }
+        }
+        for runtime in self.parked_runtimes.values() {
+            if let Some(adapter) = &runtime.state.harness {
+                if runtime.state.running {
+                    adapter.cancel();
+                }
+                adapter.shutdown();
+            }
+        }
+    }
+
+    /// Background queues pause at turn boundaries. Resume only after returning
+    /// to this session and revalidating its provider/model and MCP state.
+    pub(crate) fn resume_visible_queue(&mut self, cx: &mut Context<Self>) {
+        if !self.harness.running
+            && !self.harness.pending_prompts.is_empty()
+            && self.harness.status.is_ready()
+            && !self.harness.local_session_loading
+            && !self.harness.model_changing
+            && !self.harness.mode_changing
+            && !self.mcp_busy()
+            && (!self.local_opencode()
+                || self
+                    .harness
+                    .models
+                    .as_ref()
+                    .is_some_and(|m| self.visible_models().iter().any(|c| c.id == m.current)))
+        {
+            self.harness.running = true;
+            self.update_active_session(|s| s.status = SessionStatus::Running);
+            self.dispatch_pending_prompt(cx);
+        }
+    }
+
+    pub(crate) fn background_transcripts(&self) -> HashMap<String, Vec<ChatItem>> {
+        self.parked_runtimes
+            .iter()
+            .map(|(id, runtime)| (id.clone(), runtime.state.transcript.clone()))
+            .collect()
+    }
+
+    fn route_harness_event(
+        &mut self,
+        generation: u64,
+        event: HarnessEvent,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.harness.generation == generation {
+            self.handle_harness_event(event, cx);
+            return true;
+        }
+        let Some(id) = self
+            .parked_runtimes
+            .iter()
+            .find(|(_, r)| r.state.generation == generation)
+            .map(|(id, _)| id.clone())
+        else {
+            return false;
+        };
+        let mut runtime = self.parked_runtimes.remove(&id).unwrap();
+        let Some(project_index) = self
+            .projects
+            .iter()
+            .position(|p| p.id == runtime.project && p.path == runtime.root && p.trusted)
+        else {
+            return false;
+        };
+        let Some(session) = self.all_sessions.iter().find(|s| s.id == id).cloned() else {
+            return false;
+        };
+        // A synchronous scope only: no UI rendering or async continuation can
+        // observe this selection. Reduced background handling never refreshes
+        // visible editors/providers/MCP or dispatches queued prompts.
+        let project = std::mem::replace(&mut self.selected_project, project_index);
+        let sessions = std::mem::replace(&mut self.sessions, vec![session]);
+        let selected = std::mem::replace(&mut self.selected_session, 0);
+        let notice = self.notice.clone();
+        std::mem::swap(&mut self.harness, &mut runtime.state);
+        self.handle_background_event(event, cx);
+        std::mem::swap(&mut self.harness, &mut runtime.state);
+        self.selected_project = project;
+        self.sessions = sessions;
+        self.selected_session = selected;
+        for session in &mut self.sessions {
+            if let Some(updated) = self.all_sessions.iter().find(|s| s.id == session.id) {
+                *session = updated.clone();
+            }
+        }
+        self.notice = notice;
+        self.parked_runtimes.insert(id, runtime);
+        cx.notify();
+        true
+    }
+
+    fn handle_background_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
+        match event {
+            HarnessEvent::Ready { agent, version } => {
+                self.harness.status = HarnessStatus::Ready { agent, version }
+            }
+            HarnessEvent::SessionCreated { session_id } => {
+                self.harness.token_baseline = Some(Default::default());
+                self.harness.local_session_loading = false;
+                self.harness.session_id = Some(session_id.clone());
+                self.update_active_session(|s| s.acp_session_id = Some(session_id));
+            }
+            HarnessEvent::SessionLoaded { session_id } if self.is_current_session(&session_id) => {
+                self.harness.local_session_loading = false;
+                self.harness.session_id = Some(session_id);
+                self.harness.token_baseline = None;
+            }
+            HarnessEvent::Update { session_id, update }
+                if self.is_current_session(&session_id) && !self.harness.local_session_loading =>
+            {
+                self.apply_update(update)
+            }
+            HarnessEvent::Models { session_id, state } if self.is_current_session(&session_id) => {
+                self.apply_models(state)
+            }
+            HarnessEvent::Modes { session_id, state } if self.is_current_session(&session_id) => {
+                self.apply_modes(state)
+            }
+            HarnessEvent::ModelChangeFailed { message, .. } => {
+                self.harness.model_changing = false;
+                self.harness.push_error(message);
+            }
+            HarnessEvent::ModeChangeFailed { message, .. } => {
+                self.harness.mode_changing = false;
+                self.harness.push_error(message);
+            }
+            HarnessEvent::PermissionRequested {
+                request_id,
+                session_id,
+                title,
+                options,
+            } => {
+                if self.is_current_session(&session_id) && self.group_context_ready(cx) {
+                    self.handle_permission(request_id, title, options);
+                } else if let Some(adapter) = &self.harness.harness {
+                    adapter.respond_permission(request_id, None);
+                }
+            }
+            HarnessEvent::PromptFinished {
+                session_id,
+                stop_reason,
+                usage,
+            } if self.is_current_session(&session_id) => {
+                if let Some((index, _)) = self.harness.active_turn
+                    && let Some(ChatItem::User {
+                        timing: Some(t), ..
+                    }) = self.harness.transcript.get_mut(index)
+                {
+                    t.usage = usage;
+                }
+                self.harness.token_baseline = usage;
+                self.harness.running = false;
+                self.harness.prompt_sent = false;
+                self.finish_streaming();
+                self.update_active_session(|s| {
+                    s.status = if stop_reason == "cancelled" {
+                        SessionStatus::Interrupted
+                    } else {
+                        SessionStatus::Done
+                    }
+                });
+                self.save_current_transcript();
+                self.notify_if_background("Agent finished", &self.session().title, cx);
+            }
+            HarnessEvent::SessionLoadFailed { message, .. } | HarnessEvent::Error { message } => {
+                self.harness.local_session_loading = false;
+                self.harness.running = false;
+                self.harness.prompt_sent = false;
+                self.harness.pending_prompts.clear();
+                self.finish_streaming();
+                self.harness.push_error(message.clone());
+                self.harness.status = HarnessStatus::Failed(message);
+                self.update_active_session(|s| s.status = SessionStatus::Failed);
+                self.save_current_transcript();
+            }
+            HarnessEvent::Exited { reason } => {
+                self.harness.local_session_loading = false;
+                self.harness.running = false;
+                self.harness.prompt_sent = false;
+                self.harness.pending_prompts.clear();
+                self.finish_streaming();
+                self.harness.harness = None;
+                self.harness.session_id = None;
+                self.harness.status = HarnessStatus::Exited(reason);
+                self.update_active_session(|s| s.status = SessionStatus::Failed);
+                self.save_current_transcript();
+            }
+            _ => {}
+        }
+    }
+
     /// Send the composer contents to the active harness, connecting lazily.
     pub(crate) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.ai_commit_preparing() {
+            self.set_notice(
+                "Wait for AI commit preparation or cancel it before sending another request",
+                cx,
+            );
+            return;
+        }
+        if self.mcp_busy() {
+            self.set_notice(
+                "Wait for MCP selection to finish updating before sending",
+                cx,
+            );
+            return;
+        }
         if self.harness.local_session_loading
             || self.harness.model_changing
             || self.harness.mode_changing
@@ -478,7 +934,10 @@ impl DunlinApp {
         if text.is_empty() {
             return;
         }
-        if !self.check_provider_model(cx) {
+        if !self.guard_ai_commit_agent_send(cx)
+            || !self.group_context_ready(cx)
+            || !self.check_provider_model(cx)
+        {
             return;
         }
         self.composer
@@ -563,7 +1022,10 @@ impl DunlinApp {
 
     /// Append a user message, update session metadata and dispatch it.
     fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
-        if !self.check_provider_model(cx) {
+        if !self.guard_ai_commit_agent_send(cx)
+            || !self.group_context_ready(cx)
+            || !self.check_provider_model(cx)
+        {
             return;
         }
         if self.harness.local_session_loading
@@ -577,17 +1039,20 @@ impl DunlinApp {
             return;
         }
         let title = session_title(&text);
+        self.remember_dashboard_project(cx);
         let summary = session_summary(&text);
         let was_running = self.harness.running;
+        let queued = self.harness.enqueue_prompt(text.clone());
+        self.chat_scroll.jump_to_latest();
         self.harness.transcript.push(ChatItem::User {
             text: text.clone(),
-            at_ms: now_ms(),
+            at_ms: queued.created_at_ms,
+            timing: None,
         });
         self.harness.running = true;
         if !was_running {
             self.harness.prompt_sent = false;
         }
-        self.harness.enqueue_prompt(text);
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
             session.summary = summary;
@@ -604,7 +1069,28 @@ impl DunlinApp {
         }
     }
 
+    pub(crate) fn submit_automation_prompt(
+        &mut self,
+        text: String,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        // Automation may only dispatch immediately, never enter a queue which
+        // could resume later under a different model or after cancellation.
+        if self.harness.running
+            || !self.harness.status.is_ready()
+            || self.harness.harness.is_none()
+            || self.harness.session_id.is_none()
+            || !self.harness.pending_prompts.is_empty()
+            || self.mcp_busy()
+        {
+            return false;
+        }
+        self.submit_prompt(text, cx);
+        self.harness.prompt_sent
+    }
+
     pub(crate) fn cancel_turn(&mut self, cx: &mut Context<Self>) {
+        self.cancel_ai_commit_preparation();
         self.interrupt_live_turn(cx);
         self.notice = Some("Cancellation requested".into());
         cx.notify();
@@ -628,6 +1114,7 @@ impl DunlinApp {
         self.harness.running = false;
         self.harness.prompt_sent = false;
         self.harness.pending_prompts.clear();
+        self.finish_streaming();
         self.update_active_session(|session| {
             if matches!(
                 session.status,
@@ -646,6 +1133,12 @@ impl DunlinApp {
         label: String,
         cx: &mut Context<Self>,
     ) {
+        if !self.group_context_ready(cx) {
+            return;
+        }
+        if option_id.as_ref().is_some_and(|id| self.effective_permission_mode() == PermissionMode::ReadOnly && self.harness.transcript.iter().any(|item| matches!(item, ChatItem::Permission { request_id: request, options, .. } if request == request_id && options.iter().any(|o| &o.id == id && matches!(o.kind, PermissionKind::AllowOnce | PermissionKind::AllowAlways))))) {
+            self.set_notice("Read-only policy does not allow approving this operation", cx); return;
+        }
         if let Some(harness) = self.harness.harness.as_ref() {
             harness.respond_permission(request_id.to_string(), option_id);
         }
@@ -697,6 +1190,9 @@ impl DunlinApp {
     }
 
     pub(crate) fn load_transcript(&mut self, session_id: &str) {
+        self.harness.missing_command = None;
+        self.selected_node = None;
+        self.selected_span = None;
         let loaded = self.harness.transcripts.remove(session_id).or_else(|| {
             self.store.as_ref().and_then(|store| {
                 match store.load_transcript::<Vec<ChatItem>>(session_id) {
@@ -708,8 +1204,12 @@ impl DunlinApp {
                 }
             })
         });
+        if let Some(items) = &loaded {
+            self.session_list.record(session_id, items);
+        }
         self.harness.transcript = loaded.unwrap_or_default();
         self.harness.started_tools.clear();
+        self.harness.active_turn = None;
         self.harness.pending_prompts.clear();
         self.harness.prompt_sent = false;
         self.harness.running = false;
@@ -724,6 +1224,27 @@ impl DunlinApp {
     /// Switch the visible conversation and resume its ACP context when available.
     pub(crate) fn select_session(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.sessions.len() || index == self.selected_session {
+            return;
+        }
+        self.cancel_ai_commit_preparation();
+        if !self.project().is_remote() {
+            self.park_current_runtime(cx);
+            self.reset_mcp_for_navigation();
+            self.selected_session = index;
+            let id = self.session().id.clone();
+            if !self.restore_runtime(&id) {
+                self.load_transcript(&id);
+                if self.auto_connect {
+                    self.connect_harness(cx);
+                }
+            }
+            self.session_menu_open = false;
+            self.refresh_mcp(cx);
+            self.refresh_providers(cx);
+            self.resume_visible_queue(cx);
+            self.ensure_usage(cx);
+            self.persist_settings(cx);
+            cx.notify();
             return;
         }
         if self.remote_sessions_loading {
@@ -767,6 +1288,7 @@ impl DunlinApp {
         }
 
         self.notice = Some(format!("Opened “{title}”"));
+        self.ensure_usage(cx);
         self.persist_settings(cx);
         cx.notify();
     }
@@ -816,13 +1338,30 @@ impl DunlinApp {
         if self.harness.prompt_sent
             || self.harness.session_id.is_none()
             || self.harness.local_session_loading
+            || self.harness.pending_prompts.is_empty()
+            || self.mcp_busy()
         {
+            return;
+        }
+        // Recheck at the wire boundary as well: a resumed session or later ACP
+        // update must not turn a queued Free prompt into a paid-model send.
+        if !self.guard_ai_commit_agent_send(cx)
+            || !self.group_context_ready(cx)
+            || !self.check_provider_model(cx)
+        {
+            self.harness.running = false;
+            self.update_active_session(|session| session.status = SessionStatus::Interrupted);
             return;
         }
         let Some(prompt) = self.harness.pending_prompts.pop_front() else {
             return;
         };
         let text = prompt.text;
+        let wire_text = self
+            .group_contexts
+            .get(&self.session().id)
+            .map(|context| context.prompt(&text))
+            .unwrap_or_else(|| text.clone());
         let title = session_title(&text);
         self.update_active_session(|session| {
             if session.title == "New session" {
@@ -833,15 +1372,43 @@ impl DunlinApp {
             .harness
             .harness
             .as_ref()
-            .map(|harness| harness.prompt(text.clone()))
+            .map(|harness| harness.prompt(wire_text))
             .unwrap_or(false);
         if sent {
+            let index = self.harness.transcript.iter().position(|item| matches!(item, ChatItem::User { text: body, at_ms, timing: None } if body == &text && *at_ms == prompt.created_at_ms));
+            if let Some(index) = index {
+                if let ChatItem::User { timing, .. } = &mut self.harness.transcript[index] {
+                    *timing = Some(TurnTiming {
+                        started_at_ms: now_ms(),
+                        finished_at_ms: None,
+                        elapsed_ms: None,
+                        usage: None,
+                        // Consume the baseline: a failed/interrupted request with no
+                        // final counters must not be charged to a later request.
+                        usage_before: self.harness.token_baseline.take(),
+                    });
+                }
+                self.harness.active_turn = Some((index, Instant::now()));
+            }
+            // A harness without model metadata must invalidate the previous
+            // target too, not silently reuse an older harness/model for commits.
+            self.last_ai_target = Some(crate::ai_commit::LastTarget {
+                harness: self.session_harness(),
+                model: self
+                    .harness
+                    .models
+                    .as_ref()
+                    .map(|models| models.current.clone())
+                    .unwrap_or_default(),
+                provider: self.selected_provider().map(str::to_string),
+                remote: self.project().is_remote(),
+            });
             if let Some(models) = &self.harness.models {
                 let id = models.current.clone();
                 let scope = self.model_scope();
                 crate::providers::remember(&mut self.recent_models, &scope, &id);
-                self.persist_settings(cx);
             }
+            self.persist_settings(cx);
             self.harness.prompt_sent = true;
             self.harness.running = true;
             self.update_active_session(|session| {
@@ -874,6 +1441,7 @@ impl DunlinApp {
                 self.harness.restarts = 0;
                 self.notice = Some(format!("{agent} {version} connected over ACP"));
                 self.refresh_providers(cx);
+                self.refresh_usage(cx);
                 if self.project().is_remote()
                     && let Some(action) = self.pending_remote_session.take()
                 {
@@ -883,7 +1451,13 @@ impl DunlinApp {
                 }
             }
             HarnessEvent::SessionCreated { session_id } => {
+                self.harness.token_baseline = Some(Default::default());
                 self.harness.local_session_loading = false;
+                if self.provider_catalog.providers.is_empty()
+                    || self.provider_catalog.error.is_some()
+                {
+                    self.refresh_providers(cx);
+                }
                 if self.project().is_remote() {
                     self.create_remote_session_summary(&session_id, cx);
                 } else {
@@ -892,6 +1466,8 @@ impl DunlinApp {
                     });
                 }
                 self.harness.session_id = Some(session_id);
+                self.refresh_mcp(cx);
+                self.persist_settings(cx);
                 if !self.harness.pending_prompts.is_empty() {
                     self.dispatch_pending_prompt(cx);
                 }
@@ -900,8 +1476,16 @@ impl DunlinApp {
                 if !self.is_current_session(&session_id) {
                     return;
                 }
+                // Work may have happened on another client since our last snapshot.
+                self.harness.token_baseline = None;
                 self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id);
+                self.refresh_mcp(cx);
+                if self.provider_catalog.providers.is_empty()
+                    || self.provider_catalog.error.is_some()
+                {
+                    self.refresh_providers(cx);
+                }
                 self.update_active_session(|session| {
                     if matches!(
                         session.status,
@@ -940,6 +1524,7 @@ impl DunlinApp {
             HarnessEvent::Models { session_id, state } => {
                 if self.is_current_session(&session_id) {
                     self.apply_models(state);
+                    self.ensure_usage(cx);
                 }
             }
             HarnessEvent::ModelChangeFailed {
@@ -973,6 +1558,12 @@ impl DunlinApp {
             } => {
                 if self.is_current_session(&session_id) {
                     let session_title = self.session().title.clone();
+                    if !self.group_context_ready(cx) {
+                        if let Some(adapter) = &self.harness.harness {
+                            adapter.respond_permission(request_id, None);
+                        }
+                        return;
+                    }
                     self.handle_permission(request_id, title.clone(), options);
                     self.notify_if_background(
                         "Permission requested",
@@ -988,8 +1579,18 @@ impl DunlinApp {
             HarnessEvent::PromptFinished {
                 session_id,
                 stop_reason,
+                usage,
             } => {
                 if self.is_current_session(&session_id) {
+                    if let Some((index, _)) = self.harness.active_turn
+                        && let Some(ChatItem::User {
+                            timing: Some(timing),
+                            ..
+                        }) = self.harness.transcript.get_mut(index)
+                    {
+                        timing.usage = usage;
+                    }
+                    self.harness.token_baseline = usage;
                     self.harness.running = false;
                     self.harness.prompt_sent = false;
                     self.finish_streaming();
@@ -1019,6 +1620,8 @@ impl DunlinApp {
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
+                    self.refresh_usage(cx);
+                    self.refresh_mcp(cx);
                     self.dispatch_pending_prompt(cx);
                 }
             }
@@ -1038,10 +1641,7 @@ impl DunlinApp {
                         .retain(|session| !session.id.starts_with("pending-"));
                     self.selected_session = 0;
                 }
-                self.harness.transcript.push(ChatItem::Error {
-                    message: message.clone(),
-                    at_ms: now_ms(),
-                });
+                self.harness.push_error(message.clone());
                 self.notify_if_background("Dunlin needs attention", &message, cx);
                 if matches!(self.harness.status, HarnessStatus::Starting) {
                     self.harness.status = HarnessStatus::Failed(message.clone());
@@ -1063,6 +1663,11 @@ impl DunlinApp {
                 self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {
+                let retry = should_restart(
+                    &self.harness.status,
+                    self.restart_harness,
+                    self.harness.restarts,
+                );
                 self.harness.connected_harness = None;
                 self.harness.models = None;
                 self.harness.model_changing = false;
@@ -1082,13 +1687,25 @@ impl DunlinApp {
                 self.save_current_transcript();
                 self.notice = Some(format!("Harness exited: {reason}"));
 
-                if self.restart_harness && self.harness.restarts < 1 {
+                if retry {
                     self.harness.restarts += 1;
+                    let generation = self.harness.generation;
+                    let project = self.project().id.clone();
+                    let session = self.session().id.clone();
                     cx.spawn(async move |this, cx| {
                         cx.background_executor()
                             .timer(Duration::from_millis(1200))
                             .await;
-                        this.update(cx, |this, cx| this.connect_harness(cx)).ok();
+                        this.update(cx, |this, cx| {
+                            if this.harness.generation == generation
+                                && this.project().id == project
+                                && this.session().id == session
+                                && matches!(this.harness.status, HarnessStatus::Exited(_))
+                            {
+                                this.connect_harness(cx);
+                            }
+                        })
+                        .ok();
                     })
                     .detach();
                 }
@@ -1099,9 +1716,38 @@ impl DunlinApp {
 
     fn apply_update(&mut self, update: HarnessUpdate) {
         match update {
+            HarnessUpdate::MessageChunk { id, text, thought } => {
+                append_identified(
+                    &mut self.harness.transcript,
+                    if thought {
+                        StreamKind::Thought
+                    } else {
+                        StreamKind::Message
+                    },
+                    text,
+                    now_ms(),
+                    Some(id),
+                );
+            }
+            HarnessUpdate::Child {
+                id,
+                parent_id,
+                title,
+                update,
+            } => {
+                append_child(
+                    &mut self.harness.transcript,
+                    id,
+                    parent_id,
+                    title,
+                    *update,
+                    now_ms(),
+                );
+            }
             HarnessUpdate::UserMessage(text) => {
                 self.harness.transcript.push(ChatItem::User {
                     text,
+                    timing: None,
                     at_ms: now_ms(),
                 });
             }
@@ -1201,7 +1847,8 @@ impl DunlinApp {
     }
 
     pub(crate) fn chat_controls_busy(&self) -> bool {
-        self.harness.running
+        self.mcp_busy()
+            || self.harness.running
             || self.harness.status.is_busy()
             || self.harness.local_session_loading
             || self.harness.model_changing
@@ -1419,14 +2066,19 @@ impl DunlinApp {
     }
 
     fn finish_streaming(&mut self) {
-        for item in self.harness.transcript.iter_mut() {
-            match item {
-                ChatItem::AgentText { streaming, .. } | ChatItem::Thought { streaming, .. } => {
-                    *streaming = false;
+        self.harness.finish_turn_timing(now_ms());
+        fn finish(items: &mut [ChatItem]) {
+            for item in items {
+                match item {
+                    ChatItem::AgentText { streaming, .. } | ChatItem::Thought { streaming, .. } => {
+                        *streaming = false;
+                    }
+                    ChatItem::Child { items, .. } => finish(items),
+                    _ => {}
                 }
-                _ => {}
             }
         }
+        finish(&mut self.harness.transcript);
     }
 
     pub(crate) fn update_active_session(
@@ -1457,6 +2109,12 @@ impl DunlinApp {
     }
 
     pub(crate) fn save_current_transcript(&mut self) {
+        if crate::session_list::has_user_message(&self.harness.transcript)
+            || !crate::session_list::historical_evidence(self.session())
+        {
+            self.session_list
+                .record(&self.session().id.clone(), &self.harness.transcript);
+        }
         if self.sessions.get(self.selected_session).is_none() {
             return;
         }
@@ -1529,15 +2187,55 @@ enum StreamKind {
 }
 
 fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String, at_ms: u64) {
+    append_identified(transcript, kind, text, at_ms, None);
+}
+
+fn append_identified(
+    transcript: &mut Vec<ChatItem>,
+    kind: StreamKind,
+    text: String,
+    at_ms: u64,
+    id: Option<String>,
+) {
+    if let Some(id) = &id {
+        for item in transcript.iter_mut().rev() {
+            if matches!(item, ChatItem::User { .. }) {
+                break;
+            }
+            match (kind, item) {
+                (
+                    StreamKind::Message,
+                    ChatItem::AgentText {
+                        text: body,
+                        message_id: Some(existing),
+                        ..
+                    },
+                )
+                | (
+                    StreamKind::Thought,
+                    ChatItem::Thought {
+                        text: body,
+                        message_id: Some(existing),
+                        ..
+                    },
+                ) if existing == id => {
+                    body.push_str(&text);
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
     match (kind, transcript.last_mut()) {
         (
             StreamKind::Message,
             Some(ChatItem::AgentText {
                 text: body,
                 streaming,
+                message_id,
                 ..
             }),
-        ) if *streaming => {
+        ) if *streaming && *message_id == id => {
             body.push_str(&text);
             return;
         }
@@ -1546,9 +2244,10 @@ fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String,
             Some(ChatItem::Thought {
                 text: body,
                 streaming,
+                message_id,
                 ..
             }),
-        ) if *streaming => {
+        ) if *streaming && *message_id == id => {
             body.push_str(&text);
             return;
         }
@@ -1559,13 +2258,94 @@ fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String,
         StreamKind::Message => transcript.push(ChatItem::AgentText {
             text,
             streaming: true,
+            message_id: id,
             at_ms,
         }),
         StreamKind::Thought => transcript.push(ChatItem::Thought {
             text,
             streaming: true,
+            message_id: id,
             at_ms,
         }),
+    }
+}
+
+fn append_child(
+    transcript: &mut Vec<ChatItem>,
+    id: String,
+    parent_id: String,
+    title: Option<String>,
+    update: HarnessUpdate,
+    at_ms: u64,
+) {
+    if !transcript
+        .iter()
+        .any(|item| matches!(item, ChatItem::Child { id:existing, .. } if existing == &id))
+    {
+        transcript.push(ChatItem::Child {
+            id: id.clone(),
+            parent_id,
+            title: title.clone(),
+            items: Vec::new(),
+            at_ms,
+        });
+    }
+    let Some(ChatItem::Child {
+        items,
+        title: current,
+        ..
+    }) = transcript
+        .iter_mut()
+        .find(|item| matches!(item, ChatItem::Child { id:existing, .. } if existing == &id))
+    else {
+        return;
+    };
+    if title.is_some() {
+        *current = title;
+    }
+    match update {
+        HarnessUpdate::AgentMessage(text) => append_stream(items, StreamKind::Message, text, at_ms),
+        HarnessUpdate::AgentThought(text) => append_stream(items, StreamKind::Thought, text, at_ms),
+        HarnessUpdate::MessageChunk { id, text, thought } => append_identified(
+            items,
+            if thought {
+                StreamKind::Thought
+            } else {
+                StreamKind::Message
+            },
+            text,
+            at_ms,
+            Some(id),
+        ),
+        HarnessUpdate::ToolCall(view) => items.push(ChatItem::Tool {
+            view,
+            duration_ms: 0,
+            at_ms,
+        }),
+        HarnessUpdate::ToolCallUpdate(delta) => {
+            if let Some(ChatItem::Tool { view, .. }) = items
+                .iter_mut()
+                .find(|item| matches!(item, ChatItem::Tool {view,..} if view.id == delta.id))
+            {
+                if let Some(title) = delta.title {
+                    view.title = title;
+                }
+                if let Some(status) = delta.status {
+                    view.status = status;
+                }
+                if let Some(detail) = delta.detail {
+                    view.detail = detail;
+                }
+            }
+        }
+        HarnessUpdate::Plan(plan) => items.push(ChatItem::Plan { items: plan, at_ms }),
+        HarnessUpdate::Child {
+            id,
+            parent_id,
+            title,
+            update,
+        } => append_child(items, id, parent_id, title, *update, at_ms),
+        _ => {}
     }
 }
 
@@ -1617,31 +2397,13 @@ pub(crate) fn harness_command(name: &str, custom: &str) -> String {
     }
 }
 
+fn should_restart(status: &HarnessStatus, enabled: bool, attempts: u8) -> bool {
+    enabled && attempts < 1 && status.is_ready()
+}
+
 /// Check whether the executable named by an ACP command is on `PATH`.
 pub(crate) fn command_available(command: &str) -> bool {
-    let command = command.trim_start();
-    let executable = if let Some(quote) = command.chars().next().filter(|c| *c == '\'' || *c == '"')
-    {
-        command[1..]
-            .split_once(quote)
-            .map(|(executable, _)| executable)
-    } else {
-        command.split_whitespace().next()
-    };
-    let Some(executable) = executable.filter(|executable| !executable.is_empty()) else {
-        return false;
-    };
-    if executable.contains('/') {
-        return Path::new(executable).is_file();
-    }
-    std::env::var_os("PATH")
-        .map(|paths| {
-            std::env::split_paths(&paths).any(|directory| {
-                let candidate = directory.join(executable);
-                candidate.is_file()
-            })
-        })
-        .unwrap_or(false)
+    crate::harness_discovery::resolved_command(command).is_some()
 }
 
 pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
@@ -1655,9 +2417,177 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatItem, HarnessState, command_available, harness_command, session_summary, session_title,
-        transcript_markdown,
+        ChatItem, HarnessState, HarnessStatus, command_available, harness_command, session_summary,
+        session_title, should_restart, transcript_markdown,
     };
+
+    #[test]
+    fn runtime_generations_are_unique_across_rapid_switches_and_restarts() {
+        let generations: std::collections::HashSet<_> =
+            (0..10_000).map(|_| super::next_generation()).collect();
+        assert_eq!(generations.len(), 10_000);
+        assert!(!generations.contains(&HarnessState::default().generation));
+    }
+
+    #[test]
+    fn parking_preserves_live_timing_queue_and_models_instead_of_cancelling() {
+        let mut active = HarnessState {
+            generation: super::next_generation(),
+            running: true,
+            session_id: Some("owner-session".into()),
+            ..Default::default()
+        };
+        active.enqueue_prompt("queued follow-up".into());
+        active.active_turn = Some((0, std::time::Instant::now()));
+        active
+            .started_tools
+            .insert("tool".into(), std::time::Instant::now());
+        let owner = active.generation;
+        let mut parked = std::mem::take(&mut active);
+        assert_ne!(active.generation, owner);
+        assert!(parked.running);
+        assert!(parked.active_turn.is_some());
+        active.generation = super::next_generation();
+        assert_ne!(active.generation, parked.generation);
+        std::mem::swap(&mut active, &mut parked);
+        assert_eq!(active.session_id.as_deref(), Some("owner-session"));
+        assert!(active.started_tools.contains_key("tool"));
+        assert_eq!(active.queued_prompts()[0].text, "queued follow-up");
+    }
+
+    #[test]
+    fn turn_timing_is_persistent_and_only_finishes_the_dispatched_prompt() {
+        let mut state = HarnessState::default();
+        state.transcript.push(ChatItem::User {
+            text: "active".into(),
+            at_ms: 100,
+            timing: Some(super::TurnTiming {
+                started_at_ms: 200,
+                finished_at_ms: None,
+                elapsed_ms: None,
+                usage: None,
+                usage_before: None,
+            }),
+        });
+        state.transcript.push(ChatItem::User {
+            text: "queued".into(),
+            at_ms: 300,
+            timing: None,
+        });
+        state.active_turn = Some((
+            0,
+            std::time::Instant::now() - std::time::Duration::from_millis(1200),
+        ));
+        state.finish_turn_timing(1500);
+        assert!(
+            matches!(&state.transcript[0], ChatItem::User { timing: Some(timing), .. } if timing.finished_at_ms == Some(1500) && timing.elapsed_ms.unwrap() >= 1200)
+        );
+        assert!(matches!(
+            &state.transcript[1],
+            ChatItem::User { timing: None, .. }
+        ));
+        state.finish_turn_timing(2000);
+        let restored: Vec<ChatItem> =
+            serde_json::from_str(&serde_json::to_string(&state.transcript).unwrap()).unwrap();
+        assert!(
+            matches!(&restored[0], ChatItem::User { timing: Some(timing), .. } if timing.finished_at_ms == Some(1500))
+        );
+        let legacy: Vec<ChatItem> =
+            serde_json::from_str(r#"[{"User":{"text":"legacy"}}]"#).unwrap();
+        assert!(matches!(
+            &legacy[0],
+            ChatItem::User {
+                timing: None,
+                at_ms: 0,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn interleaved_reasoning_and_child_chunks_do_not_split_or_pollute_root_markdown() {
+        use dunlin_agent::HarnessUpdate;
+        let mut transcript = Vec::new();
+        super::append_identified(
+            &mut transcript,
+            super::StreamKind::Message,
+            "# Wea".into(),
+            1,
+            Some("root-msg".into()),
+        );
+        super::append_child(
+            &mut transcript,
+            "child".into(),
+            "root".into(),
+            Some("City".into()),
+            HarnessUpdate::AgentMessage("child answer".into()),
+            2,
+        );
+        super::append_identified(
+            &mut transcript,
+            super::StreamKind::Thought,
+            "thinking".into(),
+            3,
+            Some("thought".into()),
+        );
+        super::append_identified(
+            &mut transcript,
+            super::StreamKind::Message,
+            "ther\n\n**Done**".into(),
+            4,
+            Some("root-msg".into()),
+        );
+        assert_eq!(transcript.len(), 3);
+        assert!(
+            matches!(&transcript[0],ChatItem::AgentText {text,at_ms:1,..} if text=="# Weather\n\n**Done**")
+        );
+        assert!(
+            matches!(&transcript[1],ChatItem::Child {items,..} if matches!(&items[0],ChatItem::AgentText {text,..} if text=="child answer"))
+        );
+        let restored: Vec<ChatItem> =
+            serde_json::from_str(&serde_json::to_string(&transcript).unwrap()).unwrap();
+        assert!(
+            matches!(&restored[0],ChatItem::AgentText {message_id:Some(id),..} if id=="root-msg")
+        );
+    }
+
+    #[test]
+    fn startup_failures_are_not_retried_as_runtime_crashes() {
+        for status in [
+            HarnessStatus::Offline,
+            HarnessStatus::Starting,
+            HarnessStatus::Failed("missing adapter".into()),
+            HarnessStatus::Exited("startup failed".into()),
+        ] {
+            assert!(!should_restart(&status, true, 0));
+        }
+        let ready = HarnessStatus::Ready {
+            agent: "Mock".into(),
+            version: "1".into(),
+        };
+        assert!(should_restart(&ready, true, 0));
+        assert!(!should_restart(&ready, true, 1));
+        assert!(!should_restart(&ready, false, 0));
+    }
+
+    #[test]
+    fn duplicate_connection_errors_do_not_accumulate_between_messages() {
+        let mut state = HarnessState::default();
+        state.push_error("missing adapter".into());
+        state.push_error("missing adapter".into());
+        assert_eq!(state.transcript.len(), 1);
+        state.transcript.push(ChatItem::User {
+            text: "try again".into(),
+            timing: None,
+            at_ms: 1,
+        });
+        state.push_error("missing adapter".into());
+        state.push_error("missing adapter".into());
+        assert_eq!(state.transcript.len(), 3);
+        assert!(matches!(&state.transcript[1], ChatItem::User { text, .. } if text == "try again"));
+        state.push_error("different error".into());
+        assert_eq!(state.transcript.len(), 4);
+    }
 
     #[test]
     fn title_uses_the_first_line() {
@@ -1738,11 +2668,13 @@ mod tests {
         let items = vec![
             ChatItem::User {
                 text: "Fix it".into(),
+                timing: None,
                 at_ms: 1,
             },
             ChatItem::AgentText {
                 text: "Done".into(),
                 streaming: false,
+                message_id: None,
                 at_ms: 2,
             },
             ChatItem::Plan {

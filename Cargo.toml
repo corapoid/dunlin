@@ -12,7 +12,7 @@ repository = "https://github.com/corapoid/dunlin"
 homepage = "https://github.com/corapoid/dunlin"
 
 [workspace.dependencies]
-gpui-kit = "0.8.0"
+gpui-kit = { version = "0.8.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
@@ -21,8 +21,8 @@ dunlin-workspace = { path = "crates/workspace" }
 dunlin-usage = { path = "crates/usage" }
 notify = "8.2"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder", "NSDockTile"] }
-objc2-foundation = { version = "0.3", features = ["NSString"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder", "NSDockTile", "NSView", "NSVisualEffectView"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSFileManager", "NSURL", "NSError"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

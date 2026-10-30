@@ -159,7 +159,9 @@ fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
         if is_skipped(name) {
             continue;
         }
-        let is_dir = path.is_dir();
+        // A symlink may point outside the project or back to an ancestor.
+        // Show it as a leaf instead of traversing it during Explorer scans.
+        let is_dir = path.is_dir() && !path.is_symlink();
         let expanded = depth == 0 && matches!(name, "apps" | "crates" | "assets");
         let children = if is_dir {
             scan_dir(&path, depth + 1)
@@ -182,6 +184,23 @@ fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
 mod tests {
     use super::FileTree;
     use std::fs;
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_symlinks_are_leaves_and_never_scanned() {
+        let root = std::env::temp_dir().join(format!("dunlin-tree-links-{}", uuid::Uuid::now_v7()));
+        fs::create_dir(&root).unwrap();
+        std::os::unix::fs::symlink(&root, root.join("loop")).unwrap();
+        let tree = FileTree::load(root.to_string_lossy().to_string());
+        let link = tree
+            .entries
+            .iter()
+            .find(|entry| entry.name == "loop")
+            .unwrap();
+        assert!(!link.is_dir);
+        assert!(link.children.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn reload_keeps_open_folders_and_sees_new_files() {

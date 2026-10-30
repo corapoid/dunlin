@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
+use dunlin_ui::component::{ActiveTheme, Icon};
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::{DunlinApp, agent_status_palette, format_duration, tone_color, tool_icon};
@@ -16,30 +17,32 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let preview = this.harness.transcript.is_empty();
     let session = this.session().clone();
     let project = this.project().clone();
-    let nodes = if preview {
-        crate::demo::agent_nodes()
-    } else {
-        crate::projection::nodes(&this.harness.transcript, &project, &session)
+    if this.activity.prepare(&session.id) {
+        this.selected_node = None;
+        this.selected_span = None;
+    }
+    let all = crate::projection::nodes(&this.harness.transcript, &project, &session);
+    let nodes = crate::activity::graph_nodes(&all, &this.activity.agents_expanded);
+    if nodes.is_empty() {
+        return super::empty_activity(
+            "No agent activity yet",
+            "Send your first message in Chat. Only activity from this conversation will appear here.",
+            IconName::Network,
+            cx,
+        );
+    }
+    let (badge_bg, badge_fg, badge_label) = match session.status {
+        SessionStatus::Running => (p.green_soft, p.green, "LIVE"),
+        SessionStatus::Waiting => (p.amber_soft, p.amber, "WAITING"),
+        SessionStatus::Failed => (p.red_soft, p.red, "FAILED"),
+        _ => (p.muted, p.muted_fg, "IDLE"),
     };
-    let (badge_bg, badge_fg, badge_label) = if preview {
-        (p.amber_soft, p.amber, "PREVIEW")
-    } else {
-        match session.status {
-            SessionStatus::Running => (p.green_soft, p.green, "LIVE"),
-            SessionStatus::Waiting => (p.amber_soft, p.amber, "WAITING"),
-            SessionStatus::Failed => (p.red_soft, p.red, "FAILED"),
-            _ => (p.muted, p.muted_fg, "IDLE"),
-        }
-    };
-    let selected = this.selected_node;
-    let following = this.follow_running;
-    let zoom = this.graph_zoom;
+    let selected = this.selected_node.clone();
     let running = nodes
         .iter()
-        .filter(|node| node.status == AgentStatus::Running)
+        .filter(|node| node.kind != AgentKind::Tool && node.status == AgentStatus::Running)
         .count();
     let total_cost: f64 = nodes.iter().map(|node| node.cost_usd).sum();
 
@@ -77,7 +80,7 @@ pub(crate) fn render(
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(badge_fg)
                         .child(badge_label),
                 ),
@@ -85,75 +88,30 @@ pub(crate) fn render(
         .child(
             div()
                 .text_size(px(11.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child(format!("{} nodes · {running} running", nodes.len())),
+                .child(format!(
+                    "{} subagents · {} tools · {running} running",
+                    nodes
+                        .iter()
+                        .filter(|n| n.kind == AgentKind::Subagent)
+                        .count(),
+                    all.iter().filter(|n| n.kind == AgentKind::Tool).count()
+                )),
         )
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
             div()
                 .text_size(px(11.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(format!("${total_cost:.2}")),
         )
         .child(div().flex_1())
         .child(
             div()
-                .id("graph-follow")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(if following {
-                    p.blue.opacity(0.3)
-                } else {
-                    p.border
-                })
-                .bg(if following { p.blue_soft } else { p.card })
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.follow_running = !this.follow_running;
-                    cx.notify();
-                }))
-                .child(
-                    Icon::new(IconName::Crosshair)
-                        .size(px(11.))
-                        .text_color(if following { p.blue } else { p.muted_fg }),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(if following { p.blue } else { p.muted_fg })
-                        .child("Follow"),
-                ),
-        )
-        .child(
-            div()
-                .h(px(23.))
-                .px(px(6.))
-                .rounded(px(5.))
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .child(zoom_button(IconName::ZoomOut, cx, &p))
-                .child(
-                    div()
-                        .min_w(px(32.))
-                        .text_center()
-                        .text_size(px(11.0))
-                        .font_family("Geist Mono")
-                        .text_color(p.muted_fg)
-                        .child(format!("{:.0}%", zoom * 100.)),
-                )
-                .child(zoom_button(IconName::ZoomIn, cx, &p)),
-        )
-        .child(
-            div()
-                .id("graph-fit")
+                .id("graph-export-svg")
+                .aria_label("Save graph as SVG")
                 .h(px(23.))
                 .px(px(7.))
                 .rounded(px(5.))
@@ -164,25 +122,27 @@ pub(crate) fn render(
                 .items_center()
                 .gap(px(4.))
                 .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.graph_zoom = 1.0;
-                    this.set_notice("Graph fitted to the visible tree", cx);
-                }))
+                .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx)))
                 .child(
-                    Icon::new(IconName::Maximize2)
-                        .size(px(10.5))
+                    Icon::new(IconName::Download)
+                        .size(px(11.))
                         .text_color(p.muted_fg),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(p.muted_fg)
-                        .child("Fit"),
+                        .child("Save SVG"),
                 ),
         );
 
-    let content = graph_canvas(&nodes, selected, following, cx, &p);
+    let content = graph_canvas(
+        &nodes,
+        selected.as_deref(),
+        &this.activity.agents_expanded,
+        cx,
+        &p,
+    );
 
     let legend = div()
         .absolute()
@@ -205,13 +165,14 @@ pub(crate) fn render(
         .child(
             div()
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child("dashed = handoff"),
         );
 
     let detail = selected
-        .and_then(|index| nodes.get(index))
+        .as_ref()
+        .and_then(|id| nodes.iter().find(|node| &node.id == id))
         .map(|node| node_detail(node, cx, &p));
 
     let mut root = div()
@@ -232,42 +193,14 @@ pub(crate) fn render(
     root.into_any_element()
 }
 
-fn zoom_button(icon_name: IconName, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
-    let delta = if icon_name == IconName::ZoomIn {
-        0.1
-    } else {
-        -0.1
-    };
-    div()
-        .id(if delta > 0.0 {
-            "graph-zoom-in"
-        } else {
-            "graph-zoom-out"
-        })
-        .size(px(19.))
-        .rounded(px(4.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.graph_zoom = (this.graph_zoom + delta).clamp(0.6, 1.4);
-            cx.notify();
-        }))
-        .child(Icon::new(icon_name).size(px(11.)).text_color(p.muted_fg))
-        .into_any_element()
-}
-
 fn graph_canvas(
     nodes: &[AgentNode],
-    selected: Option<usize>,
-    following: bool,
+    selected: Option<&str>,
+    expanded: &std::collections::HashSet<String>,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
-    let width = 1150.0f32;
-    let height = 620.0f32;
+    let (width, height) = crate::activity::graph_size(nodes);
 
     let mut edges: Vec<Edge> = Vec::new();
     for node in nodes {
@@ -356,12 +289,11 @@ fn graph_canvas(
         .child(dot_grid(grid))
         .child(edge_layer);
 
-    for (index, node) in nodes.iter().enumerate() {
+    for node in nodes {
         layer = layer.child(node_card(
-            index,
             node,
-            selected == Some(index),
-            following,
+            selected == Some(node.id.as_str()),
+            expanded.contains(&node.id),
             cx,
             p,
         ));
@@ -427,16 +359,16 @@ fn dot_at(window: &mut Window, origin: Point<Pixels>, x: f32, y: f32, radius: f3
 }
 
 fn node_card(
-    index: usize,
     node: &AgentNode,
     selected: bool,
-    following: bool,
+    expanded: bool,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
     let is_tool = node.kind == AgentKind::Tool;
-    let active = following && node.status == AgentStatus::Running;
+    let active = node.status == AgentStatus::Running;
+    let selected_id = node.id.clone();
     let accent = tone_color(
         p,
         match node.kind {
@@ -448,7 +380,7 @@ fn node_card(
     let base_y = node.y;
 
     let mut card = div()
-        .id(("agent-node", index))
+        .id(format!("agent-node:{}", node.id))
         .absolute()
         .left(px(node.x))
         .top(px(node.y))
@@ -468,11 +400,14 @@ fn node_card(
         .cursor_pointer()
         .hover(move |style| style.border_color(p.border_strong))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.selected_node = if this.selected_node == Some(index) {
+            this.selected_node = if this.selected_node.as_deref() == Some(&selected_id) {
                 None
             } else {
-                Some(index)
+                Some(selected_id.clone())
             };
+            if !is_tool && !this.activity.agents_expanded.remove(&selected_id) {
+                this.activity.agents_expanded.insert(selected_id.clone());
+            }
             cx.notify();
         }))
         .child(
@@ -515,7 +450,7 @@ fn node_card(
                         .child(
                             div()
                                 .text_size(px(10.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(status_color)
                                 .child(node.status.label().to_uppercase()),
                         ),
@@ -531,6 +466,7 @@ fn node_card(
                 .child(
                     div()
                         .h(px(34.))
+                        .overflow_hidden()
                         .text_size(px(11.0))
                         .line_height(relative(1.45))
                         .text_color(if is_tool {
@@ -545,12 +481,22 @@ fn node_card(
                         .flex()
                         .items_center()
                         .gap(px(4.))
-                        .children(node.tools.iter().take(3).map(|kind| tool_chip(*kind, p)))
+                        .when(is_tool || expanded, |view| {
+                            view.children(node.tools.iter().take(3).map(|kind| tool_chip(*kind, p)))
+                        })
+                        .when(!is_tool && !expanded, |view| {
+                            view.child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(p.muted_fg)
+                                    .child("Click to show tools"),
+                            )
+                        })
                         .child(div().flex_1())
                         .child(
                             div()
                                 .text_size(px(10.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .child(format!("${:.2}", node.cost_usd)),
                         ),
@@ -570,7 +516,7 @@ fn node_card(
                                 .flex_1()
                                 .min_w(px(0.))
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .truncate()
                                 .child(node.model.clone()),
@@ -578,7 +524,7 @@ fn node_card(
                         .child(
                             div()
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.7))
                                 .child(format_duration(node.duration_secs)),
                         ),
@@ -640,7 +586,7 @@ fn tool_chip(kind: ToolKind, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(kind.label()),
         )
@@ -656,7 +602,7 @@ fn legend_item(label: &str, color: Hsla, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(label.to_string()),
         )
@@ -702,7 +648,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<DunlinApp>, p: &Palette) -> An
                         .child(
                             div()
                                 .text_size(px(10.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(status_color)
                                 .child(node.status.label().to_uppercase()),
                         ),
@@ -743,7 +689,7 @@ fn node_detail(node: &AgentNode, cx: &mut Context<DunlinApp>, p: &Palette) -> An
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(format!(
                             "${:.2} · {}",
@@ -815,9 +761,42 @@ fn meta_chip(text: &str, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(text.to_string()),
         )
         .into_any_element()
+}
+
+impl DunlinApp {
+    fn export_graph_svg(&mut self, cx: &mut Context<Self>) {
+        let all =
+            crate::projection::nodes(&self.harness.transcript, self.project(), self.session());
+        let nodes = crate::activity::graph_nodes(&all, &self.activity.agents_expanded);
+        let svg = crate::activity::graph_svg(&nodes, &self.session().title, cx.theme().is_dark());
+        let directory = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|home| home.join("Downloads"))
+            .filter(|path| path.is_dir())
+            .unwrap_or_else(std::env::temp_dir);
+        let receiver = cx.prompt_for_new_path(&directory, Some("agent-graph.svg"));
+        let receiver = self.overlay_backdrop.track_native(receiver, cx);
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(path))) = receiver.await {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        std::fs::write(&path, svg)
+                            .map(|_| path)
+                            .map_err(|error| error.to_string())
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| match result {
+                    Ok(path) => this.set_notice(format!("Saved graph to {}", path.display()), cx),
+                    Err(error) => this.set_notice(format!("Could not save SVG: {error}"), cx),
+                });
+            }
+        })
+        .detach();
+    }
 }

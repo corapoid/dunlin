@@ -20,7 +20,6 @@ const CHILD_WIDTH: f32 = 240.0;
 const CHILD_GAP: f32 = 24.0;
 const CHILD_Y: f32 = 224.0;
 const NODE_HEIGHT: f32 = 128.0;
-const MAX_CHILDREN: usize = 7;
 
 /// Build the orchestrator tree for the current transcript.
 pub(crate) fn nodes(
@@ -28,6 +27,9 @@ pub(crate) fn nodes(
     project: &Project,
     session: &SessionSummary,
 ) -> Vec<AgentNode> {
+    if transcript.is_empty() {
+        return Vec::new();
+    }
     let tools: Vec<ToolKind> = transcript
         .iter()
         .filter_map(|item| match item {
@@ -74,96 +76,245 @@ pub(crate) fn nodes(
         height: NODE_HEIGHT,
     }];
 
-    let plan = transcript.iter().rev().find_map(|item| match item {
-        ChatItem::Plan { items, .. } => Some(items),
-        _ => None,
-    });
+    let children = child_nodes(transcript, session);
+    nodes.extend(children);
+    nodes
+}
 
-    let children: Vec<AgentNode> = match plan {
-        Some(items) if !items.is_empty() => items
+pub(crate) fn layout_children(nodes: &mut Vec<AgentNode>, mut children: Vec<AgentNode>) {
+    if children.is_empty() {
+        return;
+    }
+    fn width(index: usize, rows: &[AgentNode], depth: usize) -> f32 {
+        if depth >= 8 {
+            return CHILD_WIDTH;
+        }
+        let children: Vec<_> = rows
             .iter()
-            .take(MAX_CHILDREN)
             .enumerate()
-            .map(|(index, item)| AgentNode {
-                id: format!("plan-{index}"),
-                parent: Some("root".into()),
-                title: truncate(&item.content, 34),
-                task: item.content.clone(),
-                model: session.model.clone(),
-                harness: session.harness.clone(),
-                status: plan_agent_status(item.status),
-                kind: AgentKind::Subagent,
-                tools: vec![ToolKind::Plan],
-                cost_usd: 0.0,
-                duration_secs: 0,
-                x: 0.0,
-                y: CHILD_Y,
-                width: CHILD_WIDTH,
-                height: NODE_HEIGHT,
-            })
-            .collect(),
-        _ => {
-            let mut tools: Vec<&ChatItem> = transcript
-                .iter()
-                .filter(|item| matches!(item, ChatItem::Tool { .. }))
-                .collect();
-            let start = tools.len().saturating_sub(MAX_CHILDREN);
-            tools.drain(..start);
-            tools
-                .into_iter()
-                .enumerate()
-                .filter_map(|(index, item)| {
-                    let ChatItem::Tool {
-                        view, duration_ms, ..
-                    } = item
-                    else {
-                        return None;
+            .filter(|(_, n)| n.parent.as_deref() == Some(rows[index].id.as_str()))
+            .map(|(i, _)| i)
+            .collect();
+        let span = children
+            .iter()
+            .map(|i| width(*i, rows, depth + 1))
+            .sum::<f32>()
+            + children.len().saturating_sub(1) as f32 * CHILD_GAP;
+        span.max(CHILD_WIDTH)
+    }
+    fn place(index: usize, x: f32, depth: usize, rows: &mut [AgentNode]) {
+        if depth >= 8 {
+            return;
+        }
+        let span = width(index, rows, depth);
+        rows[index].x = x + (span - CHILD_WIDTH) / 2.;
+        rows[index].y = CHILD_Y + depth as f32 * 170.;
+        let children: Vec<_> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.parent.as_deref() == Some(rows[index].id.as_str()))
+            .map(|(i, _)| i)
+            .collect();
+        let mut left = x;
+        for child in children {
+            let span = width(child, rows, depth + 1);
+            place(child, left, depth + 1, rows);
+            left += span + CHILD_GAP;
+        }
+    }
+    let roots: Vec<_> = children
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.parent.as_deref() == Some("root"))
+        .map(|(i, _)| i)
+        .collect();
+    let total = roots.iter().map(|i| width(*i, &children, 0)).sum::<f32>()
+        + roots.len().saturating_sub(1) as f32 * CHILD_GAP;
+    let mut left = ((CANVAS_WIDTH - total) / 2.).max(20.);
+    nodes[0].x = left + (total - ROOT_WIDTH) / 2.;
+    for index in roots {
+        let span = width(index, &children, 0);
+        place(index, left, 0, &mut children);
+        left += span + CHILD_GAP;
+    }
+    nodes.extend(children);
+}
+
+/// The wrapper identifies actual child sessions; a websearch/tool is not an agent.
+pub(crate) fn child_id(detail: &str) -> Option<&str> {
+    let tag = detail
+        .trim_start()
+        .strip_prefix("<subagent ")?
+        .split_once('>')?
+        .0;
+    let id = tag.split_once("sessionID=\"")?.1.split_once('"')?.0;
+    (!id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-')))
+    .then_some(id)
+}
+
+pub(crate) fn tool_summary(detail: &str) -> &str {
+    if child_id(detail).is_some() {
+        detail
+            .trim_start()
+            .split_once('>')
+            .map(|(_, body)| body.trim().trim_end_matches("</subagent>").trim())
+            .unwrap_or(detail)
+    } else {
+        detail
+    }
+}
+
+fn child_nodes(transcript: &[ChatItem], session: &SessionSummary) -> Vec<AgentNode> {
+    fn collect(
+        items: &[ChatItem],
+        session: &SessionSummary,
+        parent: &str,
+        nodes: &mut Vec<AgentNode>,
+    ) {
+        for item in items {
+            match item {
+                ChatItem::Child {
+                    id,
+                    parent_id,
+                    title,
+                    items,
+                    ..
+                } => {
+                    let parent = if Some(parent_id.as_str()) == session.acp_session_id.as_deref() {
+                        "root"
+                    } else {
+                        parent_id
                     };
-                    Some(AgentNode {
-                        id: format!("tool-{index}"),
-                        parent: Some("root".into()),
+                    if !nodes.iter().any(|n| n.id == *id) {
+                        nodes.push(AgentNode {
+                            id: id.clone(),
+                            parent: Some(parent.into()),
+                            title: title.clone().unwrap_or_else(|| "Subagent".into()),
+                            task: "Delegated session".into(),
+                            model: session.model.clone(),
+                            harness: session.harness.clone(),
+                            status: agent_status(session.status),
+                            kind: AgentKind::Subagent,
+                            tools: Vec::new(),
+                            cost_usd: 0.,
+                            duration_secs: 0,
+                            x: 0.,
+                            y: CHILD_Y,
+                            width: CHILD_WIDTH,
+                            height: NODE_HEIGHT,
+                        });
+                    }
+                    if let Some(node) = nodes.iter_mut().find(|n| n.id == *id)
+                        && let Some(title) = title
+                    {
+                        node.title = title.clone();
+                    }
+                    collect(items, session, id, nodes);
+                }
+                ChatItem::Tool {
+                    view, duration_ms, ..
+                } => {
+                    if let Some(id) = child_id(&view.detail) {
+                        if !nodes.iter().any(|n| n.id == id) {
+                            nodes.push(AgentNode {
+                                id: id.into(),
+                                parent: Some(parent.into()),
+                                title: if view.title == "subagent" {
+                                    "Subagent".into()
+                                } else {
+                                    view.title.clone()
+                                },
+                                task: truncate(tool_summary(&view.detail), 120),
+                                model: session.model.clone(),
+                                harness: session.harness.clone(),
+                                status: tool_agent_status(view.status),
+                                kind: AgentKind::Subagent,
+                                tools: vec![view.kind],
+                                cost_usd: 0.,
+                                duration_secs: duration_ms / 1000,
+                                x: 0.,
+                                y: CHILD_Y,
+                                width: CHILD_WIDTH,
+                                height: NODE_HEIGHT,
+                            });
+                        } else if let Some(node) = nodes.iter_mut().find(|n| n.id == id) {
+                            node.status = tool_agent_status(view.status);
+                            node.duration_secs = duration_ms / 1000;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    fn tools(
+        items: &[ChatItem],
+        session: &SessionSummary,
+        parent: &str,
+        nodes: &mut Vec<AgentNode>,
+    ) {
+        for item in items {
+            match item {
+                ChatItem::Child { id, items, .. } => tools(items, session, id, nodes),
+                ChatItem::Tool {
+                    view, duration_ms, ..
+                } if child_id(&view.detail).is_none() => {
+                    let parent = view
+                        .id
+                        .split_once(':')
+                        .map(|(id, _)| id)
+                        .filter(|id| {
+                            nodes
+                                .iter()
+                                .any(|n| n.id == *id && n.kind == AgentKind::Subagent)
+                        })
+                        .unwrap_or(parent);
+                    nodes.push(AgentNode {
+                        id: format!("tool:{}", view.id),
+                        parent: Some(parent.into()),
                         title: truncate(&view.title, 34),
-                        task: if view.detail.is_empty() {
-                            "Tool call".into()
-                        } else {
-                            truncate(&view.detail, 120)
-                        },
+                        task: truncate(tool_summary(&view.detail), 120),
                         model: session.model.clone(),
                         harness: session.harness.clone(),
                         status: tool_agent_status(view.status),
                         kind: AgentKind::Tool,
                         tools: vec![view.kind],
-                        cost_usd: 0.0,
+                        cost_usd: 0.,
                         duration_secs: duration_ms / 1000,
-                        x: 0.0,
+                        x: 0.,
                         y: CHILD_Y,
                         width: CHILD_WIDTH,
                         height: NODE_HEIGHT,
-                    })
-                })
-                .collect()
+                    });
+                }
+                _ => {}
+            }
         }
-    };
-
-    layout_children(&mut nodes, children);
-    nodes
-}
-
-fn layout_children(nodes: &mut Vec<AgentNode>, mut children: Vec<AgentNode>) {
-    if children.is_empty() {
-        return;
     }
-    let count = children.len() as f32;
-    let total = count * CHILD_WIDTH + (count - 1.0).max(0.0) * CHILD_GAP;
-    let start = ((CANVAS_WIDTH - total) / 2.0).max(20.0);
-    for (index, child) in children.iter_mut().enumerate() {
-        child.x = start + index as f32 * (CHILD_WIDTH + CHILD_GAP);
+    let mut result = Vec::new();
+    collect(transcript, session, "root", &mut result);
+    tools(transcript, session, "root", &mut result);
+    let ids: std::collections::HashSet<_> = result.iter().map(|n| n.id.clone()).collect();
+    for node in &mut result {
+        if node
+            .parent
+            .as_ref()
+            .is_none_or(|p| p != "root" && !ids.contains(p))
+        {
+            node.parent = Some("root".into());
+        }
     }
-    nodes.extend(children);
+    result
 }
 
 /// Build a waterfall from the timestamps and tool durations in the transcript.
 pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<TraceSpan> {
+    if transcript.is_empty() {
+        return Vec::new();
+    }
     let starts: Vec<u64> = transcript
         .iter()
         .enumerate()
@@ -185,6 +336,18 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
     for (index, item) in transcript.iter().enumerate() {
         let duration = item_duration(item).max(1);
         total = total.max(relative[index] + duration);
+        if let ChatItem::User {
+            timing: Some(timing),
+            ..
+        } = item
+        {
+            total = total.max(
+                timing
+                    .finished_at_ms
+                    .unwrap_or(timing.started_at_ms)
+                    .saturating_sub(base),
+            );
+        }
     }
     total = total.max(1);
 
@@ -192,15 +355,36 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
         .iter()
         .enumerate()
         .filter(|(_, item)| matches!(item, ChatItem::User { .. }))
-        .map(|(index, _)| {
+        .map(|(index, item)| {
             let start = relative[index];
-            let end = transcript
+            if let ChatItem::User {
+                timing: Some(timing),
+                ..
+            } = item
+                && let Some(elapsed) = timing.elapsed_ms
+            {
+                let start = timing.started_at_ms.saturating_sub(base);
+                return (index, start, start.saturating_add(elapsed));
+            }
+            let next_user = transcript
                 .iter()
                 .enumerate()
                 .skip(index + 1)
                 .find(|(_, item)| matches!(item, ChatItem::User { .. }))
-                .map(|(next, _)| relative[next])
-                .unwrap_or(total);
+                .map(|(next, _)| next)
+                .unwrap_or(transcript.len());
+            // Without a recorded completion, only include observed activity.
+            // Never stretch a final response to the user's next request.
+            let end = (index..next_user)
+                .map(|i| {
+                    relative[i]
+                        + match &transcript[i] {
+                            ChatItem::Tool { duration_ms, .. } => *duration_ms,
+                            _ => 0,
+                        }
+                })
+                .max()
+                .unwrap_or(start);
             (index, start, end.max(start + 1))
         })
         .collect();
@@ -215,9 +399,20 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
         status: span_status(session.status),
         start_ms: 0,
         duration_ms: total,
+        duration_known: true,
         depth: 0,
         cost_usd: session.cost_usd,
-        tokens: session.tokens,
+        tokens: transcript
+            .iter()
+            .rev()
+            .find(|item| matches!(item, ChatItem::User { .. }))
+            .and_then(|item| match item {
+                ChatItem::User {
+                    timing: Some(timing),
+                    ..
+                } => timing.usage.map(|usage| usage.total),
+                _ => None,
+            }),
         detail: session.summary.clone(),
     });
 
@@ -226,7 +421,14 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
         spans.push(TraceSpan {
             id: format!("turn-{turn_index}"),
             parent: Some("root".into()),
-            name: format!("Turn {}", turn_index + 1),
+            name: format!(
+                "Request {} · {}",
+                turn_index + 1,
+                match &transcript[*item_index] {
+                    ChatItem::User { text, .. } => truncate(text, 65),
+                    _ => String::new(),
+                }
+            ),
             agent: "User".into(),
             kind: SpanKind::Turn,
             status: if last_turn {
@@ -236,9 +438,10 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
             },
             start_ms: *start,
             duration_ms: end.saturating_sub(*start).max(1),
+            duration_known: matches!(&transcript[*item_index], ChatItem::User { timing: Some(t), .. } if t.elapsed_ms.is_some()),
             depth: 1,
             cost_usd: 0.0,
-            tokens: 0,
+            tokens: turn_tokens(transcript, *item_index),
             detail: transcript
                 .get(*item_index)
                 .and_then(|item| match item {
@@ -258,7 +461,15 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
             continue;
         }
         let start = relative[index];
-        let next = relative.get(index + 1).copied().unwrap_or(total);
+        let turn_end = current_turn.map(|t| turns[t].2).unwrap_or(total);
+        let next = relative
+            .get(index + 1)
+            .copied()
+            .unwrap_or(turn_end)
+            .min(turn_end)
+            .max(start);
+        let known_end = current_turn.is_some_and(|t| matches!(&transcript[turns[t].0], ChatItem::User { timing: Some(t), .. } if t.elapsed_ms.is_some()))
+            || transcript.get(index + 1).is_some_and(|item| !matches!(item, ChatItem::User { .. }));
         let parent = current_turn
             .map(|turn| format!("turn-{turn}"))
             .unwrap_or_else(|| "root".into());
@@ -334,6 +545,16 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
                 next.saturating_sub(start).max(1),
             ),
             ChatItem::User { .. } => continue,
+            ChatItem::Child {
+                id, title, items, ..
+            } => (
+                title.clone().unwrap_or_else(|| "Subagent".into()),
+                id.clone(),
+                SpanKind::Agent,
+                span_status(session.status),
+                format!("{} child-session events", items.len()),
+                next.saturating_sub(start).max(1),
+            ),
         };
 
         spans.push(TraceSpan {
@@ -345,14 +566,58 @@ pub(crate) fn spans(transcript: &[ChatItem], session: &SessionSummary) -> Vec<Tr
             status,
             start_ms: start,
             duration_ms: duration,
+            duration_known: matches!(item, ChatItem::Tool { .. }) || known_end,
             depth,
             cost_usd: 0.0,
-            tokens: 0,
+            tokens: None,
             detail,
         });
+        if let ChatItem::Child { items, .. } = item {
+            let child_base = items
+                .iter()
+                .map(item_at)
+                .filter(|at| *at > 0)
+                .min()
+                .unwrap_or(item_at(item));
+            let shift = child_base.saturating_sub(base);
+            for mut child in self::spans(items, session).into_iter().skip(1) {
+                child.id = format!("child-{index}:{}", child.id);
+                child.parent = Some(match child.parent.as_deref() {
+                    Some("root") | None => format!("item-{index}"),
+                    Some(parent) => format!("child-{index}:{parent}"),
+                });
+                child.start_ms = child.start_ms.saturating_add(shift);
+                child.depth += depth;
+                spans.push(child);
+            }
+        }
     }
 
+    for (index, pair) in turns.windows(2).enumerate() {
+        let end = pair[0].2;
+        let next = pair[1].1;
+        if next > end.saturating_add(1000) {
+            let known = matches!(&transcript[pair[0].0], ChatItem::User { timing: Some(t), .. } if t.elapsed_ms.is_some());
+            spans.push(TraceSpan { id: format!("gap-{index}"), parent: Some("root".into()), name: if known { "Idle between requests" } else { "Unrecorded gap between requests" }.into(), agent: "User".into(), kind: SpanKind::Waiting, status: SpanStatus::Done, start_ms: end, duration_ms: next - end, duration_known: true, depth: 1, cost_usd: 0., tokens: None,
+                detail: if known { "The previous request had completed. This interval is idle time, not model work." } else { "The previous request has no recorded completion. The gap after its final recorded event is not attributed to model work." }.into() });
+        }
+    }
     spans
+}
+
+// The ACP extension reports cumulative counters. Attribute only a difference
+// between two recorded snapshots, never context occupancy or guessed text length.
+pub(crate) fn turn_tokens(items: &[ChatItem], index: usize) -> Option<u64> {
+    let ChatItem::User {
+        timing: Some(timing),
+        ..
+    } = &items[index]
+    else {
+        return None;
+    };
+    let current = timing.usage?;
+    let previous = timing.usage_before?;
+    current.total.checked_sub(previous.total)
 }
 
 fn item_at(item: &ChatItem) -> u64 {
@@ -364,6 +629,7 @@ fn item_at(item: &ChatItem) -> u64 {
         | ChatItem::Plan { at_ms, .. }
         | ChatItem::Permission { at_ms, .. }
         | ChatItem::Error { at_ms, .. } => *at_ms,
+        ChatItem::Child { at_ms, .. } => *at_ms,
     }
 }
 
@@ -376,6 +642,7 @@ fn item_duration(item: &ChatItem) -> u64 {
 
 fn agent_status(status: SessionStatus) -> AgentStatus {
     match status {
+        SessionStatus::Idle => AgentStatus::Stopped,
         SessionStatus::Running => AgentStatus::Running,
         SessionStatus::Waiting => AgentStatus::Waiting,
         SessionStatus::Done => AgentStatus::Done,
@@ -386,6 +653,7 @@ fn agent_status(status: SessionStatus) -> AgentStatus {
 
 fn span_status(status: SessionStatus) -> SpanStatus {
     match status {
+        SessionStatus::Idle => SpanStatus::Done,
         SessionStatus::Running => SpanStatus::Running,
         SessionStatus::Waiting => SpanStatus::Waiting,
         SessionStatus::Done => SpanStatus::Done,
@@ -409,14 +677,6 @@ fn tool_span_status(status: ToolStatus) -> SpanStatus {
         ToolStatus::Waiting => SpanStatus::Waiting,
         ToolStatus::Done => SpanStatus::Done,
         ToolStatus::Failed => SpanStatus::Failed,
-    }
-}
-
-fn plan_agent_status(status: PlanStatus) -> AgentStatus {
-    match status {
-        PlanStatus::Pending => AgentStatus::Waiting,
-        PlanStatus::InProgress => AgentStatus::Running,
-        PlanStatus::Completed => AgentStatus::Done,
     }
 }
 
@@ -507,15 +767,103 @@ mod tests {
     }
 
     #[test]
-    fn empty_transcript_still_has_an_orchestrator() {
-        let nodes = nodes(&[], &project(), &session());
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].id, "root");
-        assert_eq!(nodes[0].status, dunlin_domain::AgentStatus::Running);
+    fn empty_conversations_never_invent_agents_traces_or_costs() {
+        for status in [
+            SessionStatus::Idle,
+            SessionStatus::Waiting,
+            SessionStatus::Running,
+            SessionStatus::Done,
+            SessionStatus::Interrupted,
+        ] {
+            let mut session = session();
+            session.status = status;
+            assert!(nodes(&[], &project(), &session).is_empty());
+            assert!(spans(&[], &session).is_empty());
+        }
     }
 
     #[test]
-    fn plan_steps_become_subagent_nodes() {
+    fn an_hour_between_requests_is_idle_not_the_previous_response() {
+        use crate::harness::TurnTiming;
+        let items = vec![
+            ChatItem::User {
+                text: "first".into(),
+                at_ms: 1_000,
+                timing: Some(TurnTiming {
+                    started_at_ms: 1_000,
+                    finished_at_ms: Some(4_000),
+                    elapsed_ms: Some(3_000),
+                    usage: None,
+                    usage_before: None,
+                }),
+            },
+            ChatItem::AgentText {
+                text: "done".into(),
+                at_ms: 2_000,
+                streaming: false,
+                message_id: None,
+            },
+            ChatItem::User {
+                text: "second".into(),
+                at_ms: 3_604_000,
+                timing: None,
+            },
+        ];
+        let spans = spans(&items, &session());
+        let response = spans.iter().find(|s| s.name == "Response").unwrap();
+        assert_eq!(response.duration_ms, 2_000);
+        assert!(response.duration_known);
+        let gap = spans.iter().find(|s| s.id == "gap-0").unwrap();
+        assert_eq!(gap.duration_ms, 3_600_000);
+        assert_eq!(gap.start_ms, 3_000);
+        assert_eq!(gap.name, "Idle between requests");
+    }
+
+    #[test]
+    fn missing_completion_never_borrows_the_next_request_timestamp() {
+        let items = vec![
+            ChatItem::User {
+                text: "first".into(),
+                timing: None,
+                at_ms: 1_000,
+            },
+            ChatItem::AgentText {
+                text: "done".into(),
+                streaming: false,
+                message_id: None,
+                at_ms: 2_000,
+            },
+            ChatItem::User {
+                text: "second".into(),
+                timing: None,
+                at_ms: 3_604_000,
+            },
+        ];
+        let spans = spans(&items, &session());
+        let response = spans.iter().find(|s| s.name == "Response").unwrap();
+        assert!(!response.duration_known);
+        assert!(response.duration_ms <= 1);
+        let gap = spans.iter().find(|s| s.id == "gap-0").unwrap();
+        assert_eq!(gap.name, "Unrecorded gap between requests");
+        assert!(gap.duration_ms > 3_600_000);
+    }
+
+    #[test]
+    fn real_activity_is_projected_without_sample_agents() {
+        let transcript = vec![ChatItem::User {
+            text: "Hello".into(),
+            timing: None,
+            at_ms: 1,
+        }];
+        let nodes = nodes(&transcript, &project(), &session());
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].id, "root");
+        assert_eq!(nodes[0].model, "Auto");
+        assert!(!spans(&transcript, &session()).is_empty());
+    }
+
+    #[test]
+    fn plan_steps_are_work_items_not_invented_subagents() {
         let transcript = vec![ChatItem::Plan {
             items: vec![
                 PlanItem {
@@ -530,9 +878,79 @@ mod tests {
             at_ms: 1_000,
         }];
         let nodes = nodes(&transcript, &project(), &session());
-        assert_eq!(nodes.len(), 3);
-        assert_eq!(nodes[1].parent.as_deref(), Some("root"));
-        assert_eq!(nodes[2].status, dunlin_domain::AgentStatus::Running);
+        assert_eq!(nodes.len(), 1); // Plan steps are not graph agents or tool calls.
+    }
+
+    #[test]
+    fn two_delegated_sessions_and_four_searches_are_two_agents_not_six() {
+        let mut transcript = Vec::new();
+        for id in ["child-one", "child-two"] {
+            let mut delegated = tool();
+            if let ChatItem::Tool { view, .. } = &mut delegated {
+                view.id = format!("delegate-{id}");
+                view.title = "subagent".into();
+                view.detail = format!(
+                    "<subagent sessionID=\"{id}\" state=\"completed\">\n# Result\n</subagent>"
+                );
+            }
+            transcript.push(delegated);
+            for n in 0..2 {
+                let mut search = tool();
+                if let ChatItem::Tool { view, .. } = &mut search {
+                    view.id = format!("{id}:search-{n}");
+                    view.title = "websearch".into();
+                }
+                transcript.push(search);
+            }
+        }
+        let all = nodes(&transcript, &project(), &session());
+        let projected =
+            crate::activity::graph_nodes(&all, &all.iter().map(|node| node.id.clone()).collect());
+        assert_eq!(
+            projected
+                .iter()
+                .filter(|node| node.kind == dunlin_domain::AgentKind::Subagent)
+                .count(),
+            2
+        );
+        assert_eq!(
+            projected
+                .iter()
+                .filter(|node| node.kind == dunlin_domain::AgentKind::Tool)
+                .count(),
+            4
+        );
+        assert!(
+            projected
+                .iter()
+                .filter(|node| node.kind == dunlin_domain::AgentKind::Tool)
+                .all(|node| node
+                    .parent
+                    .as_deref()
+                    .is_some_and(|p| p.starts_with("child-")))
+        );
+        assert!(
+            projected
+                .iter()
+                .all(|node| !node.task.contains("<subagent"))
+        );
+        for node in projected.iter().skip(1) {
+            let parent = projected
+                .iter()
+                .find(|parent| Some(parent.id.as_str()) == node.parent.as_deref())
+                .unwrap();
+            assert!(node.y >= parent.y + parent.height);
+            assert!(node.x.is_finite() && node.y.is_finite());
+        }
+        for (index, node) in projected.iter().enumerate() {
+            for other in projected
+                .iter()
+                .skip(index + 1)
+                .filter(|other| other.y == node.y)
+            {
+                assert!(node.x + node.width <= other.x || other.x + other.width <= node.x);
+            }
+        }
     }
 
     #[test]
@@ -547,12 +965,14 @@ mod tests {
         let transcript = vec![
             ChatItem::User {
                 text: "run the tests".into(),
+                timing: None,
                 at_ms: 1_000,
             },
             tool(),
             ChatItem::AgentText {
                 text: "All tests passed.".into(),
                 streaming: false,
+                message_id: None,
                 at_ms: 3_000,
             },
         ];
@@ -572,5 +992,54 @@ mod tests {
     fn truncation_collapses_whitespace() {
         assert_eq!(truncate("  hello   world  ", 20), "hello world");
         assert_eq!(truncate("abcdefghij", 5), "abcd…");
+    }
+
+    #[test]
+    fn trace_uses_recorded_usage_deltas_not_context_occupancy_or_text_estimates() {
+        use crate::harness::TurnTiming;
+        use dunlin_agent::TokenUsage;
+        let user = |total: Option<u64>, before: Option<u64>| ChatItem::User {
+            text: "Request".into(),
+            at_ms: 1000,
+            timing: Some(TurnTiming {
+                started_at_ms: 1100,
+                finished_at_ms: Some(1600),
+                elapsed_ms: Some(500),
+                usage: total.map(|total| TokenUsage {
+                    total,
+                    ..Default::default()
+                }),
+                usage_before: before.map(|total| TokenUsage {
+                    total,
+                    ..Default::default()
+                }),
+            }),
+        };
+        for (total, baseline, expected) in [
+            (Some(1200), Some(1000), Some(200)),
+            (Some(1200), Some(0), Some(1200)),
+            (Some(1200), None, None),
+            (None, Some(0), None),
+            (Some(20), Some(1200), None),
+        ] {
+            let items = vec![user(total, baseline), tool()];
+            let spans = spans(&items, &session());
+            let request = spans
+                .iter()
+                .find(|span| span.kind == SpanKind::Turn)
+                .unwrap();
+            assert_eq!(request.tokens, expected);
+            assert_eq!(request.duration_ms, 500);
+            assert_eq!(spans[0].tokens, total); // Last reported cumulative snapshot, not session.tokens (context).
+            assert!(
+                spans
+                    .iter()
+                    .filter(|span| span.kind == SpanKind::Tool)
+                    .all(|span| span.tokens.is_none())
+            );
+            let restored: Vec<ChatItem> =
+                serde_json::from_str(&serde_json::to_string(&items).unwrap()).unwrap();
+            assert_eq!(super::turn_tokens(&restored, 0), expected);
+        }
     }
 }

@@ -5,6 +5,7 @@
 //! here so the application never reaches for hard-coded colours.
 
 use std::borrow::Cow;
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
@@ -12,6 +13,52 @@ use gpui_kit::*;
 
 /// Monospaced text size shared by editors, diffs and code chips.
 static CODE_FONT_SIZE: AtomicU32 = AtomicU32::new(13.0f32.to_bits());
+static TYPOGRAPHY: RwLock<Option<Typography>> = RwLock::new(None);
+
+#[derive(Clone)]
+struct Typography {
+    ui: SharedString,
+    code: SharedString,
+}
+
+impl Default for Typography {
+    fn default() -> Self {
+        Self {
+            ui: "Geist".into(),
+            code: "Geist Mono".into(),
+        }
+    }
+}
+
+pub fn ui_font() -> SharedString {
+    TYPOGRAPHY
+        .read()
+        .expect("typography lock")
+        .clone()
+        .unwrap_or_default()
+        .ui
+}
+
+pub fn code_font() -> SharedString {
+    TYPOGRAPHY
+        .read()
+        .expect("typography lock")
+        .clone()
+        .unwrap_or_default()
+        .code
+}
+
+/// Keep selected families when switching between light and dark palettes.
+pub fn set_font_families(ui: &str, code: &str, cx: &mut App) {
+    *TYPOGRAPHY.write().expect("typography lock") = Some(Typography {
+        ui: ui.to_owned().into(),
+        code: code.to_owned().into(),
+    });
+    Theme::update(cx, |theme| {
+        theme.font_family = ui.to_owned().into();
+        theme.mono_font_family = code.to_owned().into();
+    });
+}
 
 /// Semantic colours used across Dunlin, in addition to the GPUI Kit theme.
 #[derive(Clone, Copy)]
@@ -78,7 +125,7 @@ pub fn light() -> Palette {
         primary: h(0x18181b),
         primary_fg: h(0xfafafa),
         hover: h(0xf4f4f5),
-        overlay: ha(0x09090b66),
+        overlay: ha(0x0000002e),
         selection: h(0xdbeafe),
         blue: h(0x2563eb),
         blue_soft: h(0xeff6ff),
@@ -116,7 +163,7 @@ pub fn dark() -> Palette {
         primary: h(0xfafafa),
         primary_fg: h(0x18181b),
         hover: h(0x202024),
-        overlay: ha(0x00000099),
+        overlay: ha(0x0000002e),
         selection: h(0x1e3a5f),
         blue: h(0x60a5fa),
         blue_soft: h(0x17233a),
@@ -164,14 +211,22 @@ pub fn install(cx: &mut App) {
 /// Re-apply Dunlin's palette after a light/dark switch.
 pub fn apply(cx: &mut App) {
     let p = palette(cx);
+    let ui = ui_font();
+    let code = code_font();
     Theme::update(cx, |theme| {
-        theme.font_family = "Geist".into();
-        theme.mono_font_family = "Geist Mono".into();
+        theme.font_family = ui;
+        theme.mono_font_family = code;
         theme.font_size = px(13.);
         theme.mono_font_size = px(f32::from_bits(CODE_FONT_SIZE.load(Ordering::Relaxed)));
         theme.radius = px(10.);
         theme.radius_lg = px(14.);
         theme.focus_ring = false;
+        // The fixed line-number gutter must remain opaque while source text
+        // scrolls underneath it, including editors without form appearance.
+        let highlight = std::sync::Arc::make_mut(&mut theme.highlight_theme);
+        highlight.style.editor_background = Some(p.card);
+        highlight.style.editor_gutter_background = Some(p.card);
+        highlight.style.editor_foreground = Some(p.fg);
 
         let c = &mut theme.colors;
         c.background = p.bg;

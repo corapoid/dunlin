@@ -1,8 +1,6 @@
-//! Local OpenCode provider discovery. Authentication stays in OpenCode's own
-//! interactive client; no keys, tokens or credential-list responses enter Dunlin.
+//! Local OpenCode provider discovery. Account secrets are never persisted here.
 use std::collections::HashSet;
-use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::io::Read;
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
@@ -13,6 +11,26 @@ use serde::{Deserialize, Serialize};
 use crate::app::DunlinApp;
 
 pub(crate) const GO: &str = "opencode-go";
+/// UI-only filter. Never send this identifier to ACP or an auth endpoint.
+pub(crate) const FREE: &str = "dunlin:opencode-free";
+pub(crate) const CONSOLE: &str = "opencode";
+
+pub(crate) fn account_provider(id: &str) -> &str {
+    if id == FREE { CONSOLE } else { id }
+}
+
+pub(crate) fn provider_name(id: &str) -> &str {
+    match id {
+        FREE => "OpenCode Free",
+        GO => "OpenCode Go",
+        CONSOLE => "OpenCode Console",
+        _ => id,
+    }
+}
+
+pub(crate) fn uses_provider_accounts(harness: &str, remote: bool) -> bool {
+    harness == "OpenCode" && !remote
+}
 
 #[derive(Clone)]
 pub(crate) struct Provider {
@@ -20,6 +38,7 @@ pub(crate) struct Provider {
     pub name: String,
     pub integration_id: String,
     pub accounts: usize,
+    pub connected: bool,
 }
 
 #[derive(Default)]
@@ -29,10 +48,48 @@ pub(crate) struct Catalog {
     pub error: Option<String>,
     pub providers: Vec<Provider>,
     pub models: HashSet<String>,
+    pub free_models: HashSet<String>,
     generation: u64,
 }
 
 impl Catalog {
+    fn is_connected(&self, directory: &str, provider: Option<&str>) -> bool {
+        self.directory == directory
+            && self.providers.iter().any(|entry| {
+                Some(entry.id.as_str()) == provider.map(account_provider) && entry.connected
+            })
+    }
+
+    pub(crate) fn confirm_connection(
+        &mut self,
+        directory: &str,
+        id: &str,
+        name: &str,
+        integration: &str,
+    ) {
+        if self.directory != directory {
+            self.directory = directory.into();
+            self.providers.clear();
+            self.models.clear();
+            self.free_models.clear();
+        }
+        if !self.providers.iter().any(|provider| provider.id == id) {
+            self.providers.push(Provider {
+                id: id.into(),
+                name: name.into(),
+                integration_id: integration.into(),
+                accounts: 0,
+                connected: false,
+            });
+        }
+        for provider in &mut self.providers {
+            if provider.integration_id == integration {
+                provider.connected = true;
+                provider.accounts = provider.accounts.max(1);
+            }
+        }
+    }
+
     fn selectable(
         &self,
         directory: &str,
@@ -46,7 +103,11 @@ impl Catalog {
             .iter()
             .filter(|choice| {
                 provider.is_some()
-                    && provider_id(&choice.id) == provider
+                    && (if provider == Some(FREE) {
+                        self.free_models.contains(&choice.id)
+                    } else {
+                        provider_id(&choice.id) == provider
+                    })
                     && self.models.contains(&choice.id)
             })
             .cloned()
@@ -62,6 +123,22 @@ pub(crate) struct RecentModel {
 
 pub(crate) fn provider_id(model_id: &str) -> Option<&str> {
     model_id.split_once('/').map(|(provider, _)| provider)
+}
+
+pub(crate) fn model_name<'a>(name: &'a str, provider: Option<&str>) -> &'a str {
+    provider
+        .map(account_provider)
+        .and_then(|provider| name.strip_prefix(provider)?.strip_prefix('/'))
+        .unwrap_or(name)
+}
+
+fn connection_ready(connection: &serde_json::Value) -> bool {
+    matches!(
+        connection.get("type").and_then(serde_json::Value::as_str),
+        Some("credential" | "env")
+    ) && connection
+        .get("status")
+        .is_none_or(serde_json::Value::is_null)
 }
 
 /// Only successfully dispatched models enter the MRU. Keep three per provider
@@ -111,7 +188,7 @@ pub(crate) fn sections<'a>(
     (top, rest)
 }
 
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     value
         .bytes()
         .map(|byte| match byte {
@@ -125,13 +202,13 @@ fn encode(value: &str) -> String {
 
 /// Use the CLI's discovery and authentication, not an unauthenticated HTTP
 /// connection to a guessed server. Never surface raw API bodies or stderr.
-fn api(directory: &str, resource: &str) -> Result<serde_json::Value, String> {
+pub(crate) fn api(directory: &str, resource: &str) -> Result<serde_json::Value, String> {
     let path = format!(
         "/api/{resource}?location%5Bdirectory%5D={}",
         encode(directory)
     );
     let output = command_output(
-        Command::new("opencode")
+        crate::harness_discovery::local_command("opencode")
             .args(["api", "get", &path])
             .current_dir(directory),
         Duration::from_secs(30),
@@ -146,7 +223,7 @@ fn api(directory: &str, resource: &str) -> Result<serde_json::Value, String> {
 
 /// Drain pipes while waiting so a large catalog cannot deadlock the process;
 /// terminate only our CLI child on timeout, never the shared OpenCode service.
-fn command_output(command: &mut Command, timeout: Duration) -> std::io::Result<Output> {
+pub(crate) fn command_output(command: &mut Command, timeout: Duration) -> std::io::Result<Output> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -186,11 +263,55 @@ fn command_output(command: &mut Command, timeout: Duration) -> std::io::Result<O
     })
 }
 
+/// Read metadata only; never fetch credentials or send a model prompt.
+pub(crate) fn authenticated_model(
+    directory: &str,
+    provider: Option<&str>,
+    model: &str,
+) -> Result<bool, String> {
+    let discovered = discover_catalog(directory)?;
+    let catalog = Catalog {
+        directory: directory.into(),
+        providers: discovered.providers,
+        models: discovered.models,
+        free_models: discovered.free_models,
+        ..Default::default()
+    };
+    let choice = ModelChoice {
+        id: model.into(),
+        name: model.into(),
+        description: None,
+    };
+    Ok(catalog.is_connected(directory, provider)
+        && !catalog
+            .selectable(directory, provider, &[choice])
+            .is_empty())
+}
+
+struct Discovered {
+    providers: Vec<Provider>,
+    models: HashSet<String>,
+    free_models: HashSet<String>,
+}
+
+/// Missing/unknown prices, paid cache operations and paid higher-context tiers
+/// are not free. Go's promotional/subscription models are intentionally separate.
+fn free_cost(cost: &serde_json::Value) -> bool {
+    cost.as_array().is_some_and(|tiers| {
+        !tiers.is_empty()
+            && tiers.iter().all(|tier| {
+                ["/input", "/output", "/cache/read", "/cache/write"]
+                    .iter()
+                    .all(|path| tier.pointer(path).and_then(serde_json::Value::as_f64) == Some(0.0))
+            })
+    })
+}
+
 fn parse_catalog(
     providers: serde_json::Value,
     models: serde_json::Value,
     integrations: serde_json::Value,
-) -> Result<(Vec<Provider>, HashSet<String>), String> {
+) -> Result<Discovered, String> {
     #[derive(Deserialize)]
     struct Envelope<T> {
         data: Vec<T>,
@@ -209,6 +330,8 @@ fn parse_catalog(
         #[serde(rename = "providerID")]
         provider_id: String,
         enabled: bool,
+        #[serde(default)]
+        cost: serde_json::Value,
     }
     #[derive(Deserialize)]
     struct Integration {
@@ -229,22 +352,23 @@ fn parse_catalog(
             let integration_id = provider
                 .integration_id
                 .unwrap_or_else(|| provider.id.clone());
-            let accounts = integrations
+            let connections = integrations
                 .data
                 .iter()
                 .find(|integration| integration.id == integration_id)
-                .map(|integration| integration.connections.len())
-                .unwrap_or(0);
+                .map(|integration| integration.connections.as_slice())
+                .unwrap_or(&[]);
             Provider {
                 integration_id,
                 id: provider.id,
                 name: provider.name,
-                accounts,
+                accounts: connections.len(),
+                connected: connections.iter().any(connection_ready),
             }
         })
         .collect();
     providers.sort_by_key(|provider| (provider.id != GO, provider.name.to_lowercase()));
-    let models = models
+    let enabled: Vec<_> = models
         .data
         .into_iter()
         .filter(|model| {
@@ -253,69 +377,57 @@ fn parse_catalog(
                     .iter()
                     .any(|provider| provider.id == model.provider_id)
         })
+        .collect();
+    let free_models = enabled
+        .iter()
+        .filter(|model| model.provider_id == CONSOLE && free_cost(&model.cost))
         .map(|model| format!("{}/{}", model.provider_id, model.id))
         .collect();
-    Ok((providers, models))
+    let models = enabled
+        .iter()
+        .map(|model| format!("{}/{}", model.provider_id, model.id))
+        .collect();
+    Ok(Discovered {
+        providers,
+        models,
+        free_models,
+    })
 }
 
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn auth_command(executable: &str, directory: &str, integration: &str) -> String {
-    format!(
-        "cd {} && {} auth login {}",
-        shell_quote(directory),
-        shell_quote(executable),
-        shell_quote(integration)
+fn discover_catalog(directory: &str) -> Result<Discovered, String> {
+    discover_with_retry(
+        || {
+            parse_catalog(
+                api(directory, "provider")?,
+                api(directory, "model")?,
+                api(directory, "integration")?,
+            )
+        },
+        std::thread::sleep,
     )
 }
 
-fn launch_auth(directory: &str, integration: &str) -> Result<(), String> {
-    let executable = std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .map(|directory| directory.join("opencode"))
-        .find(|path| path.is_file())
-        .ok_or("OpenCode is not installed")?;
-    let command = auth_command(&executable.to_string_lossy(), directory, integration);
-    // Launch Services can open a .command without Apple Events/Automation
-    // permission. The private, disposable script contains no credentials and
-    // removes itself after sign-in. OpenCode owns the interactive secret prompt.
-    let path = std::env::temp_dir().join(format!(
-        "dunlin-opencode-auth-{}.command",
-        uuid::Uuid::now_v7()
-    ));
-    let launch = || -> std::io::Result<()> {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o700)
-            .open(&path)?;
-        writeln!(file, "#!/bin/sh\ntrap 'rm -f -- \"$0\"' EXIT\n{command}")?;
-        drop(file);
-        let output = command_output(
-            Command::new("/usr/bin/open")
-                .args(["-a", "Terminal"])
-                .arg(&path),
-            Duration::from_secs(15),
-        )?;
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(std::io::Error::other("Terminal launch failed"))
+fn discover_with_retry(
+    mut load: impl FnMut() -> Result<Discovered, String>,
+    mut wait: impl FnMut(Duration),
+) -> Result<Discovered, String> {
+    // ACP initialize can finish before location/provider plugins are ready.
+    // Retry only empty startup snapshots, with a fixed bound, not indefinitely.
+    for attempt in 0..3 {
+        let catalog = load()?;
+        if !catalog.providers.is_empty() && (!catalog.models.is_empty() || attempt == 2) {
+            return Ok(catalog);
         }
-    };
-    launch().map_err(|_| {
-        let _ = std::fs::remove_file(&path);
-        "Could not open sign-in. Run ‘opencode auth login’ in Terminal, then refresh providers."
-            .into()
-    })
+        if attempt < 2 {
+            wait(Duration::from_millis(300 * (attempt + 1)));
+        }
+    }
+    Err("OpenCode has not advertised any providers for this project. Refresh providers / models to retry.".into())
 }
 
 impl DunlinApp {
     pub(crate) fn local_opencode(&self) -> bool {
-        !self.project().is_remote() && self.session_harness() == "OpenCode"
+        uses_provider_accounts(&self.session_harness(), self.project().is_remote())
     }
 
     pub(crate) fn model_scope(&self) -> String {
@@ -338,6 +450,13 @@ impl DunlinApp {
                 .as_ref()
                 .and_then(|models| provider_id(&models.current))
         })
+    }
+
+    pub(crate) fn provider_connected(&self) -> bool {
+        self.local_opencode()
+            && self
+                .provider_catalog
+                .is_connected(&self.project().path, self.selected_provider())
     }
 
     pub(crate) fn visible_models(&self) -> Vec<ModelChoice> {
@@ -390,7 +509,7 @@ impl DunlinApp {
         if !self.local_opencode() || self.chat_controls_busy() {
             return;
         }
-        if id != GO
+        if !matches!(id, GO | FREE)
             && !self
                 .provider_catalog
                 .providers
@@ -400,6 +519,7 @@ impl DunlinApp {
             return;
         }
         self.opencode_provider = Some(id.into());
+        self.ensure_usage(cx);
         self.persist_settings(cx);
         self.set_notice("Choose a model from this provider before sending. Existing session context is preserved.", cx);
     }
@@ -413,10 +533,18 @@ impl DunlinApp {
             return;
         }
         let generation = self.provider_catalog.generation.wrapping_add(1);
+        // Keep the known account state while refreshing this same location, so
+        // a successful sign-in does not flash back into an unsigned state.
+        let providers = if self.provider_catalog.directory == directory {
+            std::mem::take(&mut self.provider_catalog.providers)
+        } else {
+            Vec::new()
+        };
         self.provider_catalog = Catalog {
             directory: directory.clone(),
             loading: true,
             generation,
+            providers,
             ..Default::default()
         };
         cx.notify();
@@ -425,11 +553,7 @@ impl DunlinApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    parse_catalog(
-                        api(&directory, "provider")?,
-                        api(&directory, "model")?,
-                        api(&directory, "integration")?,
-                    )
+                    discover_catalog(&directory)
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -441,10 +565,11 @@ impl DunlinApp {
                     return;
                 }
                 match result {
-                    Ok((providers, models)) => {
-                        crate::logging::info(&format!("OpenCode provider catalog refreshed · {} providers · {} enabled models", providers.len(), models.len()));
-                        this.provider_catalog.providers = providers;
-                        this.provider_catalog.models = models;
+                    Ok(catalog) => {
+                        crate::logging::info(&format!("OpenCode provider catalog refreshed · {} providers · {} enabled models · {} free models", catalog.providers.len(), catalog.models.len(), catalog.free_models.len()));
+                        this.provider_catalog.providers = catalog.providers;
+                        this.provider_catalog.models = catalog.models;
+                        this.provider_catalog.free_models = catalog.free_models;
                     }
                     Err(error) => {
                         crate::logging::warn(&error);
@@ -455,32 +580,6 @@ impl DunlinApp {
             });
         })
         .detach();
-    }
-
-    pub(crate) fn connect_provider(&mut self, cx: &mut Context<Self>) {
-        if !self.local_opencode() || self.projects.is_empty() || self.chat_controls_busy() {
-            return;
-        }
-        let Some(id) = self.selected_provider() else {
-            return;
-        };
-        let integration = self
-            .provider_catalog
-            .providers
-            .iter()
-            .find(|provider| provider.id == id)
-            .map(|provider| provider.integration_id.clone())
-            .unwrap_or_else(|| id.into());
-        let directory = self.project().path.clone();
-        cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move { launch_auth(&directory, &integration) }).await;
-            let _ = this.update(cx, |this, cx| {
-                this.set_notice(match result {
-                    Ok(()) => "Complete OpenCode sign-in in Terminal, then choose Refresh providers / models.".into(),
-                    Err(error) => error,
-                }, cx);
-            });
-        }).detach();
     }
 }
 
@@ -495,6 +594,200 @@ mod tests {
             name: id.into(),
             description: None,
         }
+    }
+
+    fn fixture(models: serde_json::Value) -> Discovered {
+        parse_catalog(
+            json!({"data":[
+                {"id":CONSOLE,"name":"Console","activation":"auto","integrationID":CONSOLE},
+                {"id":GO,"name":"Go","activation":"auto","integrationID":CONSOLE}
+            ]}),
+            models,
+            json!({"data":[]}),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn free_filter_and_send_allowlist_exclude_paid_unknown_disabled_and_go_models() {
+        let zero = json!({"input":0,"output":0,"cache":{"read":0,"write":0}});
+        let paid = json!({"input":1,"output":2,"cache":{"read":0,"write":0}});
+        let discovered = fixture(json!({"data":[
+            {"id":"free","providerID":CONSOLE,"enabled":true,"cost":[zero]},
+            {"id":"big-pickle","providerID":CONSOLE,"enabled":true,"cost":[zero]},
+            {"id":"paid-free","providerID":CONSOLE,"enabled":true,"cost":[paid]},
+            {"id":"tiered","providerID":CONSOLE,"enabled":true,"cost":[zero,paid]},
+            {"id":"cache","providerID":CONSOLE,"enabled":true,"cost":[{"input":0,"output":0,"cache":{"read":1,"write":0}}]},
+            {"id":"unknown","providerID":CONSOLE,"enabled":true},
+            {"id":"empty","providerID":CONSOLE,"enabled":true,"cost":[]},
+            {"id":"partial","providerID":CONSOLE,"enabled":true,"cost":[{"input":0}]},
+            {"id":"disabled","providerID":CONSOLE,"enabled":false,"cost":[zero]},
+            {"id":"free","providerID":GO,"enabled":true,"cost":[zero]}
+        ]}));
+        assert_eq!(discovered.free_models.len(), 2);
+        let mut catalog = Catalog {
+            directory: "/project".into(),
+            providers: discovered.providers,
+            models: discovered.models,
+            free_models: discovered.free_models,
+            ..Default::default()
+        };
+        let choices: Vec<_> = catalog.models.iter().map(|id| choice(id)).collect();
+        let visible = catalog.selectable("/project", Some(FREE), &choices);
+        assert_eq!(visible.len(), 2);
+        assert!(
+            visible
+                .iter()
+                .all(|model| catalog.free_models.contains(&model.id))
+        );
+        assert!(
+            visible
+                .iter()
+                .all(|model| provider_id(&model.id) == Some(CONSOLE))
+        );
+        let mut recent = Vec::new();
+        for id in ["opencode/free", "opencode/paid-free", "opencode-go/free"] {
+            remember(&mut recent, "local:OpenCode", id);
+        }
+        let (top, _) = sections(&visible, &recent, "local:OpenCode");
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0].id, "opencode/free");
+        // Neither the filter nor its wire IDs change when authorization completes.
+        catalog.confirm_connection("/project", CONSOLE, "Console", CONSOLE);
+        assert!(catalog.is_connected("/project", Some(FREE)));
+        assert!(!catalog.providers.iter().any(|provider| provider.id == FREE));
+        assert!(
+            Catalog::default()
+                .selectable("/project", Some(FREE), &choices)
+                .is_empty()
+        );
+        catalog.free_models.clear();
+        assert!(
+            catalog
+                .selectable("/project", Some(FREE), &choices)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn empty_startup_catalog_is_retried_but_never_accepted_or_retried_forever() {
+        let empty = || parse_catalog(json!({"data":[]}), json!({"data":[]}), json!({"data":[]}));
+        let mut calls = 0;
+        let mut waits = 0;
+        let result = discover_with_retry(
+            || {
+                calls += 1;
+                empty()
+            },
+            |_| waits += 1,
+        );
+        assert!(result.is_err());
+        assert_eq!((calls, waits), (3, 2));
+        calls = 0;
+        let result = discover_with_retry(
+            || {
+                calls += 1;
+                if calls == 1 {
+                    empty()
+                } else {
+                    Ok(fixture(
+                        json!({"data":[{"id":"model","providerID":CONSOLE,"enabled":true}]}),
+                    ))
+                }
+            },
+            |_| {},
+        );
+        assert!(result.is_ok());
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
+    #[ignore = "requires installed OpenCode and its current public model catalog"]
+    fn local_discovery_finds_free_models_without_changing_provider_or_model() {
+        let directory = std::env::current_dir().unwrap();
+        let discovered = discover_catalog(directory.to_str().unwrap()).unwrap();
+        assert!(!discovered.providers.is_empty());
+        assert!(!discovered.free_models.is_empty());
+        assert!(
+            discovered
+                .free_models
+                .iter()
+                .all(|id| { provider_id(id) == Some(CONSOLE) && discovered.models.contains(id) })
+        );
+        assert!(
+            discovered
+                .providers
+                .iter()
+                .any(|provider| provider.id == GO && provider.integration_id == CONSOLE)
+        );
+    }
+
+    #[test]
+    fn provider_accounts_belong_only_to_the_local_opencode_harness() {
+        assert!(uses_provider_accounts("OpenCode", false));
+        assert!(!uses_provider_accounts("OpenCode", true));
+        for harness in ["Claude Code", "OpenAI Codex", "Custom ACP", "Other"] {
+            assert!(!uses_provider_accounts(harness, false));
+            assert!(!uses_provider_accounts(harness, true));
+        }
+    }
+
+    #[test]
+    fn account_state_follows_the_selected_provider_and_location() {
+        let mut catalog = Catalog::default();
+        assert!(!catalog.is_connected("/project", Some(GO)));
+        catalog.confirm_connection("/project", GO, "Go", "console");
+        assert!(catalog.is_connected("/project", Some(GO)));
+        assert!(!catalog.is_connected("/other-project", Some(GO)));
+        assert!(!catalog.is_connected("/project", Some("another-provider")));
+        assert!(!catalog.is_connected("/project", None));
+        // Success is reflected immediately; the directory's next catalog
+        // refresh can carry this public state without showing Sign in again.
+        let providers = std::mem::take(&mut catalog.providers);
+        let catalog = Catalog {
+            directory: "/project".into(),
+            loading: true,
+            providers,
+            ..Default::default()
+        };
+        assert!(catalog.is_connected("/project", Some(GO)));
+    }
+
+    #[test]
+    fn public_connection_state_excludes_accounts_needing_reauthorization() {
+        assert!(connection_ready(
+            &json!({"type":"credential","method":"key"})
+        ));
+        assert!(connection_ready(&json!({"type":"env","name":"API_KEY"})));
+        assert!(!connection_ready(
+            &json!({"type":"credential","status":{"status":"needs_auth","message":"expired"}})
+        ));
+        assert!(!connection_ready(&json!({"type":"unknown"})));
+        let Discovered { providers, .. } = parse_catalog(
+            json!({"data":[{"id":GO,"name":"Go","activation":"auto","integrationID":"console"}]}),
+            json!({"data":[]}),
+            json!({"data":[{"id":"console","connections":[{"type":"credential","status":{"status":"needs_auth","message":"expired"}}]}]}),
+        ).unwrap();
+        assert_eq!(providers[0].accounts, 1);
+        assert!(!providers[0].connected);
+    }
+
+    #[test]
+    fn model_display_omits_only_the_selected_provider_prefix() {
+        assert_eq!(
+            model_name("opencode-go/DeepSeek V4 Pro", Some(GO)),
+            "DeepSeek V4 Pro"
+        );
+        assert_eq!(
+            model_name("opencode-go/DeepSeek", Some("opencode")),
+            "opencode-go/DeepSeek"
+        );
+        assert_eq!(
+            model_name("openrouter/org/model", Some("openrouter")),
+            "org/model"
+        );
+        assert_eq!(model_name("Claude Sonnet", None), "Claude Sonnet");
+        assert_eq!(model_name("opencode/Big Pickle", Some(FREE)), "Big Pickle");
     }
 
     #[test]
@@ -569,7 +862,7 @@ mod tests {
 
     #[test]
     fn catalog_excludes_disabled_entries_and_resolves_integration_not_provider() {
-        let (providers, models) = parse_catalog(json!({"data":[
+        let Discovered { providers, models, .. } = parse_catalog(json!({"data":[
             {"id":"opencode", "name":"OpenCode", "activation":"auto"},
             {"id":GO, "name":"Go", "activation":"auto", "integrationID":"opencode"},
             {"id":"off", "name":"Off", "activation":"disabled"}
@@ -582,6 +875,7 @@ mod tests {
         assert_eq!(providers[0].id, GO);
         assert_eq!(providers[0].integration_id, "opencode");
         assert_eq!(providers[0].accounts, 1);
+        assert!(providers[0].connected);
         assert_eq!(models.len(), 2);
         assert!(models.contains("opencode-go/same"));
         assert!(parse_catalog(json!({}), json!({}), json!({})).is_err());
@@ -626,15 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn auth_quotes_paths_and_integration_ids_without_embedding_secrets() {
-        assert_eq!(
-            auth_command(
-                "/path with spaces/opencode",
-                "/a/b's project",
-                "opencode-go"
-            ),
-            "cd '/a/b'\\''s project' && '/path with spaces/opencode' auth login 'opencode-go'"
-        );
+    fn encodes_project_paths() {
         assert_eq!(encode("/a?b&c ż"), "%2Fa%3Fb%26c%20%C5%BC");
     }
 }

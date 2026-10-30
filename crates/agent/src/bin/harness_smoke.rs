@@ -74,6 +74,15 @@ fn handle(
             HarnessUpdate::AgentThought(text) => {
                 eprint!("{text}");
             }
+            HarnessUpdate::MessageChunk { text, thought, .. } => {
+                if thought {
+                    eprint!("{text}");
+                } else {
+                    print!("{text}");
+                    output.push_str(&text);
+                }
+            }
+            HarnessUpdate::Child { id, .. } => println!("\n[subagent update] {id}"),
             HarnessUpdate::ToolCall(tool) => {
                 println!(
                     "\n[tool] {} ({:?} / {:?})",

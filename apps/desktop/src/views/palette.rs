@@ -63,7 +63,7 @@ pub(crate) fn render(
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.65))
                         .child("Try “chat”, “folder”, or a project name"),
                 ),
@@ -142,13 +142,14 @@ pub(crate) fn render(
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.6))
                 .child(format!("{} commands", items.len())),
         );
 
     let panel = div()
         .id("command-palette")
+        .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
         .w(px(590.))
         .rounded(px(12.))
         .border_1()
@@ -174,7 +175,6 @@ pub(crate) fn render(
         .top_0()
         .left_0()
         .size_full()
-        .bg(p.overlay)
         .flex()
         .justify_center()
         .items_start()

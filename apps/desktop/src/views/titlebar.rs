@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use dunlin_domain::MainView;
+use dunlin_domain::{MainView, SidebarSection};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::{ActiveTheme, Icon, TitleBar};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -19,10 +19,12 @@ pub(crate) fn render(
     let p = palette(cx);
     let compact = window.viewport_size().width < px(1050.);
     let has_projects = !this.projects.is_empty();
+    let dashboard = this.section == SidebarSection::Dashboard;
+    let show_session_context = !dashboard && has_projects && this.view != MainView::Chat;
     let show_shortcut_hints = this.show_shortcut_hints;
     let project = this.project().clone();
     let session = this.session().clone();
-    let running = if session.status == dunlin_domain::SessionStatus::Running {
+    let running = if !dashboard && session.status == dunlin_domain::SessionStatus::Running {
         crate::projection::nodes(&this.harness.transcript, &project, &session)
             .iter()
             .filter(|node| node.status == dunlin_domain::AgentStatus::Running)
@@ -30,23 +32,20 @@ pub(crate) fn render(
     } else {
         0
     };
-    let (badge_bg, badge_fg, badge_label) = if this.harness.transcript.is_empty() {
-        (p.amber_soft, p.amber, "preview".to_string())
-    } else {
-        match session.status {
-            dunlin_domain::SessionStatus::Running if running > 0 => (
-                p.green_soft,
-                p.green,
-                format!(
-                    "{running} {}",
-                    if running == 1 { "agent" } else { "agents" }
-                ),
+    let (badge_bg, badge_fg, badge_label) = match session.status {
+        dunlin_domain::SessionStatus::Idle => (p.muted, p.muted_fg, "ready".to_string()),
+        dunlin_domain::SessionStatus::Running if running > 0 => (
+            p.green_soft,
+            p.green,
+            format!(
+                "{running} {}",
+                if running == 1 { "agent" } else { "agents" }
             ),
-            dunlin_domain::SessionStatus::Running => (p.green_soft, p.green, "running".to_string()),
-            dunlin_domain::SessionStatus::Waiting => (p.amber_soft, p.amber, "waiting".to_string()),
-            dunlin_domain::SessionStatus::Failed => (p.red_soft, p.red, "failed".to_string()),
-            _ => (p.muted, p.muted_fg, "idle".to_string()),
-        }
+        ),
+        dunlin_domain::SessionStatus::Running => (p.green_soft, p.green, "running".to_string()),
+        dunlin_domain::SessionStatus::Waiting => (p.amber_soft, p.amber, "waiting".to_string()),
+        dunlin_domain::SessionStatus::Failed => (p.red_soft, p.red, "failed".to_string()),
+        _ => (p.muted, p.muted_fg, "idle".to_string()),
     };
 
     let left = div()
@@ -73,7 +72,7 @@ pub(crate) fn render(
                 .text_color(p.fg)
                 .child("Dunlin"),
         )
-        .when(has_projects, |this| {
+        .when(show_session_context, |this| {
             this.child(
                 div()
                     .text_size(px(12.5))
@@ -116,7 +115,7 @@ pub(crate) fn render(
         .gap(px(2.));
 
     let epoch = this.view_epoch;
-    if has_projects {
+    if has_projects && !dashboard {
         for view in MainView::ALL {
             let active = this.view == view;
             let (icon_name, hint) = match view {
@@ -159,7 +158,7 @@ pub(crate) fn render(
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(if active {
                                 p.muted_fg
                             } else {
@@ -189,7 +188,9 @@ pub(crate) fn render(
             center = center.child(tab);
         }
     }
-    let center = if has_projects {
+    let center = if dashboard {
+        crate::dashboard::metric_switcher(this, compact, cx)
+    } else if has_projects {
         center.into_any_element()
     } else {
         div().flex_shrink_0().into_any_element()
@@ -203,7 +204,35 @@ pub(crate) fn render(
         .items_center()
         .justify_end()
         .gap(px(6.))
-        .when(has_projects, |this| {
+        .when(has_projects && !dashboard, |bar| {
+            bar.when(
+                this.view == MainView::Chat && !this.final_answer_only,
+                |bar| bar.child(super::chat::reasoning_toggle(this, cx)),
+            )
+            .child(
+                div()
+                    .id("title-session-menu")
+                    .aria_label("Session menu")
+                    .size(px(26.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .when(this.session_menu_open, |button| button.bg(p.muted))
+                    .hover(move |style| style.bg(p.hover))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.session_menu_open = !this.session_menu_open;
+                        cx.notify();
+                    }))
+                    .child(
+                        Icon::new(IconName::Ellipsis)
+                            .size(px(15.))
+                            .text_color(p.muted_fg),
+                    ),
+            )
+        })
+        .when(show_session_context, |this| {
             this.child(
                 div()
                     .h(px(22.))
@@ -217,7 +246,7 @@ pub(crate) fn render(
                     .child(
                         div()
                             .text_size(px(11.5))
-                            .font_family("Geist Mono")
+                            .font_family(dunlin_ui::theme::code_font())
                             .text_color(badge_fg)
                             .child(badge_label),
                     ),

@@ -23,6 +23,9 @@ Geist is created by Vercel in collaboration with basement.studio. See
 | Component | License |
 | --- | --- |
 | GPUI, GPUI Kit, GPUI Component | Apache-2.0 |
+| syntect, two-face, bincode, bit-set, bit-vec, fancy-regex | MIT or Apache-2.0 |
+| image | MIT or Apache-2.0 |
+| raw-window-handle | MIT or Apache-2.0 or Zlib |
 | agent-client-protocol | Apache-2.0 |
 | similar | Apache-2.0 |
 | rusqlite, fontdb, hyper, tower | MIT |
@@ -32,7 +35,7 @@ Geist is created by Vercel in collaboration with basement.studio. See
 | webpki-roots | CDLA-Permissive-2.0 |
 | rustls, rustls-native-certs, rustls-pemfile | Apache-2.0 OR ISC OR MIT |
 | objc2, objc2-foundation | MIT |
-| objc2-app-kit | Zlib OR Apache-2.0 OR MIT |
+| objc2-app-kit, objc2-quartz-core, objc2-core-graphics | Zlib OR Apache-2.0 OR MIT |
 | resvg, usvg | Apache-2.0 OR MIT |
 | serde, serde_json, thiserror, base64, http, uuid | MIT OR Apache-2.0 |
 | notify-rust, rand, sha2, toml, futures-util, async-channel, async-io, ttf-parser | MIT OR Apache-2.0 |
@@ -41,6 +44,11 @@ Geist is created by Vercel in collaboration with basement.studio. See
 The exact dependency graph and resolved versions are recorded in
 `Cargo.lock`. License texts for each crate are available from the crate
 sources in the Cargo registry and from <https://crates.io>.
+
+Syntax definitions supplied by two-face/bat carry additional upstream notices.
+The app bundle includes their complete generated acknowledgements in
+`Contents/Resources/Syntax-Notices.md`; `Dunlin --syntax-notices` prints the same
+version-matched text without launching the UI or connecting a harness.
 
 ## Runtime components
 

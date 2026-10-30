@@ -160,9 +160,10 @@ pub fn trace_spans() -> Vec<TraceSpan> {
         status,
         start_ms,
         duration_ms,
+        duration_known: true,
         depth,
         cost_usd,
-        tokens,
+        tokens: Some(tokens),
         detail: detail.into(),
     };
 

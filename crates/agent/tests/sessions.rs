@@ -34,6 +34,85 @@ fn next_model_change(harness: &AcpHarness) -> HarnessEvent {
 }
 
 #[test]
+fn synthetic_stream_grows_one_reply_without_tools_permissions_or_network() {
+    let harness = AcpHarness::spawn(HarnessConfig::new(
+        format!(
+            "/usr/bin/env DUNLIN_MOCK_STREAM_CHUNKS=24 \"{}\"",
+            env!("CARGO_BIN_EXE_mock_acp_agent")
+        ),
+        std::env::current_dir().unwrap(),
+    ));
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => break,
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert!(harness.prompt("Scroll fixture"));
+    let mut text = String::new();
+    loop {
+        match next(&harness) {
+            HarnessEvent::Update {
+                update: HarnessUpdate::AgentMessage(chunk),
+                ..
+            } => text.push_str(&chunk),
+            HarnessEvent::Update {
+                update: HarnessUpdate::ToolCall(_) | HarnessUpdate::ToolCallUpdate(_),
+                ..
+            }
+            | HarnessEvent::PermissionRequested { .. } => {
+                panic!("Streaming fixture must not perform tools or request permission")
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            HarnessEvent::PromptFinished { .. } => break,
+            _ => {}
+        }
+    }
+    assert_eq!(text.matches("Stream line ").count(), 24);
+    assert!(text.ends_with("SCROLL END — latest reply is visible."));
+}
+
+#[test]
+fn optional_end_turn_usage_survives_the_acp_transport_without_provider_calls() {
+    let harness = AcpHarness::spawn(HarnessConfig::new(
+        format!(
+            "/usr/bin/env DUNLIN_MOCK_STREAM_CHUNKS=2 DUNLIN_MOCK_TOKEN_USAGE=1 \"{}\"",
+            env!("CARGO_BIN_EXE_mock_acp_agent")
+        ),
+        std::env::current_dir().unwrap(),
+    ));
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => break,
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert!(harness.prompt("Usage fixture"));
+    let mut chunks = 0;
+    loop {
+        match next(&harness) {
+            HarnessEvent::Update {
+                update: HarnessUpdate::AgentMessage(_),
+                ..
+            } => chunks += 1,
+            HarnessEvent::PromptFinished { usage, .. } => {
+                let usage = usage.expect("mock sent optional end-turn usage");
+                assert_eq!((usage.total, usage.input, usage.output), (1200, 1000, 200));
+                assert!(chunks > 1, "response was streamed before completion");
+                break;
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            HarnessEvent::PermissionRequested { .. } => {
+                panic!("no permissions in synthetic stream")
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
 fn restores_the_existing_session_instead_of_creating_a_new_one() {
     let first = AcpHarness::spawn(config());
     let id = loop {

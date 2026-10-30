@@ -4,8 +4,7 @@
 //! executor. Codex exposes a local JSON-RPC app-server with real rate-limit
 //! windows; Claude Code keeps its OAuth token in the macOS keychain but only
 //! grants usage scopes after a re-login, so Dunlin reports that state instead
-//! of inventing percentages. OpenCode has no subscription API over ACP yet and
-//! stays clearly marked as estimated.
+//! of inventing percentages. ACP context usage is not a subscription allowance.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -18,7 +17,22 @@ use serde_json::{Value, json};
 
 /// Probe every provider that can be read locally.
 pub fn probe_all() -> Vec<ProviderUsage> {
-    vec![probe_claude(), probe_codex(), estimated_opencode()]
+    vec![probe_claude(), probe_codex()]
+}
+
+/// Probe only the active harness. OpenCode provider limits are location-scoped
+/// and are read by the client through OpenCode's public API, not other CLIs.
+pub fn probe_harness(harness: &str) -> ProviderUsage {
+    match harness {
+        "Claude Code" => probe_claude(),
+        "OpenAI Codex" => probe_codex(),
+        _ => unavailable(
+            harness,
+            "Limits unavailable",
+            "This harness does not expose account usage limits.",
+            ProjectTone::Teal,
+        ),
+    }
 }
 
 fn probe_codex() -> ProviderUsage {
@@ -51,21 +65,6 @@ fn probe_claude() -> ProviderUsage {
             ProjectTone::Violet,
         ),
         Err(error) => unavailable("Claude Code", "not signed in", &error, ProjectTone::Violet),
-    }
-}
-
-fn estimated_opencode() -> ProviderUsage {
-    ProviderUsage {
-        provider: "OpenCode".into(),
-        plan: "Estimated".into(),
-        accent: ProjectTone::Teal,
-        windows: vec![UsageWindow {
-            label: "Session".into(),
-            used_percent: 19.0,
-            resets_in: "estimated".into(),
-            source: UsageSource::Estimated,
-        }],
-        detail: "Estimated · OpenCode does not expose subscription windows over ACP".into(),
     }
 }
 
@@ -377,6 +376,16 @@ mod tests {
         assert_eq!(format_remaining(90), "1m");
         assert_eq!(format_remaining(3_600 + 120), "1h 02m");
         assert_eq!(format_remaining(86_400 + 3_600), "1d 1h");
+    }
+
+    #[test]
+    fn unknown_and_opencode_harnesses_have_no_invented_allowance() {
+        for harness in ["OpenCode", "Custom ACP"] {
+            let usage = super::probe_harness(harness);
+            assert_eq!(usage.provider, harness);
+            assert!(usage.windows.is_empty());
+            assert_eq!(usage.plan, "Limits unavailable");
+        }
     }
 
     #[test]

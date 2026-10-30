@@ -23,6 +23,34 @@ use serde_json::Value;
 const KEYCHAIN_SERVICE: &str = "dev.dunlin.remote";
 const LEGACY_KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
 
+fn explorer_relay_error(error: String) -> String {
+    if error.starts_with("Relay error 404:") || error.starts_with("Relay error 405:") {
+        "This Explorer action requires an updated Dunlin relay. Update the relay and try again."
+            .into()
+    } else {
+        error
+    }
+}
+
+fn entry_relative(root: &str, path: &str) -> Result<String, String> {
+    let path = Path::new(path);
+    let relative = if path.is_absolute() {
+        path.strip_prefix(root)
+            .map_err(|_| "The item is outside the selected project")?
+    } else {
+        path
+    };
+    if relative.components().any(|part| {
+        !matches!(
+            part,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    }) {
+        return Err("The item is outside the selected project".into());
+    }
+    Ok(relative.to_string_lossy().to_string())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RemoteHost {
     pub id: String,
@@ -284,6 +312,14 @@ impl RemoteWorkspace {
         )
     }
 
+    pub fn git_initialize(&self) -> Result<(), String> {
+        self.post_empty(
+            "/v1/git/init",
+            &serde_json::json!({"project": self.project.project_id}),
+        )
+        .map_err(explorer_relay_error)
+    }
+
     pub fn git_unstage_file(&self, path: &str) -> Result<(), String> {
         self.post_empty(
             "/v1/git/unstage",
@@ -350,21 +386,11 @@ impl RemoteWorkspace {
         Ok(response.branches)
     }
 
-    pub fn git_switch(&self, branch: &str) -> Result<(), String> {
-        self.post_empty(
-            "/v1/git/switch",
-            &serde_json::json!({
-                "project": self.project.project_id,
-                "branch": branch,
-            }),
-        )
-    }
-
     pub fn read_file(&self, path: &str) -> Result<FileContents, String> {
         self.get(&format!(
             "/v1/fs/file?project={}&path={}",
             encode(&self.project.project_id),
-            encode(&self.relative(path))
+            encode(&entry_relative(&self.project.path, path)?)
         ))
     }
 
@@ -390,9 +416,25 @@ impl RemoteWorkspace {
             "/v1/fs/create",
             &serde_json::json!({
                 "project": self.project.project_id,
-                "path": self.relative(path),
+                "path": entry_relative(&self.project.path, path)?,
             }),
         )
+    }
+
+    pub fn create_directory(&self, path: &str) -> Result<FileStat, String> {
+        self.post("/v1/fs/mkdir", &serde_json::json!({"project": self.project.project_id, "path": entry_relative(&self.project.path, path)?})).map_err(explorer_relay_error)
+    }
+
+    pub fn move_entries(
+        &self,
+        sources: &[String],
+        target: &str,
+    ) -> Result<dunlin_workspace::transfer::TransferReport, String> {
+        let sources = sources
+            .iter()
+            .map(|path| entry_relative(&self.project.path, path))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.post("/v1/fs/move", &serde_json::json!({"project": self.project.project_id, "sources": sources, "target": entry_relative(&self.project.path, target)?})).map_err(explorer_relay_error)
     }
 
     pub fn stat_file(&self, path: &str) -> Result<FileStat, String> {
@@ -486,6 +528,83 @@ pub(crate) enum WorkspaceBackend {
 }
 
 impl WorkspaceBackend {
+    pub fn branch_context(&self) -> Result<git::BranchContext, String> {
+        match self {
+            Self::Local { root } => git::branch_context(root),
+            Self::Remote(remote) => remote
+                .get(&format!(
+                    "/v1/git/branch-context?project={}",
+                    encode(&remote.project.project_id)
+                ))
+                .map_err(branch_relay_error),
+        }
+    }
+    pub fn switch_branch_checked(
+        &self,
+        branch: &str,
+        expected: &git::BranchContext,
+        keep_changes: bool,
+    ) -> Result<(), String> {
+        match self {
+            Self::Local { root } => git::switch_branch_checked(root, branch, expected, keep_changes),
+            Self::Remote(remote) => remote.post_empty("/v1/git/switch-safe", &serde_json::json!({"project": remote.project.project_id, "branch": branch, "expected": expected, "keep_changes": keep_changes})).map_err(branch_relay_error),
+        }
+    }
+    pub fn editor_baseline(&self, path: &str) -> Option<String> {
+        match self {
+            Self::Local { root } => git::head_file(root, &entry_relative(root, path).ok()?)
+                .ok()
+                .flatten(),
+            Self::Remote(_) => None, // No extra relay capability or secret file reads.
+        }
+    }
+    pub fn preview_bytes(&self, path: &str) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Local { root } => {
+                dunlin_workspace::preview::read(root, &entry_relative(root, path)?)
+            }
+            Self::Remote(remote) => {
+                let value: Value = remote
+                    .get(&format!(
+                        "/v1/fs/preview?project={}&path={}",
+                        encode(&remote.project.project_id),
+                        encode(&entry_relative(&remote.project.path, path)?)
+                    ))
+                    .map_err(explorer_relay_error)?;
+                let encoded = value
+                    .get("contents")
+                    .and_then(Value::as_str)
+                    .ok_or("Invalid preview response")?;
+                if encoded.len()
+                    > (dunlin_workspace::preview::MAX_PREVIEW_BYTES as usize).div_ceil(3) * 4
+                {
+                    return Err("Preview response is too large".into());
+                }
+                STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "Invalid preview encoding".into())
+            }
+        }
+    }
+    pub fn rename_entry(
+        &self,
+        path: &str,
+        name: &str,
+    ) -> Result<dunlin_workspace::transfer::Transferred, String> {
+        match self {
+            Self::Local { root } => dunlin_workspace::transfer::rename_entry(root, &entry_relative(root, path)?, name),
+            Self::Remote(remote) => remote.post("/v1/fs/rename", &serde_json::json!({"project": remote.project.project_id, "path": entry_relative(&remote.project.path, path)?, "name": name})).map_err(explorer_relay_error),
+        }
+    }
+    pub fn delete_entry(&self, path: &str) -> Result<(), String> {
+        match self {
+            Self::Local { root } => {
+                let path = dunlin_workspace::transfer::mutable_entry(root, &entry_relative(root, path)?)?;
+                crate::platform::trash(&path)
+            }
+            Self::Remote(remote) => remote.post_empty("/v1/fs/delete", &serde_json::json!({"project": remote.project.project_id, "path": entry_relative(&remote.project.path, path)?})).map_err(explorer_relay_error),
+        }
+    }
     pub fn tree(&self) -> Result<FileTree, String> {
         match self {
             WorkspaceBackend::Local { root } => Ok(FileTree::load(root.clone())),
@@ -527,6 +646,13 @@ impl WorkspaceBackend {
         match self {
             WorkspaceBackend::Local { root } => git::stage_all(root),
             WorkspaceBackend::Remote(remote) => remote.git_stage_all(),
+        }
+    }
+
+    pub fn git_initialize(&self) -> Result<(), String> {
+        match self {
+            WorkspaceBackend::Local { root } => git::initialize(root),
+            WorkspaceBackend::Remote(remote) => remote.git_initialize(),
         }
     }
 
@@ -579,17 +705,10 @@ impl WorkspaceBackend {
         }
     }
 
-    pub fn git_switch(&self, branch: &str) -> Result<(), String> {
-        match self {
-            WorkspaceBackend::Local { root } => git::switch_branch(root, branch),
-            WorkspaceBackend::Remote(remote) => remote.git_switch(branch),
-        }
-    }
-
     pub fn read_file(&self, path: &str) -> Result<FileContents, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                workspace_fs::read_file(root, &self.relative(root, path))
+                workspace_fs::read_file(root, &entry_relative(root, path)?)
             }
             WorkspaceBackend::Remote(remote) => remote.read_file(path),
         }
@@ -603,7 +722,7 @@ impl WorkspaceBackend {
     ) -> Result<FileStat, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                let relative = self.relative(root, path);
+                let relative = entry_relative(root, path)?;
                 if let Some(expected) = expected_mtime_ms {
                     let current = workspace_fs::stat_file(root, &relative)?;
                     if current.mtime_ms != expected {
@@ -621,16 +740,46 @@ impl WorkspaceBackend {
     pub fn create_file(&self, path: &str) -> Result<FileStat, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                workspace_fs::create_file(root, &self.relative(root, path))
+                workspace_fs::create_file(root, &entry_relative(root, path)?)
             }
             WorkspaceBackend::Remote(remote) => remote.create_file(path),
+        }
+    }
+
+    pub fn create_directory(&self, path: &str) -> Result<FileStat, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                dunlin_workspace::transfer::create_directory(root, &entry_relative(root, path)?)
+            }
+            WorkspaceBackend::Remote(remote) => remote.create_directory(path),
+        }
+    }
+
+    pub fn move_entries(
+        &self,
+        sources: &[String],
+        target: &str,
+    ) -> Result<dunlin_workspace::transfer::TransferReport, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                let sources = sources
+                    .iter()
+                    .map(|source| entry_relative(root, source))
+                    .collect::<Result<Vec<_>, _>>()?;
+                dunlin_workspace::transfer::move_entries(
+                    root,
+                    &sources,
+                    &entry_relative(root, target)?,
+                )
+            }
+            WorkspaceBackend::Remote(remote) => remote.move_entries(sources, target),
         }
     }
 
     pub fn stat_file(&self, path: &str) -> Result<FileStat, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                workspace_fs::stat_file(root, &self.relative(root, path))
+                workspace_fs::stat_file(root, &entry_relative(root, path)?)
             }
             WorkspaceBackend::Remote(remote) => remote.stat_file(path),
         }
@@ -653,6 +802,14 @@ impl WorkspaceBackend {
                     .to_string()
             })
             .unwrap_or_else(|_| path.trim_start_matches('/').to_string())
+    }
+}
+
+fn branch_relay_error(error: String) -> String {
+    if error.starts_with("Relay error 404:") || error.starts_with("Relay error 405:") {
+        "Safe branch switching requires an updated Dunlin relay. No legacy checkout fallback was attempted.".into()
+    } else {
+        error
     }
 }
 
@@ -745,5 +902,26 @@ mod tests {
             .unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "two");
         let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn explorer_paths_are_confined_by_components_before_sending_them_to_a_relay() {
+        assert_eq!(
+            super::entry_relative("/project", "/project/src/file.rs").unwrap(),
+            "src/file.rs"
+        );
+        assert_eq!(super::entry_relative("/project", "/project").unwrap(), "");
+        assert_eq!(
+            super::entry_relative("/project", "src/file.rs").unwrap(),
+            "src/file.rs"
+        );
+        for path in [
+            "/project-other/file",
+            "/outside/file",
+            "../outside",
+            "src/../../outside",
+            "/project/../outside",
+        ] {
+            assert!(super::entry_relative("/project", path).is_err(), "{path}");
+        }
     }
 }

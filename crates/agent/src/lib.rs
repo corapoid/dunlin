@@ -66,6 +66,8 @@ pub struct HarnessConfig {
     /// Client name reported during `initialize`.
     pub client_name: String,
     pub resume_session_id: Option<String>,
+    /// Additional environment for the local child only; never mutates the app.
+    pub process_env: HashMap<String, String>,
 }
 
 impl HarnessConfig {
@@ -77,6 +79,7 @@ impl HarnessConfig {
             cwd: cwd.into(),
             client_name: "Dunlin".into(),
             resume_session_id: None,
+            process_env: HashMap::new(),
         }
     }
 
@@ -95,6 +98,7 @@ impl HarnessConfig {
             cwd: cwd.into(),
             client_name: "Dunlin".into(),
             resume_session_id: None,
+            process_env: HashMap::new(),
         }
     }
 
@@ -175,6 +179,17 @@ pub enum HarnessUpdate {
     UserMessage(String),
     AgentMessage(String),
     AgentThought(String),
+    MessageChunk {
+        id: String,
+        text: String,
+        thought: bool,
+    },
+    Child {
+        id: String,
+        parent_id: String,
+        title: Option<String>,
+        update: Box<HarnessUpdate>,
+    },
     ToolCall(ToolCallView),
     ToolCallUpdate(ToolCallDelta),
     Plan(Vec<PlanItem>),
@@ -191,6 +206,16 @@ pub enum HarnessUpdate {
 }
 
 /// Events emitted by the harness worker.
+/// Optional cumulative counters from ACP's end-turn usage extension. These are
+/// not the context-window `used` count. Missing data must remain unknown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub total: u64,
+    pub input: u64,
+    pub output: u64,
+    pub reasoning: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum HarnessEvent {
     Ready {
@@ -236,6 +261,8 @@ pub enum HarnessEvent {
     PromptFinished {
         session_id: String,
         stop_reason: String,
+        #[serde(default)]
+        usage: Option<TokenUsage>,
     },
     Error {
         message: String,
@@ -438,12 +465,15 @@ async fn run(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let transport = match &config.transport {
         HarnessTransport::Local { command } => {
-            Transport::Local(AcpAgent::from_str(command).map_err(|error| {
+            let agent = AcpAgent::from_str(command).map_err(|error| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("could not parse harness command: {error}"),
                 )
-            })?)
+            })?;
+            Transport::Local(AcpAgent::new(
+                agent.into_config().envs(config.process_env.clone()),
+            ))
         }
         HarnessTransport::Remote {
             url,
@@ -620,6 +650,12 @@ async fn run(
                                                 stop_reason: stop_reason_label(
                                                     response.stop_reason,
                                                 ),
+                                                usage: response.usage.as_ref().map(|usage| TokenUsage {
+                                                    total: usage.total_tokens,
+                                                    input: usage.input_tokens,
+                                                    output: usage.output_tokens,
+                                                    reasoning: usage.thought_tokens,
+                                                }),
                                             })
                                             .await;
                                     }
@@ -827,16 +863,36 @@ async fn open_session(
 }
 
 fn map_notification(notification: &SessionNotification) -> Option<HarnessUpdate> {
-    match &notification.update {
+    let update = map_session_update(&notification.update)?;
+    let wire = serde_json::to_value(&notification.update).ok()?;
+    if let Some(child) = wire
+        .get("_meta")
+        .and_then(|meta| meta.get("opencode/child-session"))
+        && let (Some(id), Some(parent_id)) = (child["id"].as_str(), child["parentID"].as_str())
+    {
+        return Some(HarnessUpdate::Child {
+            id: id.into(),
+            parent_id: parent_id.into(),
+            title: child["title"].as_str().map(str::to_owned),
+            update: Box::new(update),
+        });
+    }
+    Some(update)
+}
+
+fn map_session_update(update: &SessionUpdate) -> Option<HarnessUpdate> {
+    match update {
         SessionUpdate::UserMessageChunk(chunk) => {
             content_text(&chunk.content).map(HarnessUpdate::UserMessage)
         }
-        SessionUpdate::ConfigOptionUpdate(_) => serde_json::to_value(&notification.update)
-            .ok()
-            .map(|value| HarnessUpdate::Configuration {
-                models: session_models(&value),
-                modes: session_modes(&value),
-            }),
+        SessionUpdate::ConfigOptionUpdate(_) => {
+            serde_json::to_value(update)
+                .ok()
+                .map(|value| HarnessUpdate::Configuration {
+                    models: session_models(&value),
+                    modes: session_modes(&value),
+                })
+        }
         SessionUpdate::CurrentModeUpdate(update) => Some(HarnessUpdate::Configuration {
             models: None,
             modes: Some(SessionModes {
@@ -846,10 +902,24 @@ fn map_notification(notification: &SessionNotification) -> Option<HarnessUpdate>
             }),
         }),
         SessionUpdate::AgentMessageChunk(chunk) => {
-            content_text(&chunk.content).map(HarnessUpdate::AgentMessage)
+            content_text(&chunk.content).map(|text| match &chunk.message_id {
+                Some(id) => HarnessUpdate::MessageChunk {
+                    id: id.to_string(),
+                    text,
+                    thought: false,
+                },
+                None => HarnessUpdate::AgentMessage(text),
+            })
         }
         SessionUpdate::AgentThoughtChunk(chunk) => {
-            content_text(&chunk.content).map(HarnessUpdate::AgentThought)
+            content_text(&chunk.content).map(|text| match &chunk.message_id {
+                Some(id) => HarnessUpdate::MessageChunk {
+                    id: id.to_string(),
+                    text,
+                    thought: true,
+                },
+                None => HarnessUpdate::AgentThought(text),
+            })
         }
         SessionUpdate::ToolCall(tool) => Some(HarnessUpdate::ToolCall(tool_view(tool))),
         SessionUpdate::ToolCallUpdate(update) => {
@@ -1120,6 +1190,28 @@ impl ConnectTo<Client> for WsTransport {
 mod tests {
     use super::*;
 
+    #[test]
+    fn preserves_message_ids_and_child_origin_in_projected_acp_updates() {
+        let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+            "sessionUpdate":"agent_message_chunk","messageId":"message-1",
+            "content":{"type":"text","text":"# Child answer"},
+            "_meta":{"opencode/child-session":{"id":"child-1","parentID":"root-1","depth":1,"title":"Delegated city"}}
+        })).unwrap();
+        let mapped = map_notification(&notification(update)).unwrap();
+        assert!(
+            matches!(mapped,HarnessUpdate::Child {id,parent_id,update,..}
+            if id=="child-1" && parent_id=="root-1" && matches!(update.as_ref(),HarnessUpdate::MessageChunk {id,thought:false,..} if id=="message-1"))
+        );
+        let update: SessionUpdate = serde_json::from_value(serde_json::json!({
+            "sessionUpdate":"agent_message_chunk","messageId":"root-message",
+            "content":{"type":"text","text":"# Main answer"}
+        }))
+        .unwrap();
+        assert!(
+            matches!(map_notification(&notification(update)),Some(HarnessUpdate::MessageChunk {id,thought:false,..}) if id=="root-message")
+        );
+    }
+
     fn notification(update: SessionUpdate) -> SessionNotification {
         SessionNotification::new("session-1", update)
     }
@@ -1190,6 +1282,18 @@ mod tests {
                 cost_usd: Some(0.25),
             })
         );
+    }
+
+    #[test]
+    fn older_relay_completion_events_keep_usage_unknown() {
+        let event: HarnessEvent = serde_json::from_str(
+            r#"{"PromptFinished":{"session_id":"session","stop_reason":"end_turn"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            event,
+            HarnessEvent::PromptFinished { usage: None, .. }
+        ));
     }
 
     #[test]

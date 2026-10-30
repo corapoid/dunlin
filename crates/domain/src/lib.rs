@@ -30,6 +30,7 @@ impl MainView {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SidebarSection {
+    Dashboard,
     Projects,
     Files,
     Search,
@@ -38,7 +39,8 @@ pub enum SidebarSection {
 }
 
 impl SidebarSection {
-    pub const ALL: [SidebarSection; 5] = [
+    pub const ALL: [SidebarSection; 6] = [
+        SidebarSection::Dashboard,
         SidebarSection::Projects,
         SidebarSection::Files,
         SidebarSection::Search,
@@ -48,6 +50,7 @@ impl SidebarSection {
 
     pub fn label(self) -> &'static str {
         match self {
+            SidebarSection::Dashboard => "Dashboard",
             SidebarSection::Projects => "Projects",
             SidebarSection::Files => "Explorer",
             SidebarSection::Search => "Search",
@@ -112,6 +115,10 @@ impl PermissionMode {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProjectSettings {
+    /// Explicit user-selected bounded image, encoded as extension:base64.
+    /// Embedded so moving/deleting the original file cannot break the icon.
+    #[serde(default)]
+    pub custom_icon: Option<String>,
     #[serde(default)]
     pub harness: Option<String>,
     #[serde(default)]
@@ -124,6 +131,26 @@ pub struct ProjectGroup {
     pub id: Id,
     pub name: String,
     pub tone: ProjectTone,
+    #[serde(default)]
+    pub parent_id: Option<Id>,
+}
+impl ProjectGroup {
+    pub fn validate_parent(&self, groups: &[ProjectGroup]) -> Result<(), String> {
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(self.id.as_str());
+        let mut parent = self.parent_id.as_deref();
+        while let Some(id) = parent {
+            if !seen.insert(id) {
+                return Err("A group cannot be moved into itself or its descendants".into());
+            }
+            let group = groups
+                .iter()
+                .find(|g| g.id == id)
+                .ok_or("The parent group no longer exists")?;
+            parent = group.parent_id.as_deref();
+        }
+        Ok(())
+    }
 }
 
 impl Project {
@@ -142,6 +169,7 @@ impl Project {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionStatus {
+    Idle,
     Running,
     Waiting,
     Done,
@@ -152,6 +180,7 @@ pub enum SessionStatus {
 impl SessionStatus {
     pub fn label(self) -> &'static str {
         match self {
+            SessionStatus::Idle => "Ready",
             SessionStatus::Running => "Running",
             SessionStatus::Waiting => "Waiting",
             SessionStatus::Done => "Done",
@@ -375,9 +404,12 @@ pub struct TraceSpan {
     pub status: SpanStatus,
     pub start_ms: u64,
     pub duration_ms: u64,
+    #[serde(default)]
+    pub duration_known: bool,
     pub depth: u32,
     pub cost_usd: f64,
-    pub tokens: u64,
+    #[serde(default)]
+    pub tokens: Option<u64>,
     pub detail: String,
 }
 

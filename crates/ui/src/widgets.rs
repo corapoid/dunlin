@@ -31,7 +31,7 @@ pub fn kbd(label: impl Into<SharedString>, p: Palette) -> Div {
         .items_center()
         .justify_center()
         .text_size(px(10.))
-        .font_family("Geist Mono")
+        .font_family(crate::theme::code_font())
         .text_color(p.muted_fg)
         .child(label.into())
 }
@@ -98,7 +98,7 @@ pub fn usage_meter(
                 .child(
                     div()
                         .text_size(px(9.5))
-                        .font_family("Geist Mono")
+                        .font_family(crate::theme::code_font())
                         .text_color(p.muted_fg)
                         .child(plan),
                 )
@@ -106,7 +106,7 @@ pub fn usage_meter(
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(crate::theme::code_font())
                         .text_color(if pct > 85. { p.red } else { p.muted_fg })
                         .child(format!("{pct:.0}%")),
                 ),
@@ -185,7 +185,7 @@ pub fn divider(p: Palette) -> Div {
 pub fn meta(text: impl Into<SharedString>, p: Palette) -> Div {
     div()
         .text_size(px(10.5))
-        .font_family("Geist Mono")
+        .font_family(crate::theme::code_font())
         .text_color(p.muted_fg)
         .child(text.into())
 }

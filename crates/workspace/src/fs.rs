@@ -5,7 +5,7 @@
 //! out of both local and remote editing.
 
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -97,7 +97,15 @@ pub fn read_file(root: &str, relative: &str) -> Result<FileContents, String> {
             metadata.len() / 1024
         ));
     }
-    let bytes = fs::read(&path).map_err(|error| format!("Could not read file: {error}"))?;
+    let mut bytes = Vec::new();
+    fs::File::open(&path)
+        .map_err(|error| format!("Could not read file: {error}"))?
+        .take(MAX_EDITOR_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Could not read file: {error}"))?;
+    if bytes.len() as u64 > MAX_EDITOR_BYTES {
+        return Err("File grew beyond the editor size limit".into());
+    }
     let binary = bytes.iter().take(BINARY_SNIFF_BYTES).any(|byte| *byte == 0);
     let mtime_ms = mtime_ms(&metadata);
     if binary {
@@ -141,7 +149,22 @@ pub fn write_file(root: &str, relative: &str, contents: &str) -> Result<FileStat
 }
 
 pub fn create_file(root: &str, relative: &str) -> Result<FileStat, String> {
+    if Path::new(relative)
+        .components()
+        .any(|part| matches!(part, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
+    {
+        return Err("Files cannot be created inside Git metadata through Explorer".into());
+    }
     let path = resolve(root, relative)?;
+    let canonical_root = fs::canonicalize(root).map_err(|error| error.to_string())?;
+    if path
+        .strip_prefix(&canonical_root)
+        .map_err(|error| error.to_string())?
+        .components()
+        .any(|part| matches!(part, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
+    {
+        return Err("Files cannot be created inside Git metadata through Explorer".into());
+    }
     if path.exists() {
         return Err("A file with that name already exists".into());
     }

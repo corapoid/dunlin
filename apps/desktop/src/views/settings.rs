@@ -3,14 +3,76 @@
 
 use dunlin_domain::{MainView, ProjectTone, UsageSource};
 use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Sizable;
 use dunlin_ui::component::ThemeMode;
-use dunlin_ui::component::input::Input;
+use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::input::{Editor, Input};
+use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::component::{ActiveTheme, Icon};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::{DunlinApp, SettingsTab, tone_color, tone_soft};
 use dunlin_domain::PermissionMode;
+use dunlin_ui::component::Disableable;
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(crate) enum DesignSection {
+    #[default]
+    Application,
+    Sidebar,
+    Agent,
+    Editor,
+}
+impl DesignSection {
+    const ALL: [Self; 4] = [Self::Application, Self::Sidebar, Self::Agent, Self::Editor];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Application => "Application",
+            Self::Sidebar => "Sidebar",
+            Self::Agent => "Agent",
+            Self::Editor => "Editor",
+        }
+    }
+}
+pub(crate) fn settings_size(width: f32, height: f32) -> (f32, f32) {
+    (
+        (width - 48.).clamp(360., 1120.),
+        (height - 48.).clamp(320., 760.),
+    )
+}
+
+#[cfg(test)]
+mod design_tests {
+    #[test]
+    fn larger_settings_still_fit_the_supported_window_sizes() {
+        assert_eq!(super::settings_size(1360., 860.), (1120., 760.));
+        assert_eq!(super::settings_size(1100., 720.), (1052., 672.));
+        for (w, h) in [(1100., 720.), (1360., 860.), (1920., 1080.)] {
+            let (width, height) = super::settings_size(w, h);
+            assert!(width <= w - 48.);
+            assert!(height <= h - 48.);
+            assert!(width > 872.);
+            assert!(height > 602.);
+        }
+    }
+    #[test]
+    fn sidebar_branch_preference_migrates_and_roundtrips_without_resetting_other_design_choices() {
+        let mut settings: crate::app::StoredSettings = serde_json::from_str(
+            r#"{"dark":false,"editor_minimap":false,"sidebar_width":410,"chat_logo":false}"#,
+        )
+        .unwrap();
+        assert!(settings.show_project_branches);
+        settings.show_project_branches = false;
+        let saved: crate::app::StoredSettings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!saved.show_project_branches);
+        assert!(!saved.dark);
+        assert!(!saved.editor_minimap);
+        assert!(!saved.chat_logo);
+        assert_eq!(saved.sidebar_width, 410.);
+    }
+}
 
 pub(crate) fn render(
     this: &mut DunlinApp,
@@ -19,15 +81,24 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let tab = this.settings_tab;
+    let (width, height) = settings_size(
+        f32::from(window.viewport_size().width),
+        f32::from(window.viewport_size().height),
+    );
 
     let panel = div()
         .id("settings-panel")
-        .w(px(872.))
-        .h(px(602.))
+        .child(crate::effects::rounded_probe(&this.overlay_backdrop, 14.))
+        .w(px(width))
+        .h(px(height))
         .rounded(px(14.))
         .border_1()
-        .border_color(p.border_strong)
-        .bg(p.bg)
+        .border_color(crate::effects::panel_border(&this.overlay_backdrop, &p))
+        .shadow(crate::effects::panel_shadow())
+        // GPUI clips overflow rectangularly. Inset child backgrounds enough
+        // that they cannot paint into the outer rounded corners in light mode.
+        .p(px(6.))
+        .bg(crate::effects::panel_fill(&this.overlay_backdrop, p.bg))
         .overflow_hidden()
         .flex()
         .on_click(|_, _, cx| cx.stop_propagation())
@@ -38,6 +109,9 @@ pub(crate) fn render(
                 .min_w(px(0.))
                 .flex()
                 .flex_col()
+                .rounded_tr(px(13.))
+                .rounded_br(px(13.))
+                .bg(crate::effects::panel_fill(&this.overlay_backdrop, p.bg))
                 .child(settings_header(this, cx))
                 .child(
                     div()
@@ -47,7 +121,10 @@ pub(crate) fn render(
                         .overflow_y_scroll()
                         .child(match tab {
                             SettingsTab::General => general(this, window, cx),
+                            SettingsTab::Design => design(this, window, cx),
+                            SettingsTab::Chat => chat_settings(this, cx),
                             SettingsTab::Harnesses => harnesses(this, cx),
+                            SettingsTab::Skills => crate::skills::render(this, cx),
                             SettingsTab::Permissions => permissions(this, cx),
                             SettingsTab::Remote => remote_settings(this, cx),
                             SettingsTab::Editor => editor(this, cx),
@@ -63,7 +140,6 @@ pub(crate) fn render(
         .top_0()
         .left_0()
         .size_full()
-        .bg(p.overlay)
         .flex()
         .items_center()
         .justify_center()
@@ -79,11 +155,17 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let p = palette(cx);
     let mut nav = div()
         .w(px(186.))
-        .h_full()
+        .min_h(px(0.))
+        .overflow_hidden()
         .flex_shrink_0()
         .border_r_1()
         .border_color(p.border)
-        .bg(p.sidebar)
+        .bg(crate::effects::panel_fill(
+            &this.overlay_backdrop,
+            p.sidebar,
+        ))
+        .rounded_tl(px(13.))
+        .rounded_bl(px(13.))
         .flex()
         .flex_col()
         .child(
@@ -117,7 +199,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .child(
                     div()
                         .text_size(px(10.5))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("v0.1"),
                 ),
@@ -207,13 +289,25 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
     let (title, subtitle) = match this.settings_tab {
         SettingsTab::General => (
             "General",
-            "Appearance, startup behavior and the default workspace.",
+            "Startup behavior and the default workspace. Appearance lives in Design.",
+        ),
+        SettingsTab::Design => (
+            "Design",
+            "Configure the application, sidebar, agent conversations and editor.",
+        ),
+        SettingsTab::Chat => (
+            "Chat",
+            "Message appearance, timestamps and response details.",
         ),
         SettingsTab::Harnesses => (
             "Harnesses",
             "Connect Dunlin to ACP agents. OpenCode is the default.",
         ),
         SettingsTab::Permissions => ("Permissions", "Decide what an agent may do without asking."),
+        SettingsTab::Skills => (
+            "Skills",
+            "Create reusable instructions and install them globally for your harnesses.",
+        ),
         SettingsTab::Remote => (
             "Remote",
             "Pair this Mac with a relay and continue sessions on your other devices.",
@@ -278,9 +372,8 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         .into_any_element()
 }
 
-fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let dark = cx.theme().is_dark();
     let view = this.default_view;
     let harness = this.default_harness.clone();
 
@@ -290,14 +383,6 @@ fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp
         .flex()
         .flex_col()
         .gap(px(16.))
-        .child(section_label("APPEARANCE", &p))
-        .child(
-            div()
-                .flex()
-                .gap(px(10.))
-                .child(theme_card(false, !dark, window, cx, &p))
-                .child(theme_card(true, dark, window, cx, &p)),
-        )
         .child(section_label("STARTUP", &p))
         .child(
             div()
@@ -305,6 +390,14 @@ fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp
                 .border_1()
                 .border_color(p.border)
                 .bg(p.card)
+                .child(setting_row(
+                    "Startup destination",
+                    "Choose Dashboard or your last project. Conversation history is preserved.",
+                    div().flex().gap(px(4.)).children([(true, "Dashboard"), (false, "Last project")].map(|(dashboard, label)| div().id(format!("startup-destination:{dashboard}")).px(px(8.)).py(px(4.)).rounded(px(5.)).cursor_pointer().bg(if this.dashboard_settings.start_at_dashboard == dashboard { p.accent } else { p.card })
+                        .on_click(cx.listener(move |this, _, _, cx| { this.dashboard_settings.start_at_dashboard = dashboard; this.persist_settings(cx); cx.notify(); })).child(label))).into_any_element(),
+                    &p,
+                ))
+                .child(divider(&p))
                 .child(setting_row(
                     "Restore the last session",
                     "Reopen the most recent conversation and its project.",
@@ -317,6 +410,10 @@ fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp
                     ),
                     &p,
                 ))
+                .child(divider(&p))
+                .child(setting_row("Dashboard live agents", "Show working, waiting and connecting agents.", toggle_switch("dashboard-agents", this.dashboard_settings.show_agents, |this| this.dashboard_settings.show_agents = !this.dashboard_settings.show_agents, cx, &p), &p))
+                .child(divider(&p))
+                .child(setting_row("Dashboard activity", "Show recorded metrics and the configurable heatmap.", toggle_switch("dashboard-activity", this.dashboard_settings.show_activity, |this| this.dashboard_settings.show_activity = !this.dashboard_settings.show_activity, cx, &p), &p))
                 .child(divider(&p))
                 .child(setting_row(
                     "Default view",
@@ -451,19 +548,6 @@ fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp
                         &p,
                     ),
                     &p,
-                ))
-                .child(divider(&p))
-                .child(setting_row(
-                    "Show reasoning by default",
-                    "Expand the model's thinking block in chat.",
-                    toggle_switch(
-                        "show-reasoning",
-                        this.reasoning_open,
-                        |this| this.reasoning_open = !this.reasoning_open,
-                        cx,
-                        &p,
-                    ),
-                    &p,
                 )),
         );
 
@@ -486,6 +570,208 @@ fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp
     );
 
     body.into_any_element()
+}
+
+fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    let selected = this.design_section;
+    let tabs = div()
+        .px(px(16.))
+        .pt(px(14.))
+        .flex()
+        .gap(px(6.))
+        .children(DesignSection::ALL.map(|section| {
+            div()
+                .id(format!("design:{}", section.label()))
+                .px(px(12.))
+                .py(px(7.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(if selected == section {
+                    p.border_strong
+                } else {
+                    p.border
+                })
+                .bg(if selected == section {
+                    p.accent
+                } else {
+                    p.card
+                })
+                .text_size(px(12.))
+                .text_color(p.fg)
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.design_section = section;
+                    cx.notify();
+                }))
+                .child(section.label())
+        }));
+    let content = match selected {
+        DesignSection::Application => {
+            let dark = cx.theme().is_dark();
+            div().p(px(16.)).flex().flex_col().gap(px(14.))
+                .child(section_label("THEME", &p))
+                .child(div().flex().gap(px(12.)).child(theme_card(false, !dark, window, cx, &p)).child(theme_card(true, dark, window, cx, &p)))
+                .child(section_label("INTERFACE", &p))
+                .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card)
+                    .child(setting_row("UI font", "Interface typography. Agent and editor configuration have dedicated sections above.", font_picker(this, false, cx), &p))
+                    .child(divider(&p))
+                    .child(setting_row("Keyboard hints", "Hide visual hints without disabling shortcuts.", toggle_switch("design-shortcuts", this.show_shortcut_hints, |this| this.show_shortcut_hints = !this.show_shortcut_hints, cx, &p), &p)))
+                .into_any_element()
+        }
+        DesignSection::Sidebar => {
+            let mut view = div().flex().gap(px(4.));
+            for (candidate, label) in [
+                (crate::project_tree::View::List, "List"),
+                (crate::project_tree::View::Tree, "Tree"),
+            ] {
+                view = view.child(
+                    Button::new(format!("design-view:{label}"))
+                        .small()
+                        .label(label)
+                        .when(this.project_view == candidate, |b| b.bg(p.accent))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.project_view = candidate;
+                            this.persist_settings(cx);
+                            cx.notify();
+                        })),
+                );
+            }
+            let mut sort = div().flex().gap(px(4.));
+            for (candidate, label) in [
+                (crate::project_tree::Sort::Name, "Name ↑"),
+                (crate::project_tree::Sort::Modified, "Modified ↓"),
+            ] {
+                sort = sort.child(
+                    Button::new(format!("design-sort:{label}"))
+                        .small()
+                        .label(label)
+                        .when(this.project_sort == candidate, |b| b.bg(p.accent))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.project_sort = candidate;
+                            this.persist_settings(cx);
+                            cx.notify();
+                        })),
+                );
+            }
+            let mut width = div().flex().items_center().gap(px(6.));
+            for (label, delta) in [("−", -24.), ("+", 24.), ("Reset", 0.)] {
+                width = width.child(
+                    Button::new(format!("design-width:{label}"))
+                        .small()
+                        .label(label)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.sidebar_width = if delta == 0. {
+                                crate::sidebar_layout::DEFAULT_WIDTH
+                            } else {
+                                crate::sidebar_layout::width(
+                                    this.sidebar_width + delta,
+                                    f32::from(window.viewport_size().width),
+                                )
+                            };
+                            this.persist_settings(cx);
+                            cx.notify();
+                        })),
+                );
+            }
+            div().p(px(16.)).flex().flex_col().gap(px(14.)).child(section_label("PROJECT LIST", &p))
+                .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card)
+                    .child(setting_row("Show branch names", "Show or hide branch/Git labels below project names. Dirty-change indicators remain visible.", toggle_switch("project-branches", this.show_project_branches, |this| this.show_project_branches = !this.show_project_branches, cx, &p), &p))
+                    .child(divider(&p)).child(setting_row("View", "List retains group breadcrumbs; Tree shows the hierarchy.", view.into_any_element(), &p))
+                    .child(divider(&p)).child(setting_row("Sort", "Pinned projects stay first. Modification dates use cached repository metadata.", sort.into_any_element(), &p))
+                    .child(divider(&p)).child(setting_row("Width", &format!("{} points. You can also drag the sidebar edge; double-click to reset.", this.sidebar_width.round()), width.into_any_element(), &p))
+                    .child(divider(&p)).child(setting_row("Collapse account usage", "Start with the compact account usage footer.", toggle_switch("design-usage-collapse", this.account_usage_collapsed, |this| this.account_usage_collapsed = !this.account_usage_collapsed, cx, &p), &p)))
+                .into_any_element()
+        }
+        DesignSection::Agent => chat_settings(this, cx),
+        DesignSection::Editor => editor(this, cx),
+    };
+    div()
+        .flex()
+        .flex_col()
+        .child(tabs)
+        .child(content)
+        .into_any_element()
+}
+
+fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    type ChatToggle = (
+        &'static str,
+        &'static str,
+        &'static str,
+        bool,
+        fn(&mut DunlinApp),
+    );
+    let controls: [ChatToggle; 6] = [
+        (
+            "Stream responses",
+            "Show response text as the harness sends it, including in Final answer only mode. Turn off to wait for the completed response. A harness that buffers text cannot be made to stream by the UI.",
+            "stream-responses",
+            this.stream_responses,
+            |this| this.stream_responses = !this.stream_responses,
+        ),
+        (
+            "Message times",
+            "Show the local time for your messages and agent responses. Older messages without timestamps stay unlabeled.",
+            "chat-timestamps",
+            this.chat_timestamps,
+            |this| this.chat_timestamps = !this.chat_timestamps,
+        ),
+        (
+            "Agent turn duration",
+            "Show elapsed turn time in parentheses after the response, including tools and approval waits. Available for newly recorded turns.",
+            "chat-duration",
+            this.chat_duration,
+            |this| this.chat_duration = !this.chat_duration,
+        ),
+        (
+            "Response logo",
+            "Show the Dunlin logo next to agent responses.",
+            "chat-logo",
+            this.chat_logo,
+            |this| this.chat_logo = !this.chat_logo,
+        ),
+        (
+            "Show reasoning by default",
+            "Expand the model's thinking block in Chat.",
+            "show-reasoning",
+            this.reasoning_open,
+            |this| this.reasoning_open = !this.reasoning_open,
+        ),
+        (
+            "Final answer only",
+            "Hide intermediate text, reasoning, tools, plans and subagent output. Permission requests and errors remain visible; full history stays in Graph / Trace.",
+            "final-answer-only",
+            this.final_answer_only,
+            |this| this.final_answer_only = !this.final_answer_only,
+        ),
+    ];
+    let mut card = div()
+        .rounded(px(8.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card);
+    for (index, (title, description, id, value, action)) in controls.into_iter().enumerate() {
+        if index > 0 {
+            card = card.child(divider(&p));
+        }
+        card = card.child(setting_row(
+            title,
+            description,
+            toggle_switch(id, value, action, cx, &p),
+            &p,
+        ));
+    }
+    div()
+        .px(px(16.))
+        .py(px(14.))
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .child(section_label("CHAT APPEARANCE", &p))
+        .child(card)
+        .into_any_element()
 }
 
 fn theme_card(
@@ -609,6 +895,7 @@ fn theme_card(
 fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let current = this.default_harness.clone();
+    let discovery = this.harness_discovery.clone();
     let custom_command =
         crate::harness::harness_command("Custom ACP", &this.custom_harness_command);
     let harnesses = vec![
@@ -644,14 +931,29 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .flex()
         .flex_col()
         .gap(px(12.))
-        .child(section_label("DEFAULT HARNESS", &p))
+        .child(div().flex().items_center().child(section_label("DETECTED ON THIS MAC", &p)).child(div().flex_1()).child(
+            Button::new("rescan-harnesses").ghost().small().icon(IconName::RefreshCw).label("Scan again")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.harness_discovery = crate::harness_discovery::discover();
+                    cx.notify();
+                }))
+        ))
+        .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Import sessions: OpenCode export JSON · Claude/Codex session JSONL · Custom ACP portable dunlin.session.v1 JSON. Histories are copied, not resumed. Existing projects are matched by path; unmatched sessions can be assigned manually."))
+        .child(crate::session_import::render(this, cx))
         .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
-            "Used for new conversations. Switch the active harness from the chat composer.",
+            "Detected automatically in PATH and common Homebrew/user install folders. Choose an available ACP adapter as the default for new conversations. CLI-only installations need an adapter; nothing is installed or authorized automatically.",
         ));
 
     for (name, command, model, tone) in harnesses {
         let selected = current == name;
         let installed = crate::harness::command_available(&command);
+        let detected = discovery.iter().find(|entry| entry.name == name);
+        let cli_only = !installed && detected.is_some_and(|entry| entry.cli.is_some());
+        let found_path = detected
+            .and_then(|entry| entry.adapter.as_ref().or(entry.cli.as_ref()))
+            .map(|path| path.to_string_lossy().to_string());
+        let adapter_docs = detected.filter(|_| cli_only).map(|entry| entry.docs);
+        let copy_command = command.clone();
         let live_status = (!this.project().is_remote() && this.session_harness() == name)
             .then_some(&this.harness.status);
         let (status, version) = match (name, live_status) {
@@ -672,11 +974,16 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 ("Not configured".to_string(), "—".to_string())
             }
             (_, _) if installed => ("Installed".to_string(), "—".to_string()),
+            (_, _) if cli_only => (
+                "CLI found · ACP adapter needed".to_string(),
+                "—".to_string(),
+            ),
             _ => ("Not installed".to_string(), "—".to_string()),
         };
         let color = tone_color(&p, tone);
         let soft = tone_soft(&p, tone);
         let name_owned = name.to_string();
+        let import_name = name.to_string();
 
         body = body.child(
             div()
@@ -695,6 +1002,10 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .gap(px(7.))
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
+                    if !installed {
+                        this.set_notice("Install an ACP adapter before selecting this harness. Detecting a CLI alone does not confirm ACP support.", cx);
+                        return;
+                    }
                     this.default_harness = name_owned.clone();
                     this.persist_settings(cx);
                     this.set_notice(
@@ -740,7 +1051,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                 .child(
                                     div()
                                         .text_size(px(11.0))
-                                        .font_family("Geist Mono")
+                                        .font_family(dunlin_ui::theme::code_font())
                                         .text_color(p.muted_fg)
                                         .child(if version == "—" {
                                             model.to_string()
@@ -778,7 +1089,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                 .child(
                                     div()
                                         .text_size(px(10.5))
-                                        .font_family("Geist Mono")
+                                        .font_family(dunlin_ui::theme::code_font())
                                         .text_color(if status == "Ready" {
                                             p.green
                                         } else if status == "Installed" {
@@ -818,7 +1129,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child("$"),
                         )
@@ -826,7 +1137,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             div()
                                 .flex_1()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.fg.opacity(0.8))
                                 .child(command),
                         )
@@ -840,7 +1151,9 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                 .justify_center()
                                 .cursor_pointer()
                                 .hover(move |style| style.bg(p.hover))
-                                .on_click(cx.listener(|this, _, _, cx| {
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    cx.write_to_clipboard(ClipboardItem::new_string(copy_command.clone()));
                                     this.set_notice("ACP command copied", cx);
                                 }))
                                 .child(
@@ -849,13 +1162,21 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                         .text_color(p.muted_fg),
                                 ),
                         ),
-                ),
+                )
+                .when_some(found_path, |view, path| view.child(div().text_size(px(10.5)).text_color(p.muted_fg).truncate().child(format!("Detected: {path}"))))
+                .child(Button::new(format!("import-sessions:{name}")).small().label("Import sessions…").disabled(this.session_import.loading).on_click(cx.listener(move |this, _, _, cx| { cx.stop_propagation(); this.choose_session_import(&import_name, cx); })))
+                .when_some(adapter_docs, |view, url| view.child(
+                    Button::new(format!("adapter-setup:{name}")).ghost().small().label("Set up ACP adapter…")
+                        .on_click(move |_, _, cx| { cx.stop_propagation(); cx.open_url(url); })
+                )),
         );
     }
 
     body = body
-        .child(section_label("OPENCODE PROVIDER ACCOUNTS", &p))
-        .child(super::chat_controls::provider_accounts(this, cx))
+        .when(this.local_opencode(), |body| {
+            body.child(section_label("OPENCODE PROVIDER ACCOUNTS", &p))
+                .child(super::chat_controls::provider_accounts(this, cx))
+        })
         .child(section_label("CUSTOM ACP COMMAND", &p))
         .child(
             div()
@@ -881,7 +1202,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child("$"),
                         )
@@ -1188,21 +1509,21 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .bg(p.card)
                 .child(setting_row(
                     "UI font",
-                    "Bundled with Dunlin. No paid license required.",
-                    value_chip("Geist", &p),
+                    "Interface font. Geist is bundled; other fonts come from this Mac.",
+                    font_picker(this, false, cx),
                     &p,
                 ))
                 .child(divider(&p))
                 .child(setting_row(
                     "Code font",
                     "Monospaced face for files, traces and diffs.",
-                    value_chip("Geist Mono", &p),
+                    font_picker(this, true, cx),
                     &p,
                 ))
                 .child(divider(&p))
                 .child(setting_row(
                     "Font size",
-                    "Applies to the editor, diffs and code metadata.",
+                    "Applies to the editor, diffs and the live preview below.",
                     stepper(this, cx, &p),
                     &p,
                 ))
@@ -1230,6 +1551,13 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         cx,
                         &p,
                     ),
+                    &p,
+                ))
+                .child(divider(&p))
+                .child(setting_row(
+                    "File minimap",
+                    "Clickable map on the right. Git: green/amber/red; unsaved edits: blue. Remote files show unsaved edits only.",
+                    toggle_switch("editor-minimap", this.editor_minimap, |this| this.editor_minimap = !this.editor_minimap, cx, &p),
                     &p,
                 )),
         )
@@ -1259,7 +1587,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child("supervisor.rs"),
                         )
@@ -1267,48 +1595,18 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .child(
                             div()
                                 .text_size(px(10.5))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child("Rust"),
                         ),
                 )
                 .child(
-                    div().p(px(9.)).flex().flex_col().gap(px(1.)).children(
-                        [
-                            ("42", "pub fn route_permission(", p.violet),
-                            ("43", "    child: &SessionId,", p.fg.opacity(0.8)),
-                            ("44", "    request: PermissionRequest,", p.fg.opacity(0.8)),
-                            ("45", ") -> Result<()> {", p.fg.opacity(0.8)),
-                            ("46", "    self.projection", p.blue),
-                            ("47", "        .active_turn(child)?", p.fg.opacity(0.8)),
-                            ("48", "        .send(request)?;", p.fg.opacity(0.8)),
-                            ("49", "    Ok(())", p.fg.opacity(0.8)),
-                            ("50", "}", p.violet),
-                        ]
-                        .map(|(number, line, color)| {
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(8.))
-                                .child(
-                                    div()
-                                        .w(px(18.))
-                                        .text_right()
-                                        .text_size(px(11.0))
-                                        .font_family("Geist Mono")
-                                        .text_color(p.muted_fg.opacity(0.5))
-                                        .child(number),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.5))
-                                        .font_family("Geist Mono")
-                                        .text_color(color)
-                                        .child(line),
-                                )
-                                .into_any_element()
-                        }),
-                    ),
+                    Editor::new(&this.editor_preview)
+                        .h(px(210.))
+                        .appearance(false)
+                        .bordered(false)
+                        .readonly(true)
+                        .aria_label("Live editor font preview"),
                 ),
         );
 
@@ -1333,7 +1631,7 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             div()
                 .flex()
                 .items_center()
-                .child(section_label("SUBSCRIPTION WINDOWS", &p))
+                .child(section_label("ACTIVE ACCOUNT & SESSION USAGE", &p))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1366,7 +1664,7 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             if this.usage_loading {
                                 "Refreshing…"
                             } else {
-                                "Refresh all"
+                                "Refresh"
                             },
                         )),
                 ),
@@ -1417,7 +1715,7 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             .child(
                                 div()
                                     .text_size(px(10.0))
-                                    .font_family("Geist Mono")
+                                    .font_family(dunlin_ui::theme::code_font())
                                     .text_color(color)
                                     .child(usage.plan.clone()),
                             ),
@@ -1453,7 +1751,7 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             .child(
                                 div()
                                     .text_size(px(10.5))
-                                    .font_family("Geist Mono")
+                                    .font_family(dunlin_ui::theme::code_font())
                                     .text_color(p.muted_fg)
                                     .child(format!("resets in {}", window.resets_in)),
                             )
@@ -1461,7 +1759,7 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             .child(
                                 div()
                                     .text_size(px(11.0))
-                                    .font_family("Geist Mono")
+                                    .font_family(dunlin_ui::theme::code_font())
                                     .text_color(if percent > 85. { p.red } else { p.muted_fg })
                                     .child(format!("{percent:.0}%")),
                             ),
@@ -1487,44 +1785,12 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         card = card.child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .child(usage.detail.clone()),
         );
         body = body.child(card);
     }
-
-    body = body.child(
-        div()
-            .p(px(10.))
-            .rounded(px(8.))
-            .bg(p.amber_soft)
-            .flex()
-            .items_start()
-            .gap(px(7.))
-            .child(Icon::new(IconName::Info).size(px(13.)).text_color(p.amber))
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.amber)
-                            .child("Where these numbers come from"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .line_height(relative(1.5))
-                            .text_color(p.amber.opacity(0.9))
-                            .child("Context usage is live by ACP. Provider windows are read where the harness runs: on this Mac for local projects, or on the relay for remote projects. Codex uses its local app-server, Claude Code requires a `user:profile` login, and OpenCode stays estimated until it exposes subscription data. Dunlin never uploads project data to obtain usage."),
-                    ),
-            ),
-    );
 
     body.into_any_element()
 }
@@ -1688,7 +1954,7 @@ fn advanced(_this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .child(
                             div()
                                 .text_size(px(11.0))
-                                .font_family("Geist Mono")
+                                .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg)
                                 .child("Rust · GPUI · ACP · macOS arm64"),
                         ),
@@ -1697,7 +1963,7 @@ fn advanced(_this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .font_family("Geist Mono")
+                        .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
                         .child("MIT"),
                 ),
@@ -1790,7 +2056,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                                     .child(
                                         div()
                                             .text_size(px(11.0))
-                                            .font_family("Geist Mono")
+                                            .font_family(dunlin_ui::theme::code_font())
                                             .text_color(p.muted_fg)
                                             .truncate()
                                             .child(format!("{} · {}", host.url, host.user_name)),
@@ -1848,7 +2114,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
             .child(
                 div()
                     .text_size(px(11.0))
-                    .font_family("Geist Mono")
+                    .font_family(dunlin_ui::theme::code_font())
                     .text_color(p.muted_fg)
                     .child(label),
             )
@@ -1962,7 +2228,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
 fn section_label(label: &str, p: &Palette) -> AnyElement {
     div()
         .text_size(px(11.0))
-        .font_family("Geist Mono")
+        .font_family(dunlin_ui::theme::code_font())
         .font_weight(FontWeight::MEDIUM)
         .text_color(p.muted_fg)
         .child(label.to_string())
@@ -2041,22 +2307,81 @@ fn toggle_switch(
         .into_any_element()
 }
 
-fn value_chip(label: &str, p: &Palette) -> AnyElement {
-    div()
-        .h(px(21.))
-        .px(px(6.))
-        .rounded(px(4.))
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .child(
-            div()
-                .text_size(px(11.0))
-                .font_family("Geist Mono")
-                .text_color(p.fg.opacity(0.8))
-                .child(label.to_string()),
-        )
-        .into_any_element()
+fn font_picker(this: &DunlinApp, code: bool, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let selected = if code {
+        this.code_font_family.clone()
+    } else {
+        this.ui_font_family.clone()
+    };
+    let app = cx.entity().downgrade();
+    Button::new(if code {
+        "code-font-picker"
+    } else {
+        "ui-font-picker"
+    })
+    .ghost()
+    .small()
+    .label(selected)
+    .dropdown_caret(true)
+    .max_w(px(230.))
+    .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
+        let Some(entity) = app.upgrade() else {
+            return menu;
+        };
+        let this = entity.read(cx);
+        let selected = if code {
+            &this.code_font_family
+        } else {
+            &this.ui_font_family
+        };
+        menu = menu.label(if code {
+            "Installed code fonts"
+        } else {
+            "Installed interface fonts"
+        });
+        for family in &this.available_fonts {
+            if code && !code_font_candidate(family) && family != selected {
+                continue;
+            }
+            let name = family.clone();
+            let action_name = name.clone();
+            let app = app.clone();
+            menu = menu.item(
+                PopupMenuItem::element(move |window, cx| {
+                    crate::effects::menu_surface(
+                        div()
+                            .min_w(px(200.))
+                            .max_w(px(300.))
+                            .text_size(px(12.))
+                            .font_family(name.clone())
+                            .text_color(palette(cx).fg)
+                            .truncate()
+                            .child(name.clone()),
+                        window,
+                        cx,
+                    )
+                })
+                .checked(family == selected)
+                .on_click(move |_, _, cx| {
+                    let _ = app.update(cx, |this, cx| this.select_font(&action_name, code, cx));
+                }),
+            );
+        }
+        menu.scrollable(true).max_h(px(340.))
+    })
+    .into_any_element()
+}
+
+fn code_font_candidate(family: &str) -> bool {
+    let name = family.to_ascii_lowercase();
+    name.contains("mono")
+        || name == "monaco"
+        || name.contains("code")
+        || name.contains("courier")
+        || name.contains("consolas")
+        || name.contains("menlo")
+        || name.contains("andale")
+        || name.contains("fixed")
 }
 
 fn mono_value(label: &str, p: &Palette) -> AnyElement {
@@ -2071,7 +2396,7 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
                 .truncate()
                 .child(label.to_string()),
@@ -2111,7 +2436,7 @@ fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> An
             div()
                 .px(px(5.))
                 .text_size(px(11.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.fg.opacity(0.8))
                 .child(format!("{size:.0} px")),
         )
@@ -2148,7 +2473,7 @@ fn scope_badge(label: &str, fg: Hsla, bg: Hsla, _p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.5))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(fg)
                 .child(label.to_uppercase()),
         )
@@ -2172,9 +2497,32 @@ fn source_badge(source: UsageSource, p: &Palette) -> AnyElement {
         .child(
             div()
                 .text_size(px(10.0))
-                .font_family("Geist Mono")
+                .font_family(dunlin_ui::theme::code_font())
                 .text_color(fg)
                 .child(label),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod font_tests {
+    #[test]
+    fn code_menu_recognizes_common_installed_monospace_families() {
+        for name in [
+            "Geist Mono",
+            "Menlo",
+            "Monaco",
+            "SF Mono",
+            "Courier New",
+            "JetBrains Mono",
+            "Fira Code",
+            "Consolas",
+            "Andale Mono",
+        ] {
+            assert!(super::code_font_candidate(name), "{name}");
+        }
+        for name in ["Geist", "Arial", "Helvetica Neue", "Apple Color Emoji"] {
+            assert!(!super::code_font_candidate(name), "{name}");
+        }
+    }
 }

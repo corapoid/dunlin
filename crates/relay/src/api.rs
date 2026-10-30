@@ -176,6 +176,12 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/fs/tree", get(fs_tree))
         .route("/v1/fs/file", get(fs_file).put(fs_write))
         .route("/v1/fs/create", post(fs_create))
+        .route("/v1/fs/mkdir", post(fs_mkdir))
+        .route("/v1/fs/move", post(fs_move))
+        .route("/v1/fs/rename", post(fs_rename))
+        .route("/v1/fs/delete", post(fs_delete))
+        .route("/v1/fs/preview", get(fs_preview))
+        .route("/v1/git/init", post(git_init))
         .route("/v1/fs/upload", post(fs_upload))
         .route("/v1/fs/stat", get(fs_stat))
         .route("/v1/search", get(search_project))
@@ -190,6 +196,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/git/push", post(git_push))
         .route("/v1/git/branches", get(git_branches))
         .route("/v1/git/switch", post(git_switch))
+        .route("/v1/git/branch-context", get(git_branch_context))
+        .route("/v1/git/switch-safe", post(git_switch_safe))
         .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
         .with_state(state)
 }
@@ -548,6 +556,93 @@ async fn fs_create(
     Ok(Json(stat))
 }
 
+async fn fs_mkdir(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CreateFileRequest>,
+) -> Result<Json<workspace_fs::FileStat>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    Ok(Json(
+        run_blocking(move || {
+            dunlin_workspace::transfer::create_directory(&project.path, &request.path)
+        })
+        .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct RenameRequest {
+    project: String,
+    path: String,
+    name: String,
+}
+async fn fs_rename(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<RenameRequest>,
+) -> Result<Json<dunlin_workspace::transfer::Transferred>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    Ok(Json(
+        run_blocking(move || {
+            dunlin_workspace::transfer::rename_entry(&project.path, &request.path, &request.name)
+        })
+        .await?,
+    ))
+}
+async fn fs_delete(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CreateFileRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    run_blocking(move || dunlin_workspace::transfer::delete_entry(&project.path, &request.path))
+        .await?;
+    Ok(Json(json!({"ok": true})))
+}
+async fn fs_preview(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<FileQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let bytes =
+        run_blocking(move || dunlin_workspace::preview::read(&project.path, &query.path)).await?;
+    Ok(Json(json!({"contents": STANDARD.encode(bytes)})))
+}
+
+#[derive(Deserialize)]
+struct MoveRequest {
+    project: String,
+    sources: Vec<String>,
+    target: String,
+}
+
+async fn fs_move(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<MoveRequest>,
+) -> Result<Json<dunlin_workspace::transfer::TransferReport>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    if request.sources.len() > 1000 {
+        return Err(ApiError::bad_request("Too many paths"));
+    }
+    let report = run_blocking(move || {
+        dunlin_workspace::transfer::move_entries(&project.path, &request.sources, &request.target)
+    })
+    .await?;
+    Ok(Json(report))
+}
+
+async fn git_init(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ProjectRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    run_blocking(move || git::initialize(&project.path)).await?;
+    Ok(Json(json!({"ok": true})))
+}
+
 async fn fs_stat(
     AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
@@ -831,6 +926,42 @@ struct BranchRequest {
     branch: String,
 }
 
+async fn git_branch_context(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<ProjectQuery>,
+) -> Result<Json<git::BranchContext>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    Ok(Json(
+        run_blocking(move || git::branch_context(&project.path)).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct SafeBranchRequest {
+    project: String,
+    branch: String,
+    expected: git::BranchContext,
+    keep_changes: bool,
+}
+async fn git_switch_safe(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<SafeBranchRequest>,
+) -> Result<StatusCode, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    run_blocking(move || {
+        git::switch_branch_checked(
+            &project.path,
+            &request.branch,
+            &request.expected,
+            request.keep_changes,
+        )
+    })
+    .await?;
+    Ok(StatusCode::OK)
+}
+
 async fn git_switch(
     AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
@@ -851,3 +982,6 @@ where
         .map_err(|error| ApiError::internal(error.to_string()))?
         .map_err(ApiError::bad_request)
 }
+
+#[cfg(test)]
+mod tests;

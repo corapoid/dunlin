@@ -5,5 +5,8 @@
 
 pub mod fs;
 pub mod git;
+pub mod preview;
+pub mod repositories;
 pub mod search;
+pub mod transfer;
 pub mod tree;

@@ -158,10 +158,57 @@ fn main() -> Result<()> {
                     agent_client_protocol::Client,
                 >| {
                     let session_id = request.session_id;
+                    if std::env::var_os("DUNLIN_MOCK_RICH_CHAT").is_some() {
+                        use serde_json::json;
+                        let mut updates=vec![json!({"sessionUpdate":"agent_message_chunk","messageId":"commentary","content":{"type":"text","text":"Intermediate status: checking two cities."}})];
+                        for (slug,city) in [("krakow","Kraków"),("warsaw","Warszawa")] {
+                            let child=format!("child-{slug}");
+                            updates.push(json!({"sessionUpdate":"tool_call","toolCallId":format!("delegate-{city}"),"title":"subagent","kind":"think","status":"completed","content":[{"type":"content","content":{"type":"text","text":format!("<subagent sessionID=\"{child}\" state=\"completed\">Child result</subagent>")}}]}));
+                            updates.push(json!({"sessionUpdate":"agent_message_chunk","messageId":format!("msg-{city}"),"content":{"type":"text","text":format!("Child-only details for {city}")},"_meta":{"opencode/child-session":{"id":child,"parentID":session_id.to_string(),"depth":1,"title":format!("Weather {city}")}}}));
+                        }
+                        updates.push(json!({"sessionUpdate":"agent_message_chunk","messageId":"final","content":{"type":"text","text":"# Weather summary\n\n**Kraków:** clear.\n\n"}}));
+                        updates.push(json!({"sessionUpdate":"agent_thought_chunk","messageId":"reasoning","content":{"type":"text","text":"Hidden reasoning between final text chunks."}}));
+                        updates.push(json!({"sessionUpdate":"agent_message_chunk","messageId":"final","content":{"type":"text","text":"**Warszawa:** cloudy.\n\n| City | Temperature |\n| --- | --- |\n| Kraków | 12 C |\n| Warszawa | 10 C |\n\n- Two delegated sessions\n- No network calls\n\n[Example source](https://example.com)\n\n```rust\nlet cities = 2;\n```\n\nMARKDOWN END"}}));
+                        for update in updates {
+                            connection.send_notification(SessionNotification::new(session_id.clone(),serde_json::from_value::<SessionUpdate>(update).unwrap()))?;
+                            async_io::Timer::after(std::time::Duration::from_millis(80)).await;
+                        }
+                        let mut response = PromptResponse::new(StopReason::EndTurn);
+                        if std::env::var_os("DUNLIN_MOCK_TOKEN_USAGE").is_some() {
+                            response = response.usage(agent_client_protocol::schema::v1::Usage::new(1200, 1000, 200));
+                        }
+                        return responder.respond(response);
+                    }
                     if let Ok(value) = std::env::var("DUNLIN_MOCK_DELAY_MS")
                         && let Ok(ms) = value.parse::<u64>()
                     {
                         async_io::Timer::after(std::time::Duration::from_millis(ms)).await;
+                    }
+                    // No permissions, tools, network or file writes: a long,
+                    // growing reply for native tail-following regression checks.
+                    if let Ok(value) = std::env::var("DUNLIN_MOCK_STREAM_CHUNKS")
+                        && let Ok(chunks) = value.parse::<usize>()
+                    {
+                        for index in 0..chunks.min(500) {
+                            connection.send_notification(SessionNotification::new(
+                                session_id.clone(),
+                                SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                                    TextContent::new(format!("Stream line {} — deterministic scroll fixture.\n\n", index + 1)),
+                                ))),
+                            ))?;
+                            async_io::Timer::after(std::time::Duration::from_millis(60)).await;
+                        }
+                        connection.send_notification(SessionNotification::new(
+                            session_id,
+                            SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                                TextContent::new("SCROLL END — latest reply is visible."),
+                            ))),
+                        ))?;
+                        let mut response = PromptResponse::new(StopReason::EndTurn);
+                        if std::env::var_os("DUNLIN_MOCK_TOKEN_USAGE").is_some() {
+                            response = response.usage(agent_client_protocol::schema::v1::Usage::new(1200, 1000, 200));
+                        }
+                        return responder.respond(response);
                     }
                     connection.send_notification(SessionNotification::new(
                         session_id.clone(),
