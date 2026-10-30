@@ -4,6 +4,12 @@ Ten dokument opisuje kierunek rozwoju Dunlina po wersji `0.1`: docelowy model
 usług, decyzje architektoniczne i kolejność prac. Roadmapa z konkretnymi
 kamieniami milowymi jest w [`ROADMAP.md`](ROADMAP.md).
 
+Stan po przeglądzie 2026-10-30: [`REMAINING-WORK.md`](REMAINING-WORK.md).
+Ten plan opisuje architekturę docelową, nie listę zupełnie niewdrożonych funkcji.
+Są już m.in. globalne skills, hierarchiczne grupy, recorded-data Dashboard,
+import sesji z plików, lokalny graf Git z branch create i część feature-modułów.
+Import historii nie zastępuje planowanych skanerów billing usage.
+
 ## Zasady
 
 1. Dunlin pozostaje natywną aplikacją macOS w Rust/GPUI. Nie wprowadzamy

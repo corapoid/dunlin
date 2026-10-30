@@ -53,7 +53,7 @@ fi
 
 APP_NAME="${DUNLIN_APP_NAME:-Dunlin}"
 BUNDLE_ID="${DUNLIN_BUNDLE_ID:-dev.dunlin.ide}"
-VERSION="${DUNLIN_VERSION:-0.1.0-beta.1}"
+VERSION="${DUNLIN_VERSION:-0.1.0-beta.2}"
 BUILD_NUMBER="${DUNLIN_BUILD:-1}"
 APP="dist/$APP_NAME.app"
 CONTENTS="$APP/Contents"

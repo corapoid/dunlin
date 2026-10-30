@@ -2,6 +2,10 @@
 
 Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
 
+Aktualny przegląd brakujących zakresów (2026-10-30):
+[`REMAINING-WORK.md`](REMAINING-WORK.md). Duże niezaznaczone milestone'y poniżej
+mogą mieć gotowe części — nie należy traktować ich jako całkowicie niewdrożonych.
+
 ## Stan implementacji
 
 Zrealizowane do tej pory:
@@ -18,6 +22,12 @@ Zrealizowane do tej pory:
 - inspector jako overlay w wąskim oknie,
 - per-project override harnessu i permission mode,
 - ustawienie pokazywania/ukrywania hintów klawiaturowych,
+- import plików sesji per harness z podglądem, dopasowaniem ścieżek i dedupe,
+- lokalny graf Git/refs i branch z wybranego commita bez checkoutu,
+- custom ikona projektu, lokalnoczasowe powitanie i natywne menu macOS,
+- hierarchia grup/List/Tree, bulk import repozytoriów i badge monorepo,
+- Design settings, edytor z tabami/minimapą, podgląd obrazów/PDF i scoped diffy,
+- globalny katalog skills i instalacja własnych kopii do harnessów,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 - composer czata inspirowany VS Code: wyśrodkowany start rozmowy, rozwijany
   wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
@@ -113,7 +123,8 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [ ] `Undo` dla projektów/sesji.
 - [ ] **16. Menu kontekstowe** (M)
   - [x] prawy klik na projekcie i sesji,
-  - [ ] plik, wiadomość, tool call.
+  - [x] plik/folder (tworzenie, rename/delete, Reveal in Finder),
+  - [ ] wiadomość, tool call.
 - [ ] **20. Wąskie okno** (M)
   - [x] kompaktowy sidebar i ukrywanie hintów w titlebarze,
   - [x] zwijany sidebar (`⌘B`, przycisk w titlebarze),
@@ -125,13 +136,16 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 - [ ] **10. Ustawienia per projekt** (M)
   - [x] override harness i permission mode, modal w menu projektu,
   - [x] precedence global → projekt,
+  - [x] własna ikona projektu (embedded image, powrót do automatycznej),
   - [ ] model, env, ustawienia per grupa,
   - [ ] pozostałe ustawienia stosowane automatycznie bez restartu harnessu;
     wybór harnessa z composera już tworzy nową rozmowę, a domyślne ustawienia
     globalne/projektowe dotyczą nowych sesji.
 - [ ] **11. Grupy v2** (M)
-  - drag & drop, kolejność, kolory, zagnieżdżanie, sync relay/iOS.
+  - [x] drag & drop przypisań/reparenting, zagnieżdżanie, List/Tree i sortowanie,
+  - [ ] ręczna kolejność, wybór kolorów, sync relay/iOS.
 - [ ] **12/28/31. Usage i statystyki** (XL)
+  - [x] recorded-data Dashboard i scope-aware limity kont (nie pełny billing),
   - skanery Claude/Codex/OpenCode, incremental checkpoints, dedupe,
   - cennik z cache i long-context, `unpriced`, cache reuse rate,
   - dashboard global/projekt/model/harness, sesje, tokeny, koszt, czas,
@@ -145,8 +159,10 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 ## M3a — Warsztat
 
 - [ ] **7. Git v2** (L)
-  - branch create/switch, log, stash, konflikty, worktree,
-  - **git graph w głównym panelu** (DAG, refs, diff, checkout/merge/rebase/cherry-pick),
+  - [x] bezpieczny branch switch oraz lokalny log/DAG/refs i branch create z commita,
+  - [ ] stash, konflikty, worktree,
+  - [ ] **git graph w głównym panelu** (integracja obecnego overlaya, commit diff,
+    checkout/merge/rebase/cherry-pick i parity relay),
   - **inline git blame** na linii kursora z hoverem na commit.
 - [ ] **8. Global search** (M)
   - FTS5 transkrypty/sesje + pliki, filtry, snippety.
@@ -165,8 +181,10 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - „zapisz jako artefakt”, model i panel, Markdown/HTML/CSV/obraz/diff,
   - preview/source, open in browser, później share przez relay.
 - [ ] **24. Katalog skills** (L)
-  - discovery standardu, enable per projekt, add/edit/validate, hash,
-  - materializacja do rootów harnessa, bezpieczeństwo.
+  - [x] globalna biblioteka, add/edit/validate, bezpieczna instalacja i usuwanie
+    własnych kopii do rootów harnessa,
+  - [ ] discovery zewnętrznych bibliotek, enable per projekt, import folder/repo,
+    pełny audyt hash/pochodzenia.
 - [ ] **27a. Markdown** (XL)
   - v1 źródło + preview + toolbar,
   - v2 blokowy edytor wizualny + przełącznik raw.
@@ -200,9 +218,11 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 ## M5 — Wizualizacja i polish
 
 - [ ] **17. Graf** (M)
-  - pan/zoom, auto-layout, minimap, zwijanie, search.
+  - [x] hierarchia agentów, zwijanie/rozwijanie i eksport SVG,
+  - [ ] pan/zoom, zaawansowany auto-layout, minimap, search.
 - [ ] **18. Trace** (M)
-  - search, collapse, klawiatura, sticky axis, wirtualizacja.
+  - [x] hierarchia, collapse/expand i filtry typów,
+  - [ ] search, rozszerzona klawiatura, sticky axis, wirtualizacja.
 - [ ] **12. Budżety i alerty** (M)
 - [ ] **21. Sharing artefaktów** (M)
 - [ ] **20/13. Accessibility i gęstość UI** (M)
