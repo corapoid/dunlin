@@ -74,8 +74,7 @@ pub fn read(root: &str, relative: &str) -> Result<Vec<u8>, String> {
     if matches!(kind(relative), PreviewKind::Text | PreviewKind::Unsupported) {
         return Err("Preview is not supported for this file type".into());
     }
-    let path = crate::fs::resolve(root, relative)?;
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let file = crate::fs::open_read(root, relative)?;
     let metadata = file.metadata().map_err(|e| e.to_string())?;
     if !metadata.is_file() || metadata.len() > MAX_PREVIEW_BYTES {
         return Err("Preview requires a regular file no larger than 32 MiB".into());
