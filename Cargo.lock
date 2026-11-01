@@ -1552,7 +1552,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "dunlin"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1587,7 +1587,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-agent"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "agent-client-protocol",
  "async-channel",
@@ -1604,7 +1604,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-domain"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -1613,7 +1613,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-relay"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1636,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-storage"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "dunlin-domain",
  "rusqlite",
@@ -1647,14 +1647,14 @@ dependencies = [
 
 [[package]]
 name = "dunlin-ui"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "gpui-kit",
 ]
 
 [[package]]
 name = "dunlin-usage"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "dunlin-domain",
  "serde_json",
@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-workspace"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "libc",

@@ -6,6 +6,122 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] — 2026-11-01
+
+Agent workbench and GitHub CI/PR integration, safer local/relay Git workflows,
+editable visual Markdown, and inherited project/group runtime settings. Preserve
+existing conversations, editor buffers and undo; publishing this version does not
+replace or restart an installed application or relay.
+
+Validated with 487 passing workspace tests (4 optional integration tests ignored),
+strict Clippy, formatting, desktop/relay builds, native dark/light-narrow smokes
+and paired loopback Git HTTP smoke. Manual dialog/accessibility, real GitHub and
+deployed-relay acceptance remain pending. Worktrees are not sandboxes, reported
+USD is not a guaranteed billing cap, and Rust AST impact is not compiler/LSP-complete.
+
+### Added
+
+- Add a local GitHub.com `gh` integration in the repository tab: exact-commit CI
+  workflow/job/step status polling, completed-job logs, PR files/checks/discussion
+  and fresh confirmed create/edit/comment/review/draft/state/merge and CI actions.
+  Pin account/repository/attempt/commit identity; no implicit push or local fallback.
+- Add client-context inspection with wire-envelope parity, explicit versioned
+  decision memory, saved-file task baselines/review/selective restore and a confirmed
+  argv-based local checks/problems center. Preserve drafts; evidence never starts
+  an agent.
+- Add durable task request/time/reported-USD budgets with pre-wire reservation,
+  foreground/background cancellation and permission guards, plus safe released-
+  history retention. Non-USD/invalid costs and unknown child accounting never
+  become zero USD; ceilings are not guaranteed provider billing caps.
+- Add separately confirmed same-commit A/B worktrees, identical one-shot agent
+  dispatch with shared limits, observed models/diff/check/cost evidence and human
+  preference without merge/copy. Retain partial trees; never replay paid work on
+  restart. Add an incremental bounded Rust AST impact map with candidate tests,
+  source verification and evidence → draft; not compiler/LSP-complete semantics.
+  Cover two real local mock-ACP connections in an isolated native smoke.
+- Add explicitly confirmed local/relay stash, worktree, merge, rebase and
+  cherry-pick operations with continue/abort, content-backed preflight, semantic
+  index checks, one-use server plans and separate grants for external worktree
+  deletion. Preserve canonical editor buffers, undo and review protection across
+  watchers, dismissed dialogs and failed reloads; no automatic force/stash/retry.
+- Add opt-in inline HEAD blame for unchanged source lines, author/commit hover and
+  commit-history navigation, asynchronous exact-line mapping and scoped local/relay
+  caching. Add isolated native Git and paired loopback HTTP smoke coverage.
+- Add Markdown file tabs with editable Visual/Raw modes, a selection-aware
+  formatting toolbar and previews backed by the current unsaved source. Preserve
+  undo/redo, save/conflict handling and per-tab state without lossily serializing
+  the document. Block automatic images/resources, confirm HTTP(S) links and bound
+  preview/format sizes. Add isolated real-buffer editing/undo/save/resource smokes.
+- Add a read-only repository-state view in the Git tab for local and relay
+  projects: stash entries, linked/detached/locked/prunable worktree metadata,
+  per-worktree operation markers and unmerged index stages. Add a scoped,
+  project-granted `/v1/git/overview` endpoint, bounded payload validation,
+  preservation/parity fixtures and an authenticated stash/worktree smoke check.
+  Inventory reads are non-mutating; separately confirmed actions are described above.
+- Add read-only Git history through relay: versioned graph, commit comparison and
+  per-file patch endpoints, project grants, repository-scope pinning, device/grant
+  rechecks and a four-read concurrency limit retained after HTTP cancellation.
+  Desktop uses the same history tab with bounded responses, no redirects and no
+  local/legacy fallback. Remote branch creation remains disabled. Add local/relay
+  parity, authorization, stale scope, cancellation and transport regression tests.
+- Move the local Git DAG from its overlay into a project-scoped workbench tab.
+  Add full commit messages, changed-file lists and bounded immutable per-file
+  patches, including root commits, explicit merge-parent comparisons, renames,
+  deletions, binary/mode-only and symlink changes. Preserve Chat/dirty buffers,
+  reject stale async results and retargeted roots, and retain mutation ownership
+  after closing the tab. External diff/textconv/lazy fetch remain disabled.
+- Add persisted group defaults and a cycle-safe, source-aware resolver for global
+  → ancestor groups → project precedence. Edit them from a group's context menu;
+  retain separate Rename, show per-value origins in project/group settings, and
+  reset explicit overrides without copying inherited values. Merge models per
+  harness and environment per name, validate combined limits, and preserve group
+  defaults through reparenting/deletion/Undo. Schema v7 preserves existing data.
+  Group agents still enforce their strictest member's effective client policy;
+  corrupt ancestry fails closed. No connected agents are restarted.
+- Add an explicit **Apply saved model to current session** action using the
+  effective project/group default for the current harness. Require an idle ACP
+  session and an advertised, visible model; preserve other conversations and saved
+  defaults on rejection, without sending prompts or restarting the process.
+- Plan the remaining subsystems in `docs/IMPLEMENTATION-PLAN.md`, with dependencies,
+  acceptance criteria and explicit relay/security boundaries.
+- Add **Project settings → Model & environment…** for local projects: per-harness
+  default ACP model IDs and validated literal child-process environment overrides.
+  Select defaults before activating new sessions; refuse unavailable/rejected
+  defaults rather than silently sending prompts to another model. Resumed sessions
+  retain their model. Environment changes take effect at the next local connection,
+  never mutate the app environment or travel through relay, and do not restart agents.
+  Environment values are stored unencrypted locally, not in Keychain; not for secrets.
+
+### Changed
+
+- Default Markdown to an editable rendered document with a Raw switch, replacing
+  Source/Preview/Split. Keep visual editors mounted so a first click positions the
+  caret without changing text size or layout. Edit table cells, fenced code, prose,
+  entities, multiline lists/quotes and image descriptions; unsupported syntax
+  remains editable literally rather than being rewritten by a serializer.
+- Simplify Markdown controls to one mode toggle, grouped formatting icons and an
+  Insert menu. Add contextual table row/column operations, alignment, Tab/Shift+Tab
+  cell navigation and final-cell row append with stale/locked-file guards.
+- Reduce Markdown typography and spacing to editor proportions. Add native Enter
+  splits, compatible boundary Backspace/Delete merges, source-mapped selection and
+  canonical undo/save while preserving Shift+Enter and fenced-code blank lines.
+- Refine the Git inspector with flat filename-first rows, file icons, colored
+  statuses, bounded file lists, compact commit headers and quiet borderless controls.
+  Reveal branch creation on demand and retain explicit merge-parent navigation.
+
+### Fixed
+
+- Prevent the Markdown Insert dropdown from drawing a bright rectangular backdrop
+  by using standard non-modal menu rows instead of modal foreground probes.
+- Keep Git-modified buffers and their undo history protected after watcher events,
+  dismissed conflict dialogs and failed reloads; only explicit reload replaces text.
+- Reject non-USD, missing, negative and non-finite ACP cost reports as unknown rather
+  than labeling them USD. Deny tool grants after budget stop/expiry/storage failure,
+  but let the final reserved client request finish when only its request cap is spent.
+- Refuse stale comparison starts, changed adapter/settings/budget consent and hook-
+  modified checkout pairs. Retain partial trees, never replay paid work on restart,
+  and keep release tombstones until older overlapping budgets are forgotten safely.
+
 ## [0.1.0-beta.2] — 2026-10-30
 
 Project/workbench expansion, safer local Git workflows, portable session history
@@ -339,6 +455,7 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.2...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.3...HEAD
+[0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.1
