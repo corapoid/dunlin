@@ -863,12 +863,12 @@ fn scrub_harness_environment(command: &mut Command) {
     }
 }
 
-fn deny_path(project: &Path, path: &Path, denied: &mut Vec<String>) {
+fn deny_path(home: &Path, project: &Path, path: &Path, denied: &mut Vec<String>) {
     if project == path {
         return;
     }
     if project.starts_with(path) {
-        deny_siblings(path, project, denied);
+        deny_siblings(home, path, project, denied);
     } else {
         denied.push(path.to_string_lossy().to_string());
     }
@@ -878,8 +878,20 @@ fn deny_path(project: &Path, path: &Path, denied: &mut Vec<String>) {
 /// the parent itself would also deny the project; enumerating only siblings
 /// keeps the project usable without granting access to the rest of Documents,
 /// Desktop, Downloads, etc. The cap keeps the profile bounded on huge folders.
-fn deny_siblings(parent: &Path, project: &Path, denied: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(parent) else {
+fn deny_siblings(home: &Path, parent: &Path, project: &Path, denied: &mut Vec<String>) {
+    // The profile is built from configured paths. Canonicalize and require the
+    // enumerated parent to remain inside the canonical home directory before
+    // reading names; this is a sandbox deny-list, never a project file read.
+    let Ok(parent) = parent.canonicalize() else {
+        return;
+    };
+    let Ok(home) = home.canonicalize() else {
+        return;
+    };
+    if !parent.starts_with(&home) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(&parent) else {
         return;
     };
     let mut added = 0usize;
@@ -893,7 +905,7 @@ fn deny_siblings(parent: &Path, project: &Path, denied: &mut Vec<String>) {
         }
         if project.starts_with(&path) {
             if path.is_dir() {
-                deny_siblings(&path, project, denied);
+                deny_siblings(&home, &path, project, denied);
             }
         } else {
             denied.push(path.to_string_lossy().to_string());
@@ -909,11 +921,11 @@ fn sandbox_profile(
     db_path: &Path,
 ) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
+    let home_path = Path::new(&home);
     let project = Path::new(project_path);
     let mut denied = Vec::new();
 
     if !home.is_empty() {
-        let home_path = Path::new(&home);
         let mut private = vec![
             ".ssh",
             ".gnupg",
@@ -975,7 +987,7 @@ fn sandbox_profile(
             private.push(".config/opencode");
         }
         for suffix in private {
-            deny_path(project, &home_path.join(suffix), &mut denied);
+            deny_path(home_path, project, &home_path.join(suffix), &mut denied);
         }
     }
     if !db_path.as_os_str().is_empty() {
@@ -984,11 +996,11 @@ fn sandbox_profile(
         } else {
             Path::new(&home).join(db_path)
         };
-        deny_path(project, &db_path, &mut denied);
+        deny_path(home_path, project, &db_path, &mut denied);
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut sidecar = db_path.as_os_str().to_os_string();
             sidecar.push(suffix);
-            deny_path(project, Path::new(&sidecar), &mut denied);
+            deny_path(home_path, project, Path::new(&sidecar), &mut denied);
         }
     }
     for path in other_projects {
