@@ -6,7 +6,8 @@ use crate::{
 };
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::{
-    Icon,
+    Icon, Sizable,
+    button::{Button, ButtonVariants},
     input::{EditorState, InputEvent},
 };
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -66,11 +67,50 @@ pub(crate) struct Tab {
     pub preview: Option<Preview>,
     pub loading: bool,
     pub minimap: crate::minimap::State,
+    pub markdown: crate::markdown_editor::State,
+    pub blame: crate::inline_blame::State,
+    pub git_changed: bool,
+    pub reload_generation: u64,
     _subscription: Subscription,
     _observation: Subscription,
 }
 
 impl DunlinApp {
+    pub(crate) fn retained_buffer_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let tab = self.active_file_tab().filter(|t| t.git_changed)?;
+        let p = palette(cx);
+        let is_text = tab.kind == PreviewKind::Text;
+        Some(
+            div()
+                .flex_shrink_0()
+                .px(px(10.))
+                .py(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .text_size(px(11.))
+                .text_color(p.amber)
+                .child(if is_text {
+                    "Review file after Git · open buffer preserved"
+                } else {
+                    "Review preview after Git · close and reopen it"
+                })
+                .when(is_text, |banner| {
+                    banner.child(
+                        Button::new("review-retained-git-buffer")
+                            .ghost()
+                            .small()
+                            .label("Review…")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.editor_conflict =
+                                    this.active_file_tab().and_then(|t| t.conflict.clone());
+                                cx.notify();
+                            })),
+                    )
+                })
+                .into_any_element(),
+        )
+    }
     pub(crate) fn file_notice(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
         let message = message.into();
         let id = uuid::Uuid::now_v7();
@@ -110,6 +150,8 @@ impl DunlinApp {
         {
             tab.saved_text = Some(text);
             tab.dirty = false;
+            tab.git_changed = false;
+            tab.conflict = None;
             tab.minimap.invalidate();
         }
         self.editor_dirty = false;
@@ -130,7 +172,9 @@ impl DunlinApp {
             tab.dirty = self.editor_dirty;
             tab.readonly = self.editor_readonly;
             tab.mtime = self.editor_mtime;
-            tab.conflict = self.editor_conflict.clone();
+            if !tab.git_changed || self.editor_conflict.is_some() {
+                tab.conflict = self.editor_conflict.clone();
+            }
         }
     }
     pub(crate) fn has_dirty_tabs(&self) -> bool {
@@ -190,14 +234,22 @@ impl DunlinApp {
         self.editor_mtime = tab.mtime;
         self.editor_conflict = tab.conflict.clone();
         self.editor_stale = false;
+        let preview_only =
+            crate::markdown_editor::supports(&tab.inspector.path) && tab.markdown.preview_only();
         self.workbench.active = Some(id.into());
         self.workbench.show_file = true;
+        self.git_history.active = false;
         self.autosave_generation = self.autosave_generation.wrapping_add(1);
         let wrap = self.word_wrap;
         self.editor.update(cx, |state, cx| {
             state.set_soft_wrap(wrap, window, cx);
-            state.focus(window, cx);
+            if !preview_only {
+                state.focus(window, cx);
+            }
         });
+        if preview_only {
+            self.focus_handle.focus(window, cx);
+        }
         self.check_open_file(cx);
         cx.notify();
     }
@@ -240,6 +292,9 @@ impl DunlinApp {
             if kind == PreviewKind::Text
                 && let Some(line) = line
             {
+                if crate::markdown_editor::supports(path) {
+                    self.set_markdown_mode(crate::markdown_editor::Mode::Source, window, cx);
+                }
                 self.jump_to_line(line, window, cx);
             }
             return;
@@ -298,7 +353,11 @@ impl DunlinApp {
             },
         );
         let observation = cx.observe(&editor, |this, entity, cx| {
-            if this.editor_minimap && this.editor.entity_id() == entity.entity_id() {
+            this.queue_markdown_preview(entity.entity_id(), cx);
+            if this.editor.entity_id() == entity.entity_id()
+                && (this.editor_minimap
+                    || this.active_file_tab().is_some_and(|t| t.blame.enabled()))
+            {
                 cx.notify();
             }
         });
@@ -331,6 +390,10 @@ impl DunlinApp {
             preview: None,
             loading: true,
             minimap: Default::default(),
+            markdown: Default::default(),
+            blame: Default::default(),
+            git_changed: false,
+            reload_generation: 0,
             _subscription: subscription,
             _observation: observation,
         });
@@ -442,6 +505,10 @@ impl DunlinApp {
             if !tab.dirty || project.is_some_and(|project| tab.project != project) {
                 continue;
             }
+            if tab.git_changed {
+                self.file_notice("Resolve the Git-changed file's reload/overwrite conflict before saving all buffers.",cx);
+                return false;
+            }
             if self.ai_commit_locks_project_id(&tab.project) {
                 self.file_notice(
                     "Cancel or finish the AI commit before saving files in its repository",
@@ -545,6 +612,7 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let keep_history = self.git_history.is_active_for(self.project());
         let active_closed = self
             .workbench
             .active
@@ -555,7 +623,11 @@ impl DunlinApp {
             self.workbench.active = None;
             self.close_inspector();
         }
-        self.show_chat_tab(window, cx);
+        if keep_history {
+            cx.notify();
+        } else {
+            self.show_chat_tab(window, cx);
+        }
     }
     pub(crate) fn retarget_file_tabs(
         &mut self,
@@ -636,9 +708,11 @@ impl DunlinApp {
                     .flex()
                     .items_center()
                     .cursor_pointer()
-                    .when(!self.workbench.show_file, |v| {
-                        v.bg(p.card).border_b_2().border_color(p.blue)
-                    })
+                    .when(
+                        !self.workbench.show_file
+                            && !self.git_history.is_active_for(self.project()),
+                        |v| v.bg(p.card).border_b_2().border_color(p.blue),
+                    )
                     .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx)))
                     .child("Chat"),
             );
@@ -650,7 +724,9 @@ impl DunlinApp {
         {
             let id = tab.id.clone();
             let close = id.clone();
-            let active = self.workbench.show_file && self.workbench.active.as_deref() == Some(&id);
+            let active = !self.git_history.is_active_for(self.project())
+                && self.workbench.show_file
+                && self.workbench.active.as_deref() == Some(&id);
             let dirty = if self.workbench.active.as_deref() == Some(&id) {
                 self.editor_dirty
             } else {
@@ -682,6 +758,38 @@ impl DunlinApp {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.request_close_tab(&close, window, cx);
+                            }))
+                            .child(Icon::new(IconName::X).size(px(11.))),
+                    ),
+            );
+        }
+        if self.git_history.is_open_for(self.project()) {
+            row = row.child(
+                div()
+                    .id("git-history-tab")
+                    .h_full()
+                    .px(px(12.))
+                    .flex()
+                    .items_center()
+                    .gap(px(7.))
+                    .cursor_pointer()
+                    .aria_label("Git history tab")
+                    .when(self.git_history.is_active_for(self.project()), |tab| {
+                        tab.bg(p.card).border_b_2().border_color(p.blue)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| this.open_git_history(window, cx)))
+                    .child(self.git_history.tab_label())
+                    .child(
+                        div()
+                            .id("close-git-history-tab")
+                            .size(px(17.))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                cx.stop_propagation();
+                                let active = this.git_history.is_active_for(this.project());
+                                this.close_git_history(cx);
+                                if active {
+                                    this.focus_handle.focus(window, cx);
+                                }
                             }))
                             .child(Icon::new(IconName::X).size(px(11.))),
                     ),
@@ -823,6 +931,9 @@ impl DunlinApp {
             .min_h(px(0.))
             .bg(p.card)
             .child(header)
+            .when_some(self.retained_buffer_banner(cx), |root, banner| {
+                root.child(banner)
+            })
             .child(body)
             .into_any_element()
     }
@@ -950,12 +1061,13 @@ mod tests {
             message: "Undo group deletion".into(),
             action_label: "Undo".into(),
             action: ToastAction::RestoreGroup {
-                group: dunlin_domain::ProjectGroup {
+                group: Box::new(dunlin_domain::ProjectGroup {
                     id: "group".into(),
                     name: "Group".into(),
                     tone: dunlin_domain::ProjectTone::Blue,
                     parent_id: None,
-                },
+                    settings: Default::default(),
+                }),
                 project_ids: Vec::new(),
                 child_ids: Vec::new(),
             },
@@ -967,12 +1079,13 @@ mod tests {
     #[test]
     fn undo_does_not_reclaim_members_moved_away_and_back_after_deletion() {
         let mut action = ToastAction::RestoreGroup {
-            group: dunlin_domain::ProjectGroup {
+            group: Box::new(dunlin_domain::ProjectGroup {
                 id: "deleted".into(),
                 name: "Deleted".into(),
                 tone: dunlin_domain::ProjectTone::Blue,
                 parent_id: None,
-            },
+                settings: Default::default(),
+            }),
             project_ids: vec!["moved-project".into(), "untouched-project".into()],
             child_ids: vec!["moved-child".into(), "untouched-child".into()],
         };

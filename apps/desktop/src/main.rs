@@ -7,6 +7,7 @@ mod branch_picker;
 mod chat_presentation;
 mod chat_scroll;
 mod chat_timing;
+mod comparisons;
 mod dashboard;
 mod effects;
 mod explorer;
@@ -15,10 +16,13 @@ mod file_preview;
 mod git_history;
 #[cfg(debug_assertions)]
 mod glass_smoke;
+mod group_settings;
 mod harness;
 mod harness_discovery;
+mod inline_blame;
 mod local_projects;
 mod logging;
+mod markdown_editor;
 mod mcp;
 mod minimap;
 mod native_menu;
@@ -27,6 +31,7 @@ mod platform;
 mod project_activity;
 mod project_groups;
 mod project_icons;
+mod project_runtime_settings;
 mod project_tree;
 mod projection;
 mod provider_auth;
@@ -36,6 +41,7 @@ mod session_import;
 mod session_list;
 mod sidebar_layout;
 mod skills;
+mod task_budgets;
 mod usage;
 mod views;
 mod watch;
@@ -47,6 +53,26 @@ use dunlin_ui::component::TitleBar;
 use dunlin_ui::*;
 
 fn main() {
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--markdown-smoke") {
+        markdown_editor::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--git-smoke") {
+        git_history::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--workbench-smoke") {
+        git_history::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--github-smoke") {
+        git_history::smoke::run();
+        return;
+    }
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--glass-smoke") {
         glass_smoke::run();

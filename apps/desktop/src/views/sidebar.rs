@@ -547,6 +547,17 @@ fn projects_context(
                 menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Group settings…")).on_click(
                     move |_, window, cx| {
                         let _ = rename.update(cx, |this, cx| {
+                            this.open_group_settings(&rename_id, window, cx)
+                        });
+                    },
+                ),
+            );
+            let rename = app.clone();
+            let rename_id = id.clone();
+            menu = menu.item(
+                menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Rename group…")).on_click(
+                    move |_, window, cx| {
+                        let _ = rename.update(cx, |this, cx| {
                             this.open_rename_group_prompt(&rename_id, window, cx)
                         });
                     },

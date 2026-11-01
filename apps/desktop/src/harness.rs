@@ -245,6 +245,7 @@ pub(crate) struct HarnessState {
     pub transcript: Vec<ChatItem>,
     transcripts: HashMap<String, Vec<ChatItem>>,
     pub usage: Option<HarnessUsage>,
+    pub reported_cost: Option<dunlin_domain::task_budget::Cost>,
     pub commands: Vec<String>,
     connected_harness: Option<String>,
     pub models: Option<dunlin_agent::SessionModels>,
@@ -279,6 +280,7 @@ impl Default for HarnessState {
             transcript: Vec::new(),
             transcripts: HashMap::new(),
             usage: None,
+            reported_cost: None,
             commands: Vec::new(),
             connected_harness: None,
             running: false,
@@ -296,6 +298,33 @@ impl Default for HarnessState {
 }
 
 impl HarnessState {
+    pub(crate) fn pause_for_budget(&mut self, reason: &str) {
+        for item in &mut self.transcript {
+            if let ChatItem::Permission {
+                request_id,
+                resolved,
+                ..
+            } = item
+                && resolved.is_none()
+            {
+                if let Some(adapter) = &self.harness {
+                    adapter.respond_permission(request_id.clone(), None);
+                }
+                *resolved = Some(format!("Denied by task budget: {reason}"));
+            }
+        }
+        if self.running
+            && let Some(adapter) = &self.harness
+        {
+            adapter.cancel();
+        }
+        self.running = false;
+        self.prompt_sent = false;
+        self.finish_turn_timing(now_ms());
+        self.push_error(format!(
+            "Task budget paused this session: {reason}. Queued prompts were retained."
+        ));
+    }
     fn finish_turn_timing(&mut self, at_ms: u64) {
         if let Some((index, start)) = self.active_turn.take()
             && let Some(ChatItem::User {
@@ -371,6 +400,17 @@ impl HarnessState {
 }
 
 impl DunlinApp {
+    fn clear_unbudgeted_queue_after_error(&mut self) {
+        if self.task_budgets.error.is_none()
+            && self
+                .task_budgets
+                .registry
+                .task(&self.session().id)
+                .is_none()
+        {
+            self.harness.pending_prompts.clear();
+        }
+    }
     /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
         if self.harness.status.is_busy() {
@@ -488,6 +528,28 @@ impl DunlinApp {
         if let Some(path) = crate::harness_discovery::child_path() {
             config.process_env.insert("PATH".into(), path);
         }
+        let settings = match self.resolved_project_settings(&project) {
+            Ok(settings) => settings,
+            Err(error) => {
+                self.harness.status = HarnessStatus::Failed(error.clone());
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        let environment = match settings.process_environment() {
+            Ok(environment) => environment,
+            Err(error) => {
+                self.harness.status = HarnessStatus::Failed(error.clone());
+                self.set_notice(error, cx);
+                return;
+            }
+        };
+        // User overrides win over the discovered child PATH. They never mutate
+        // this process and never enter the relay transport.
+        config.process_env.extend(environment);
+        config.default_model = settings
+            .default_model(&self.session_harness())
+            .map(str::to_owned);
         config.resume_session_id = self.session().acp_session_id.clone();
         self.start_harness(config, None, cx);
     }
@@ -724,6 +786,9 @@ impl DunlinApp {
     /// Background queues pause at turn boundaries. Resume only after returning
     /// to this session and revalidating its provider/model and MCP state.
     pub(crate) fn resume_visible_queue(&mut self, cx: &mut Context<Self>) {
+        if self.budget_gate().is_err() {
+            return;
+        }
         if !self.harness.running
             && !self.harness.pending_prompts.is_empty()
             && self.harness.status.is_ready()
@@ -759,6 +824,7 @@ impl DunlinApp {
     ) -> bool {
         if self.harness.generation == generation {
             self.handle_harness_event(event, cx);
+            self.poll_task_budgets(cx);
             return true;
         }
         let Some(id) = self
@@ -800,6 +866,7 @@ impl DunlinApp {
         }
         self.notice = notice;
         self.parked_runtimes.insert(id, runtime);
+        self.poll_task_budgets(cx);
         cx.notify();
         true
     }
@@ -810,12 +877,14 @@ impl DunlinApp {
                 self.harness.status = HarnessStatus::Ready { agent, version }
             }
             HarnessEvent::SessionCreated { session_id } => {
+                self.harness.reported_cost = None;
                 self.harness.token_baseline = Some(Default::default());
                 self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id.clone());
                 self.update_active_session(|s| s.acp_session_id = Some(session_id));
             }
             HarnessEvent::SessionLoaded { session_id } if self.is_current_session(&session_id) => {
+                self.harness.reported_cost = None;
                 self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id);
                 self.harness.token_baseline = None;
@@ -881,7 +950,7 @@ impl DunlinApp {
                 self.harness.local_session_loading = false;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.harness.pending_prompts.clear();
+                self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 self.harness.push_error(message.clone());
                 self.harness.status = HarnessStatus::Failed(message);
@@ -892,7 +961,7 @@ impl DunlinApp {
                 self.harness.local_session_loading = false;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.harness.pending_prompts.clear();
+                self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 self.harness.harness = None;
                 self.harness.session_id = None;
@@ -906,6 +975,10 @@ impl DunlinApp {
 
     /// Send the composer contents to the active harness, connecting lazily.
     pub(crate) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Err(e) = self.budget_gate() {
+            self.file_notice(format!("Task budget: {e}"), cx);
+            return;
+        }
         if self.ai_commit_preparing() {
             self.set_notice(
                 "Wait for AI commit preparation or cancel it before sending another request",
@@ -940,9 +1013,10 @@ impl DunlinApp {
         {
             return;
         }
-        self.composer
-            .update(cx, |state, cx| state.set_value("", window, cx));
-        self.submit_prompt(text, cx);
+        if self.submit_prompt(text, cx) {
+            self.composer
+                .update(cx, |state, cx| state.set_value("", window, cx));
+        }
         cx.notify();
     }
 
@@ -1021,12 +1095,16 @@ impl DunlinApp {
     }
 
     /// Append a user message, update session metadata and dispatch it.
-    fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) {
+    pub(crate) fn submit_prompt(&mut self, text: String, cx: &mut Context<Self>) -> bool {
+        if let Err(e) = self.budget_gate() {
+            self.file_notice(format!("Task budget: {e}"), cx);
+            return false;
+        }
         if !self.guard_ai_commit_agent_send(cx)
             || !self.group_context_ready(cx)
             || !self.check_provider_model(cx)
         {
-            return;
+            return false;
         }
         if self.harness.local_session_loading
             || self.harness.model_changing
@@ -1036,7 +1114,7 @@ impl DunlinApp {
                 "Wait for the session or model to finish loading before sending",
                 cx,
             );
-            return;
+            return false;
         }
         let title = session_title(&text);
         self.remember_dashboard_project(cx);
@@ -1067,6 +1145,7 @@ impl DunlinApp {
         } else if !self.harness.status.is_busy() && !self.remote_sessions_loading {
             self.connect_harness(cx);
         }
+        true
     }
 
     pub(crate) fn submit_automation_prompt(
@@ -1133,6 +1212,14 @@ impl DunlinApp {
         label: String,
         cx: &mut Context<Self>,
     ) {
+        if let Err(reason) = self.budget_continuation_gate() {
+            self.harness.pause_for_budget(&reason);
+            self.update_active_session(|s| s.status = SessionStatus::Interrupted);
+            self.save_current_transcript();
+            self.set_notice(format!("Permission denied by task budget: {reason}"), cx);
+            return;
+        }
+        if !self.harness.transcript.iter().any(|item|matches!(item,ChatItem::Permission{request_id:id,resolved:None,..} if id==request_id)){return;}
         if !self.group_context_ready(cx) {
             return;
         }
@@ -1190,6 +1277,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn load_transcript(&mut self, session_id: &str) {
+        self.harness.reported_cost = None;
         self.harness.missing_command = None;
         self.selected_node = None;
         self.selected_span = None;
@@ -1298,6 +1386,13 @@ impl DunlinApp {
     }
 
     pub(crate) fn activate_local_session(&mut self, cx: &mut Context<Self>) {
+        let settings = match self.resolved_project_settings(self.project()) {
+            Ok(settings) => settings,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return;
+            }
+        };
         if self.harness.connected_harness.as_deref() != Some(self.session_harness().as_str()) {
             self.restart_harness(cx);
             return;
@@ -1314,7 +1409,10 @@ impl DunlinApp {
             if let Some(id) = existing {
                 harness.load_session(id, path);
             } else {
-                harness.new_session(path);
+                let model = settings
+                    .default_model(&self.session_harness())
+                    .map(str::to_owned);
+                harness.new_session_with_model(path, model);
             }
         }
     }
@@ -1336,6 +1434,7 @@ impl DunlinApp {
 
     fn dispatch_pending_prompt(&mut self, cx: &mut Context<Self>) {
         if self.harness.prompt_sent
+            || self.harness.harness.is_none()
             || self.harness.session_id.is_none()
             || self.harness.local_session_loading
             || self.harness.pending_prompts.is_empty()
@@ -1353,15 +1452,16 @@ impl DunlinApp {
             self.update_active_session(|session| session.status = SessionStatus::Interrupted);
             return;
         }
+        if !self.reserve_task_request(cx) {
+            self.harness.running = false;
+            self.update_active_session(|s| s.status = SessionStatus::Interrupted);
+            return;
+        }
         let Some(prompt) = self.harness.pending_prompts.pop_front() else {
             return;
         };
         let text = prompt.text;
-        let wire_text = self
-            .group_contexts
-            .get(&self.session().id)
-            .map(|context| context.prompt(&text))
-            .unwrap_or_else(|| text.clone());
+        let wire_text = self.client_prompt_text(&text);
         let title = session_title(&text);
         self.update_active_session(|session| {
             if session.title == "New session" {
@@ -1427,6 +1527,15 @@ impl DunlinApp {
         }
     }
 
+    /// Shared by dispatch and the inspector; harness-owned system/history context
+    /// is intentionally not invented by the client.
+    pub(crate) fn client_prompt_text(&self, text: &str) -> String {
+        self.group_contexts
+            .get(&self.session().id)
+            .map(|context| context.prompt(text))
+            .unwrap_or_else(|| text.to_owned())
+    }
+
     fn handle_harness_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
         if std::env::var_os("DUNLIN_TRACE_HARNESS").is_some() {
             eprintln!("[harness] {event:?}");
@@ -1451,6 +1560,7 @@ impl DunlinApp {
                 }
             }
             HarnessEvent::SessionCreated { session_id } => {
+                self.harness.reported_cost = None;
                 self.harness.token_baseline = Some(Default::default());
                 self.harness.local_session_loading = false;
                 if self.provider_catalog.providers.is_empty()
@@ -1473,6 +1583,7 @@ impl DunlinApp {
                 }
             }
             HarnessEvent::SessionLoaded { session_id } => {
+                self.harness.reported_cost = None;
                 if !self.is_current_session(&session_id) {
                     return;
                 }
@@ -1514,7 +1625,7 @@ impl DunlinApp {
                     self.harness.session_id = None;
                     self.harness.running = false;
                     self.harness.prompt_sent = false;
-                    self.harness.pending_prompts.clear();
+                    self.clear_unbudgeted_queue_after_error();
                     self.update_active_session(|session| {
                         session.status = SessionStatus::Interrupted
                     });
@@ -1629,12 +1740,14 @@ impl DunlinApp {
                 let was_running = self.harness.running;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.harness.pending_prompts.clear();
+                self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 if message.contains("Could not load session") {
                     self.harness.session_id = None;
                 }
                 if message.contains("Could not create session") {
+                    self.harness.local_session_loading = false;
+                    self.harness.session_id = None;
                     self.sessions
                         .retain(|session| !session.id.starts_with("pending-"));
                     self.all_sessions
@@ -1667,7 +1780,11 @@ impl DunlinApp {
                     &self.harness.status,
                     self.restart_harness,
                     self.harness.restarts,
-                );
+                ) && !self
+                    .comparisons
+                    .runs
+                    .iter()
+                    .any(|r| r.sides.iter().any(|s| s.session == self.session().id));
                 self.harness.connected_harness = None;
                 self.harness.models = None;
                 self.harness.model_changing = false;
@@ -1678,7 +1795,7 @@ impl DunlinApp {
                 self.harness.session_id = None;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.harness.pending_prompts.clear();
+                self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 self.harness.status = HarnessStatus::Exited(reason.clone());
                 self.update_active_session(|session| {
@@ -1735,6 +1852,7 @@ impl DunlinApp {
                 title,
                 update,
             } => {
+                self.observe_task_cost(None, true);
                 append_child(
                     &mut self.harness.transcript,
                     id,
@@ -1810,6 +1928,7 @@ impl DunlinApp {
                 cost_usd,
             } => {
                 self.harness.usage = Some(HarnessUsage { used, size });
+                self.observe_task_cost(cost_usd, false);
                 self.update_active_session(|session| {
                     session.tokens = used;
                     if let Some(cost) = cost_usd {
@@ -2005,6 +2124,22 @@ impl DunlinApp {
         title: String,
         options: Vec<PermissionChoice>,
     ) {
+        if let Err(reason) = self.budget_continuation_gate() {
+            if let Some(adapter) = &self.harness.harness {
+                adapter.respond_permission(request_id.clone(), None);
+            }
+            self.harness.transcript.push(ChatItem::Permission {
+                request_id,
+                title,
+                options,
+                resolved: Some(format!("Denied by task budget: {reason}")),
+                at_ms: now_ms(),
+            });
+            self.harness.pause_for_budget(&reason);
+            self.update_active_session(|s| s.status = SessionStatus::Interrupted);
+            self.save_current_transcript();
+            return;
+        }
         let auto = match self.effective_permission_mode() {
             PermissionMode::AutoApprove => options
                 .iter()
@@ -2602,6 +2737,27 @@ mod tests {
         assert_eq!(
             session_title("  review   my   changes  "),
             "review my changes"
+        );
+    }
+    #[test]
+    fn budget_pause_retains_queue_and_declines_pending_permission() {
+        let mut state = HarnessState {
+            running: true,
+            ..Default::default()
+        };
+        state.enqueue_prompt("keep this queued draft".into());
+        state.transcript.push(ChatItem::Permission {
+            request_id: "pending".into(),
+            title: "Tool".into(),
+            options: vec![],
+            resolved: None,
+            at_ms: 1,
+        });
+        state.pause_for_budget("expired");
+        assert!(!state.running);
+        assert_eq!(state.queued_prompts().len(), 1);
+        assert!(
+            matches!(&state.transcript[0],ChatItem::Permission{resolved:Some(label),..} if label.contains("Denied by task budget"))
         );
     }
 

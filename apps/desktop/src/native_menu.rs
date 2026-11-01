@@ -2,12 +2,9 @@
 //! only when a project is available, and retain the ordinary safety guards.
 use dunlin_ui::*;
 impl crate::app::DunlinApp {
-    pub(crate) fn dismiss_history_for_menu(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.git_history.running {
-            self.file_notice("Wait for branch creation to finish", cx);
-            return false;
-        }
-        self.git_history.view = None;
+    pub(crate) fn dismiss_history_for_menu(&mut self, _cx: &mut Context<Self>) -> bool {
+        // History is a document tab, not a blocking overlay. Menus may open over
+        // it without destroying its state or releasing an in-flight Git lock.
         true
     }
 }

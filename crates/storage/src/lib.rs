@@ -171,6 +171,11 @@ impl Store {
             transaction.execute_batch("ALTER TABLE project_groups ADD COLUMN parent_id TEXT REFERENCES project_groups(id) ON DELETE SET NULL; PRAGMA user_version = 6;")?;
             transaction.commit()?;
         }
+        if version < 7 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch("ALTER TABLE project_groups ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'; PRAGMA user_version = 7;")?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -245,7 +250,7 @@ impl Store {
 
     pub fn project_groups(&self) -> Result<Vec<ProjectGroup>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name, tone, parent_id FROM project_groups ORDER BY created_at, id",
+            "SELECT id, name, tone, parent_id, settings FROM project_groups ORDER BY created_at, id",
         )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(2)?;
@@ -254,6 +259,13 @@ impl Store {
                 name: row.get(1)?,
                 tone: serde_json::from_str(&tone).unwrap_or(dunlin_domain::ProjectTone::Blue),
                 parent_id: row.get(3)?,
+                settings: serde_json::from_str(&row.get::<_, String>(4)?).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -271,16 +283,18 @@ impl Store {
 
     fn write_project_group(&self, group: &ProjectGroup) -> Result<()> {
         let tone = serde_json::to_string(&group.tone)?;
+        let settings = serde_json::to_string(&group.settings)?;
         self.connection.execute(
             r#"
-            INSERT INTO project_groups (id, name, tone, parent_id)
-            VALUES (?1, ?2, ?3, ?4)
+            INSERT INTO project_groups (id, name, tone, parent_id, settings)
+            VALUES (?1, ?2, ?3, ?4, ?5)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 tone = excluded.tone,
-                parent_id = excluded.parent_id
+                parent_id = excluded.parent_id,
+                settings = excluded.settings
             "#,
-            params![group.id, group.name, tone, group.parent_id],
+            params![group.id, group.name, tone, group.parent_id, settings],
         )?;
         Ok(())
     }
@@ -753,6 +767,7 @@ mod tests {
             name: "Work".into(),
             tone: ProjectTone::Violet,
             parent_id: None,
+            settings: Default::default(),
         };
         store.upsert_project_group(&group).unwrap();
         let mut project = project();
@@ -778,6 +793,7 @@ mod tests {
             name: id.into(),
             tone: ProjectTone::Blue,
             parent_id: parent.map(str::to_string),
+            settings: Default::default(),
         }
     }
 
@@ -787,7 +803,7 @@ mod tests {
         store
             .connection
             .execute_batch(
-                "ALTER TABLE project_groups DROP COLUMN parent_id; PRAGMA user_version = 5;",
+                "ALTER TABLE project_groups DROP COLUMN parent_id; ALTER TABLE project_groups DROP COLUMN settings; PRAGMA user_version = 5;",
             )
             .unwrap();
         store.connection.execute("INSERT INTO project_groups (id, name, tone) VALUES ('legacy', 'Private', '\"Teal\"')", []).unwrap();
@@ -808,6 +824,7 @@ mod tests {
         assert_eq!(groups.len(), 1);
         assert!(groups[0].parent_id.is_none());
         assert_eq!(groups[0].name, "Private");
+        assert_eq!(groups[0].settings, dunlin_domain::GroupSettings::default());
         let project = &store.projects().unwrap()[0];
         assert_eq!(project.group_id.as_deref(), Some("legacy"));
         assert_eq!(project.settings.harness.as_deref(), Some("Claude Code"));
@@ -828,8 +845,156 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            6
+            7
         );
+    }
+
+    #[test]
+    fn v6_migration_adds_empty_group_defaults_without_rewriting_project_data() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project_group(&group("root", None)).unwrap();
+        store
+            .upsert_project_group(&group("child", Some("root")))
+            .unwrap();
+        let mut project = project();
+        project.group_id = Some("child".into());
+        project.settings.harness = Some("Custom ACP".into());
+        project.settings.environment =
+            dunlin_domain::parse_project_environment("LANG=pl_PL.UTF-8").unwrap();
+        store.upsert_project(&project).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .save_transcript(&session().id, &vec!["keep history"])
+            .unwrap();
+        let old_payload: String = store
+            .connection
+            .query_row("SELECT settings FROM projects", [], |row| row.get(0))
+            .unwrap();
+        store
+            .connection
+            .execute_batch(
+                "ALTER TABLE project_groups DROP COLUMN settings; PRAGMA user_version = 6;",
+            )
+            .unwrap();
+        store.migrate().unwrap();
+        store.migrate().unwrap();
+        let groups = store.project_groups().unwrap();
+        assert!(
+            groups
+                .iter()
+                .all(|g| g.settings == dunlin_domain::GroupSettings::default())
+        );
+        assert_eq!(
+            groups
+                .iter()
+                .find(|group| group.id == "child")
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some("root")
+        );
+        let payload: String = store
+            .connection
+            .query_row("SELECT settings FROM projects", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(payload, old_payload);
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&session().id)
+                .unwrap()
+                .unwrap(),
+            vec!["keep history"]
+        );
+        assert_eq!(store.sessions(None).unwrap()[0].harness, session().harness);
+        let legacy: ProjectGroup =
+            serde_json::from_str(r#"{"id":"old","name":"Old","tone":"Blue"}"#).unwrap();
+        assert_eq!(legacy.settings, dunlin_domain::GroupSettings::default());
+    }
+
+    #[test]
+    fn group_defaults_roundtrip_reparent_promote_and_undo_without_copying_to_projects() {
+        use dunlin_domain::resolve_project_settings;
+        let store = Store::open_in_memory().unwrap();
+        let mut a = group("a", None);
+        a.settings.permission_mode = Some(PermissionMode::ReadOnly);
+        a.settings.environment = dunlin_domain::parse_project_environment("TEAM=a").unwrap();
+        let mut b = group("b", None);
+        b.settings.harness = Some("Claude Code".into());
+        b.settings.permission_mode = Some(PermissionMode::AutoApprove);
+        b.settings
+            .set_default_model("Claude Code", "team-model")
+            .unwrap();
+        b.settings.environment = dunlin_domain::parse_project_environment("TEAM=b").unwrap();
+        let mut child = group("child", Some("a"));
+        for group in [&a, &b, &child] {
+            store.upsert_project_group(group).unwrap();
+        }
+        let mut project = project();
+        project.group_id = Some("child".into());
+        project.settings.custom_icon = Some("png:keep".into());
+        store.upsert_project(&project).unwrap();
+        store.upsert_session(&session()).unwrap();
+        let resolve = || {
+            resolve_project_settings(
+                &store.projects().unwrap()[0],
+                &store.project_groups().unwrap(),
+                "OpenCode",
+                PermissionMode::Ask,
+            )
+            .unwrap()
+        };
+        assert_eq!(resolve().permission_mode.value, PermissionMode::ReadOnly);
+        child.parent_id = Some("b".into());
+        store.upsert_project_group(&child).unwrap();
+        assert_eq!(resolve().permission_mode.value, PermissionMode::AutoApprove);
+        assert_eq!(resolve().default_model("Claude Code"), Some("team-model"));
+        assert_eq!(resolve().process_environment().unwrap()["TEAM"], "b");
+        store.delete_project_group("b").unwrap();
+        assert_eq!(resolve().permission_mode.value, PermissionMode::Ask);
+        assert_eq!(resolve().harness.value, "OpenCode");
+        assert!(resolve().environment.is_empty());
+        let mut promoted = store
+            .project_groups()
+            .unwrap()
+            .into_iter()
+            .find(|g| g.id == "child")
+            .unwrap();
+        promoted.settings.environment =
+            dunlin_domain::parse_project_environment("CHILD=later").unwrap();
+        store.upsert_project_group(&promoted).unwrap();
+        store
+            .restore_project_group(&b, None, &[], &["child".into()])
+            .unwrap();
+        assert_eq!(resolve().harness.value, "Claude Code");
+        assert_eq!(resolve().process_environment().unwrap()["TEAM"], "b");
+        assert_eq!(resolve().process_environment().unwrap()["CHILD"], "later");
+        assert_eq!(
+            store
+                .project_groups()
+                .unwrap()
+                .iter()
+                .find(|g| g.id == "b")
+                .unwrap()
+                .settings,
+            b.settings
+        );
+        let stored = &store.projects().unwrap()[0].settings;
+        assert!(stored.harness.is_none());
+        assert!(stored.environment.is_empty());
+        assert!(stored.default_models.is_empty());
+        assert_eq!(stored.custom_icon, project.settings.custom_icon);
+        assert_eq!(store.sessions(None).unwrap()[0].harness, session().harness);
+    }
+
+    #[test]
+    fn corrupt_group_settings_are_reported_not_silently_replaced_by_broader_defaults() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project_group(&group("root", None)).unwrap();
+        store
+            .connection
+            .execute("UPDATE project_groups SET settings = 'invalid'", [])
+            .unwrap();
+        assert!(store.project_groups().is_err());
     }
 
     #[test]
@@ -1019,11 +1184,61 @@ mod tests {
         let mut project = project();
         project.settings.harness = Some("Claude Code".into());
         project.settings.permission_mode = Some(PermissionMode::ReadOnly);
+        project
+            .settings
+            .set_default_model("Claude Code", "model-id")
+            .unwrap();
+        project.settings.environment =
+            dunlin_domain::parse_project_environment("LANG=pl_PL.UTF-8\nEMPTY=").unwrap();
         store.upsert_project(&project).unwrap();
 
         let stored = &store.projects().unwrap()[0].settings;
         assert_eq!(stored.harness.as_deref(), Some("Claude Code"));
         assert_eq!(stored.permission_mode, Some(PermissionMode::ReadOnly));
+        assert_eq!(stored.default_model("Claude Code"), Some("model-id"));
+        assert_eq!(stored.environment, project.settings.environment);
+    }
+
+    #[test]
+    fn old_project_settings_load_without_resetting_harness_permissions_or_history() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .save_transcript(&session().id, &vec!["preserved"])
+            .unwrap();
+        for old in [
+            None,
+            Some("{}"),
+            Some(
+                r#"{"harness":"Claude Code","permission_mode":"ReadOnly","custom_icon":"png:old"}"#,
+            ),
+        ] {
+            store
+                .connection
+                .execute("UPDATE projects SET settings = ?1", [old])
+                .unwrap();
+            let restored = store.projects().unwrap().remove(0);
+            assert!(restored.settings.default_models.is_empty());
+            assert!(restored.settings.environment.is_empty());
+            if old.is_some_and(|s| s.contains("Claude Code")) {
+                assert_eq!(restored.settings.harness.as_deref(), Some("Claude Code"));
+                assert_eq!(
+                    restored.settings.permission_mode,
+                    Some(PermissionMode::ReadOnly)
+                );
+                assert_eq!(restored.settings.custom_icon.as_deref(), Some("png:old"));
+            }
+            store.upsert_project(&restored).unwrap();
+            assert_eq!(store.sessions(None).unwrap().len(), 1);
+            assert_eq!(
+                store
+                    .load_transcript::<Vec<String>>(&session().id)
+                    .unwrap()
+                    .unwrap(),
+                vec!["preserved"]
+            );
+        }
     }
 
     #[test]

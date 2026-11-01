@@ -87,6 +87,7 @@ impl GroupContext {
     pub fn permission_mode(
         &self,
         projects: &[Project],
+        groups: &[ProjectGroup],
         fallback: dunlin_domain::PermissionMode,
     ) -> dunlin_domain::PermissionMode {
         use dunlin_domain::PermissionMode;
@@ -100,7 +101,9 @@ impl GroupContext {
                         if !p.trusted {
                             PermissionMode::ReadOnly
                         } else {
-                            p.settings.permission_mode.unwrap_or(fallback)
+                            dunlin_domain::resolve_project_settings(p, groups, "", fallback)
+                                .map(|settings| settings.permission_mode.value)
+                                .unwrap_or(PermissionMode::ReadOnly)
                         }
                     })
                     .unwrap_or(PermissionMode::ReadOnly)
@@ -241,12 +244,14 @@ impl DunlinApp {
         let Some(index) = self.projects.iter().position(|p| p.id == id) else {
             return;
         };
-        self.assign_project_group(index, group.clone(), cx);
+        if !self.assign_project_group(index, group.clone(), cx) {
+            return;
+        }
         if let Some(group) = group {
             self.collapsed_project_groups.retain(|id| id != &group);
             self.persist_settings(cx);
         }
-        self.set_notice("Project group updated · files stayed in place", cx);
+        self.set_notice("Project group updated · inherited defaults and client approvals updated; files stayed in place", cx);
     }
     pub(crate) fn start_group_session(&mut self, id: &str, cx: &mut Context<Self>) {
         if self.has_dirty_tabs()
@@ -431,6 +436,7 @@ mod tests {
             name: "Group <&>".into(),
             tone: ProjectTone::Blue,
             parent_id: None,
+            settings: Default::default(),
         }
     }
 
@@ -483,7 +489,11 @@ mod tests {
         projects[1].settings.permission_mode = Some(dunlin_domain::PermissionMode::ReadOnly);
         assert!(context.validate(&projects).is_ok());
         assert_eq!(
-            context.permission_mode(&projects, dunlin_domain::PermissionMode::AutoApprove),
+            context.permission_mode(
+                &projects,
+                &[group()],
+                dunlin_domain::PermissionMode::AutoApprove
+            ),
             dunlin_domain::PermissionMode::ReadOnly
         );
         assert_eq!(context.roots.len(), 2);
@@ -514,17 +524,17 @@ mod tests {
         let mut projects = vec![f.project("one"), f.project("two")];
         let context = GroupContext::build(&group(), &[group()], &projects).unwrap();
         assert_eq!(
-            context.permission_mode(&projects, PermissionMode::AutoApprove),
+            context.permission_mode(&projects, &[group()], PermissionMode::AutoApprove),
             PermissionMode::AutoApprove
         );
         projects[1].settings.permission_mode = Some(PermissionMode::Ask);
         assert_eq!(
-            context.permission_mode(&projects, PermissionMode::AutoApprove),
+            context.permission_mode(&projects, &[group()], PermissionMode::AutoApprove),
             PermissionMode::Ask
         );
         projects[0].settings.permission_mode = Some(PermissionMode::ReadOnly);
         assert_eq!(
-            context.permission_mode(&projects, PermissionMode::AutoApprove),
+            context.permission_mode(&projects, &[group()], PermissionMode::AutoApprove),
             PermissionMode::ReadOnly
         );
         let mut extra = f.project("one");
@@ -536,8 +546,51 @@ mod tests {
         assert!(!context.prompt("request").contains("Future member"));
         projects.remove(0);
         assert_eq!(
-            context.permission_mode(&projects, PermissionMode::AutoApprove),
+            context.permission_mode(&projects, &[group()], PermissionMode::AutoApprove),
             PermissionMode::ReadOnly
         );
+    }
+
+    #[test]
+    fn group_approval_resolves_inherited_policies_and_fails_closed_on_corrupt_ancestry() {
+        use dunlin_domain::PermissionMode;
+        let f = Fixture::new();
+        let mut root = group();
+        root.settings.permission_mode = Some(PermissionMode::Ask);
+        let mut child = ProjectGroup {
+            id: "child".into(),
+            parent_id: Some(root.id.clone()),
+            settings: Default::default(),
+            ..root.clone()
+        };
+        child.settings.permission_mode = Some(PermissionMode::ReadOnly);
+        let mut projects = vec![f.project("one"), f.project("two")];
+        projects[1].group_id = Some("child".into());
+        let context =
+            GroupContext::build(&root, &[root.clone(), child.clone()], &projects).unwrap();
+        assert_eq!(
+            context.permission_mode(
+                &projects,
+                &[root.clone(), child.clone()],
+                PermissionMode::AutoApprove
+            ),
+            PermissionMode::ReadOnly
+        );
+        projects[1].settings.permission_mode = Some(PermissionMode::AutoApprove);
+        assert_eq!(
+            context.permission_mode(
+                &projects,
+                &[root.clone(), child.clone()],
+                PermissionMode::AutoApprove
+            ),
+            PermissionMode::Ask
+        );
+        // A project override must not bypass a broken ancestry.
+        child.parent_id = Some("missing".into());
+        assert_eq!(
+            context.permission_mode(&projects, &[root, child], PermissionMode::AutoApprove),
+            PermissionMode::ReadOnly
+        );
+        assert_eq!(context.roots.len(), 2);
     }
 }

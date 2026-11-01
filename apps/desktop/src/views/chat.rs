@@ -1663,6 +1663,67 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .border_b_1()
                 .border_color(p.border)
                 .child(environment)
+                .child(
+                    Button::new("composer-impact")
+                        .ghost()
+                        .small()
+                        .label("Impact…")
+                        .on_click(cx.listener(|this, _, w, cx| this.open_impact_map(w, cx))),
+                )
+                .child(
+                    Button::new("composer-compare")
+                        .ghost()
+                        .small()
+                        .label("Compare…")
+                        .on_click(cx.listener(|this, _, w, cx| this.open_comparisons(w, cx))),
+                )
+                .child(
+                    Button::new("composer-budgets")
+                        .ghost()
+                        .small()
+                        .label(
+                            this.task_budgets
+                                .registry
+                                .task(&this.session().id)
+                                .map(|t| format!("Budget {}/{}", t.attempts(), t.max_attempts))
+                                .unwrap_or("Budget…".into()),
+                        )
+                        .on_click(cx.listener(|this, _, w, cx| this.open_task_budgets(w, cx))),
+                )
+                .child(
+                    Button::new("composer-checks")
+                        .ghost()
+                        .small()
+                        .label("Checks…")
+                        .on_click(cx.listener(|this, _, w, cx| this.open_checks(w, cx))),
+                )
+                .when(this.git_history.cancel_check.is_some(), |bar| {
+                    bar.child(
+                        Button::new("composer-stop-check")
+                            .ghost()
+                            .small()
+                            .label("Stop check")
+                            .on_click(cx.listener(|this, _, _, cx| this.cancel_check(cx))),
+                    )
+                })
+                .child(
+                    Button::new("composer-context-inspector")
+                        .ghost()
+                        .small()
+                        .label("Context…")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_context_inspector(window, cx)
+                        })),
+                )
+                .child(
+                    Button::new("composer-task-review")
+                        .ghost()
+                        .small()
+                        .label("Review…")
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_task_review(window, cx)),
+                        ),
+                )
                 .child(div().w(px(1.)).h(px(14.)).bg(p.border))
                 .child(harness)
                 .children(chat_controls::provider_controls(this, cx))

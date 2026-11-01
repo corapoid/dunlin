@@ -224,6 +224,19 @@ impl crate::app::DunlinApp {
             self.file_notice(error, cx);
             return;
         }
+        let mut proposed = self.project_groups.clone();
+        proposed[index] = group.clone();
+        if let Err(error) = crate::group_settings::validate_update(
+            id,
+            &group.settings,
+            &proposed,
+            &self.projects,
+            &self.default_harness,
+            self.permission_mode,
+        ) {
+            self.file_notice(error, cx);
+            return;
+        }
         if let Some(store) = &self.store
             && let Err(error) = store.upsert_project_group(&group)
         {
@@ -239,7 +252,7 @@ impl crate::app::DunlinApp {
         }
         self.persist_settings(cx);
         self.set_notice(
-            "Group moved · projects and existing agent scopes are unchanged",
+            "Group moved · inherited defaults and client approvals updated; existing agent scopes unchanged",
             cx,
         );
     }
@@ -254,6 +267,7 @@ mod tests {
             name: id.into(),
             tone: dunlin_domain::ProjectTone::Blue,
             parent_id: parent.map(str::to_string),
+            settings: Default::default(),
         }
     }
     #[test]

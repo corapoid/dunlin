@@ -1564,6 +1564,7 @@ dependencies = [
  "dunlin-workspace",
  "gpui-kit",
  "image",
+ "markdown",
  "notify",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -1574,8 +1575,11 @@ dependencies = [
  "resvg 0.46.0",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "similar",
+ "tempfile",
  "two-face",
+ "unicode-segmentation",
  "ureq",
  "url",
  "uuid",
@@ -1603,6 +1607,7 @@ name = "dunlin-domain"
 version = "0.1.0-beta.2"
 dependencies = [
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -1621,6 +1626,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "toml 0.8.23",
@@ -1658,9 +1664,14 @@ dependencies = [
 name = "dunlin-workspace"
 version = "0.1.0-beta.2"
 dependencies = [
+ "base64 0.22.1",
  "libc",
+ "proc-macro2",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "syn 2.0.119",
+ "tempfile",
  "toml 0.8.23",
  "uuid",
 ]

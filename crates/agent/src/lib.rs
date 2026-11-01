@@ -68,6 +68,9 @@ pub struct HarnessConfig {
     pub resume_session_id: Option<String>,
     /// Additional environment for the local child only; never mutates the app.
     pub process_env: HashMap<String, String>,
+    /// Apply only to new sessions, before accepting prompts. Never overrides a
+    /// resumed session or falls back to a different model on failure.
+    pub default_model: Option<String>,
 }
 
 impl HarnessConfig {
@@ -80,6 +83,7 @@ impl HarnessConfig {
             client_name: "Dunlin".into(),
             resume_session_id: None,
             process_env: HashMap::new(),
+            default_model: None,
         }
     }
 
@@ -99,6 +103,7 @@ impl HarnessConfig {
             client_name: "Dunlin".into(),
             resume_session_id: None,
             process_env: HashMap::new(),
+            default_model: None,
         }
     }
 
@@ -281,6 +286,7 @@ pub enum HarnessCommand {
     Cancel,
     NewSession {
         cwd: PathBuf,
+        default_model: Option<String>,
     },
     LoadSession {
         session_id: String,
@@ -363,7 +369,20 @@ impl AcpHarness {
 
     /// Create a fresh ACP session in `cwd` and make it active.
     pub fn new_session(&self, cwd: impl Into<PathBuf>) -> bool {
-        self.send(HarnessCommand::NewSession { cwd: cwd.into() })
+        self.new_session_with_model(cwd, None)
+    }
+
+    /// Snapshot the latest project default without restarting the process.
+    /// Passing None uses the harness's own default, not the spawn-time setting.
+    pub fn new_session_with_model(
+        &self,
+        cwd: impl Into<PathBuf>,
+        default_model: Option<String>,
+    ) -> bool {
+        self.send(HarnessCommand::NewSession {
+            cwd: cwd.into(),
+            default_model,
+        })
     }
 
     /// Load an existing ACP session and replay its history.
@@ -599,7 +618,7 @@ async fn run(
                 if !config.is_remote() {
                     if let Some(session_id) = config.resume_session_id.as_ref() {
                         if init.agent_capabilities.load_session {
-                            match open_session(&connection, &foreground_events, config.cwd.clone(), Some(session_id.clone())).await {
+                            match open_session(&connection, &foreground_events, config.cwd.clone(), Some(session_id.clone()), None).await {
                                 Ok(id) => active_session = Some(id.into()),
                                 Err(message) => {
                                     let _ = foreground_events.send(HarnessEvent::SessionLoadFailed { session_id: session_id.clone(), message: message.to_string() }).await;
@@ -612,7 +631,7 @@ async fn run(
                             }).await;
                         }
                     } else {
-                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), None).await?.into());
+                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), None, config.default_model.as_deref()).await?.into());
                     }
                 }
 
@@ -676,9 +695,9 @@ async fn run(
                                     .send_notification(CancelNotification::new(session_id.clone()));
                             }
                         }
-                        HarnessCommand::NewSession { cwd } => {
+                        HarnessCommand::NewSession { cwd, default_model } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, None).await {
+                            match open_session(&connection, &foreground_events, cwd, None, default_model.as_deref()).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -693,7 +712,7 @@ async fn run(
                         }
                         HarnessCommand::LoadSession { session_id, cwd } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, Some(session_id.clone())).await {
+                            match open_session(&connection, &foreground_events, cwd, Some(session_id.clone()), None).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -712,15 +731,7 @@ async fn run(
                                 if active_session.as_ref().map(ToString::to_string).as_deref() != Some(&session_id) {
                                     return Err(AcpError::new(-32602, "Session is no longer active"));
                                 }
-                                let request = if let Some(config_id) = config_id.as_ref() {
-                                    UntypedMessage::new("session/set_config_option", serde_json::json!({
-                                        "sessionId": session_id, "configId": config_id, "value": model_id,
-                                    }))?
-                                } else {
-                                    UntypedMessage::new("session/set_model", serde_json::json!({
-                                        "sessionId": session_id, "modelId": model_id,
-                                    }))?
-                                };
+                                let request = model_request(&session_id, config_id.as_deref(), &model_id)?;
                                 connection.send_request(request).block_task().await
                             }.await;
                             match result {
@@ -819,6 +830,7 @@ async fn open_session(
     events: &Sender<HarnessEvent>,
     cwd: PathBuf,
     existing: Option<String>,
+    default_model: Option<&str>,
 ) -> AcpResult<String> {
     // Keep the raw response: some deployed harnesses still expose `models`,
     // which newer ACP schemas intentionally no longer deserialize.
@@ -837,6 +849,46 @@ async fn open_session(
                 .map(str::to_string)
         })
         .ok_or_else(|| AcpError::new(-32603, "The harness did not return a session id"))?;
+    let mut models = session_models(&response);
+    let mut modes = session_modes(&response);
+    if existing.is_none()
+        && let Some(preferred) = default_model
+    {
+        let selector = models.as_ref().ok_or_else(|| AcpError::new(-32602,
+            "The harness does not advertise models. Clear the project's default model to continue."))?;
+        if !selector.choices.iter().any(|choice| choice.id == preferred) {
+            return Err(AcpError::new(
+                -32602,
+                "The project's default model is unavailable. Choose another model in Project settings.",
+            ));
+        }
+        if selector.current != preferred {
+            let changed = connection
+                .send_request(model_request(
+                    &id,
+                    selector.config_id.as_deref(),
+                    preferred,
+                )?)
+                .block_task()
+                .await?;
+            let mut selected = session_models(&changed).unwrap_or_else(|| {
+                let mut selected = selector.clone();
+                selected.current = preferred.into();
+                selected
+            });
+            if selected.current != preferred {
+                return Err(AcpError::new(
+                    -32602,
+                    "The harness did not accept the project's default model",
+                ));
+            }
+            if selected.choices.is_empty() {
+                selected.choices = selector.choices.clone();
+            }
+            models = Some(selected);
+            modes = session_modes(&changed).or(modes);
+        }
+    }
     let event = if existing.is_some() {
         HarnessEvent::SessionLoaded {
             session_id: id.clone(),
@@ -850,16 +902,38 @@ async fn open_session(
     let _ = events
         .send(HarnessEvent::Models {
             session_id: id.clone(),
-            state: session_models(&response),
+            state: models,
         })
         .await;
     let _ = events
         .send(HarnessEvent::Modes {
             session_id: id.clone(),
-            state: session_modes(&response),
+            state: modes,
         })
         .await;
     Ok(id)
+}
+
+fn model_request(
+    session_id: &str,
+    config_id: Option<&str>,
+    model_id: &str,
+) -> AcpResult<UntypedMessage> {
+    if let Some(config_id) = config_id {
+        UntypedMessage::new(
+            "session/set_config_option",
+            serde_json::json!({
+                "sessionId": session_id, "configId": config_id, "value": model_id,
+            }),
+        )
+    } else {
+        UntypedMessage::new(
+            "session/set_model",
+            serde_json::json!({
+                "sessionId": session_id, "modelId": model_id,
+            }),
+        )
+    }
 }
 
 fn map_notification(notification: &SessionNotification) -> Option<HarnessUpdate> {
@@ -1084,7 +1158,15 @@ fn usage_update(usage: &UsageUpdate) -> HarnessUpdate {
     HarnessUpdate::Usage {
         used: usage.used,
         size: usage.size,
-        cost_usd: usage.cost.as_ref().map(|cost| cost.amount),
+        cost_usd: usage
+            .cost
+            .as_ref()
+            .filter(|cost| {
+                cost.currency.eq_ignore_ascii_case("USD")
+                    && cost.amount.is_finite()
+                    && cost.amount >= 0.
+            })
+            .map(|cost| cost.amount),
     }
 }
 
@@ -1282,6 +1364,37 @@ mod tests {
                 cost_usd: Some(0.25),
             })
         );
+    }
+    #[test]
+    fn foreign_missing_and_invalid_costs_never_become_usd() {
+        for (amount, currency) in [
+            (1., "EUR"),
+            (1., "PLN"),
+            (-1., "USD"),
+            (f64::INFINITY, "USD"),
+            (f64::NAN, "USD"),
+        ] {
+            let usage = UsageUpdate::new(10, 100).cost(
+                agent_client_protocol::schema::v1::Cost::new(amount, currency),
+            );
+            assert!(matches!(
+                usage_update(&usage),
+                HarnessUpdate::Usage { cost_usd: None, .. }
+            ));
+        }
+        assert!(matches!(
+            usage_update(&UsageUpdate::new(10, 100)),
+            HarnessUpdate::Usage { cost_usd: None, .. }
+        ));
+        let usage =
+            UsageUpdate::new(10, 100).cost(agent_client_protocol::schema::v1::Cost::new(0., "usd"));
+        assert!(matches!(
+            usage_update(&usage),
+            HarnessUpdate::Usage {
+                cost_usd: Some(0.),
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -289,7 +289,7 @@ impl Toast {
 pub(crate) enum ToastAction {
     Info,
     RestoreGroup {
-        group: ProjectGroup,
+        group: Box<ProjectGroup>,
         project_ids: Vec<String>,
         child_ids: Vec<String>,
     },
@@ -413,6 +413,8 @@ pub(crate) struct DunlinApp {
     pub repo_summaries: crate::project_groups::RepoSummaries,
     pub branch_ui: crate::branch_picker::State,
     pub git_history: crate::git_history::State,
+    pub task_budgets: crate::task_budgets::State,
+    pub comparisons: crate::comparisons::State,
     pub overlay_window: crate::overlay_window::State,
     pub project_icons: crate::project_icons::State,
     pub parked_runtimes: HashMap<String, harness::ParkedRuntime>,
@@ -432,6 +434,8 @@ pub(crate) struct DunlinApp {
     pub toast: Option<Toast>,
     pub context_menu: Option<ContextMenuState>,
     pub project_settings_target: Option<usize>,
+    pub project_runtime_draft: Option<crate::project_runtime_settings::Draft>,
+    pub group_settings_draft: Option<crate::group_settings::Draft>,
     pub group_input: Entity<InputState>,
     _group_subscription: Subscription,
     pub selected_project: usize,
@@ -805,15 +809,15 @@ impl DunlinApp {
             && sessions.is_empty()
             && !project.is_remote()
         {
-            let session = blank_session(
-                &project.id,
-                project
-                    .settings
-                    .harness
-                    .as_deref()
-                    .unwrap_or(&stored.default_harness),
-                project.branch.clone(),
-            );
+            let harness = dunlin_domain::resolve_project_settings(
+                project,
+                &project_groups,
+                &stored.default_harness,
+                stored.permission_mode,
+            )
+            .map(|settings| settings.harness.value)
+            .unwrap_or_else(|_| stored.default_harness.clone());
+            let session = blank_session(&project.id, &harness, project.branch.clone());
             if let Some(store) = &store
                 && let Err(error) = store.upsert_session(&session)
             {
@@ -823,6 +827,8 @@ impl DunlinApp {
             sessions.push(session);
         }
         let fallback_session = blank_session("none", &stored.default_harness, None);
+        let task_budgets = crate::task_budgets::State::load(store.as_ref());
+        let comparisons = crate::comparisons::State::load(store.as_ref());
 
         let mut app = Self {
             view: stored.view,
@@ -853,6 +859,8 @@ impl DunlinApp {
             repo_summaries: Default::default(),
             branch_ui: Default::default(),
             git_history: Default::default(),
+            task_budgets,
+            comparisons,
             overlay_window: Default::default(),
             project_icons: Default::default(),
             parked_runtimes: HashMap::new(),
@@ -872,6 +880,8 @@ impl DunlinApp {
             toast: None,
             context_menu: None,
             project_settings_target: None,
+            project_runtime_draft: None,
+            group_settings_draft: None,
             group_input,
             _group_subscription: group_subscription,
             selected_project: 0,
@@ -1089,6 +1099,8 @@ impl DunlinApp {
                         this.check_open_file(cx);
                         this.poll_file_watcher(cx);
                         this.refresh_project_icons(cx);
+                        this.poll_task_budgets(cx);
+                        this.advance_comparisons(cx);
                         this.resume_visible_queue(cx);
                         this.advance_ai_commit(cx);
                         if this.section == SidebarSection::Dashboard {
@@ -1150,11 +1162,21 @@ impl DunlinApp {
     }
 
     pub(crate) fn effective_harness(&self) -> String {
-        self.project()
-            .settings
-            .harness
-            .clone()
-            .unwrap_or_else(|| self.default_harness.clone())
+        self.resolved_project_settings(self.project())
+            .map(|settings| settings.harness.value)
+            .unwrap_or_else(|_| self.default_harness.clone())
+    }
+
+    pub(crate) fn resolved_project_settings(
+        &self,
+        project: &Project,
+    ) -> Result<dunlin_domain::ResolvedSettings, String> {
+        dunlin_domain::resolve_project_settings(
+            project,
+            &self.project_groups,
+            &self.default_harness,
+            self.permission_mode,
+        )
     }
 
     /// Existing conversations retain their harness even if the project default
@@ -1169,12 +1191,15 @@ impl DunlinApp {
 
     pub(crate) fn effective_permission_mode(&self) -> PermissionMode {
         if let Some(context) = self.group_contexts.get(&self.session().id) {
-            return context.permission_mode(&self.projects, self.permission_mode);
+            return context.permission_mode(
+                &self.projects,
+                &self.project_groups,
+                self.permission_mode,
+            );
         }
-        self.project()
-            .settings
-            .permission_mode
-            .unwrap_or(self.permission_mode)
+        self.resolved_project_settings(self.project())
+            .map(|settings| settings.permission_mode.value)
+            .unwrap_or(PermissionMode::ReadOnly)
     }
 
     pub(crate) fn session(&self) -> &SessionSummary {
@@ -2028,6 +2053,7 @@ impl DunlinApp {
                 name: name.clone(),
                 tone,
                 parent_id: prompt.parent_id.clone(),
+                settings: Default::default(),
             };
             if let Err(error) = group.validate_parent(&self.project_groups) {
                 self.group_prompt = Some(prompt);
@@ -2108,7 +2134,7 @@ impl DunlinApp {
             message: format!("Deleted group {}", group.name),
             action_label: "Undo".into(),
             action: ToastAction::RestoreGroup {
-                group,
+                group: Box::new(group),
                 project_ids,
                 child_ids,
             },
@@ -2128,10 +2154,11 @@ impl DunlinApp {
         match toast.action {
             ToastAction::Info => {}
             ToastAction::RestoreGroup {
-                mut group,
+                group,
                 mut project_ids,
                 mut child_ids,
             } => {
+                let mut group = *group;
                 let promoted_parent = group.parent_id.clone();
                 if group
                     .parent_id
@@ -2219,6 +2246,8 @@ impl DunlinApp {
     }
 
     pub(crate) fn open_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.group_settings_draft = None;
+        self.project_runtime_draft = None;
         self.context_menu = None;
         self.project_menu_open = false;
         self.project_settings_target = Some(index);
@@ -2226,6 +2255,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
+        self.project_runtime_draft = None;
         self.project_settings_target = None;
         cx.notify();
     }
@@ -2273,6 +2303,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn reset_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.project_runtime_draft = None;
         if let Some(project) = self.projects.get_mut(index) {
             project.settings = ProjectSettings::default();
         }
@@ -2287,23 +2318,36 @@ impl DunlinApp {
         index: usize,
         group_id: Option<String>,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if group_id
             .as_ref()
             .is_some_and(|id| !self.project_groups.iter().any(|g| &g.id == id))
         {
-            return;
+            return false;
         }
         let Some(project) = self.projects.get(index) else {
-            return;
+            return false;
         };
         let mut project = project.clone();
         project.group_id = group_id;
+        let validation = self
+            .resolved_project_settings(&project)
+            .and_then(|settings| {
+                if project.is_remote() {
+                    Ok(())
+                } else {
+                    settings.process_environment().map(|_| ())
+                }
+            });
+        if let Err(error) = validation {
+            self.set_notice(error, cx);
+            return false;
+        }
         if let Some(store) = &self.store
             && let Err(error) = store.upsert_project(&project)
         {
             self.set_notice(error.to_string(), cx);
-            return;
+            return false;
         }
         self.projects[index] = project.clone();
         if let Some(toast) = &mut self.toast {
@@ -2312,7 +2356,7 @@ impl DunlinApp {
         self.project_group_editor = None;
         self.persist_settings(cx);
         self.notice = Some(format!(
-            "Moved {} to {}",
+            "Moved {} to {} · inherited defaults and client approvals updated",
             project.name,
             project
                 .group_id
@@ -2322,6 +2366,7 @@ impl DunlinApp {
                 .unwrap_or("No group")
         ));
         cx.notify();
+        true
     }
 
     pub(crate) fn pair_remote(&mut self, cx: &mut Context<Self>) {
@@ -2910,6 +2955,7 @@ impl DunlinApp {
         }
         self.project_group_editor = None;
         self.project_settings_target = None;
+        self.project_runtime_draft = None;
         self.context_menu = None;
         let removed = self.projects.remove(index);
         self.workbench.tabs.retain(|tab| tab.project != removed.id);
@@ -2956,12 +3002,19 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.git_history.view.is_some() {
-            if event.keystroke.key == "escape" && !self.git_history.running {
-                self.git_history.view = None;
+        if self.group_settings_draft.is_some() {
+            if event.keystroke.key == "escape" {
+                self.close_group_settings(cx);
                 self.focus_handle.focus(window, cx);
                 cx.stop_propagation();
-                cx.notify();
+            }
+            return;
+        }
+        if self.project_settings_target.is_some() {
+            if event.keystroke.key == "escape" {
+                self.close_project_settings(cx);
+                self.focus_handle.focus(window, cx);
+                cx.stop_propagation();
             }
             return;
         }
@@ -3113,8 +3166,15 @@ impl DunlinApp {
                     self.save_all_tabs(cx);
                     true
                 }
-                "s" if self.inspector.is_some() => {
+                "s" if self.inspector.is_some()
+                    && !self.git_history.is_active_for(self.project()) =>
+                {
                     self.save_editor(cx);
+                    true
+                }
+                "w" if self.git_history.is_active_for(self.project()) => {
+                    self.close_git_history(cx);
+                    self.focus_handle.focus(window, cx);
                     true
                 }
                 "n" => {
@@ -3159,6 +3219,9 @@ impl DunlinApp {
                 cx.notify();
             } else if self.diff_view.is_some() {
                 self.close_diff(window, cx);
+                cx.stop_propagation();
+            } else if self.git_history.is_active_for(self.project()) {
+                self.show_chat_tab(window, cx);
                 cx.stop_propagation();
             } else if self.inspector.is_some() {
                 self.request_close_inspector(cx);
@@ -3533,6 +3596,7 @@ impl DunlinApp {
 
     /// Read branch and working-tree state off the UI thread.
     pub(crate) fn refresh_git_status(&mut self, cx: &mut Context<Self>) {
+        self.invalidate_impact_map();
         self.invalidate_minimap_baselines();
         let expected = self.project().path.clone();
         let project = self.project().id.clone();
@@ -3959,6 +4023,7 @@ impl DunlinApp {
     /// Switch the primary surface, restarting the title-bar animation so the
     /// active tab visibly settles into place.
     pub(crate) fn set_view(&mut self, view: MainView, cx: &mut Context<Self>) {
+        self.git_history.active = false;
         if self.section == SidebarSection::Dashboard {
             self.section = SidebarSection::Projects;
         }
@@ -4199,13 +4264,22 @@ impl DunlinApp {
     ///
     /// Skipped while the buffer has unsaved edits so local work is never lost.
     fn reload_open_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reload_editor_file(false, window, cx);
+    }
+
+    fn reload_editor_file(&mut self, explicit: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.git_history.running
+            || (!explicit && self.active_file_tab().is_some_and(|t| t.git_changed))
+        {
+            return;
+        }
         if self
             .active_file_tab()
             .is_some_and(|t| t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading)
         {
             return;
         }
-        if self.editor_dirty {
+        if self.editor_dirty && !explicit {
             return;
         }
         let Some(inspector) = self.inspector.as_ref() else {
@@ -4221,13 +4295,24 @@ impl DunlinApp {
             let expected_path = path.clone();
             let expected_project = self.project().id.clone();
             let expected_mtime = self.editor_mtime;
+            let expected_text = self.editor.read(cx).text().clone();
+            let reload_identity = self
+                .active_file_tab()
+                .map(|t| (t.id.clone(), t.reload_generation));
             cx.spawn_in(window, async move |this, cx| {
                 let result = cx
                     .background_executor()
                     .spawn(async move { backend.read_file(&path) })
                     .await;
                 this.update_in(cx, |this, window, cx| {
-                    if this.editor_dirty
+                    if this.git_history.running
+                        || (!explicit && this.active_file_tab().is_some_and(|t| t.git_changed))
+                        || this
+                            .active_file_tab()
+                            .map(|t| (t.id.clone(), t.reload_generation))
+                            != reload_identity
+                        || (!explicit && this.editor_dirty)
+                        || *this.editor.read(cx).text()!=expected_text
                         || this.project().id != expected_project
                         || this.editor_mtime != expected_mtime
                         || !this
@@ -4243,7 +4328,9 @@ impl DunlinApp {
                         let wrap = this.word_wrap;
                         this.record_saved_editor_text(file.contents.clone());
                         this.editor.update(cx, |state, cx| {
-                            state.set_value(file.contents, window, cx);
+                            if *state.text() != file.contents {
+                                state.set_value(file.contents, window, cx);
+                            }
                             state.set_highlighter(language.clone(), cx);
                             state.set_soft_wrap(wrap, window, cx);
                         });
@@ -4251,6 +4338,9 @@ impl DunlinApp {
                             inspector.bytes = file.bytes as usize;
                             inspector.language = language;
                         }
+                        if explicit {this.editor_conflict=None;this.finish_pending_editor(window,cx);}
+                    } else if explicit {
+                        this.file_notice("Could not reload the file. Its buffer, unsaved changes and Git review guard are preserved.",cx);
                     }
                     cx.notify();
                 })
@@ -4259,8 +4349,14 @@ impl DunlinApp {
             .detach();
             return;
         }
-        let Ok(file) = self.backend().and_then(|backend| backend.read_file(&path)) else {
-            return;
+        let file = match self.backend().and_then(|backend| backend.read_file(&path)) {
+            Ok(file) => file,
+            Err(_) => {
+                if explicit {
+                    self.file_notice("Could not reload the file. Its buffer, unsaved changes and Git review guard are preserved.",cx);
+                }
+                return;
+            }
         };
         if file.binary {
             return;
@@ -4273,13 +4369,19 @@ impl DunlinApp {
         let wrap = self.word_wrap;
         self.record_saved_editor_text(contents.clone());
         self.editor.update(cx, |state, cx| {
-            state.set_value(contents, window, cx);
+            if *state.text() != contents {
+                state.set_value(contents, window, cx);
+            }
             state.set_highlighter(language.clone(), cx);
             state.set_soft_wrap(wrap, window, cx);
         });
         if let Some(inspector) = self.inspector.as_mut() {
             inspector.bytes = bytes;
             inspector.language = language;
+        }
+        if explicit {
+            self.editor_conflict = None;
+            self.finish_pending_editor(window, cx);
         }
     }
 
@@ -4317,6 +4419,10 @@ impl DunlinApp {
     /// Close the inspector, discarding any unsaved editor buffer.
     /// Prompt before closing when the buffer has unsaved edits.
     pub(crate) fn request_close_inspector(&mut self, cx: &mut Context<Self>) {
+        if self.git_history.is_active_for(self.project()) {
+            self.close_git_history(cx);
+            return;
+        }
         if !self.workbench.show_file {
             return;
         }
@@ -4393,6 +4499,13 @@ impl DunlinApp {
         if !self.editor_dirty {
             return;
         }
+        if self.active_file_tab().is_some_and(|t| t.git_changed) && expected_mtime.is_some() {
+            if announce {
+                self.editor_conflict = self.active_file_tab().and_then(|t| t.conflict.clone());
+                self.file_notice("Git changed this file. Reload/compare or explicitly confirm overwrite before saving.",cx);
+            }
+            return;
+        }
         if !self.guard_ai_commit_mutation(cx) {
             return;
         }
@@ -4454,10 +4567,17 @@ impl DunlinApp {
     }
 
     pub(crate) fn reload_editor_conflict(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.git_history.running {
+            return;
+        }
+        if let Some(id) = self.workbench.active.clone()
+            && let Some(tab) = self.workbench.tabs.iter_mut().find(|t| t.id == id)
+        {
+            tab.reload_generation = tab.reload_generation.wrapping_add(1);
+        }
+        self.editor_stale = false;
         self.editor_conflict = None;
-        self.editor_dirty = false;
-        self.reload_open_editor(window, cx);
-        self.finish_pending_editor(window, cx);
+        self.reload_editor_file(true, window, cx);
         cx.notify();
     }
 
@@ -4466,6 +4586,17 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.git_history.running {
+            return;
+        }
+        if self.active_file_tab().is_some_and(|t| t.git_changed) {
+            self.editor_dirty = true;
+            if let Some(id) = self.workbench.active.clone()
+                && let Some(tab) = self.workbench.tabs.iter_mut().find(|t| t.id == id)
+            {
+                tab.dirty = true;
+            }
+        }
         self.editor_conflict = None;
         self.save_editor_internal(true, None, cx);
         if !self.editor_dirty {
@@ -4494,6 +4625,9 @@ impl DunlinApp {
 
     /// Detect external edits to the open file and reload a clean buffer.
     pub(crate) fn check_open_file(&mut self, cx: &mut Context<Self>) {
+        if self.git_history.running || self.active_file_tab().is_some_and(|t| t.git_changed) {
+            return;
+        }
         if self
             .active_file_tab()
             .is_some_and(|t| t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading)
@@ -4514,16 +4648,25 @@ impl DunlinApp {
             };
             let known = self.editor_mtime;
             let expected_path = path.clone();
+            let reload_identity = self
+                .active_file_tab()
+                .map(|t| (t.id.clone(), t.reload_generation));
             cx.spawn(async move |this, cx| {
                 let result = cx
                     .background_executor()
                     .spawn(async move { backend.stat_file(&path) })
                     .await;
                 this.update(cx, |this, cx| {
-                    if !this
-                        .inspector
-                        .as_ref()
-                        .is_some_and(|inspector| inspector.path == expected_path)
+                    if this.git_history.running
+                        || this.active_file_tab().is_some_and(|t| t.git_changed)
+                        || this
+                            .active_file_tab()
+                            .map(|t| (t.id.clone(), t.reload_generation))
+                            != reload_identity
+                        || !this
+                            .inspector
+                            .as_ref()
+                            .is_some_and(|inspector| inspector.path == expected_path)
                     {
                         return;
                     }
@@ -5031,7 +5174,9 @@ impl DunlinApp {
             return self.onboarding(cx);
         }
         let tabs = self.render_workbench_tabs(cx);
-        let content = if self.workbench.show_file
+        let content = if self.git_history.is_active_for(self.project()) {
+            crate::git_history::render(self, cx)
+        } else if self.workbench.show_file
             && let Some(inspector) = &self.inspector
         {
             self.inspector_panel(inspector, cx)
@@ -5811,7 +5956,7 @@ impl DunlinApp {
                                             .line_height(relative(1.5))
                                             .text_color(p.muted_fg)
                                             .child(format!(
-                                                "“{name}” changed since you opened it. {message} Reload the remote version or overwrite it with your edits."
+                                                "“{name}” changed since you opened it. {message} Reload the saved version or explicitly overwrite it with this buffer."
                                             )),
                                     ),
                             ),
@@ -5945,6 +6090,8 @@ impl DunlinApp {
                     .id("project-settings-modal")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(460.))
+                    .max_h(px(620.))
+                    .overflow_y_scroll()
                     .rounded(px(12.))
                     .border_1()
                     .border_color(p.border_strong)
@@ -5991,7 +6138,7 @@ impl DunlinApp {
                             ),
                     )
                     .child(div().text_size(px(11.0)).text_color(p.muted_fg).child(
-                        "Overrides apply to this project. Global settings remain the fallback.",
+                        "Overrides apply to this project. Defaults inherit from its group ancestry, then global settings.",
                     ))
                     .child(div().flex().items_center().gap(px(8.))
                         .child(crate::project_icons::render(self, &project, 32., &p))
@@ -6009,7 +6156,7 @@ impl DunlinApp {
                         let mut row = div().flex().flex_wrap().gap(px(4.));
                         row = row.child(chip(
                             "project-harness-default".into(),
-                            "Default",
+                            "Inherit",
                             selected_harness.is_none(),
                             cx,
                             Box::new(move |this, cx| this.set_project_harness(index, None, cx)),
@@ -6039,7 +6186,7 @@ impl DunlinApp {
                         let mut row = div().flex().flex_wrap().gap(px(4.));
                         row = row.child(chip(
                             "project-permission-default".into(),
-                            "Default",
+                            "Inherit",
                             selected_permission.is_none(),
                             cx,
                             Box::new(move |this, cx| this.set_project_permission(index, None, cx)),
@@ -6062,11 +6209,16 @@ impl DunlinApp {
                         }
                         row
                     })
+                    .when(!project.is_remote(), |view| view.child(match self.resolved_project_settings(&project) {
+                        Ok(settings) => crate::group_settings::render_sources(self, &settings, cx),
+                        Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element(),
+                    }))
+                    .child(crate::project_runtime_settings::render(self, index, cx))
                     .child(
                         div()
                             .text_size(px(10.5))
                             .text_color(p.muted_fg.opacity(0.8))
-                            .child("Defaults apply to new conversations. Existing conversations keep their harness."),
+                            .child("Harness/model defaults apply to new conversations. Permission changes apply to subsequent requests without restarting."),
                     )
                     .child(
                         div()
@@ -6752,6 +6904,12 @@ impl DunlinApp {
     }
 
     fn inspector_panel(&self, inspector: &Inspector, cx: &mut Context<Self>) -> AnyElement {
+        if self.active_file_tab().is_some_and(|tab| {
+            tab.kind == dunlin_workspace::preview::PreviewKind::Text
+                && crate::markdown_editor::supports(&tab.inspector.path)
+        }) {
+            return crate::markdown_editor::render(self, cx);
+        }
         if self
             .active_file_tab()
             .is_some_and(|t| t.kind != dunlin_workspace::preview::PreviewKind::Text)
@@ -6825,6 +6983,7 @@ impl DunlinApp {
                                     .child(inspector.directory.clone()),
                             ),
                     )
+                    .child(crate::inline_blame::toggle(self, cx))
                     .when(dirty && !readonly, |header| {
                         header.child(
                             div()
@@ -6967,12 +7126,20 @@ impl DunlinApp {
                                             || self.ai_commit_locks_project(),
                                     )
                                     .h_full(),
-                            ),
+                            )
+                            .relative()
+                            .child(crate::inline_blame::overlay(self, cx)),
                     )
                     .when(self.editor_minimap, |body| {
                         body.child(crate::minimap::render(self, cx))
                     }),
             )
+            .when_some(self.retained_buffer_banner(cx), |root, banner| {
+                root.child(banner)
+            })
+            .when_some(crate::inline_blame::status(self, cx), |root, status| {
+                root.child(status)
+            })
             .into_any_element()
     }
 
@@ -7088,11 +7255,19 @@ impl DunlinApp {
             || self.group_prompt.is_some()
             || self.context_menu.is_some()
             || self.project_settings_target.is_some()
+            || self.group_settings_draft.is_some()
             || self.provider_auth.is_some()
             || self.branch_ui.is_open()
-            || self.git_history.view.is_some()
     }
     pub(crate) fn overlay_focus_handle(&self, cx: &App) -> FocusHandle {
+        if let Some(draft) = &self.group_settings_draft {
+            return draft.focus_handle(cx);
+        }
+        if self.project_settings_target.is_some()
+            && let Some(draft) = &self.project_runtime_draft
+        {
+            return draft.focus_handle(cx);
+        }
         if let Some(focus) = self.branch_ui.input_focus(cx) {
             return focus;
         }
@@ -7140,6 +7315,10 @@ impl DunlinApp {
         let project = self
             .project_settings_target
             .map(|_| self.project_settings_modal(cx));
+        let group_settings = self
+            .group_settings_draft
+            .as_ref()
+            .map(|_| crate::group_settings::render(self, cx));
         let auth = self
             .provider_auth
             .as_ref()
@@ -7148,11 +7327,6 @@ impl DunlinApp {
             .branch_ui
             .is_open()
             .then(|| crate::branch_picker::render(self, cx));
-        let history = self
-            .git_history
-            .view
-            .is_some()
-            .then(|| crate::git_history::render(self, cx));
         div()
             .absolute()
             .inset_0()
@@ -7170,9 +7344,9 @@ impl DunlinApp {
             .children(toast)
             .children(context)
             .children(project)
+            .children(group_settings)
             .children(auth)
             .children(branches)
-            .children(history)
             .into_any_element()
     }
     pub(crate) fn render_overlay_plane(
@@ -7263,7 +7437,7 @@ impl DunlinApp {
                 ))
             })
             .when(
-                !self.projects.is_empty() && !self.project().is_remote() && self.project().trusted,
+                !self.projects.is_empty() && self.project().trusted,
                 |root| {
                     root.on_action(cx.listener(
                         |this, _: &crate::native_menu::GitHistory, window, cx| {
@@ -7281,17 +7455,23 @@ impl DunlinApp {
 
 impl Render for DunlinApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.prepare_markdown_visual(window, cx);
+        self.git_history.prune(&self.projects, &self.remote_hosts);
         let tabs = &self.workbench.tabs;
         self.workbench
             .preview_cache
             .retain(|id| tabs.iter().any(|tab| tab.id == id));
         self.refresh_minimap(cx);
+        self.refresh_inline_blame(cx);
         let geometry = window_state::from_bounds(window.window_bounds());
         if self.last_window_geometry != Some(geometry) {
             self.last_window_geometry = Some(geometry);
             window_state::save(geometry);
         }
-        if self.editor_stale {
+        if self.editor_stale
+            && !self.git_history.running
+            && !self.active_file_tab().is_some_and(|t| t.git_changed)
+        {
             self.editor_stale = false;
             self.reload_open_editor(window, cx);
         }
@@ -7422,7 +7602,7 @@ impl Render for DunlinApp {
                 ))
             })
             .when(
-                !self.projects.is_empty() && !self.project().is_remote() && self.project().trusted,
+                !self.projects.is_empty() && self.project().trusted,
                 |root| {
                     root.on_action(cx.listener(
                         |this, _: &crate::native_menu::GitHistory, window, cx| {

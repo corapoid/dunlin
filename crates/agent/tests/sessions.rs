@@ -10,6 +10,192 @@ fn config() -> HarnessConfig {
     )
 }
 
+#[test]
+fn project_default_model_is_acknowledged_before_session_can_accept_prompts() {
+    let mut config = config();
+    config.default_model = Some("mock-b".into());
+    let harness = AcpHarness::spawn(config);
+    let mut created = false;
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => created = true,
+            HarnessEvent::Models {
+                state: Some(state), ..
+            } => {
+                assert!(created);
+                assert_eq!(state.current, "mock-b");
+                assert_eq!(state.choices.len(), 2);
+                break;
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    // A fresh session on the same process uses the latest supplied default;
+    // clearing it must not resurrect the spawn-time model.
+    for preferred in [Some("mock-b".to_string()), None] {
+        assert!(
+            harness.new_session_with_model(std::env::current_dir().unwrap(), preferred.clone())
+        );
+        let mut created = false;
+        loop {
+            match next(&harness) {
+                HarnessEvent::SessionCreated { .. } => created = true,
+                HarnessEvent::Models {
+                    state: Some(state), ..
+                } if created => {
+                    assert_eq!(state.current, preferred.as_deref().unwrap_or("mock-a"));
+                    break;
+                }
+                HarnessEvent::Error { message } => panic!("{message}"),
+                _ => {}
+            }
+        }
+    }
+}
+
+#[test]
+fn unavailable_or_rejected_default_never_exposes_a_ready_session() {
+    for rejected in [false, true] {
+        let mut config = config();
+        config.default_model = Some(if rejected { "mock-b" } else { "unknown" }.into());
+        if rejected {
+            config
+                .process_env
+                .insert("DUNLIN_MOCK_REJECT_MODEL".into(), "1".into());
+        }
+        let harness = AcpHarness::spawn(config);
+        // Even an early queued prompt must not reach a fallback model.
+        assert!(harness.prompt("Must not be sent"));
+        loop {
+            match next(&harness) {
+                HarnessEvent::SessionCreated { .. }
+                | HarnessEvent::PromptFinished { .. }
+                | HarnessEvent::PermissionRequested { .. }
+                | HarnessEvent::Update { .. } => {
+                    panic!("an invalid project model must block session activation")
+                }
+                HarnessEvent::Error { message } => {
+                    assert!(message.contains(if rejected {
+                        "Mock model selection denied"
+                    } else {
+                        "default model is unavailable"
+                    }));
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+#[test]
+fn project_default_never_overrides_a_resumed_session() {
+    let mut config = config();
+    config.default_model = Some("unavailable-project-default".into());
+    config.resume_session_id = Some("existing-session".into());
+    let harness = AcpHarness::spawn(config);
+    let mut loaded = false;
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => panic!("must resume, not create"),
+            HarnessEvent::SessionLoaded { .. } => loaded = true,
+            HarnessEvent::Models {
+                state: Some(state), ..
+            } => {
+                assert!(loaded);
+                assert_eq!(state.current, "mock-a");
+                break;
+            }
+            HarnessEvent::Error { message } | HarnessEvent::SessionLoadFailed { message, .. } => {
+                panic!("{message}")
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn failed_default_on_reused_process_blocks_prompts_and_allows_explicit_recovery() {
+    let harness = AcpHarness::spawn(config());
+    loop {
+        match next(&harness) {
+            HarnessEvent::Modes { .. } => break,
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert!(
+        harness
+            .new_session_with_model(std::env::current_dir().unwrap(), Some("unavailable".into()))
+    );
+    assert!(harness.prompt("Must not use the previous session"));
+    let mut errors = 0;
+    while errors < 2 {
+        match next(&harness) {
+            HarnessEvent::Error { message } => {
+                assert!(message.contains(if errors == 0 {
+                    "default model is unavailable"
+                } else {
+                    "No active ACP session"
+                }));
+                errors += 1;
+            }
+            event => panic!("unexpected activation or prompt event: {event:?}"),
+        }
+    }
+    assert!(
+        harness.new_session_with_model(std::env::current_dir().unwrap(), Some("mock-b".into()))
+    );
+    loop {
+        match next(&harness) {
+            HarnessEvent::Models {
+                state: Some(state), ..
+            } => {
+                assert_eq!(state.current, "mock-b");
+                break;
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn child_environment_is_not_shared_with_parent_or_other_harnesses() {
+    let before = std::env::var_os("DUNLIN_MOCK_NO_LOAD");
+    let mut isolated = config();
+    isolated
+        .process_env
+        .insert("DUNLIN_MOCK_NO_LOAD".into(), "1".into());
+    isolated.resume_session_id = Some("existing-session".into());
+    let first = AcpHarness::spawn(isolated);
+    loop {
+        match next(&first) {
+            HarnessEvent::SessionLoadFailed { message, .. } => {
+                assert!(message.contains("cannot resume"));
+                break;
+            }
+            HarnessEvent::SessionLoaded { .. } => panic!("child env was not applied"),
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert_eq!(std::env::var_os("DUNLIN_MOCK_NO_LOAD"), before);
+    let mut clean = config();
+    clean.resume_session_id = Some("existing-session".into());
+    let second = AcpHarness::spawn(clean);
+    loop {
+        match next(&second) {
+            HarnessEvent::SessionLoaded { .. } => break,
+            HarnessEvent::SessionLoadFailed { message, .. } | HarnessEvent::Error { message } => {
+                panic!("{message}")
+            }
+            _ => {}
+        }
+    }
+}
+
 fn next(harness: &AcpHarness) -> HarnessEvent {
     async_io::block_on(async {
         match select(

@@ -8,8 +8,11 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-mod activity;
+pub(crate) mod activity;
+pub mod blame;
 pub mod history;
+pub mod operations;
+pub mod overview;
 pub use activity::{
     BranchActivity, RemoteState, RemoteStatus, branch_activity, check_remote_status,
 };

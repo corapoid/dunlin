@@ -7,6 +7,13 @@
 
 use serde::{Deserialize, Serialize};
 
+mod project_settings;
+pub mod task_budget;
+pub use project_settings::{
+    GroupSettings, ResolvedSettings, SettingSource, SettingValue, parse_project_environment,
+    resolve_group_settings, resolve_project_settings, validate_project_environment,
+};
+
 pub type Id = String;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +130,12 @@ pub struct ProjectSettings {
     pub harness: Option<String>,
     #[serde(default)]
     pub permission_mode: Option<PermissionMode>,
+    /// ACP wire model IDs, scoped to a harness (never display labels).
+    #[serde(default)]
+    pub default_models: std::collections::BTreeMap<String, String>,
+    /// Literal local child-process overrides. Not credentials storage or relay config.
+    #[serde(default)]
+    pub environment: std::collections::BTreeMap<String, String>,
 }
 
 /// A user-defined section in the project switcher, such as Private or Work.
@@ -133,6 +146,8 @@ pub struct ProjectGroup {
     pub tone: ProjectTone,
     #[serde(default)]
     pub parent_id: Option<Id>,
+    #[serde(default)]
+    pub settings: GroupSettings,
 }
 impl ProjectGroup {
     pub fn validate_parent(&self, groups: &[ProjectGroup]) -> Result<(), String> {

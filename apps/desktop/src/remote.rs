@@ -23,6 +23,9 @@ use serde_json::Value;
 const KEYCHAIN_SERVICE: &str = "dev.dunlin.remote";
 const LEGACY_KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
 
+mod history;
+pub(crate) mod operations;
+
 fn explorer_relay_error(error: String) -> String {
     if error.starts_with("Relay error 404:") || error.starts_with("Relay error 405:") {
         "This Explorer action requires an updated Dunlin relay. Update the relay and try again."

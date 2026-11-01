@@ -1,7 +1,29 @@
 //! Bounded local DAG; no network, checkout, stash or worktree writes.
 use super::activity::git;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+mod details;
+pub use details::{CommitDetails, CommitFile, details, file_patch};
+
+/// Resolve the selected repository, never an unselected ancestor. Callers may
+/// pin an earlier canonical root to reject retargeted folder aliases.
+pub fn repository_root(root: &str, expected: Option<&str>) -> Result<String, String> {
+    let canonical = std::fs::canonicalize(root).map_err(|_| "The project folder is unavailable")?;
+    let canonical = canonical
+        .to_str()
+        .ok_or("The repository path is not UTF-8")?;
+    if expected.is_some_and(|expected| expected != canonical) {
+        return Err(
+            "The project folder now points to another repository. Reopen Git history.".into(),
+        );
+    }
+    if !super::is_repository_root(std::path::Path::new(canonical)) {
+        return Err("Open the repository root to read Git history".into());
+    }
+    Ok(canonical.into())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Commit {
     pub oid: String,
     pub parents: Vec<String>,
@@ -10,10 +32,31 @@ pub struct Commit {
     pub subject: String,
     pub refs: String,
 }
+
+/// Explicit read-only history protocol. A scope identifies a repository
+/// snapshot, never an authorization grant or a caller-selected server path.
+pub const PROTOCOL_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HistoryResponse<T> {
+    pub version: u32,
+    pub scope: String,
+    pub value: T,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommitPatch {
+    pub oid: String,
+    pub parent: usize,
+    pub file: CommitFile,
+    pub patch: String,
+}
 pub fn load(root: &str, limit: usize) -> Result<Vec<Commit>, String> {
     load_from(root, "", limit)
 }
 pub fn load_from(root: &str, revision: &str, limit: usize) -> Result<Vec<Commit>, String> {
+    let canonical = repository_root(root, None)?;
+    let root = canonical.as_str();
     let revision = revision.trim();
     let resolved;
     let scope: Vec<&str> = if revision.is_empty() {
@@ -67,6 +110,8 @@ pub fn load_from(root: &str, revision: &str, limit: usize) -> Result<Vec<Commit>
 /// Create just one ref. Git's exclusive ref lock rejects existing names and
 /// races. No checkout or index refresh, including when the worktree is dirty.
 pub fn create_branch(root: &str, name: &str, oid: &str) -> Result<(), String> {
+    let canonical = repository_root(root, None)?;
+    let root = canonical.as_str();
     if name.is_empty()
         || name.len() > 240
         || name.starts_with('-')

@@ -176,6 +176,7 @@ impl DunlinApp {
             .filter(|t| t.project == project)
         {
             tab.minimap.invalidate_baseline();
+            tab.blame.invalidate();
         }
     }
 }

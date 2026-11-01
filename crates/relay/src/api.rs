@@ -21,6 +21,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+mod history;
+mod operations;
+
 use crate::config::Config;
 use crate::store::{Device, Project, Store, StoreError, User};
 
@@ -32,6 +35,8 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
+    history_reads: Arc<tokio::sync::Semaphore>,
+    git_plans: Arc<Mutex<HashMap<String, operations::Pending>>>,
 }
 
 #[derive(Clone)]
@@ -49,6 +54,8 @@ impl AppState {
             config: Arc::new(config),
             leases: Arc::new(Mutex::new(HashMap::new())),
             usage_cache: Arc::new(Mutex::new(None)),
+            history_reads: Arc::new(tokio::sync::Semaphore::new(4)),
+            git_plans: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -161,6 +168,9 @@ impl FromRequestParts<AppState> for AuthUser {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/v1/git/operation/prepare", post(operations::prepare))
+        .route("/v1/git/operation/execute", post(operations::execute))
+        .route("/v1/git/blame", get(operations::blame))
         .route("/v1/pair", post(pair))
         .route("/v1/me", get(me))
         .route("/v1/usage", get(usage))
@@ -186,6 +196,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/fs/stat", get(fs_stat))
         .route("/v1/search", get(search_project))
         .route("/v1/git/status", get(git_status))
+        .route("/v1/git/history", get(history::list))
+        .route("/v1/git/history/commit", get(history::commit))
+        .route("/v1/git/history/patch", get(history::patch))
+        .route("/v1/git/overview", get(history::overview))
         .route("/v1/git/diff", get(git_diff))
         .route("/v1/git/stage", post(git_stage))
         .route("/v1/git/unstage", post(git_unstage))

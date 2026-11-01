@@ -56,7 +56,7 @@ pub struct RemoteStatus {
 pub(super) fn git(path: &str, args: &[&str]) -> Result<String, String> {
     git_limited(path, args, 65536)
 }
-pub(super) fn git_limited(path: &str, args: &[&str], limit: u64) -> Result<String, String> {
+pub(crate) fn git_limited(path: &str, args: &[&str], limit: u64) -> Result<String, String> {
     let mut command = Command::new("git");
     command
         .args(["-C", path])
@@ -171,7 +171,7 @@ pub fn branch_activity(path: &str, changes: &[GitChange]) -> BranchActivity {
     result
 }
 
-fn bounded_command(
+pub(crate) fn bounded_command(
     mut command: Command,
     timeout: Duration,
     limit: u64,

@@ -133,9 +133,12 @@ fn main() -> Result<()> {
                         }
                         return responder.respond(SetSessionConfigOptionResponse::new(config_options("mock-a", &selected)));
                     }
-                    if request.config_id.to_string() != "model" || !matches!(selected.as_str(), "mock-a" | "mock-b") {
-                        return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Unknown mock model"));
-                    }
+                     if request.config_id.to_string() != "model" || !matches!(selected.as_str(), "mock-a" | "mock-b") {
+                         return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Unknown mock model"));
+                     }
+                     if std::env::var_os("DUNLIN_MOCK_REJECT_MODEL").is_some() {
+                         return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Mock model selection denied"));
+                     }
                     responder.respond(SetSessionConfigOptionResponse::new(config_options(&selected, "build")))
                 },
                 agent_client_protocol::on_receive_request!(),
