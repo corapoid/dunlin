@@ -45,6 +45,14 @@ struct RelayClient {
         guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw RelayError.badURL
         }
+        guard let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host,
+              components.user == nil, components.password == nil else {
+            throw RelayError.badURL
+        }
+        if scheme == "http" && !["127.0.0.1", "localhost", "::1", "[::1]"].contains(host.lowercased()) {
+            throw RelayError.badURL
+        }
         let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         components.path = basePath.isEmpty ? path : "/\(basePath)\(path)"
         guard let url = components.url else { throw RelayError.badURL }
