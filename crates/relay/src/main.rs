@@ -1,9 +1,10 @@
 //! Dunlin relay: accounts, pairing, project grants and ACP-over-WebSocket.
 //!
-//! The relay stores only metadata (users, devices, grants and a session index).
-//! Prompts, tool output and transcripts stay in OpenCode and in the clients.
-//! The harness runs on this machine, so a session keeps working when the
-//! laptop that started it is closed.
+//! The relay stores metadata (users, devices, grants and a session index) and,
+//! when `store_transcripts` is enabled (the default), transcript snapshots for
+//! recovery on another device. OpenCode remains the source of truth for live
+//! sessions. The harness runs on this machine, so a session keeps working when
+//! the laptop that started it is closed.
 
 mod acp;
 mod api;

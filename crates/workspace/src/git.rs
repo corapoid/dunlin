@@ -70,7 +70,10 @@ pub fn load(path: &str) -> GitStatus {
         .filter(|branch| !branch.is_empty())
         .unwrap_or_else(|| "no branch".into());
 
-    let porcelain = match git(path, &["status", "--porcelain=v1", "--untracked-files=all"]) {
+    let porcelain = match git(
+        path,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    ) {
         Ok(output) => output,
         Err(error) => {
             let not_repository = error.contains("not a git repository");
@@ -83,10 +86,7 @@ pub fn load(path: &str) -> GitStatus {
         }
     };
 
-    let mut changes = porcelain
-        .lines()
-        .flat_map(parse_changes)
-        .collect::<Vec<_>>();
+    let mut changes = parse_changes(&porcelain);
 
     // Count each side separately so a file with both staged and unstaged edits
     // gets accurate numbers in both source-control rows.
@@ -533,6 +533,10 @@ fn git(path: &str, args: &[&str]) -> Result<String, String> {
         .arg("--literal-pathspecs")
         .arg("-c")
         .arg("core.quotePath=false")
+        // Repository configuration must not be able to run a filesystem
+        // monitor or an external diff program during ordinary reads.
+        .arg("-c")
+        .arg("core.fsmonitor=false")
         .arg("-C")
         .arg(path)
         .args(args)
@@ -554,56 +558,55 @@ fn git(path: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
-fn parse_changes(line: &str) -> Vec<GitChange> {
-    if line.len() < 4 {
-        return Vec::new();
-    }
-    let bytes = line.as_bytes();
-    let x = bytes[0] as char;
-    let y = bytes[1] as char;
-    if x == '!' && y == '!' {
-        return Vec::new();
-    }
-
-    let raw_path = line[3..].trim();
-    let path = raw_path
-        .rsplit_once(" -> ")
-        .map(|(_, new)| new)
-        .unwrap_or(raw_path)
-        .trim_matches('"')
-        .to_string();
-    if path.is_empty() {
-        return Vec::new();
-    }
-
-    if x == '?' {
-        return vec![GitChange {
-            path,
-            status: 'U',
-            additions: 0,
-            deletions: 0,
-            staged: false,
-        }];
-    }
-
+fn parse_changes(output: &str) -> Vec<GitChange> {
+    let mut records = output.split_terminator('\0');
     let mut changes = Vec::new();
-    if x != ' ' {
-        changes.push(GitChange {
-            path: path.clone(),
-            status: x,
-            additions: 0,
-            deletions: 0,
-            staged: true,
-        });
-    }
-    if y != ' ' {
-        changes.push(GitChange {
-            path,
-            status: y,
-            additions: 0,
-            deletions: 0,
-            staged: false,
-        });
+    while let Some(record) = records.next() {
+        let bytes = record.as_bytes();
+        if bytes.len() < 4 {
+            continue;
+        }
+        let x = bytes[0] as char;
+        let y = bytes[1] as char;
+        if x == '!' && y == '!' {
+            continue;
+        }
+        let path = record[3..].to_string();
+        if path.is_empty() {
+            continue;
+        }
+        if x == '?' {
+            changes.push(GitChange {
+                path,
+                status: 'U',
+                additions: 0,
+                deletions: 0,
+                staged: false,
+            });
+            continue;
+        }
+        if matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C') {
+            // -z rename/copy records put the original path in the next field.
+            let _ = records.next();
+        }
+        if x != ' ' {
+            changes.push(GitChange {
+                path: path.clone(),
+                status: x,
+                additions: 0,
+                deletions: 0,
+                staged: true,
+            });
+        }
+        if y != ' ' {
+            changes.push(GitChange {
+                path,
+                status: y,
+                additions: 0,
+                deletions: 0,
+                staged: false,
+            });
+        }
     }
     changes
 }
@@ -636,10 +639,10 @@ fn parse_numstat(output: &str) -> std::collections::HashMap<String, (u32, u32)> 
 
 fn untracked_lines(root: &str, relative: &str) -> u32 {
     let path = Path::new(root).join(relative);
-    let Ok(metadata) = path.metadata() else {
+    let Ok(metadata) = std::fs::symlink_metadata(&path) else {
         return 0;
     };
-    if !metadata.is_file() || metadata.len() > 1_048_576 {
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 1_048_576 {
         return 0;
     }
     let Ok(contents) = std::fs::read_to_string(&path) else {
@@ -714,24 +717,24 @@ mod tests {
 
     #[test]
     fn parses_modified_and_untracked_entries() {
-        let modified = parse_changes(" M crates/agent/src/lib.rs").remove(0);
+        let modified = parse_changes(" M crates/agent/src/lib.rs\0").remove(0);
         assert_eq!(modified.path, "crates/agent/src/lib.rs");
         assert_eq!(modified.status, 'M');
         assert!(!modified.staged);
 
-        let untracked = parse_changes("?? notes.md").remove(0);
+        let untracked = parse_changes("?? notes.md\0").remove(0);
         assert_eq!(untracked.path, "notes.md");
         assert_eq!(untracked.status, 'U');
         assert!(!untracked.staged);
 
-        let staged = parse_changes("A  src/new.rs").remove(0);
+        let staged = parse_changes("A  src/new.rs\0").remove(0);
         assert_eq!(staged.status, 'A');
         assert!(staged.staged);
     }
 
     #[test]
     fn splits_a_file_with_staged_and_unstaged_edits() {
-        let changes = parse_changes("MM src/lib.rs");
+        let changes = parse_changes("MM src/lib.rs\0");
         assert_eq!(changes.len(), 2);
         assert!(changes[0].staged);
         assert_eq!(changes[0].status, 'M');
@@ -742,7 +745,7 @@ mod tests {
 
     #[test]
     fn parses_renames_to_the_new_path() {
-        let change = parse_changes("R  old/name.rs -> new/name.rs").remove(0);
+        let change = parse_changes("R  new/name.rs\0old/name.rs\0").remove(0);
         assert_eq!(change.path, "new/name.rs");
         assert_eq!(change.status, 'R');
         assert!(change.staged);
@@ -753,6 +756,36 @@ mod tests {
         let counts = parse_numstat("12\t3\tsrc/main.rs\n-\t-\timage.png\n");
         assert_eq!(counts.get("src/main.rs"), Some(&(12, 3)));
         assert_eq!(counts.get("image.png"), Some(&(0, 0)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repository_fsmonitor_is_not_executed_by_status_reads() {
+        let repo = TestRepository::new();
+        std::fs::write(repo.0.join("file"), "base\n").unwrap();
+        git(repo.root(), &["add", "file"]).unwrap();
+        git(
+            repo.root(),
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "-qm",
+                "base",
+            ],
+        )
+        .unwrap();
+        let marker = repo.0.join("FSMONITOR_EXECUTED");
+        let command = format!("touch {}", marker.display());
+        git(repo.root(), &["config", "core.fsmonitor", &command]).unwrap();
+        let _ = load(repo.root());
+        assert!(!marker.exists(), "repository fsmonitor must not run");
     }
 
     #[test]

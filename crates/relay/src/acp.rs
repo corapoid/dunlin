@@ -15,7 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, mpsc};
 
 use crate::api::{AppState, Lease};
 use crate::store::{Device, Project, SessionOwner, User};
@@ -23,6 +23,7 @@ use crate::store::{Device, Project, SessionOwner, User};
 const SESSION_NOT_FOUND: i64 = -32001;
 const SESSION_BUSY: i64 = -32002;
 const INVALID_PARAMS: i64 = -32602;
+const MAX_PENDING: usize = 256;
 
 pub async fn bridge(
     socket: WebSocket,
@@ -31,6 +32,7 @@ pub async fn bridge(
     device: Device,
     project: Project,
     connection_id: String,
+    _permit: OwnedSemaphorePermit,
 ) {
     // Names are user-controlled and unnecessary in operational logs. Keep the
     // server-generated connection identity, never raw user/project names.
@@ -237,6 +239,11 @@ pub async fn bridge(
                     client_gone = true;
                     break;
                 }
+                if !still_authorized(&state, &user, &device, &project) {
+                    eprintln!("[relay] authorization revoked · {connection_id}");
+                    client_gone = true;
+                    break;
+                }
                 let _ = ws_tx.send(Message::Ping(Vec::new().into())).await;
                 if let Ok(mut leases) = state.leases.lock() {
                     let now = Instant::now();
@@ -279,6 +286,7 @@ pub async fn bridge(
             connection_id,
             close_rx,
             timeout,
+            _permit,
         ));
         return;
     }
@@ -306,10 +314,19 @@ async fn linger_turn(
     connection_id: String,
     mut close_rx: mpsc::Receiver<()>,
     timeout: Duration,
+    _permit: OwnedSemaphorePermit,
 ) {
     let (dummy_tx, _dummy_rx) = mpsc::channel::<()>(1);
     let deadline = tokio::time::Instant::now() + timeout;
+    let mut last_authorization_check = Instant::now();
     loop {
+        if last_authorization_check.elapsed() >= Duration::from_secs(30) {
+            if !still_authorized(&state, &user, &device, &project) {
+                eprintln!("[relay] lingering turn authorization revoked · {connection_id}");
+                break;
+            }
+            last_authorization_check = Instant::now();
+        }
         tokio::select! {
             line = lines.next_line() => {
                 match line {
@@ -394,17 +411,39 @@ impl Tracker {
         close_tx: &mpsc::Sender<()>,
         value: &Value,
     ) -> Result<Option<String>, Value> {
+        let id = value.get("id").cloned().unwrap_or(Value::Null);
+        if !still_authorized(state, user, device, project) {
+            return Err(error_response(
+                id,
+                -32003,
+                "Relay authorization changed; reconnect to continue",
+                None,
+            ));
+        }
         let Some(method) = value.get("method").and_then(Value::as_str) else {
             // A response to an agent request, such as a permission decision.
             return Ok(Some(value.to_string()));
         };
         eprintln!("[relay] acp method · {method:?}");
-        let id = value.get("id").cloned().unwrap_or(Value::Null);
         let is_request = value.get("id").is_some();
+        if is_request
+            && !self.pending.contains_key(&id_key(&id))
+            && self.pending.len() >= MAX_PENDING
+        {
+            return Err(error_response(
+                id,
+                SESSION_BUSY,
+                "Too many pending ACP requests",
+                None,
+            ));
+        }
 
         let result = match method {
             "session/new" => {
                 check_cwd(project, value).map_err(|message| {
+                    error_response(id.clone(), INVALID_PARAMS, &message, None)
+                })?;
+                check_session_scope(value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
                 if is_request {
@@ -416,10 +455,13 @@ impl Tracker {
                 check_cwd(project, value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
+                check_session_scope(value).map_err(|message| {
+                    error_response(id.clone(), INVALID_PARAMS, &message, None)
+                })?;
                 let session_id = session_id(value).ok_or_else(|| {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
-                check_owner(state, user, &session_id, &id)?;
+                check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
                 if is_request {
                     self.pending
@@ -431,10 +473,13 @@ impl Tracker {
                 check_cwd(project, value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
+                check_session_scope(value).map_err(|message| {
+                    error_response(id.clone(), INVALID_PARAMS, &message, None)
+                })?;
                 let source_id = session_id(value).ok_or_else(|| {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
-                let owner = check_owner(state, user, &source_id, &id)?;
+                let owner = check_owner(state, user, project, &source_id, &id)?;
                 if is_request {
                     self.pending.insert(
                         id_key(&id),
@@ -450,7 +495,7 @@ impl Tracker {
                 let session_id = session_id(value).ok_or_else(|| {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
-                check_owner(state, user, &session_id, &id)?;
+                check_owner(state, user, project, &session_id, &id)?;
                 if is_request {
                     self.pending
                         .insert(id_key(&id), Pending::Delete { session_id });
@@ -461,7 +506,7 @@ impl Tracker {
                 let session_id = session_id(value).ok_or_else(|| {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
-                check_owner(state, user, &session_id, &id)?;
+                check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
                 if let Some(title) = prompt_title(value)
                     && let Ok(store) = state.store.lock()
@@ -478,7 +523,7 @@ impl Tracker {
             | "session/set_mode"
             | "session/set_model" => {
                 if let Some(session_id) = session_id(value) {
-                    check_owner(state, user, &session_id, &id)?;
+                    check_owner(state, user, project, &session_id, &id)?;
                     refresh_lease(state, &session_id, connection_id);
                 }
                 Ok(())
@@ -525,14 +570,16 @@ impl Tracker {
             Pending::Prompt => {}
             Pending::New => {
                 if let Some(session_id) = result_session_id(result) {
-                    if let Ok(store) = state.store.lock() {
-                        let _ = store.create_session(
+                    if let Ok(store) = state.store.lock()
+                        && let Err(error) = store.create_session(
                             &session_id,
                             &user.id,
                             &project.id,
                             "New session",
                             &device.id,
-                        );
+                        )
+                    {
+                        eprintln!("[relay] session index rejected · {error}");
                     }
                     let _ = acquire_lease(
                         state,
@@ -554,14 +601,15 @@ impl Tracker {
                 if let Some(session_id) = result_session_id(result) {
                     if let Ok(store) = state.store.lock()
                         && let Some(owner) = store.session_owner(&source_id).ok().flatten()
-                    {
-                        let _ = store.create_session(
+                        && let Err(error) = store.create_session(
                             &session_id,
                             &user.id,
                             &owner.project_id,
                             &format!("{title} (fork)"),
                             &device.id,
-                        );
+                        )
+                    {
+                        eprintln!("[relay] fork session index rejected · {error}");
                     }
                     let _ = acquire_lease(
                         state,
@@ -606,9 +654,47 @@ fn check_cwd(project: &Project, value: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// ACP lets clients request extra roots and MCP servers for a session. A relay
+/// grant covers exactly one project, so those fields must stay empty; otherwise
+/// a paired device could widen the harness beyond the authorized root.
+fn check_session_scope(value: &Value) -> Result<(), String> {
+    for field in ["additionalDirectories", "mcpServers"] {
+        match value.pointer(&format!("/params/{field}")) {
+            None | Some(Value::Null) => {}
+            Some(Value::Array(items)) if items.is_empty() => {}
+            Some(_) => {
+                return Err(format!(
+                    "{field} is not allowed by this relay; use the project grant only"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn still_authorized(state: &AppState, user: &User, device: &Device, project: &Project) -> bool {
+    let Ok(store) = state.store.lock() else {
+        return false;
+    };
+    let active_device = store.list_devices(&user.id).ok().is_some_and(|devices| {
+        devices
+            .iter()
+            .any(|entry| entry.id == device.id && entry.revoked_at.is_none())
+    });
+    if !active_device {
+        return false;
+    }
+    store
+        .project_for_user(&project.id, &user.id)
+        .ok()
+        .flatten()
+        .is_some_and(|current| current.path == project.path)
+}
+
 fn check_owner(
     state: &AppState,
     user: &User,
+    project: &Project,
     session_id: &str,
     id: &Value,
 ) -> Result<SessionOwner, Value> {
@@ -619,7 +705,7 @@ fn check_owner(
         .session_owner(session_id)
         .map_err(|_| error_response(id.clone(), -32603, "Store error", None))?;
     match owner {
-        Some(owner) if owner.user_id == user.id => Ok(owner),
+        Some(owner) if owner.user_id == user.id && owner.project_id == project.id => Ok(owner),
         _ => Err(error_response(
             id.clone(),
             SESSION_NOT_FOUND,
@@ -744,26 +830,102 @@ fn harness_command(
 ) -> Command {
     if config.sandbox && cfg!(target_os = "macos") && Path::new("/usr/bin/sandbox-exec").is_file() {
         let mut command = Command::new("/usr/bin/sandbox-exec");
-        let profile = sandbox_profile(project_path, other_projects, &config.harness);
+        let profile = sandbox_profile(project_path, other_projects, program, &config.db);
         if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
             eprintln!("[relay] sandbox profile:\n{profile}");
         }
         command.arg("-p").arg(profile).arg(program).args(args);
+        scrub_harness_environment(&mut command);
         command
     } else {
         let mut command = Command::new(program);
         command.args(args);
+        scrub_harness_environment(&mut command);
         command
     }
 }
 
-fn sandbox_profile(project_path: &str, other_projects: &[String], harness: &str) -> String {
+fn scrub_harness_environment(command: &mut Command) {
+    for key in [
+        "DUNLIN_REMOTE_TOKEN",
+        "DUNLIN_RELAY_LISTEN",
+        "DUNLIN_RELAY_DB",
+        "DUNLIN_RELAY_HARNESS",
+        "DUNLIN_RELAY_LINGER_SECS",
+        "DUNLIN_RELAY_SANDBOX",
+        "DUNLIN_RELAY_STORE_TRANSCRIPTS",
+        "DUNLIN_RELAY_DEBUG",
+        "DUNLIN_AUTOPROMPT",
+        "DUNLIN_DATA_DIR",
+        "DUNLIN_LOG_FILE",
+    ] {
+        command.env_remove(key);
+    }
+}
+
+fn deny_path(home: &Path, project: &Path, path: &Path, denied: &mut Vec<String>) {
+    if project == path {
+        return;
+    }
+    if project.starts_with(path) {
+        deny_siblings(home, path, project, denied);
+    } else {
+        denied.push(path.to_string_lossy().to_string());
+    }
+}
+
+/// Deny every sibling of the active project under a protected parent. Denying
+/// the parent itself would also deny the project; enumerating only siblings
+/// keeps the project usable without granting access to the rest of Documents,
+/// Desktop, Downloads, etc. The cap keeps the profile bounded on huge folders.
+fn deny_siblings(home: &Path, parent: &Path, project: &Path, denied: &mut Vec<String>) {
+    // The profile is built from configured paths. Canonicalize and require the
+    // enumerated parent to remain inside the canonical home directory before
+    // reading names; this is a sandbox deny-list, never a project file read.
+    let Ok(parent) = parent.canonicalize() else {
+        return;
+    };
+    let Ok(home) = home.canonicalize() else {
+        return;
+    };
+    if !parent.starts_with(&home) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(&parent) else {
+        return;
+    };
+    let mut added = 0usize;
+    for entry in entries.flatten() {
+        if added >= 512 {
+            return;
+        }
+        let path = entry.path();
+        if path == project {
+            continue;
+        }
+        if project.starts_with(&path) {
+            if path.is_dir() {
+                deny_siblings(&home, &path, project, denied);
+            }
+        } else {
+            denied.push(path.to_string_lossy().to_string());
+            added += 1;
+        }
+    }
+}
+
+fn sandbox_profile(
+    project_path: &str,
+    other_projects: &[String],
+    program: &str,
+    db_path: &Path,
+) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
+    let home_path = Path::new(&home);
     let project = Path::new(project_path);
     let mut denied = Vec::new();
 
     if !home.is_empty() {
-        let home_path = Path::new(&home);
         let mut private = vec![
             ".ssh",
             ".gnupg",
@@ -775,11 +937,37 @@ fn sandbox_profile(project_path: &str, other_projects: &[String], harness: &str)
             ".netrc",
             ".npmrc",
             ".pypirc",
+            ".git-credentials",
+            ".config/gh",
             "Library/Keychains",
             "Library/Messages",
             "Library/Mail",
             "Library/Safari",
             "Library/Application Support/Google/Chrome",
+            "Library/Application Support/Firefox",
+            "Library/Application Support/Microsoft Edge",
+            "Library/Application Support/BraveSoftware",
+            "Library/Application Support/Arc",
+            "Library/Application Support/1Password",
+            "Library/Application Support/Bitwarden",
+            "Library/Application Support/Slack",
+            "Library/Application Support/Discord",
+            "Library/Application Support/Signal",
+            "Library/Application Support/Telegram Desktop",
+            "Library/Application Support/Code",
+            "Library/Application Support/Cursor",
+            "Library/Application Support/gh",
+            "Library/Application Support/Dunlin",
+            "Library/Application Support/Kestrel",
+            "Library/Logs/Dunlin",
+            "Library/Logs/Kestrel",
+            "Library/Caches/Dunlin",
+            "Library/Caches/Kestrel",
+            "Library/Application Support/ai.opencode.desktop",
+            ".local/share/dunlin",
+            ".local/share/kestrel",
+            ".config/dunlin",
+            ".cache/dunlin",
             "Documents",
             "Desktop",
             "Downloads",
@@ -787,19 +975,32 @@ fn sandbox_profile(project_path: &str, other_projects: &[String], harness: &str)
             "Movies",
             "Music",
         ];
-        if !harness.contains("codex") {
+        if !program.contains("codex") {
             private.push(".codex");
         }
-        if !harness.contains("claude") {
+        if !program.contains("claude") {
             private.push(".claude");
         }
+        if !program.contains("opencode") {
+            private.push(".local/share/opencode");
+            private.push(".local/state/opencode");
+            private.push(".config/opencode");
+        }
         for suffix in private {
-            let path = home_path.join(suffix);
-            // A project can legitimately live under Documents or Desktop; never
-            // deny the active project itself.
-            if !project.starts_with(&path) {
-                denied.push(path.to_string_lossy().to_string());
-            }
+            deny_path(home_path, project, &home_path.join(suffix), &mut denied);
+        }
+    }
+    if !db_path.as_os_str().is_empty() {
+        let db_path = if db_path.is_absolute() || home.is_empty() {
+            db_path.to_path_buf()
+        } else {
+            Path::new(&home).join(db_path)
+        };
+        deny_path(home_path, project, &db_path, &mut denied);
+        for suffix in ["-wal", "-shm", "-journal"] {
+            let mut sidecar = db_path.as_os_str().to_os_string();
+            sidecar.push(suffix);
+            deny_path(home_path, project, Path::new(&sidecar), &mut denied);
         }
     }
     for path in other_projects {
@@ -827,8 +1028,46 @@ fn escape_sandbox_path(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_parts, prompt_title, sandbox_profile};
+    use super::{
+        check_session_scope, command_parts, prompt_title, sandbox_profile, still_authorized,
+    };
+    use crate::api::AppState;
+    use crate::config::Config;
+    use crate::store::Store;
     use serde_json::json;
+
+    #[test]
+    fn revoked_devices_and_project_grants_fail_reauthorization() {
+        let store = Store::open_in_memory().unwrap();
+        let user = store.create_user("member", "member").unwrap();
+        let project = store
+            .create_project("project", "/tmp/dunlin-authorization")
+            .unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        let (device, _) = store.create_device(&user.id, "device").unwrap();
+        let state = AppState::new(store, Config::default());
+        assert!(still_authorized(&state, &user, &device, &project));
+
+        state
+            .store
+            .lock()
+            .unwrap()
+            .revoke_device(&device.id)
+            .unwrap();
+        assert!(!still_authorized(&state, &user, &device, &project));
+    }
+
+    #[test]
+    fn rejects_client_requested_extra_roots_and_mcp_servers() {
+        let empty = json!({"params": {"additionalDirectories": [], "mcpServers": []}});
+        assert!(check_session_scope(&empty).is_ok());
+        let extra = json!({"params": {"additionalDirectories": ["/etc"]}});
+        assert!(check_session_scope(&extra).is_err());
+        let mcp = json!({"params": {"mcpServers": [{"type": "stdio", "name": "x"}]}});
+        assert!(check_session_scope(&mcp).is_err());
+        let malformed = json!({"params": {"mcpServers": {}}});
+        assert!(check_session_scope(&malformed).is_err());
+    }
 
     #[test]
     fn splits_the_harness_command() {
@@ -854,18 +1093,27 @@ mod tests {
         let profile = sandbox_profile(
             "/Users/me/project",
             &["/Users/me/other".to_string()],
-            "opencode acp",
+            "opencode",
+            std::path::Path::new("/Users/me/Library/Application Support/Dunlin/relay.db"),
         );
         assert!(profile.starts_with("(version 1)\n(allow default)"));
         assert!(profile.contains("/Users/me/other"));
         assert!(profile.contains(".ssh"));
         assert!(profile.contains(".codex"));
+        assert!(profile.contains("Library/Application Support/Dunlin/relay.db"));
+        assert!(profile.contains("Library/Application Support/Dunlin/relay.db-wal"));
         assert!(!profile.contains("(subpath \"/Users/me/project\")"));
     }
 
     #[test]
     fn sandbox_does_not_deny_the_active_project_under_documents() {
-        let profile = sandbox_profile("/Users/me/Documents/project", &[], "opencode acp");
+        let profile = sandbox_profile(
+            "/Users/me/Documents/project",
+            &[],
+            "opencode",
+            std::path::Path::new("/tmp/relay.db"),
+        );
         assert!(!profile.contains("(subpath \"/Users/me/Documents\")"));
+        assert!(!profile.contains("(subpath \"/Users/me/Documents/project\")"));
     }
 }

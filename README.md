@@ -28,7 +28,7 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.3`; see [CHANGELOG.md](CHANGELOG.md).
+release. Source builds are now `0.1.0-beta.4`; see [CHANGELOG.md](CHANGELOG.md).
 Website downloads stay pinned to the last published binary release until new
 release assets are available.
 
@@ -673,7 +673,8 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
 **Settings → Remote** on macOS, or in the iOS app. A paired device receives its
-own token; revoke it with `dunlin-relay revoke <device-id>`.
+own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
+admin-only because it describes the host account, not a per-project grant.
 
 Remote projects support the full macOS surface: explorer, editor with save,
 search, source control, diffs, chat, permissions, graph and trace. A session can
@@ -691,9 +692,11 @@ window.
 Users are isolated: each account sees only granted projects and its own
 sessions. All relay users currently share the OpenCode credentials installed on
 the server. The macOS relay runs each harness under a seatbelt profile that
-denies other project roots and common credential stores (`.ssh`, `.gnupg`,
-`.aws`, browser profiles, Documents/Desktop/Downloads). This is a best-effort
-privacy boundary, not a container; use separate OS accounts or containers for
+denies other project roots, the relay database/application data and common
+credential stores (`.ssh`, `.gnupg`, `.aws`, browser profiles,
+Documents/Desktop/Downloads). This is a best-effort privacy boundary, not a
+container; a harness can still read its own runtime state (for example
+OpenCode's session database), so use separate OS accounts or containers for
 hard isolation.
 
 The relay database is not encrypted at rest. Set `store_transcripts = false` to

@@ -51,7 +51,9 @@ The following are known limitations, not vulnerabilities by themselves:
 - the relay runs all users under the credentials installed on the host;
 - the SQLite database is not encrypted at rest;
 - the macOS seatbelt profile is a best-effort privacy boundary, not a
-  container;
+  container; a harness may still read its own runtime state (for example
+  OpenCode's session database) while it is running, so use a separate OS
+  account or container when that matters;
 - ad-hoc signed beta builds are not notarized by Apple.
 
 ## Hardening recommendations
@@ -65,7 +67,7 @@ The following are known limitations, not vulnerabilities by themselves:
 
 ## Release security gates
 
-The unreleased hardening adds `cargo deny --locked check advisories licenses bans
+The `0.1.0-beta.4` hardening adds `cargo deny --locked check advisories licenses bans
 sources` for the shipped macOS arm64 graph and CodeQL scans for Rust, web,
 Python and workflow sources. No advisory exemptions are configured. All five
 obsolete GPUI/syntect/font/image packages found by the initial audit have been

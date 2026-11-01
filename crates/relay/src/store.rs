@@ -1,7 +1,8 @@
 //! Relay metadata store.
 //!
-//! Only accounts, devices, grants and a session index live here. Prompt text,
-//! tool output and transcripts are deliberately not stored by the relay.
+//! Accounts, devices, grants and a session index live here. When
+//! `store_transcripts` is enabled, rendered transcript snapshots are also kept
+//! for recovery; `store_transcripts = false` keeps metadata only.
 
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -17,9 +18,13 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Limit(String),
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
+
+const MAX_SESSIONS_PER_USER: i64 = 1000;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct User {
@@ -230,10 +235,16 @@ impl Store {
     }
 
     pub fn create_project(&self, name: &str, path: &str) -> Result<Project> {
+        let path = path.trim();
+        let path = if path == "/" {
+            "/".to_string()
+        } else {
+            path.trim_end_matches('/').to_string()
+        };
         let project = Project {
             id: format!("prj-{}", uuid::Uuid::now_v7()),
             name: name.trim().to_string(),
-            path: path.trim_end_matches('/').to_string(),
+            path,
         };
         self.connection.execute(
             "INSERT INTO projects (id, name, path, created_at) VALUES (?1, ?2, ?3, ?4)",
@@ -470,6 +481,24 @@ impl Store {
         title: &str,
         device_id: &str,
     ) -> Result<()> {
+        let exists: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+            [id],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(());
+        }
+        let count: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = ?1",
+            [user_id],
+            |row| row.get(0),
+        )?;
+        if count >= MAX_SESSIONS_PER_USER {
+            return Err(StoreError::Limit(
+                "Session index limit reached; delete old conversations before creating more".into(),
+            ));
+        }
         self.connection.execute(
             r#"
             INSERT OR IGNORE INTO sessions

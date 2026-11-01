@@ -1,10 +1,10 @@
-# Release acceptance / hardening — 2026-11-01
+# Release acceptance / hardening — 0.1.0-beta.4 (2026-11-01)
 
 ## Status: automatic beta hardening accepted; manual matrix explicitly deferred
 
-The already published **0.1.0-beta.3** is distinct from the **unreleased hardening
-changes** described here. Never retag beta.3 or replace its assets to imply that
-new gates ran for that release. A new tag must be approved separately.
+The already published **0.1.0-beta.3** is distinct from the **0.1.0-beta.4
+hardening changes** described here. Never retag beta.3 or replace its assets to
+imply that new gates ran for that release. A new tag must be approved separately.
 
 ### Final implementation acceptance
 
@@ -192,8 +192,8 @@ cargo install cargo-deny --locked --version 0.20.2
 cargo deny --locked check advisories licenses bans sources
 python3 scripts/release_qa.py --tmp-root "$TMPDIR" --native --audit
 python3 scripts/repository_policy.py --repo corapoid/dunlin
-python3 scripts/release_gate.py metadata --version 0.1.0-beta.3
-python3 scripts/release_gate.py acceptance --version 0.1.0-beta.3
+python3 scripts/release_gate.py metadata --version 0.1.0-beta.4
+python3 scripts/release_gate.py acceptance --version 0.1.0-beta.4
 python3 scripts/release_source.py --repo corapoid/dunlin --commit FULL_SIGNED_MAIN_SHA
 python3 scripts/release_gate.py verify --version 0.1.0-beta.3 --directory /path/to/downloads
 ```

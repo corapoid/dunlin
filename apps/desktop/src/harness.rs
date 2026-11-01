@@ -547,6 +547,17 @@ impl DunlinApp {
         // User overrides win over the discovered child PATH. They never mutate
         // this process and never enter the relay transport.
         config.process_env.extend(environment);
+        // App-only secrets and control variables must not be inherited by a
+        // harness that can run arbitrary project code or call a model.
+        for key in [
+            "DUNLIN_REMOTE_TOKEN",
+            "DUNLIN_AUTOPROMPT",
+            "DUNLIN_HARNESS_COMMAND",
+            "DUNLIN_DATA_DIR",
+            "DUNLIN_LOG_FILE",
+        ] {
+            config.process_env.insert(key.into(), String::new());
+        }
         config.default_model = settings
             .default_model(&self.session_harness())
             .map(str::to_owned);

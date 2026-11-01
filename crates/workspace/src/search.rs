@@ -6,7 +6,8 @@
 //! matches. The same implementation runs inside the relay, so remote search
 //! behaves exactly like local search.
 
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Read;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -29,11 +30,15 @@ pub fn search_project(root: &str, query: &str, limit: usize) -> Vec<SearchHit> {
         return Vec::new();
     }
     let needle = query.to_lowercase();
+    let display_root = Path::new(root).to_path_buf();
+    let Ok(root) = fs::canonicalize(root) else {
+        return Vec::new();
+    };
     let mut hits = Vec::new();
     let mut scanned = 0usize;
     let mut bytes_scanned = 0u64;
     walk(
-        Path::new(root),
+        &root,
         &needle,
         limit,
         &mut scanned,
@@ -41,6 +46,14 @@ pub fn search_project(root: &str, query: &str, limit: usize) -> Vec<SearchHit> {
         0,
         &mut hits,
     );
+    // Keep the caller's spelling of the project root. On macOS `/var` is a
+    // symlink to `/private/var`; callers still need paths relative to the path
+    // they supplied so `entry_relative` can map results back to the project.
+    for hit in &mut hits {
+        if let Ok(relative) = Path::new(&hit.path).strip_prefix(&root) {
+            hit.path = display_root.join(relative).to_string_lossy().into_owned();
+        }
+    }
     hits
 }
 
@@ -76,7 +89,15 @@ fn walk(
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if path.is_dir() {
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            // A project symlink must never widen search beyond the canonical
+            // project root, even when its target exists and is readable.
+            continue;
+        }
+        if metadata.is_dir() {
             if !is_skipped_dir(name) {
                 walk(
                     &path,
@@ -90,22 +111,38 @@ fn walk(
             }
             continue;
         }
-        if is_skipped_file(name) {
+        if is_skipped_file(name) || !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
             continue;
         }
-        let Ok(meta) = fs::metadata(&path) else {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        let Ok(file) = options.open(&path) else {
             continue;
         };
-        if meta.len() > MAX_FILE_BYTES {
+        let Ok(meta) = file.metadata() else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
             continue;
         }
-        *bytes_scanned = bytes_scanned.saturating_add(meta.len());
+        let mut bytes = Vec::new();
+        if file
+            .take(MAX_FILE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .is_err()
+            || bytes.len() as u64 > MAX_FILE_BYTES
+        {
+            continue;
+        }
+        *bytes_scanned = bytes_scanned.saturating_add(bytes.len() as u64);
         if *bytes_scanned > MAX_TOTAL_BYTES {
             return;
         }
-        let Ok(bytes) = fs::read(&path) else {
-            continue;
-        };
         if bytes.iter().take(2048).any(|byte| *byte == 0) {
             continue;
         }
@@ -209,5 +246,28 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn search_does_not_follow_symlinks_outside_the_project() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("dunlin-search-links-{unique}"));
+        let project = base.join("project");
+        let outside = base.join("outside");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "AUDIT_SECRET_MARKER\n").unwrap();
+        fs::write(project.join("visible.txt"), "AUDIT_SECRET_MARKER\n").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), project.join("leak.txt")).unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("leakdir")).unwrap();
+
+        let hits = search_project(project.to_str().unwrap(), "AUDIT_SECRET_MARKER", 10);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].path.ends_with("visible.txt"));
+        let _ = fs::remove_dir_all(base);
     }
 }

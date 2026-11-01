@@ -1342,7 +1342,7 @@ fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         (
             PermissionMode::Ask,
             "Ask every time",
-            "Reads are automatic. Writes, shell commands and network calls need approval.",
+            "Dunlin does not auto-answer. The harness decides which actions request permission.",
             IconName::ShieldCheck,
             p.blue,
             p.blue_soft,
@@ -1350,7 +1350,7 @@ fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         (
             PermissionMode::ReadOnly,
             "Read-only",
-            "The agent can inspect the workspace but cannot modify files or run commands.",
+            "Dunlin rejects ACP allow requests. This is not a filesystem sandbox; a harness that does not ask is not constrained.",
             IconName::Lock,
             p.amber,
             p.amber_soft,
@@ -1358,7 +1358,7 @@ fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         (
             PermissionMode::AutoApprove,
             "Auto-approve",
-            "Every tool call runs without prompting. Use only in trusted, disposable projects.",
+            "Dunlin approves ACP permission requests automatically. Use only in trusted, disposable projects.",
             IconName::Zap,
             p.red,
             p.red_soft,
@@ -1453,35 +1453,29 @@ fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
             .bg(p.card)
             .child(setting_row(
                 "Workspace writes",
-                "Files inside the selected project can be edited when a mode allows it.",
-                scope_badge("allowed", p.green, p.green_soft, &p),
+                "Dunlin's editor can write inside the project. Agent writes depend on the harness and its permission prompts; this is not a filesystem sandbox.",
+                scope_badge("editor / harness", p.amber, p.amber_soft, &p),
                 &p,
             ))
             .child(divider(&p))
             .child(setting_row(
                 "Home directory",
-                "Reads outside the project require an explicit approval each time.",
-                scope_badge("ask", p.amber, p.amber_soft, &p),
+                "Local harnesses run with your user permissions. The relay's seatbelt denies common paths but is a best-effort boundary, not a container.",
+                scope_badge("not enforced", p.red, p.red_soft, &p),
                 &p,
             ))
             .child(divider(&p))
             .child(setting_row(
                 "Network access",
-                "Web fetch, package installs and remote APIs.",
-                toggle_switch(
-                    "allow-network",
-                    this.allow_network,
-                    |this| this.allow_network = !this.allow_network,
-                    cx,
-                    &p,
-                ),
+                "The harness can use the network. Dunlin does not currently enforce a network sandbox.",
+                scope_badge("not enforced", p.red, p.red_soft, &p),
                 &p,
             ))
             .child(divider(&p))
             .child(setting_row(
                 "Secrets",
-                "Values from .env files and the keychain stay redacted in tool output.",
-                scope_badge("redacted", p.violet, p.violet_soft, &p),
+                "Tool output and logs are not redacted. Do not paste secrets; inspect content before sharing.",
+                scope_badge("not redacted", p.red, p.red_soft, &p),
                 &p,
             )),
     );

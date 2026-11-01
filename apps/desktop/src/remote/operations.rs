@@ -17,7 +17,11 @@ fn request<T: DeserializeOwned>(
     path: &str,
     body: Option<serde_json::Value>,
 ) -> Result<T, String> {
-    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    super::validate_relay_url(&remote.host.url)?;
+    let agent = ureq::AgentBuilder::new()
+        .try_proxy_from_env(false)
+        .redirects(0)
+        .build();
     let url = format!("{}{path}", remote.host.url.trim_end_matches('/'));
     let req = if body.is_some() {
         agent.post(&url)

@@ -101,7 +101,6 @@ pub(crate) struct StoredSettings {
     pub code_font_size: f32,
     pub ui_font_family: String,
     pub code_font_family: String,
-    pub allow_network: bool,
     pub reasoning_open: bool,
     pub final_answer_only: bool,
     pub stream_responses: bool,
@@ -149,7 +148,6 @@ impl Default for StoredSettings {
             code_font_size: 13.0,
             ui_font_family: "Geist".into(),
             code_font_family: "Geist Mono".into(),
-            allow_network: false,
             reasoning_open: false,
             final_answer_only: false,
             stream_responses: true,
@@ -489,7 +487,6 @@ pub(crate) struct DunlinApp {
     pub ui_font_family: String,
     pub code_font_family: String,
     pub available_fonts: Vec<String>,
-    pub allow_network: bool,
     pub remote_hosts: Vec<remote::RemoteHost>,
     pub remote_tokens: HashMap<String, String>,
     pub remote_sessions_loading: bool,
@@ -937,7 +934,6 @@ impl DunlinApp {
             ui_font_family,
             code_font_family,
             available_fonts,
-            allow_network: stored.allow_network,
             remote_hosts: stored.remote_hosts.clone(),
             remote_tokens: HashMap::new(),
             remote_sessions_loading: false,
@@ -2386,8 +2382,8 @@ impl DunlinApp {
             self.set_notice("Enter the relay URL and a pairing code", cx);
             return;
         }
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            self.set_notice("The relay URL must start with http:// or https://", cx);
+        if let Err(error) = remote::validate_relay_url(&url) {
+            self.set_notice(error, cx);
             return;
         }
         if name.is_empty() {
@@ -4055,7 +4051,6 @@ impl DunlinApp {
             code_font_size: self.code_font_size,
             ui_font_family: self.ui_font_family.clone(),
             code_font_family: self.code_font_family.clone(),
-            allow_network: self.allow_network,
             reasoning_open: self.reasoning_open,
             final_answer_only: self.final_answer_only,
             stream_responses: self.stream_responses,

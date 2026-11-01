@@ -1,7 +1,7 @@
 //! HTTP and WebSocket API for the relay.
 
-use std::collections::HashMap;
-use std::path::Path as FsPath;
+use std::collections::{HashMap, VecDeque};
+use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -19,7 +19,7 @@ use dunlin_workspace::search;
 use dunlin_workspace::tree::FileTree;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 
 mod history;
 mod operations;
@@ -36,6 +36,9 @@ pub struct AppState {
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
     history_reads: Arc<tokio::sync::Semaphore>,
+    fs_reads: Arc<Semaphore>,
+    connections: Arc<Semaphore>,
+    pair_attempts: Arc<Mutex<VecDeque<Instant>>>,
     git_plans: Arc<Mutex<HashMap<String, operations::Pending>>>,
 }
 
@@ -55,6 +58,9 @@ impl AppState {
             leases: Arc::new(Mutex::new(HashMap::new())),
             usage_cache: Arc::new(Mutex::new(None)),
             history_reads: Arc::new(tokio::sync::Semaphore::new(4)),
+            fs_reads: Arc::new(Semaphore::new(8)),
+            connections: Arc::new(Semaphore::new(32)),
+            pair_attempts: Arc::new(Mutex::new(VecDeque::new())),
             git_plans: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -66,6 +72,42 @@ impl AppState {
             .project_for_user(project_id, user_id)
             .map_err(ApiError::from)?
             .ok_or_else(ApiError::forbidden)
+    }
+
+    fn fs_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        self.fs_reads.clone().try_acquire_owned().map_err(|_| {
+            ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Workspace file reads are busy; try again",
+            )
+        })
+    }
+
+    fn connection_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        self.connections.clone().try_acquire_owned().map_err(|_| {
+            ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many active ACP connections; close one and retry",
+            )
+        })
+    }
+
+    fn allow_pair_attempt(&self) -> bool {
+        let Ok(mut attempts) = self.pair_attempts.lock() else {
+            return false;
+        };
+        let now = Instant::now();
+        while attempts
+            .front()
+            .is_some_and(|at| now.duration_since(*at) > Duration::from_secs(60))
+        {
+            attempts.pop_front();
+        }
+        if attempts.len() >= 30 {
+            return false;
+        }
+        attempts.push_back(now);
+        true
     }
 }
 
@@ -237,12 +279,21 @@ async fn pair(
     State(state): State<AppState>,
     Json(request): Json<PairRequest>,
 ) -> Result<Json<PairResponse>, ApiError> {
+    if !state.allow_pair_attempt() {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many pairing attempts; try again later",
+        ));
+    }
     let device_name = request.device_name.trim();
-    let device_name = if device_name.is_empty() {
-        "Dunlin device"
+    let device_name: String = if device_name.is_empty() {
+        "Dunlin device".into()
     } else {
-        device_name
+        device_name.chars().take(120).collect()
     };
+    if request.code.len() > 64 {
+        return Err(ApiError::bad_request("Invalid pairing code"));
+    }
     let (user, device, token) = {
         let store = state
             .store
@@ -253,7 +304,7 @@ async fn pair(
             .map_err(ApiError::from)?
             .ok_or_else(ApiError::unauthorized)?;
         let (device, token) = store
-            .create_device(&user.id, device_name)
+            .create_device(&user.id, &device_name)
             .map_err(ApiError::from)?;
         (user, device, token)
     };
@@ -295,9 +346,15 @@ async fn projects(
 }
 
 async fn usage(
-    _auth: AuthUser,
+    AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ProviderUsage>>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Provider usage is restricted to relay administrators",
+        ));
+    }
     if let Ok(cache) = state.usage_cache.lock()
         && let Some((at, usages)) = cache.as_ref()
         && at.elapsed() < Duration::from_secs(60)
@@ -474,9 +531,10 @@ async fn acp_ws(
 ) -> Result<Response, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
     let connection_id = format!("conn-{}", uuid::Uuid::now_v7());
+    let permit = state.connection_permit()?;
     let header_id = connection_id.clone();
     let mut response = ws.on_upgrade(move |socket| {
-        crate::acp::bridge(socket, state, user, device, project, connection_id)
+        crate::acp::bridge(socket, state, user, device, project, connection_id, permit)
     });
     if let Ok(value) = HeaderValue::from_str(&header_id) {
         response
@@ -503,7 +561,12 @@ async fn fs_tree(
     Query(query): Query<ProjectQuery>,
 ) -> Result<Json<FileTree>, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
-    let tree = run_blocking(move || Ok(FileTree::load(project.path))).await?;
+    let permit = state.fs_permit()?;
+    let tree = run_blocking(move || {
+        let _permit = permit;
+        Ok(FileTree::load(project.path))
+    })
+    .await?;
     Ok(Json(tree))
 }
 
@@ -519,7 +582,12 @@ async fn fs_file(
     Query(query): Query<FileQuery>,
 ) -> Result<Json<workspace_fs::FileContents>, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
-    let file = run_blocking(move || workspace_fs::read_file(&project.path, &query.path)).await?;
+    let permit = state.fs_permit()?;
+    let file = run_blocking(move || {
+        let _permit = permit;
+        workspace_fs::read_file(&project.path, &query.path)
+    })
+    .await?;
     Ok(Json(file))
 }
 
@@ -619,9 +687,24 @@ async fn fs_preview(
     Query(query): Query<FileQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
-    let bytes =
-        run_blocking(move || dunlin_workspace::preview::read(&project.path, &query.path)).await?;
-    Ok(Json(json!({"contents": STANDARD.encode(bytes)})))
+    let permit = state.fs_permit()?;
+    let bytes = run_blocking(move || {
+        let _permit = permit;
+        dunlin_workspace::preview::read(&project.path, &query.path)
+    })
+    .await?;
+    if bytes.len() > 18 * 1024 * 1024 {
+        return Err(ApiError::bad_request(
+            "Preview response is larger than 24 MiB; open a smaller image",
+        ));
+    }
+    let encoded = STANDARD.encode(bytes);
+    if encoded.len() > 24 * 1024 * 1024 {
+        return Err(ApiError::bad_request(
+            "Preview response is larger than 24 MiB; open a smaller image",
+        ));
+    }
+    Ok(Json(json!({"contents": encoded})))
 }
 
 #[derive(Deserialize)]
@@ -679,6 +762,56 @@ struct UploadResponse {
     path: String,
 }
 
+/// Create a project-relative directory without following a symlink in any
+/// component. Used for the attachment namespace, which is written by the relay
+/// process rather than by the project-scoped editor.
+fn safe_project_directory(root: &str, relative: &str) -> Result<PathBuf, ApiError> {
+    let root = std::fs::canonicalize(root)
+        .map_err(|error| ApiError::internal(format!("Project is unavailable: {error}")))?;
+    let mut current = root;
+    for part in relative
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+    {
+        if part == ".." {
+            return Err(ApiError::bad_request("Invalid attachment path"));
+        }
+        current.push(part);
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(ApiError::bad_request(
+                    "Attachment directory is a symlink or not a directory",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(&current).map_err(|error| {
+                    ApiError::internal(format!("Could not create attachment directory: {error}"))
+                })?;
+            }
+            Err(error) => {
+                return Err(ApiError::internal(format!(
+                    "Could not inspect attachment directory: {error}"
+                )));
+            }
+        }
+    }
+    Ok(current)
+}
+
+fn has_symlink_component(path: &FsPath) -> bool {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        if std::fs::symlink_metadata(&current)
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Store a locally attached file inside the project so the remote agent can
 /// read it. Attachments are namespaced under `.dunlin/attachments`.
 async fn fs_upload(
@@ -696,12 +829,38 @@ async fn fs_upload(
     }
     let name = sanitize_attachment_name(&request.name);
     let relative = format!(".dunlin/attachments/{}-{name}", uuid::Uuid::now_v7());
-    let full = FsPath::new(&project.path).join(&relative);
-    if let Some(parent) = full.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| ApiError::internal(format!("Could not store attachment: {error}")))?;
+    let directory = safe_project_directory(&project.path, ".dunlin/attachments")?;
+    let mut attachment_count = 0usize;
+    let mut attachment_bytes = 0u64;
+    if let Ok(entries) = std::fs::read_dir(&directory) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = std::fs::symlink_metadata(entry.path())
+                && metadata.is_file()
+                && !metadata.file_type().is_symlink()
+            {
+                attachment_count += 1;
+                attachment_bytes = attachment_bytes.saturating_add(metadata.len());
+            }
+        }
     }
-    std::fs::write(&full, bytes)
+    if attachment_count >= 1000 || attachment_bytes >= 1024 * 1024 * 1024 {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Attachment quota reached; remove old attachments first",
+        ));
+    }
+    let full = directory.join(
+        FsPath::new(&relative)
+            .file_name()
+            .ok_or_else(|| ApiError::bad_request("Invalid attachment name"))?,
+    );
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&full)
+        .map_err(|error| ApiError::internal(format!("Could not store attachment: {error}")))?;
+    use std::io::Write as _;
+    file.write_all(&bytes)
         .map_err(|error| ApiError::internal(format!("Could not store attachment: {error}")))?;
     exclude_attachments_from_git(&project.path);
     Ok(Json(UploadResponse { path: relative }))
@@ -731,8 +890,17 @@ fn exclude_attachments_from_git(project_path: &str) {
     } else {
         FsPath::new(project_path).join(path)
     };
+    if has_symlink_component(&path) {
+        return;
+    }
     if let Some(parent) = path.parent() {
+        if has_symlink_component(parent) {
+            return;
+        }
         let _ = std::fs::create_dir_all(parent);
+    }
+    if has_symlink_component(&path) {
+        return;
     }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
     if !existing.lines().any(|line| line.trim() == ".dunlin/") {
@@ -763,7 +931,7 @@ fn sanitize_attachment_name(name: &str) -> String {
     if cleaned.is_empty() {
         "attachment".into()
     } else {
-        cleaned
+        cleaned.chars().take(120).collect()
     }
 }
 
@@ -780,9 +948,18 @@ async fn search_project(
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<search::SearchHit>>, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
+    if query.q.len() > 512 {
+        return Err(ApiError::bad_request(
+            "Search query is limited to 512 bytes",
+        ));
+    }
     let limit = query.limit.unwrap_or(80).clamp(1, 500);
-    let hits =
-        run_blocking(move || Ok(search::search_project(&project.path, &query.q, limit))).await?;
+    let permit = state.fs_permit()?;
+    let hits = run_blocking(move || {
+        let _permit = permit;
+        Ok(search::search_project(&project.path, &query.q, limit))
+    })
+    .await?;
     Ok(Json(hits))
 }
 
@@ -870,6 +1047,9 @@ async fn git_commit(
     Json(request): Json<CommitRequest>,
 ) -> Result<StatusCode, ApiError> {
     let project = state.project_for_user(&user.id, &request.project)?;
+    if request.message.len() > 1024 * 1024 {
+        return Err(ApiError::bad_request("Commit message is too large"));
+    }
     run_blocking(move || git::commit(&project.path, &request.message)).await?;
     Ok(StatusCode::OK)
 }
@@ -880,6 +1060,9 @@ async fn git_amend(
     Json(request): Json<CommitRequest>,
 ) -> Result<StatusCode, ApiError> {
     let project = state.project_for_user(&user.id, &request.project)?;
+    if request.message.len() > 1024 * 1024 {
+        return Err(ApiError::bad_request("Commit message is too large"));
+    }
     run_blocking(move || git::amend(&project.path, &request.message)).await?;
     Ok(StatusCode::OK)
 }

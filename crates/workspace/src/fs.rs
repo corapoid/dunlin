@@ -4,7 +4,9 @@
 //! used. That keeps `..`, absolute paths and symlinks that escape the project
 //! out of both local and remote editing.
 
-use std::fs::{self, OpenOptions};
+#[cfg(not(unix))]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -31,6 +33,12 @@ pub struct FileStat {
     pub is_dir: bool,
 }
 
+fn git_metadata(path: &Path) -> bool {
+    path.components().any(
+        |component| matches!(component, Component::Normal(name) if name.eq_ignore_ascii_case(".git")),
+    )
+}
+
 /// Resolve `relative` inside `root`, rejecting traversal and escaping symlinks.
 pub fn resolve(root: &str, relative: &str) -> Result<PathBuf, String> {
     let root_path = fs::canonicalize(root)
@@ -44,6 +52,9 @@ pub fn resolve(root: &str, relative: &str) -> Result<PathBuf, String> {
     let candidate = Path::new(relative);
     if candidate.is_absolute() {
         return Err("Absolute paths are not allowed".into());
+    }
+    if git_metadata(candidate) {
+        return Err("Git metadata is not available through the file API".into());
     }
     for component in candidate.components() {
         match component {
@@ -77,6 +88,122 @@ pub fn resolve(root: &str, relative: &str) -> Result<PathBuf, String> {
     Ok(resolved)
 }
 
+/// Open a project-relative path without following symlinks in any component.
+///
+/// `resolve` is still used for user-facing validation and canonical paths, but
+/// the actual open walks from a directory descriptor with `O_NOFOLLOW`. This
+/// closes the window where a parent directory could be swapped for a symlink
+/// between validation and `open`/`write`.
+#[cfg(unix)]
+fn open_relative(
+    root: &str,
+    relative: &str,
+    write: bool,
+    create_new: bool,
+) -> Result<File, String> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::io::{AsRawFd, FromRawFd};
+
+    resolve(root, relative)?;
+    let root_path = fs::canonicalize(root)
+        .map_err(|error| format!("Project folder is not available: {error}"))?;
+    let root_name = CString::new(root_path.as_os_str().as_bytes())
+        .map_err(|_| "Project path contains a NUL byte".to_string())?;
+    let root_fd = unsafe {
+        libc::open(
+            root_name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(format!(
+            "Could not open the project folder: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let mut directory = unsafe { File::from_raw_fd(root_fd) };
+    let parts = Path::new(relative)
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(name) => Some(name.to_os_string()),
+            Component::CurDir => None,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return Err("A file path is required".into());
+    }
+    for part in &parts[..parts.len() - 1] {
+        let name = CString::new(part.as_bytes()).map_err(|_| "Invalid path component")?;
+        let fd = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(format!(
+                "Could not open a parent folder: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        directory = unsafe { File::from_raw_fd(fd) };
+    }
+    let name = CString::new(parts.last().expect("non-empty").as_bytes())
+        .map_err(|_| "Invalid path component")?;
+    let mut flags = if write {
+        libc::O_WRONLY
+    } else {
+        libc::O_RDONLY
+    } | libc::O_NOFOLLOW
+        | libc::O_CLOEXEC;
+    if create_new {
+        flags |= libc::O_CREAT | libc::O_EXCL;
+    } else if write {
+        flags |= libc::O_TRUNC;
+    }
+    let fd = unsafe {
+        if create_new {
+            libc::openat(directory.as_raw_fd(), name.as_ptr(), flags, 0o666)
+        } else {
+            libc::openat(directory.as_raw_fd(), name.as_ptr(), flags)
+        }
+    };
+    if fd < 0 {
+        return Err(format!(
+            "Could not open the requested path: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+#[cfg(not(unix))]
+fn open_relative(
+    root: &str,
+    relative: &str,
+    write: bool,
+    create_new: bool,
+) -> Result<File, String> {
+    let path = resolve(root, relative)?;
+    let mut options = OpenOptions::new();
+    options.read(!write).write(write);
+    if create_new {
+        options.create_new(true);
+    } else if write {
+        options.truncate(true);
+    }
+    options
+        .open(path)
+        .map_err(|error| format!("Could not open the requested path: {error}"))
+}
+
+pub(crate) fn open_read(root: &str, relative: &str) -> Result<File, String> {
+    open_relative(root, relative, false, false)
+}
+
 /// Relative path from the project root, using `/` separators.
 pub fn relative_to(root: &str, path: &Path) -> String {
     path.strip_prefix(root)
@@ -86,8 +213,10 @@ pub fn relative_to(root: &str, path: &Path) -> String {
 }
 
 pub fn read_file(root: &str, relative: &str) -> Result<FileContents, String> {
-    let path = resolve(root, relative)?;
-    let metadata = fs::metadata(&path).map_err(|error| format!("Could not read file: {error}"))?;
+    let file = open_read(root, relative)?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Could not read file: {error}"))?;
     if metadata.is_dir() {
         return Err("This path is a folder".into());
     }
@@ -98,9 +227,7 @@ pub fn read_file(root: &str, relative: &str) -> Result<FileContents, String> {
         ));
     }
     let mut bytes = Vec::new();
-    fs::File::open(&path)
-        .map_err(|error| format!("Could not read file: {error}"))?
-        .take(MAX_EDITOR_BYTES + 1)
+    file.take(MAX_EDITOR_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("Could not read file: {error}"))?;
     if bytes.len() as u64 > MAX_EDITOR_BYTES {
@@ -144,7 +271,32 @@ pub fn write_file(root: &str, relative: &str, contents: &str) -> Result<FileStat
     if metadata.is_dir() {
         return Err("This path is a folder".into());
     }
-    fs::write(&path, contents).map_err(|error| format!("Could not save file: {error}"))?;
+    if metadata.permissions().readonly() {
+        return Err("This file is read-only".into());
+    }
+    let parent = Path::new(relative).parent().unwrap_or(Path::new(""));
+    let temporary_name = format!(".dunlin-write-{}", uuid::Uuid::now_v7());
+    let temporary_relative = if parent.as_os_str().is_empty() {
+        temporary_name.clone()
+    } else {
+        format!("{}/{}", parent.to_string_lossy(), temporary_name)
+    };
+    let temporary = path.with_file_name(temporary_name);
+    let result = (|| {
+        let mut file = open_relative(root, &temporary_relative, true, true)?;
+        file.write_all(contents.as_bytes())
+            .map_err(|error| format!("Could not save file: {error}"))?;
+        file.set_permissions(metadata.permissions())
+            .map_err(|error| format!("Could not preserve file permissions: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("Could not save file: {error}"))?;
+        fs::rename(&temporary, &path)
+            .map_err(|error| format!("Could not replace file atomically: {error}"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result?;
     stat_file(root, relative)
 }
 
@@ -168,19 +320,16 @@ pub fn create_file(root: &str, relative: &str) -> Result<FileStat, String> {
     if path.exists() {
         return Err("A file with that name already exists".into());
     }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|error| format!("Could not create file: {error}"))?;
-    file.write_all(b"")
+    open_relative(root, relative, true, true)
         .map_err(|error| format!("Could not create file: {error}"))?;
     stat_file(root, relative)
 }
 
 pub fn stat_file(root: &str, relative: &str) -> Result<FileStat, String> {
-    let path = resolve(root, relative)?;
-    let metadata = fs::metadata(&path).map_err(|error| format!("Could not stat file: {error}"))?;
+    let file = open_read(root, relative)?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Could not stat file: {error}"))?;
     Ok(FileStat {
         bytes: metadata.len(),
         mtime_ms: mtime_ms(&metadata),
@@ -243,6 +392,19 @@ mod tests {
         let file = read_file(&root_text, "image.bin").unwrap();
         assert!(file.binary);
         assert!(file.readonly);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn git_metadata_is_not_available_through_the_file_api() {
+        let root = temp_root("git-metadata");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git/config"), "[core]\n").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+        assert!(resolve(&root_text, ".git/config").is_err());
+        assert!(read_file(&root_text, ".git/config").is_err());
+        assert!(write_file(&root_text, ".git/config", "x").is_err());
+        assert!(stat_file(&root_text, ".git/config").is_err());
         let _ = fs::remove_dir_all(&root);
     }
 

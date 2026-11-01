@@ -709,7 +709,10 @@ fn benign_index_stat_cache_refresh_does_not_invalidate_semantic_consent() {
     )
     .unwrap();
     let index = fs::read(r.dir.path().join(".git/index")).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
+    // APFS/Git stat-cache precision varies by host. Cross a whole second so a
+    // same-content write reliably changes the cached mtime and refreshes the
+    // index without changing its semantic entries.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     r.write("file", "one\ntwo\n");
     r.git(&["update-index", "--refresh"]);
     assert_ne!(fs::read(r.dir.path().join(".git/index")).unwrap(), index);

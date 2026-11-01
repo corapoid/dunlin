@@ -32,7 +32,8 @@ impl FileTree {
             };
         }
 
-        let entries = scan_dir(path, 0);
+        let mut count = 0;
+        let entries = scan_dir(path, 0, &mut count);
         Self {
             root,
             entries,
@@ -116,6 +117,8 @@ impl FileTree {
     }
 }
 
+const MAX_ENTRIES: usize = 20_000;
+
 fn is_skipped(name: &str) -> bool {
     matches!(
         name,
@@ -131,8 +134,8 @@ fn is_skipped(name: &str) -> bool {
     ) || (name.starts_with('.') && name != ".gitignore" && name != ".github")
 }
 
-fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
-    if depth > 4 {
+fn scan_dir(dir: &Path, depth: u32, count: &mut usize) -> Vec<FileEntry> {
+    if depth > 4 || *count >= MAX_ENTRIES {
         return Vec::new();
     }
 
@@ -153,6 +156,9 @@ fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
 
     let mut entries = Vec::new();
     for path in paths.into_iter().take(80) {
+        if *count >= MAX_ENTRIES {
+            break;
+        }
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
@@ -163,8 +169,9 @@ fn scan_dir(dir: &Path, depth: u32) -> Vec<FileEntry> {
         // Show it as a leaf instead of traversing it during Explorer scans.
         let is_dir = path.is_dir() && !path.is_symlink();
         let expanded = depth == 0 && matches!(name, "apps" | "crates" | "assets");
+        *count += 1;
         let children = if is_dir {
-            scan_dir(&path, depth + 1)
+            scan_dir(&path, depth + 1, count)
         } else {
             Vec::new()
         };
