@@ -130,7 +130,8 @@ impl Store {
             )?;
         }
         if version < 3 {
-            self.connection.execute_batch(
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 r#"
                 ALTER TABLE projects ADD COLUMN remote TEXT;
                 ALTER TABLE sessions ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';
@@ -139,9 +140,11 @@ impl Store {
                 PRAGMA user_version = 3;
                 "#,
             )?;
+            transaction.commit()?;
         }
         if version < 4 {
-            self.connection.execute_batch(
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 r#"
                 CREATE TABLE IF NOT EXISTS project_groups (
                     id          TEXT PRIMARY KEY,
@@ -156,15 +159,18 @@ impl Store {
                 PRAGMA user_version = 4;
                 "#,
             )?;
+            transaction.commit()?;
         }
         if version < 5 {
-            self.connection.execute_batch(
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 r#"
                 ALTER TABLE projects ADD COLUMN settings TEXT;
 
                 PRAGMA user_version = 5;
                 "#,
             )?;
+            transaction.commit()?;
         }
         if version < 6 {
             let transaction = self.connection.unchecked_transaction()?;
