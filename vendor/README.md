@@ -17,6 +17,7 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 | gpui-component 0.8.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49 |
 | gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser |
 | metal 0.33.0 / pulp 0.22.3 / rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |
+| rav1e 0.8.1 C API | Fail-closed null-context/output guards and checked nullable test results; four isolated C API tests pass (this feature is not enabled in Dunlin) |
 | cosmic-text 0.19.0 | fontdb 0.24, preventing the non-macOS graph from retaining old ttf-parser |
 | syntect 5.3.0 | Replace bincode dumps with a versioned MessagePack envelope (`DLSYNP01`), bounded reader and explicit compression finalization |
 | two-face 0.4.5 | Migrate bundled syntax, nested lazy-context/theme and license dumps to the new codec |

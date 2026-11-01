@@ -32,10 +32,9 @@ pub async fn bridge(
     project: Project,
     connection_id: String,
 ) {
-    eprintln!(
-        "[relay] acp connected · user {} · project {} · {connection_id}",
-        user.name, project.name
-    );
+    // Names are user-controlled and unnecessary in operational logs. Keep the
+    // server-generated connection identity, never raw user/project names.
+    eprintln!("[relay] acp connected · {connection_id}");
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (close_tx, mut close_rx) = mpsc::channel::<()>(1);
 
@@ -80,7 +79,7 @@ pub async fn bridge(
                 "Could not start harness `{}`: {error}",
                 state.config.harness
             );
-            eprintln!("[relay] {message}");
+            eprintln!("[relay] could not start harness");
             let _ = ws_tx
                 .send(Message::Text(
                     error_response(Value::Null, -32603, &message, None)
@@ -399,7 +398,7 @@ impl Tracker {
             // A response to an agent request, such as a permission decision.
             return Ok(Some(value.to_string()));
         };
-        eprintln!("[relay] acp method · {method}");
+        eprintln!("[relay] acp method · {method:?}");
         let id = value.get("id").cloned().unwrap_or(Value::Null);
         let is_request = value.get("id").is_some();
 

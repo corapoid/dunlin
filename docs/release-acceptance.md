@@ -1,6 +1,6 @@
 # Release acceptance / hardening — 2026-11-01
 
-## Status: local blockers resolved; migrated-source GitHub validation pending
+## Status: full GitHub scan triaged; remediation revalidation pending
 
 The already published **0.1.0-beta.3** is distinct from the **unreleased hardening
 changes** described here. Never retag beta.3 or replace its assets to imply that
@@ -120,6 +120,20 @@ new gates ran for that release. A new tag must be approved separately.
    binary attestations. These outcomes are not yet claimed here.
    The existing successful beta.3 runs predate this hardening.
    Developer ID/notary execution additionally depends on configured Apple credentials.
+
+### First complete migrated-source GitHub validation
+
+- Head `8323237`: [CI](https://github.com/corapoid/dunlin/actions/runs/41326160605)
+  passed `test` and `web`; dependency review and dependency audit passed. All four
+  [CodeQL analysis jobs](https://github.com/corapoid/dunlin/actions/runs/41326160513)
+  completed successfully, but the aggregate finding gate correctly **failed**.
+- The full Rust scan reported 21 findings: 15 addressed in source (nullable FFI
+  handles/results and unsafe log contents), six individually classified as proven
+  false positives with exact SARIF/type/argv evidence. No query or Rust-path
+  exclusion was added. [Per-alert triage](codeql-triage.md).
+- New adversarial real-repository Git tests pass; all four isolated rav1e C API
+  tests pass, including null-input checks. The new source fixes require a fresh
+  GitHub scan before merge; earlier green job execution does not waive findings.
 
 ## Repeatable checks
 

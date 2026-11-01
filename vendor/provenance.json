@@ -142,13 +142,18 @@
       "version": "0.8.1",
       "upstream_repository": "https://github.com/xiph/rav1e/",
       "registry_archive_sha256": "43b6dd56e85d9483277cde964fd1bdb0428de4fec5ebba7540995639a21cb32b",
-      "tree_sha256": "35d5f57b0533b4d83a61245d2d1f4112557b1a80878a79b6c42b3dbb3160bfab",
+      "tree_sha256": "50e8053d02853cdfcc343f4d84701bb112911f2b42a3fa5d420ad6dbc7065235",
       "files": 221,
       "changes": [
         {
           "path": "Cargo.toml",
           "upstream_sha256": "31addb537f320450c199e4e4154c785ad563fe31ebd4c475228dc11743b6dd60",
           "patched_sha256": "f72e61ca39667ed0d81d29e6f821844081d5cd8fcffc75c6e154f8d13f8c4203"
+        },
+        {
+          "path": "src/capi.rs",
+          "upstream_sha256": "a80345e481df2ed9e2b37f847d5244dad6321cded278ba14b82aefdf66b85be7",
+          "patched_sha256": "bcebbdeeb386d13754727f2b424de5b91bc0b05dfd4fbc2eaf08776773aa37f0"
         }
       ]
     },

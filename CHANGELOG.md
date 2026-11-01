@@ -26,6 +26,10 @@ All notable changes to Dunlin are documented here. The format follows
   nested bundled syntax/theme/license dumps; preserve source data and exact licenses.
 - Pin workflow actions to verified commit SHAs and enforce eight app-bound checks,
   signed squash merges and no repository bypass actors.
+- Address full Rust CodeQL findings: guard nullable rav1e C API handles/results,
+  avoid raw session/name/startup-error logging, and constrain Git to literal
+  path operands. Document six individually demonstrated analyzer false positives
+  without disabling queries or excluding patched Rust sources.
 - Harden subsequent releases with exact tag/version checks, least-privilege
   build/publish separation, artifact provenance, final-byte checksums and
   changelog-backed release notes. Sign app and relay; require explicit Accepted

@@ -14,6 +14,10 @@
 //! encoder written in [Rust](https://rust-lang.org)
 //!
 //! This is the C-compatible API
+//!
+//! Non-null handles must be live, aligned objects returned by this API; raw
+//! buffer pointers must reference allocations valid for their stated lengths.
+//! Null context/output handles in the guarded entry points below fail closed.
 #![deny(missing_docs)]
 // Basically everything will be unsafe since this is a FFI
 #![allow(clippy::undocumented_unsafe_blocks)]
@@ -850,6 +854,9 @@ pub unsafe extern fn rav1e_context_unref(ctx: *mut Context) {
 /// see `rav1e_send_frame()`.
 #[no_mangle]
 pub unsafe extern fn rav1e_frame_new(ctx: *const Context) -> *mut Frame {
+  if ctx.is_null() {
+    return std::ptr::null_mut();
+  }
   let fi = (*ctx).ctx.new_frame();
   let frame_type = rav1e::FrameTypeOverride::No;
   let f = Frame { fi, frame_type, opaque: None, t35_metadata: Vec::new() };
@@ -999,6 +1006,9 @@ pub unsafe extern fn rav1e_rc_summary_size(ctx: *const Context) -> size_t {
 pub unsafe extern fn rav1e_rc_receive_pass_data(
   ctx: *mut Context, data: *mut *mut Data,
 ) -> RcDataKind {
+  if ctx.is_null() || data.is_null() {
+    return RcDataKind::Empty;
+  }
   use crate::api::RcData::*;
   let (buf, kind) = match (*ctx).ctx.rc_receive_pass_data() {
     Some(Summary(data)) => (data, RcDataKind::Summary),
@@ -1043,6 +1053,9 @@ pub unsafe extern fn rav1e_rc_receive_pass_data(
 pub unsafe extern fn rav1e_rc_second_pass_data_required(
   ctx: *const Context,
 ) -> i32 {
+  if ctx.is_null() {
+    return -1;
+  }
   (*ctx).ctx.rc_second_pass_data_required() as i32
 }
 
@@ -1064,6 +1077,9 @@ pub unsafe extern fn rav1e_rc_second_pass_data_required(
 pub unsafe extern fn rav1e_rc_send_pass_data(
   ctx: *mut Context, data: *mut *const u8, len: *mut size_t,
 ) -> c_int {
+  if ctx.is_null() || data.is_null() || len.is_null() {
+    return -1;
+  }
   let (need, maybe_buf) = decode_slice(data, len);
 
   if maybe_buf.is_none() {
@@ -1136,6 +1152,9 @@ pub unsafe extern fn rav1e_twopass_in(
 pub unsafe extern fn rav1e_send_frame(
   ctx: *mut Context, frame: *mut Frame,
 ) -> EncoderStatus {
+  if ctx.is_null() {
+    return EncoderStatus::Failure;
+  }
   if !frame.is_null() {
     let rav1e::EncoderConfig { width, height, chroma_sampling, .. } =
       (*ctx).ctx.config();
@@ -1210,6 +1229,9 @@ pub unsafe extern fn rav1e_status_to_str(
 pub unsafe extern fn rav1e_receive_packet(
   ctx: *mut Context, pkt: *mut *mut Packet,
 ) -> EncoderStatus {
+  if ctx.is_null() || pkt.is_null() {
+    return EncoderStatus::Failure;
+  }
   let ret = (*ctx)
     .ctx
     .receive_packet()
@@ -1359,6 +1381,18 @@ mod test {
   use std::ffi::CString;
 
   #[test]
+  fn null_contexts_and_output_slots_fail_closed() {
+    unsafe {
+      assert!(rav1e_frame_new(std::ptr::null()).is_null());
+      assert_eq!(rav1e_rc_receive_pass_data(std::ptr::null_mut(), std::ptr::null_mut()), RcDataKind::Empty);
+      assert_eq!(rav1e_rc_second_pass_data_required(std::ptr::null()), -1);
+      assert_eq!(rav1e_rc_send_pass_data(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()), -1);
+      assert_eq!(rav1e_send_frame(std::ptr::null_mut(), std::ptr::null_mut()), EncoderStatus::Failure);
+      assert_eq!(rav1e_receive_packet(std::ptr::null_mut(), std::ptr::null_mut()), EncoderStatus::Failure);
+    }
+  }
+
+  #[test]
   fn forward_opaque() {
     unsafe {
       let rac = rav1e_config_default();
@@ -1373,8 +1407,10 @@ mod test {
       rav1e_config_parse(rac, l.as_ptr(), lo.as_ptr());
 
       let rax = rav1e_context_new(rac);
+      assert!(!rax.is_null(), "fixture context creation failed");
 
       let f = rav1e_frame_new(rax);
+      assert!(!f.is_null(), "fixture frame creation failed");
 
       let pixels = [42; 64 * 64];
       rav1e_frame_fill_plane(f, 0, pixels.as_ptr(), pixels.len(), 64, 1);
@@ -1396,6 +1432,7 @@ mod test {
         let ret = rav1e_receive_packet(rax, &mut p);
 
         if ret == EncoderStatus::Success {
+          assert!(!p.is_null(), "successful receive must return a packet");
           let mut source = vec![1; 64 * 64];
           rav1e_frame_extract_plane(
             (*p).source,
@@ -1445,7 +1482,9 @@ mod test {
       rav1e_config_set_emit_data(rac, 1);
 
       let rax = rav1e_context_new(rac);
+      assert!(!rax.is_null(), "fixture context creation failed");
       let f = rav1e_frame_new(rax);
+      assert!(!f.is_null(), "fixture frame creation failed");
 
       let pixels = [42; 64 * 64];
       rav1e_frame_fill_plane(f, 0, pixels.as_ptr(), pixels.len(), 64, 1);
@@ -1466,6 +1505,7 @@ mod test {
         if ret == EncoderStatus::LimitReached {
           let kind = rav1e_rc_receive_pass_data(rax, &mut summary);
           assert_eq!(kind, RcDataKind::Summary);
+          assert!(!summary.is_null(), "summary data must be present");
           eprintln!("Got rc summary {} bytes", (*summary).len);
           break;
         } else if ret == EncoderStatus::Encoded
@@ -1474,12 +1514,14 @@ mod test {
           let mut p: *mut Data = std::ptr::null_mut();
           let kind = rav1e_rc_receive_pass_data(rax, &mut p);
           assert_eq!(kind, RcDataKind::Frame);
+          assert!(!p.is_null(), "frame data must be present");
           eprintln!("Got rc frame data {} bytes", (*p).len);
           frame_data.push_back(p);
         }
       }
 
       rav1e_config_set_emit_data(rac, 0);
+      assert!(!summary.is_null(), "encoding must produce a summary");
       let mut data = (*summary).data;
       let mut len = (*summary).len;
       let ret = rav1e_config_set_rc_summary(rac, &mut data, &mut len);
