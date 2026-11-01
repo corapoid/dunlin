@@ -335,3 +335,37 @@ async fn explorer_routes_create_move_and_initialize_only_inside_the_granted_proj
     );
     assert!(f.root.join(".git").is_dir());
 }
+
+#[tokio::test]
+async fn provider_usage_is_admin_only() {
+    let f = Fixture::new();
+    let request = Request::get("/v1/usage").header("Authorization", format!("Bearer {}", f.token));
+    let response = router(f.state.clone())
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn attachment_upload_rejects_a_symlinked_namespace() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let f = Fixture::new();
+    let outside = f.root.with_file_name(format!(
+        "dunlin-relay-upload-outside-{}",
+        uuid::Uuid::now_v7()
+    ));
+    fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, f.root.join(".dunlin")).unwrap();
+    let body = json!({
+        "project": f.project,
+        "name": "escape.txt",
+        "contents": STANDARD.encode(b"must not escape"),
+    });
+    let (status, _) = f.post("/v1/fs/upload", Some(&f.token), body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    let _ = fs::remove_dir_all(&outside);
+}
