@@ -140,6 +140,10 @@ new gates ran for that release. A new tag must be approved separately.
   the four C API tests pass again. Local post-remediation QA report
   `dunlin-release-qa-woa1znbm/report.json` passed all 18 checks, including nine native
   fixtures. Final remote revalidation remains required.
+- Head `5405a7d` removed those frame/test-view findings; its eight named jobs
+  passed, with one remaining decoder-input finding. The decoder now validates
+  pointer slots, buffers and length arithmetic locally; all five isolated C API
+  tests pass. A further scan must confirm the final remediation before merge.
 
 ## Repeatable checks
 

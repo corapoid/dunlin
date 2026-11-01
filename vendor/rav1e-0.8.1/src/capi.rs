@@ -458,14 +458,27 @@ pub unsafe extern fn rav1e_config_default() -> *mut Config {
 unsafe fn decode_slice<'a>(
   data: *mut *const u8, len: *mut size_t,
 ) -> (c_int, Option<&'a [u8]>) {
+  if data.is_null() || len.is_null() {
+    return (-1, None);
+  }
   if *len < 8 {
     return (8, None);
+  }
+  if (*data).is_null() || *len > isize::MAX as usize {
+    return (-1, None);
   }
 
   let buf = slice::from_raw_parts(*data, *len as usize);
   let (len_bytes, rest) = buf.split_at(std::mem::size_of::<u64>());
-  let buf_len = u64::from_be_bytes(len_bytes.try_into().unwrap()) as usize;
-  let full_len = buf_len + 8;
+  let Ok(buf_len) = usize::try_from(u64::from_be_bytes(len_bytes.try_into().unwrap())) else {
+    return (-1, None);
+  };
+  let Some(full_len) = buf_len.checked_add(8) else {
+    return (-1, None);
+  };
+  if full_len > c_int::MAX as usize {
+    return (-1, None);
+  }
   if buf_len > rest.len() {
     return (full_len as c_int, None);
   }
@@ -493,6 +506,9 @@ unsafe fn decode_slice<'a>(
 pub unsafe extern fn rav1e_config_set_rc_summary(
   cfg: *mut Config, data: *mut *const u8, len: *mut size_t,
 ) -> c_int {
+  if cfg.is_null() {
+    return -1;
+  }
   if data.is_null() {
     (*cfg).cfg.rate_control.summary = None;
 
@@ -1401,6 +1417,26 @@ mod test {
       rav1e_frame_set_opaque(std::ptr::null_mut(), std::ptr::null_mut(), None);
       rav1e_frame_fill_plane(std::ptr::null_mut(), 0, std::ptr::null(), 0, 0, 1);
       rav1e_frame_extract_plane(std::ptr::null(), 0, std::ptr::null_mut(), 0, 0, 1);
+    }
+  }
+
+  #[test]
+  fn rate_control_decoder_rejects_null_slots_buffers_and_overflow() {
+    unsafe {
+      assert_eq!(decode_slice(std::ptr::null_mut(), std::ptr::null_mut()), (-1, None));
+      let mut data = std::ptr::null();
+      let mut len = 8;
+      assert_eq!(decode_slice(&mut data, &mut len), (-1, None));
+      assert_eq!(len, 8);
+      let oversized = u64::MAX.to_be_bytes();
+      data = oversized.as_ptr();
+      assert_eq!(decode_slice(&mut data, &mut len), (-1, None));
+      assert_eq!(data, oversized.as_ptr());
+      assert_eq!(len, 8);
+      len = 7;
+      assert_eq!(decode_slice(&mut data, &mut len), (8, None));
+      assert_eq!(len, 7);
+      assert_eq!(rav1e_config_set_rc_summary(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()), -1);
     }
   }
 
