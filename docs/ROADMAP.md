@@ -34,7 +34,7 @@ M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxó
 | Graph / Trace | Hierarchie, disclosure, filtry/timing i eksport grafu | Pan/zoom/layout/minimapa/search grafu; search/klawiatura/sticky axis/wirtualizacja Trace |
 | Design / onboarding / uprawnienia | Design settings, pierwsze tokeny, podstawowe wykrywanie/trust | Migracja tokenów, Compact/Comfortable, kreator i centrum TCC, pełna QA klawiatury/a11y |
 | iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
-| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja zależności bez wyjątków i zaakceptowane reguły solo | Dalszy podział `app.rs`/Services, odroczone R11, nowe zdalne skany i provenance po merge |
+| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje | Dalszy podział `app.rs`/Services, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
 
 Lokalna walidacja beta.3: **487 testów zaliczonych, 4 opcjonalne pominięte**;
 build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
@@ -124,20 +124,21 @@ terminal, computer use, scheduler automatyzacji, artefakty i pełna orkiestracja
 - [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
   upgrade bazy, duży projekt, remote beta. Ręczny GUI/TCC/realny host jawnie
   odroczone decyzją użytkownika wyłącznie dla `0.1.0-beta.N`, nie zaliczone.
-- [ ] **R12. Bezpieczeństwo publicznego repo — częściowo**
+- [x] **R12. Bezpieczeństwo publicznego repo — zatwierdzony zakres solo/beta**
   - [x] workflow dependency review i konfiguracja Dependabot,
   - [x] GitHub secret scanning i push protection włączone (odczyt API 2026-11-01),
   - [x] reguły `main`: PR, osiem ścisłych checków przypiętych do aplikacji Actions,
     podpisane squash merge, brak bypassów, zakaz usuwania/non-fast-forward;
     jawnie zatwierdzony tryb solo bez fikcyjnego review drugiej osoby,
   - [x] kod workflow CodeQL (Rust/web/Python/Actions), cargo-deny, walidatora artefaktów,
-    raportów QA i audytu reguł; lint/testy lokalne, nie potwierdzony run nowych workflow,
+    raportów QA i audytu reguł; potwierdzone runy PR/main i walidacja tokena workflow,
   - [x] migracja pięciu obsolete pakietów z całego lockfile, dziewięć utrzymywanych
-    forków i integralność/provenance; cargo-deny bez wyjątków, 490 testów Rust,
+    forków i integralność/provenance; cargo-deny bez wyjątków, 491 testów Rust,
     25 Python, audyt reguł solo i dziewięć natywnych smoke zaliczone lokalnie,
-  - [ ] świeże skany zmigrowanych źródeł na GitHubie, normalny podpisany squash
-    merge i weryfikacja mainline CI/provenance; pierwszy CodeQL wykonał cztery
-    języki, ale nie obejmował jeszcze migracji i poprawek SHA-pinów.
+  - [x] świeże skany zmigrowanych/poprawionych źródeł, podpisany squash `f61251f`,
+    main CI/Security i atestacje obu binariów; zero otwartych alertów security.
+    Sześć false positive udokumentowano indywidualnie, bez wyłączania reguł
+    ani wykluczania źródeł Rust. Reguły merge: pass, bez bypassu.
     [Pełna macierz i odroczenia](release-acceptance.md).
 
 Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
@@ -359,9 +360,9 @@ Zależności: terminal, Git worktree, skills, automations, usage i graph.
 
 ## Rekomendowana kolejność domknięcia
 
-1. Beta.3 i artefakty są potwierdzone; migracja bez wyjątków i reguły solo gotowe.
-   Potwierdzić świeże workflow, podpisany merge i mainline provenance,
-   bez retagowania beta.3 i bez fikcyjnych akceptacji.
+1. Beta.3 i automatyczny hardening są potwierdzone: migracja bez wyjątków,
+   reguły solo, skany, podpisany merge i mainline provenance. Nowe wydanie wymaga
+   osobnej decyzji; nie retagować beta.3 ani udawać odroczonego odbioru R11.
 2. Odebrać rozpoczęte zakresy: ustawienia/grupy, Git, Markdown i workbench/GitHub
    na izolowanych danych; osobno realny relay, GitHub i GUI/IME/a11y.
 3. Domknąć małe braki M1 (branch rozmowy, Undo, menu wiadomości/tool calli,

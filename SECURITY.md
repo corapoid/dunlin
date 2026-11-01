@@ -88,3 +88,9 @@ explicitly deferred only for `0.1.0-beta.N`, never marked passed or reused for s
 Artifact provenance, Apple signing/notarization, developer commit/tag signatures,
 and manual/deployed-host acceptance are distinct evidence. None substitutes for
 another, and a passing checksum/native smoke must not be advertised as all of them.
+
+Implementation PR #6 and its signed mainline commit passed all required checks,
+aggregate CodeQL and read-only workflow source authorization. Both CI binary
+attestations were independently verified for the exact mainline source/workflow.
+Six proven analyzer false positives are individually documented, not query/path
+exclusions. [Final evidence and manual boundaries](docs/release-acceptance.md).

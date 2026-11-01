@@ -20,8 +20,9 @@ Walidacja źródeł beta.3: 487 testów OK / 4 opcjonalne pominięte, build/fmt/
 natywne regresje i loopback HTTP OK. CI/Release beta.3 zakończone sukcesem,
 prerelease opublikowane; pobrane artefakty zweryfikowane bez instalacji.
 Bieżący hardening nie jest częścią beta.3: migracja pięciu obsolete pakietów
-bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 490 testów Rust
-i 25 Python zaliczone; nowe skany zmigrowanych źródeł/merge/provenance oczekują.
+bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Rust
+i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
+bez bypassu i zweryfikowane atestacje obu binariów.
 Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
 [Dowody i granice](release-acceptance.md).
 
@@ -127,14 +128,15 @@ nie wynikają automatycznie z istniejących checks/search plików/A/B.
 - **R11 QA**: świeże konto macOS, brak harnessa, odmowa powiadomień, upgrade bazy,
   duży projekt i remote beta; pełna weryfikacja GUI pozostaje do wykonania.
   Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla `0.1.0-beta.N`.
-- **R12 security/release — częściowo**: dependency review/Dependabot, secret
+- **R12 security/release — zamknięty zakres solo/beta**: dependency review/Dependabot, secret
   scanning/push protection i reguły PR/statusów/no-force dla `main` już są.
   Kod CodeQL/cargo-deny oraz bramek metadanych/artefaktów i audytu reguł jest już
   przygotowany lokalnie. Migracja wszystkich pięciu obsolete pakietów bez wyjątków
   oraz integralność dziewięciu forków przechodzą. Za zgodą użytkownika reguły solo
   wymagają PR, ośmiu ścisłych app-bound checków i podpisanych squash merge bez
   bypassów; audyt reguł zaliczony, zero niezależnych aprobat nie udaje review.
-  Do domknięcia: świeże workflow po migracji, podpisany merge i mainline provenance.
+  Świeże workflow, podpisany merge i mainline provenance potwierdzone;
+  zero otwartych alertów security, sześć udokumentowanych false positive.
   Developer ID/notaryzacja zależą od konfiguracji Apple.
 
 Import plików sesji jest gotowy, ale automatyczny discovery/sync źródeł, natywne

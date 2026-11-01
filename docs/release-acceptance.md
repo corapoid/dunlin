@@ -1,10 +1,47 @@
 # Release acceptance / hardening — 2026-11-01
 
-## Status: full GitHub scan triaged; remediation revalidation pending
+## Status: automatic beta hardening accepted; manual matrix explicitly deferred
 
 The already published **0.1.0-beta.3** is distinct from the **unreleased hardening
 changes** described here. Never retag beta.3 or replace its assets to imply that
 new gates ran for that release. A new tag must be approved separately.
+
+### Final implementation acceptance
+
+- [PR #6](https://github.com/corapoid/dunlin/pull/6) merged as
+  `f61251f50c24b07b35669ad1a48fe998a8b2c81c`. GitHub commit verification is
+  **valid**; its tree exactly equals the final green PR head `5ccce78`.
+- Normal exact-head REST squash enforced the repository rules; rule suite
+  `4844202002` reports **pass**, not bypass. No admin merge, bypass actor,
+  policy relaxation or personal signing-key impersonation was used.
+- Final PR [CI](https://github.com/corapoid/dunlin/actions/runs/41332004707),
+  [Security](https://github.com/corapoid/dunlin/actions/runs/41332004701), dependency
+  review and aggregate CodeQL passed. All eight required checks are green.
+- Signed implementation-source [main CI](https://github.com/corapoid/dunlin/actions/runs/41333497656)
+  and [main Security](https://github.com/corapoid/dunlin/actions/runs/41333497547)
+  passed. **Zero open CodeQL security alerts** on main. Six individually proven
+  false positives retain their audit trail; actual findings were fixed, not waived.
+- [Read-only source verification](https://github.com/corapoid/dunlin/actions/runs/41335759337)
+  passed using the workflow's limited `GITHUB_TOKEN`, not an owner credential.
+  `release_source.py` authorized the exact signed implementation SHA.
+- Downloaded main CI app/relay without installing or executing them. Both binary
+  attestations verify against `corapoid/dunlin/.github/workflows/ci.yml`,
+  `refs/heads/main`, exact source digest `f61251f…`, and GitHub-hosted runners.
+  SHA-256: app `23cc9013125b4cd3fe7429dd1e036920c08f6a1ba5e6105b9ac5d78dabdcfd3c`;
+  relay `e6a059d17ef75f42812a8e0b1916fee87fdc5866fec707999af72ad7ca9eefdd`.
+  These are **CI binaries**, not a new beta release or retroactive beta.3 attestations.
+- Clean signed-source local report `dunlin-release-qa-sdjuyysk/report.json`:
+  `source_dirty=false`, all **18 automatic checks pass**, 491 Rust tests pass /
+  4 optional ignored and 25 Python tests pass; all nine native fixtures pass.
+  Five additional isolated rav1e C API tests pass. Vendor integrity and
+  dependency audit pass without RustSec advisory exceptions.
+- Manual GUI/TCC/real-host acceptance remains **deferred, not passed**, only for
+  `0.1.0-beta.N`. Stable/RC acceptance and Apple Developer ID/notarization remain
+  separate prerequisites. No app/relay deployment, website deployment, new tag,
+  release publication or replacement of beta.3 artifacts was performed.
+
+The sequence below preserves historical failures and remediation evidence; its
+earlier pending states are superseded by the final implementation acceptance above.
 
 ### Confirmed published beta.3 evidence
 
@@ -111,7 +148,7 @@ new gates ran for that release. A new tag must be approved separately.
    The user explicitly accepted deferral only for `0.1.0-beta.N`, recorded in
    `.github/release-policy.json` and enforced by the acceptance gate. Stable/RC
    releases cannot inherit that decision.
-4. **Migrated-source workflow execution / provenance is pending.** Initial PR #6
+4. **Historical workflow/provenance preparation.** Initial PR #6
    CI and dependency review passed; all four CodeQL jobs in
    [Security](https://github.com/corapoid/dunlin/actions/runs/41319994183) passed,
    while its pre-migration dependency audit failed. Two unpinned-action findings
@@ -121,7 +158,7 @@ new gates ran for that release. A new tag must be approved separately.
    The existing successful beta.3 runs predate this hardening.
    Developer ID/notary execution additionally depends on configured Apple credentials.
 
-### First complete migrated-source GitHub validation
+### Historical scan and remediation sequence
 
 - Head `8323237`: [CI](https://github.com/corapoid/dunlin/actions/runs/41326160605)
   passed `test` and `web`; dependency review and dependency audit passed. All four
