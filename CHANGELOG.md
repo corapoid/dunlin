@@ -14,6 +14,8 @@ All notable changes to Dunlin are documented here. The format follows
   unmaintained-dependency and policy findings visible instead of waiving them.
 - Add complete-tree integrity and original archive provenance for nine maintained
   dependency forks, signed-mainline source authorization and main-push CI attestations.
+- Add a read-only source-authorization rehearsal workflow, with explicit checks/PR
+  API access and no release/tag mutation, to validate the real workflow token.
 - Record approved solo-maintainer policy and beta-only manual acceptance deferral;
   require real trusted checks/signatures without pretending independent approval.
 
