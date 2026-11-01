@@ -901,6 +901,9 @@ pub unsafe extern fn rav1e_frame_set_type(
 pub unsafe extern fn rav1e_frame_set_opaque(
   frame: *mut Frame, opaque: *mut c_void, cb: FrameOpaqueCb,
 ) {
+  if frame.is_null() {
+    return;
+  }
   if opaque.is_null() {
     (*frame).opaque = None;
   } else {
@@ -1329,6 +1332,9 @@ pub unsafe extern fn rav1e_frame_fill_plane(
   frame: *mut Frame, plane: c_int, data: *const u8, data_len: size_t,
   stride: ptrdiff_t, bytewidth: c_int,
 ) {
+  if frame.is_null() || data.is_null() {
+    return;
+  }
   let data_slice = slice::from_raw_parts(data, data_len as usize);
 
   match (*frame).fi {
@@ -1362,6 +1368,9 @@ pub unsafe extern fn rav1e_frame_extract_plane(
   frame: *const Frame, plane: c_int, data: *mut u8, data_len: size_t,
   stride: ptrdiff_t, bytewidth: c_int,
 ) {
+  if frame.is_null() || data.is_null() {
+    return;
+  }
   let data_slice = slice::from_raw_parts_mut(data, data_len as usize);
 
   match (*frame).fi {
@@ -1389,6 +1398,9 @@ mod test {
       assert_eq!(rav1e_rc_send_pass_data(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()), -1);
       assert_eq!(rav1e_send_frame(std::ptr::null_mut(), std::ptr::null_mut()), EncoderStatus::Failure);
       assert_eq!(rav1e_receive_packet(std::ptr::null_mut(), std::ptr::null_mut()), EncoderStatus::Failure);
+      rav1e_frame_set_opaque(std::ptr::null_mut(), std::ptr::null_mut(), None);
+      rav1e_frame_fill_plane(std::ptr::null_mut(), 0, std::ptr::null(), 0, 0, 1);
+      rav1e_frame_extract_plane(std::ptr::null(), 0, std::ptr::null_mut(), 0, 0, 1);
     }
   }
 
@@ -1432,10 +1444,10 @@ mod test {
         let ret = rav1e_receive_packet(rax, &mut p);
 
         if ret == EncoderStatus::Success {
-          assert!(!p.is_null(), "successful receive must return a packet");
+          let packet = p.as_ref().expect("successful receive must return a packet");
           let mut source = vec![1; 64 * 64];
           rav1e_frame_extract_plane(
-            (*p).source,
+            packet.source,
             0,
             source.as_mut_ptr(),
             64 * 64,
@@ -1443,7 +1455,7 @@ mod test {
             1,
           );
           assert_eq!(source, vec![42; 64 * 64]);
-          let v = Box::from_raw((*p).opaque as *mut u8);
+          let v = Box::from_raw(packet.opaque as *mut u8);
           eprintln!("Opaque {}", v);
         }
 
@@ -1505,8 +1517,8 @@ mod test {
         if ret == EncoderStatus::LimitReached {
           let kind = rav1e_rc_receive_pass_data(rax, &mut summary);
           assert_eq!(kind, RcDataKind::Summary);
-          assert!(!summary.is_null(), "summary data must be present");
-          eprintln!("Got rc summary {} bytes", (*summary).len);
+          let summary_data = summary.as_ref().expect("summary data must be present");
+          eprintln!("Got rc summary {} bytes", summary_data.len);
           break;
         } else if ret == EncoderStatus::Encoded
           || ret == EncoderStatus::Success
@@ -1514,16 +1526,16 @@ mod test {
           let mut p: *mut Data = std::ptr::null_mut();
           let kind = rav1e_rc_receive_pass_data(rax, &mut p);
           assert_eq!(kind, RcDataKind::Frame);
-          assert!(!p.is_null(), "frame data must be present");
-          eprintln!("Got rc frame data {} bytes", (*p).len);
+          let frame = p.as_ref().expect("frame data must be present");
+          eprintln!("Got rc frame data {} bytes", frame.len);
           frame_data.push_back(p);
         }
       }
 
       rav1e_config_set_emit_data(rac, 0);
-      assert!(!summary.is_null(), "encoding must produce a summary");
-      let mut data = (*summary).data;
-      let mut len = (*summary).len;
+      let summary_data = summary.as_ref().expect("encoding must produce a summary");
+      let mut data = summary_data.data;
+      let mut len = summary_data.len;
       let ret = rav1e_config_set_rc_summary(rac, &mut data, &mut len);
       assert_eq!(ret, 0);
 
@@ -1539,8 +1551,9 @@ mod test {
         let mut p: *mut Packet = std::ptr::null_mut();
         while rav1e_rc_second_pass_data_required(rax) > 0 {
           let d = frame_data.pop_front().unwrap();
-          let mut data = (*d).data;
-          let mut len = (*d).len;
+          let frame = d.as_ref().expect("queued frame data must be present");
+          let mut data = frame.data;
+          let mut len = frame.len;
           rav1e_rc_send_pass_data(rax, &mut data, &mut len);
           rav1e_data_unref(d);
         }

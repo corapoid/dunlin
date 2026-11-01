@@ -56,7 +56,7 @@ new gates ran for that release. A new tag must be approved separately.
 
 ### Local validation of the hardening
 
-- 490 Rust tests passed / 4 optional ignored; 25 Python release/policy tests passed.
+- 491 Rust tests passed / 4 optional ignored; 25 Python release/policy tests passed.
 - Formatting, strict Clippy, desktop/relay/mock builds and `actionlint` passed.
 - Relay smoke and paired Git HTTP smoke passed. All nine native fixture runs
   passed: Git/Markdown/GitHub/workbench in dark and light-narrow, plus glass.
@@ -134,6 +134,12 @@ new gates ran for that release. A new tag must be approved separately.
 - New adversarial real-repository Git tests pass; all four isolated rav1e C API
   tests pass, including null-input checks. The new source fixes require a fresh
   GitHub scan before merge; earlier green job execution does not waive findings.
+- Repeat head `836c9fb`: all eight named checks passed again, but the aggregate
+  Rust finding gate found three additional null frame paths and two remaining
+  raw test views. These now have frame/buffer guards and checked reference views;
+  the four C API tests pass again. Local post-remediation QA report
+  `dunlin-release-qa-woa1znbm/report.json` passed all 18 checks, including nine native
+  fixtures. Final remote revalidation remains required.
 
 ## Repeatable checks
 

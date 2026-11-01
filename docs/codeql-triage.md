@@ -13,6 +13,10 @@ not mean its findings passed: the aggregate CodeQL check correctly failed.
   entry points and a null-input regression test. Non-null C handles still require
   valid caller-owned allocations; null checks cannot validate dangling pointers.
   This C API is not enabled in Dunlin, but its sources remain scanned.
+  A repeat scan found three further frame-entry null paths (#24–#26); guard
+  frame/buffer inputs too. Use checked `as_ref().expect()` for test packet/stats
+  views instead of raw dereferences after assertions. Null inputs are tested,
+  while missing successful outputs still fail the test, never silently skip it.
 - **#12–#15, `rust/cleartext-logging`**: smoke binaries no longer print raw harness
   session identifiers; they log only static created/loaded events.
 - **#22–#23, `rust/log-injection`**: relay operational logs no longer include
