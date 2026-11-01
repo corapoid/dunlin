@@ -6,6 +6,14 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-beta.4] — 2026-11-01
+
+Security hardening across the relay, workspace, desktop and agent transports.
+This release keeps existing projects, sessions, settings and editor data; it
+does not replace or restart an installed application or relay. The website
+download links remain pinned to the last published beta.3 assets until beta.4
+artifacts are verified.
+
 ### Added
 
 - Add release metadata/artifact verification, adversarial packaging tests,
@@ -21,6 +29,17 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Fixed
 
+- Harden the relay boundary: reject client-supplied ACP extra roots/MCP servers,
+  block `.git` metadata through the file API, follow no project symlinks in
+  search, deny relay/app state in the seatbelt profile, revalidate device/project
+  grants on active ACP connections, and avoid repository `fsmonitor` execution.
+- Store relay tokens through Security.framework instead of process arguments,
+  scrub app secrets from harness environments, require HTTPS/WSS off loopback,
+  make the permission panel describe only enforced behavior, and keep provider
+  usage admin-only.
+- Add workspace read/connection/session/attachment limits, transactional local
+  migrations, atomic editor saves, `O_NOFOLLOW` file opens, safer attachment
+  uploads, private diagnostic logs, and bounded file trees/previews.
 - Remove bincode, instant, paste, rustybuzz and ttf-parser from the entire lockfile
   without advisory exceptions. Migrate clocks/macros, resvg/font shaping and all
   nested bundled syntax/theme/license dumps; preserve source data and exact licenses.
@@ -490,7 +509,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.3...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...HEAD
+[0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.1

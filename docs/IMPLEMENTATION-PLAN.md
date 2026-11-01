@@ -12,11 +12,11 @@ Rust AST mają implementacje v1 z testami. Pełny billing, compiler/LSP/non-Rust
 impact, zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte; nie oznaczać
 całego rozszerzenia jako ukończonego. Aktualna macierz jest w [ROADMAP.md](ROADMAP.md).
 
-Stan źródeł: `0.1.0-beta.3`, 487 testów OK / 4 opcjonalne pominięte; build,
+Stan źródeł: `0.1.0-beta.4`, 500 testów OK / 4 opcjonalne pominięte; build,
 Clippy, fmt i izolowane regresje przeszły. Starsze liczby poniżej opisują
 historyczne etapy walidacji, nie bieżący zestaw. CI/Release beta.3 zakończone
-sukcesem; opublikowane artefakty pobrano i zweryfikowano bez instalacji. Oddzielny
-hardening Unreleased dodaje fail-closed bramki, ale nie zamyka czerwonych audytów
+sukcesem; opublikowane artefakty pobrano i zweryfikowano bez instalacji.
+Hardening beta.4 dodaje fail-closed bramki, ale nie zamyka czerwonych audytów
 zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 
 ## Zasady wspólne

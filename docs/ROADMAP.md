@@ -89,8 +89,8 @@ Status źródeł: `0.1.0-beta.3`, commit `36398df`, tag wypchnięty 1 listopada 
 [Release](https://github.com/corapoid/dunlin/actions/runs/41291827251) zakończyły się
 **success**. Prerelease opublikowano `2026-11-01T09:19:50Z`; pobrane ZIP/DMG/relay
 mają zgodne SHA-256, wersję/tożsamość/arm64, poprawny podpis ad-hoc i weryfikację DMG.
-Nie instalowano artefaktów. Bieżące zmiany hardening są osobnym **Unreleased**:
-nie były częścią tamtych runów i nie zmieniają istniejącego taga.
+Nie instalowano artefaktów. Bieżące zmiany hardening są częścią
+**0.1.0-beta.4**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
 [Dowody i blokery domknięcia](release-acceptance.md).
 
 Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
