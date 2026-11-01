@@ -10,10 +10,10 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 libc = "0.2"
-toml = "0.8"
-sha2 = "0.10"
-base64 = "0.22"
-syn = { version = "2", features = ["full", "visit"] }
+toml = "1.1"
+sha2 = "0.11"
+base64 = "0.23"
+syn = { version = "3", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [dev-dependencies]
