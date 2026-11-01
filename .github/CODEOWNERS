@@ -14,3 +14,4 @@
 /.github/ @corapoid
 /scripts/ @corapoid
 /deny.toml @corapoid
+/vendor/ @corapoid

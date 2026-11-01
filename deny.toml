@@ -21,6 +21,13 @@ confidence-threshold = 0.8
 multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true # Local workspace paths, not registry dependencies.
+deny = [
+    { crate = "bincode", reason = "Migrated bundled syntax dumps to versioned MessagePack" },
+    { crate = "instant", reason = "Migrated to maintained web-time" },
+    { crate = "paste", reason = "Migrated to maintained pastey" },
+    { crate = "rustybuzz", reason = "Migrated SVG shaping to harfrust via resvg 0.49" },
+    { crate = "ttf-parser", reason = "Migrated font parsing to skrifa and fontdb 0.24" },
+]
 
 [sources]
 unknown-registry = "deny"

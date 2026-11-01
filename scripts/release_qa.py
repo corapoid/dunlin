@@ -59,6 +59,7 @@ def main():
     env["PATH"] = str(Path(cargo).parent) + os.pathsep + env.get("PATH", "")
     checks = [
         ("release-tool-tests", ["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-v"], 60),
+        ("vendor-integrity", ["python3", "scripts/verify_vendor.py"], 60),
         ("format", [cargo, "fmt", "--all", "--", "--check"], 120),
         ("clippy", [cargo, "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"], 1200),
         ("tests", [cargo, "test", "--workspace", "--locked"], 1200),

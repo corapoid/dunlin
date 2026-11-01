@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "basis": "Checksum-verified crates.io archives from the published beta.3 lockfile; no advisory exemptions",
+  "packages": [
+    {
+      "name": "cosmic-text",
+      "version": "0.19.0",
+      "upstream_repository": "https://github.com/pop-os/cosmic-text",
+      "registry_archive_sha256": "be17b688510d934ce13f48a2beba700e11583e281e0fda99c22bb256a14eda73",
+      "tree_sha256": "80a1948f8ad4699916739e04b1219f7a4da1552df1ad82eb92548971f2454127",
+      "files": 112,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "da18f50fdb123874469241e32d6ff4014638984ca995b724e90769ceaed1d560",
+          "patched_sha256": "e52707ec486812bb12fab56cf63a5d58559d4300810ef297c0bacebb5af249e9"
+        }
+      ]
+    },
+    {
+      "name": "gpui-base",
+      "version": "0.8.0",
+      "upstream_repository": "https://github.com/longbridge/gpui-kit",
+      "registry_archive_sha256": "d5cd7de73d5b2d3d18b94a928abf343922091fa77bc472f77b7d2e7e8b1823a7",
+      "tree_sha256": "d5a127b8b9ae405a753a77d09817991e2aea9469c69f75af4de59cc9825fc40a",
+      "files": 212,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "32bf44eee7999662dad6fe2b13a2906ba5e05aaff013714cfc72f78ae63c5e3d",
+          "patched_sha256": "21461f3281a27ecddf572e646f98741104e080f400c794fe21afaa64fea7be67"
+        },
+        {
+          "path": "src/hover_card.rs",
+          "upstream_sha256": "94f35f91b6a518b8c80ff6383c1c0fa1ba7cf676c82c0bf705fee4431e6d9a68",
+          "patched_sha256": "99d65b77fc5369c2b0ead129c81d688fd608849bcf9217008706c13f5ebb009d"
+        },
+        {
+          "path": "src/input/base/blink_cursor.rs",
+          "upstream_sha256": "e2cd5e37849e683d596bf85528def80a84203938eb09bfa8498680786eadcb04",
+          "patched_sha256": "c1ca3bed87b721ff5e4a0b61ab630a9f6e33b953bf0a072e2fe1e972bc1dd3da"
+        },
+        {
+          "path": "src/input/editor/lsp/document_colors.rs",
+          "upstream_sha256": "189a6d618d5f8ae88d82e5bf0dff85f0c95b7c03209230ec61091dd4e96229bc",
+          "patched_sha256": "8fb2e84cbde84e006fac142b9ccfa8577dd85cfd64b7a2ed139ef6243946f13c"
+        },
+        {
+          "path": "src/input/editor/lsp/hover.rs",
+          "upstream_sha256": "757c52bf1a46c0d47310a05297df3e342bb5c2555317199ef8691399e8e7ee8f",
+          "patched_sha256": "6966bff88fed1359eded16f8b570e406c03c3a6c26d09ee1578a53a6a1bcc2b6"
+        },
+        {
+          "path": "src/input/editor/lsp/semantic_tokens.rs",
+          "upstream_sha256": "c81764d47de5cda2dc1b8de670f0e0fbe78f2f984f2a67d436286b6da13b0ee0",
+          "patched_sha256": "5039d75ed308c97f05c58b51767e46b226ad9eb2302be6c8fe0bc05c5c31184c"
+        },
+        {
+          "path": "src/measure.rs",
+          "upstream_sha256": "ef0c897ee836610c618ce93ba6f288b8b53021c336c04161fc2cd81111ce7484",
+          "patched_sha256": "d550afe8cec5431b710d17a3dcb441ca2d1e3b4bd0beca6f1bd19c1366f0d512"
+        },
+        {
+          "path": "src/scrollbar.rs",
+          "upstream_sha256": "06b2c387d8068c7932948ce5a8731c3e72f643fb0bd39071b7aaae770632bf94",
+          "patched_sha256": "2846124f89756d6ab95d17d9e66ca2e1eb5e7d2c3c5d2f4c86754adbf0638c24"
+        },
+        {
+          "path": "src/undo_history.rs",
+          "upstream_sha256": "ed5b8f83b9de3d749855d2c9bb06097693c6d9664fb201d7a692801eca4fc1ce",
+          "patched_sha256": "103bdf2e6052250840cadb1dcdb7af2d705b48f01f0ec75d45c11bcdd697953d"
+        }
+      ]
+    },
+    {
+      "name": "gpui-component",
+      "version": "0.8.0",
+      "upstream_repository": "https://github.com/longbridge/gpui-kit",
+      "registry_archive_sha256": "4097e161cc81e86323b439664be0cdd4f7c56148e867ed6f67fd72b966b6c2d1",
+      "tree_sha256": "bef9e1e4679439c91f880ddd6631bdd3d85d68d7d2579a7d74e4bd860c59d83c",
+      "files": 280,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "a8062e5260b0826f095d62857abc3c4c8734846459e2e6dd15ede813b1e4f053",
+          "patched_sha256": "2f0a2e926d01f01958399843c1ec5159acc6bff6f3a9b5fce04a5c4e8e654f03"
+        }
+      ]
+    },
+    {
+      "name": "gpui-pre",
+      "version": "0.3.9",
+      "upstream_repository": "https://github.com/zed-industries/zed",
+      "registry_archive_sha256": "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0",
+      "tree_sha256": "5921d641f053dfe815fb586c55fe1a16f595dc83bc9de02674ff2809ce4e2d79",
+      "files": 159,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "43ac0a636d1283313dbb48810ff32c0f6b55737824a886bd9fad37735ec0c56c",
+          "patched_sha256": "136dd115a9b8a6eeda8db785a62e39befadb359a4b3b76beb8a39d6e9a5e6310"
+        },
+        {
+          "path": "src/svg_renderer.rs",
+          "upstream_sha256": "fb12dae87c0cd4c5f5a1fbbd2f9548d52fde9440c21e3d576dfeb0233eda88a6",
+          "patched_sha256": "a9d8efd7b23e64790ce625f311f2e54fc552eefdbedefc3f39cbfb9028ada6f7"
+        }
+      ]
+    },
+    {
+      "name": "metal",
+      "version": "0.33.0",
+      "upstream_repository": "https://github.com/gfx-rs/metal-rs",
+      "registry_archive_sha256": "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15",
+      "tree_sha256": "a05461dde9a501bfd31109d48713bbda0bfdd97586f8a617741e85285336b17e",
+      "files": 89,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "620b270dfa7965d4203977b073b3c724409c1a840b0c4143472e4a1d171f688a",
+          "patched_sha256": "fa945dda9576ed1ca82b2248b155b440cc51c7e6014bc91f1c31038924c88d32"
+        }
+      ]
+    },
+    {
+      "name": "pulp",
+      "version": "0.22.3",
+      "upstream_repository": "https://github.com/sarah-quinones/pulp/",
+      "registry_archive_sha256": "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a",
+      "tree_sha256": "0dbc0d9e02e86d1e35341c9ad8e237e716f8aafcf94e6e684e04e05cd514f20e",
+      "files": 37,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "b9d9fe17a5a2188b06a704d5810b4b68b82474816d238f2442501495abb1e4df",
+          "patched_sha256": "c1408f10e189b67fffa7c80a3634010b9703b31a7f3eecacf014ffc1ec2da4bf"
+        }
+      ]
+    },
+    {
+      "name": "rav1e",
+      "version": "0.8.1",
+      "upstream_repository": "https://github.com/xiph/rav1e/",
+      "registry_archive_sha256": "43b6dd56e85d9483277cde964fd1bdb0428de4fec5ebba7540995639a21cb32b",
+      "tree_sha256": "35d5f57b0533b4d83a61245d2d1f4112557b1a80878a79b6c42b3dbb3160bfab",
+      "files": 221,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "31addb537f320450c199e4e4154c785ad563fe31ebd4c475228dc11743b6dd60",
+          "patched_sha256": "f72e61ca39667ed0d81d29e6f821844081d5cd8fcffc75c6e154f8d13f8c4203"
+        }
+      ]
+    },
+    {
+      "name": "syntect",
+      "version": "5.3.0",
+      "upstream_repository": "https://github.com/trishume/syntect",
+      "registry_archive_sha256": "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925",
+      "tree_sha256": "2587d0ff23991434e03560a601ef484768bd4c51de5a714fc1e86ab17c00adc3",
+      "files": 58,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "5e684bef35f74140214f024f4d781bb9a6abd896f73b8525ff59cf0a74417d73",
+          "patched_sha256": "f7bd580ca02c3d390d4e3af4361a8264cb0acf7e5642118a1db02470c4e859ac"
+        },
+        {
+          "path": "assets/default.themedump",
+          "upstream_sha256": "8b57a2118224993360b6fc5fc2fa2e9872a827f00f9c57d43da08fa42c892399",
+          "patched_sha256": "95971382daf0da5a63391a39511cc5a61459ca2469f56106c8aea4c5401e9e68"
+        },
+        {
+          "path": "assets/default_metadata.packdump",
+          "upstream_sha256": "b1df0402dfdb84b9826b206bffafb35553c46530afcbb3c929147760056766f3",
+          "patched_sha256": "a16d84e865343989836caa67dd03f67d5f87e32baf5e3b2afaf6a5ef89b34274"
+        },
+        {
+          "path": "assets/default_newlines.packdump",
+          "upstream_sha256": "d740b20c12e40b678b9f1012401e1969aaa5cd55f1ab329ffeb94d746b06a5c0",
+          "patched_sha256": "0916c326bd2ad7811b648263493f3cf4a699fad335daa51a3d9c114255cf2ba4"
+        },
+        {
+          "path": "assets/default_nonewlines.packdump",
+          "upstream_sha256": "b61623ff9b5c36e60666d637076697ad8234116b2d53ad2ee9e3908df1c2461d",
+          "patched_sha256": "3d71850badaf0e2833a3ce87fea27a8194eb6bf78ef6bc6eb053004a4faa9132"
+        },
+        {
+          "path": "src/dumps.rs",
+          "upstream_sha256": "237719802be45db966a6e2e5de2f58baa970ac84f83fb375dbdd90592e704e91",
+          "patched_sha256": "f1c6e0c2017a867809ae9bef6e2841740aca065cd17e86ec223c4874832599d1"
+        }
+      ]
+    },
+    {
+      "name": "two-face",
+      "version": "0.4.5",
+      "upstream_repository": "https://github.com/CosmicHorrorDev/two-face",
+      "registry_archive_sha256": "39e51b6e60e545cfdae5a4639ff423818f52372211a8d9a3e892b4b0761f76b2",
+      "tree_sha256": "a228f5c92703825641b0a406aac865ff8570183aa20eef208de6af9b73af8ffb",
+      "files": 19,
+      "changes": [
+        {
+          "path": "generated/acknowledgements_full.bin",
+          "upstream_sha256": "105d547e77f3019f361fb99a7fb3486755455a04de2167355aaf2ffe8a74b4e2",
+          "patched_sha256": "fc6ce87c52022fa52977c4150a50364f11cc47ffe490f0aca3c91ba7decc3356"
+        },
+        {
+          "path": "generated/syntaxes-fancy-newlines.bin",
+          "upstream_sha256": "ea0da56d0446cefc5df95e277ce25d1d1b2ada6d143946d12493bcfe93134fe5",
+          "patched_sha256": "6c0501e3debc67789ce557225fb2ee6ee9402a2681cbf28a510e2858a0b0a909"
+        },
+        {
+          "path": "generated/syntaxes-fancy-no-newlines.bin",
+          "upstream_sha256": "b8a5120c20678a290d16ac86e5223a68352e13828e4d52a4741c6f96fde571fc",
+          "patched_sha256": "94c3a6d19e4f3c583b479980dc1994129ceaeac313276de55d638b7773f605b7"
+        },
+        {
+          "path": "generated/syntaxes-onig-newlines.bin",
+          "upstream_sha256": "9ad5dd570c605d1df3bf4e98f8f7f2368578facf4c1df1d180dd6e716b04f6ef",
+          "patched_sha256": "b546374c8d67c6d6b899d9fa5a7b356538c18cc2edaa995b90794fa9b851919a"
+        },
+        {
+          "path": "generated/syntaxes-onig-no-newlines.bin",
+          "upstream_sha256": "6f0679139b708de51db33f665bb1d4bbd8dab60958144a3534489d82c849224e",
+          "patched_sha256": "b7a17ff2a0300c253531a28c8a70c55979f3358a78c51889d4ef8f036c22fed8"
+        },
+        {
+          "path": "generated/themes.bin",
+          "upstream_sha256": "9544eb93d5e397205cca3e87f4baf174e2f777fc3097ebcb2f601b5326fa6c99",
+          "patched_sha256": "0158ba3769ecc4e5591af80f39dbafef75b3bba626d19f3e327689aa839b47c8"
+        }
+      ]
+    }
+  ]
+}

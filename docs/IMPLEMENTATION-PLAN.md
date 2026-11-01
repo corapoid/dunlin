@@ -186,17 +186,19 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 
 ## Najbliższe zadania — rekomendacja domknięcia rozpoczętych zakresów
 
-1. CI/Release beta.3 i artefakty już potwierdzone. Dla następnego wydania domknąć
-   zależności upstream, niezależny review/podpisy i uruchomienie nowych bramek;
+1. CI/Release beta.3 i artefakty już potwierdzone. Migracja bez wyjątków i reguły
+   solo przechodzą lokalnie; potwierdzić nowe skany, podpisany merge i provenance;
    nie retagować beta.3 ani dopisywać jej nowych wyników walidacji wstecz.
 2. Wykonać ręczny odbiór [ustawień/grup/Apply model](project-runtime-settings.md),
    [Git local/relay](git-operations-and-blame.md) i [Markdown GUI/IME/bidi](markdown-editor.md).
    Testy/smoke nie zastępują prawdziwego hosta, dialogów i przeglądu dostępności.
+   Użytkownik jawnie odroczył tę macierz tylko dla `0.1.0-beta.N`, bez zaliczenia.
 3. Odebrać [workbench/GitHub](agent-workbench-and-github.md) na izolowanych danych
    i realnym koncie: wszystkie osiem v1 jest w kodzie, nie ma już osobnego zadania
    „zaimplementować od zera budżety/porównanie/impact”. Pozostają jawne rozszerzenia.
-4. Dokończyć małe luki M1 i polityki R12; aktualne reguły GitHuba mają bypassy,
-   a code-owner review nie jest wymagane. Zmiany polityk wymagają osobnej zgody.
+4. Dokończyć małe luki M1 i zdalne dowody R12; za zgodą użytkownika ustawiono
+   PR, osiem app-bound checków i podpisany squash bez bypassów w trybie solo.
+   Nie udawać niezależnego code-owner review w jednoosobowym repozytorium.
 5. Wybrać następny pionowy zakres (FTS5, billing usage lub skills), a przed
    terminalem wykonać spike VT. Standalone chat, scheduler i M6 są osobnymi etapami;
    istniejące checks i porównanie A/B nie oznaczają ich ukończenia.

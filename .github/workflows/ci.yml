@@ -16,8 +16,12 @@ jobs:
   test:
     runs-on: macos-15
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Lint workflows
         env:
@@ -26,11 +30,12 @@ jobs:
           brew install actionlint
           actionlint
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Format
         run: cargo fmt --all --check
@@ -43,6 +48,9 @@ jobs:
 
       - name: Release tooling regression tests
         run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Verify reviewed dependency migrations
+        run: python3 scripts/verify_vendor.py
 
       - name: Release metadata
         run: python3 scripts/release_gate.py metadata --version "$(python3 scripts/release_gate.py version)"
@@ -62,14 +70,22 @@ jobs:
           ./scripts/bundle-relay.sh
 
       - name: Upload app
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dunlin-app
           path: dist/*.app
           if-no-files-found: error
 
+      - name: Attest verified mainline CI binaries
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.app/Contents/MacOS/*
+            dist/dunlin-relay
+
       - name: Upload relay
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dunlin-relay
           path: dist/dunlin-relay
@@ -79,9 +95,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm

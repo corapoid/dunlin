@@ -12,9 +12,18 @@ All notable changes to Dunlin are documented here. The format follows
   isolated automatic QA reports and a read-only repository-policy auditor.
 - Add pinned cargo-deny auditing and CodeQL security scans; keep discovered
   unmaintained-dependency and policy findings visible instead of waiving them.
+- Add complete-tree integrity and original archive provenance for nine maintained
+  dependency forks, signed-mainline source authorization and main-push CI attestations.
+- Record approved solo-maintainer policy and beta-only manual acceptance deferral;
+  require real trusted checks/signatures without pretending independent approval.
 
 ### Fixed
 
+- Remove bincode, instant, paste, rustybuzz and ttf-parser from the entire lockfile
+  without advisory exceptions. Migrate clocks/macros, resvg/font shaping and all
+  nested bundled syntax/theme/license dumps; preserve source data and exact licenses.
+- Pin workflow actions to verified commit SHAs and enforce eight app-bound checks,
+  signed squash merges and no repository bypass actors.
 - Harden subsequent releases with exact tag/version checks, least-privilege
   build/publish separation, artifact provenance, final-byte checksums and
   changelog-backed release notes. Sign app and relay; require explicit Accepted

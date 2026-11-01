@@ -98,6 +98,22 @@ class ReleaseGateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gate.metadata(self.root, self.version)
 
+    def test_local_third_party_forks_are_not_mistaken_for_workspace_versions(self):
+        self.metadata()
+        with (self.root / "Cargo.lock").open("a") as output:
+            output.write('[[package]]\nname="syntect"\nversion="5.3.0"\n')
+        self.assertIn("Fixture", gate.metadata(self.root, self.version))
+
+    def test_manual_beta_deferral_never_becomes_stable_acceptance(self):
+        config = self.root / ".github/release-policy.json"
+        config.parent.mkdir()
+        config.write_text(json.dumps({"schema": 1, "manual_acceptance": {
+            "decision": "deferred", "version_series": "0.1.0-beta", "reason": "Explicit fixture decision"}}))
+        self.assertIn("NOT passed", gate.acceptance_policy(self.root, self.version))
+        for value in ["0.1.0", "1.0.0-beta.1", "0.1.0-rc.1"]:
+            with self.assertRaises(ValueError):
+                gate.acceptance_policy(self.root, value)
+
     def test_empty_duplicate_or_missing_changelog_is_rejected(self):
         self.metadata()
         for text in ["", f"## [{self.version}]\n", f"## [{self.version}]\nbody\n## [{self.version}]\nagain\n"]:
@@ -165,7 +181,7 @@ class RepositoryPolicyTests(unittest.TestCase):
                       "require_code_owner_review": True, "dismiss_stale_reviews_on_push": True,
                       "require_last_push_approval": True, "required_review_thread_resolution": True}},
                      {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": True,
-                      "required_status_checks": [{"context": c} for c in policy.CHECKS]}}]}]
+                      "required_status_checks": [{"context": c, "integration_id": policy.GITHUB_ACTIONS_APP} for c in policy.CHECKS]}}]}]
 
     def test_complete_policy_passes_without_mutation(self):
         self.assertEqual(policy.audit(self.fixture(), {k: {"status": "enabled"} for k in
@@ -179,9 +195,23 @@ class RepositoryPolicyTests(unittest.TestCase):
         fixture[0]["rules"] = [r for r in fixture[0]["rules"] if r["type"] != "required_signatures"]
         errors = policy.audit(fixture, {})
         self.assertTrue(any("bypass" in e for e in errors))
-        self.assertTrue(any("PRs" in e for e in errors))
+        self.assertTrue(any("PR review" in e for e in errors))
         self.assertTrue(any("required_signatures" in e for e in errors))
         self.assertTrue(any("secret_scanning" in e for e in errors))
+
+    def test_solo_policy_does_not_forge_independent_approval_or_allow_bypass(self):
+        rules = self.fixture()
+        pr = rules[0]["rules"][3]["parameters"]
+        pr.update(required_approving_review_count=0, require_code_owner_review=False,
+                  require_last_push_approval=False, allowed_merge_methods=["squash"])
+        security = {k: {"status": "enabled"} for k in ["secret_scanning", "secret_scanning_push_protection"]}
+        self.assertEqual(policy.audit(rules, security, "solo-maintainer"), [])
+        self.assertTrue(policy.audit(rules, security, "independent"))
+        rules[0]["bypass_actors"] = [{"bypass_mode": "always"}]
+        self.assertTrue(policy.audit(rules, security, "solo-maintainer"))
+
+    def test_unknown_review_mode_never_disables_checks(self):
+        self.assertTrue(policy.audit(self.fixture(), {}, "none"))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,15 @@
 # Third-party notices
 
+## Maintained dependency forks
+
+The release-hardening branch maintains local migrations of GPUI, syntect,
+two-face, metal, pulp, rav1e and cosmic-text to replace unmaintained dependencies.
+Original licenses/notices are retained under `vendor/`; exact archive provenance
+and reviewed file changes are in `vendor/provenance.json`. See
+[`vendor/README.md`](vendor/README.md) for the changes and asset-format boundary.
+The embedded syntax/theme license Markdown is verified unchanged against its
+upstream SHA-256. The historical asset converter is not shipped or used in normal builds.
+
 Dunlin is distributed under the MIT License. It is built on open-source
 software and bundles open-source fonts. This file lists the licenses of the
 software that is compiled into Dunlin and the Dunlin relay.

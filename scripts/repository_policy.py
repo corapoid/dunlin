@@ -8,12 +8,16 @@ import argparse
 import json
 import re
 import subprocess
+from pathlib import Path
 
 CHECKS = {"test", "dependency-review", "web", "dependency-audit",
           "codeql (rust)", "codeql (javascript-typescript)", "codeql (python)", "codeql (actions)"}
+GITHUB_ACTIONS_APP = 15368  # Verified GitHub.com app identity, not caller-supplied statuses.
 
 
-def audit(rulesets, security):
+def audit(rulesets, security, review_mode="independent"):
+    if review_mode not in ["independent", "solo-maintainer"]:
+        return ["Unknown review policy"]
     errors = []
     active = [r for r in rulesets if r.get("enforcement") == "active"
               and r.get("target") == "branch"
@@ -22,23 +26,34 @@ def audit(rulesets, security):
         errors.append("No active default-branch ruleset")
     rules = {}
     for ruleset in active:
+        if "bypass_actors" not in ruleset:
+            errors.append("Bypass actors are not visible with this credential; policy is unverified")
         if ruleset.get("conditions", {}).get("ref_name", {}).get("exclude"):
             errors.append("Default-branch ruleset contains exclusions; review them explicitly")
         if ruleset.get("bypass_actors"):
-            errors.append("Default-branch ruleset has bypass actors; independent review is needed before removing them")
+            errors.append("Default-branch ruleset has bypass actors")
         for rule in ruleset.get("rules", []):
             rules.setdefault(rule.get("type"), []).append(rule.get("parameters") or {})
     for required in ["deletion", "non_fast_forward", "required_signatures"]:
         if required not in rules:
             errors.append(f"Missing rule: {required}")
     pr = rules.get("pull_request", [])
-    if not any(p.get("required_approving_review_count", 0) >= 1 and p.get("require_code_owner_review")
-               and p.get("dismiss_stale_reviews_on_push") and p.get("require_last_push_approval")
-               and p.get("required_review_thread_resolution") for p in pr):
-        errors.append("PRs need independent approval, code-owner review, stale-review dismissal, last-push approval and resolved threads")
+    def review_matches(p):
+        if not p.get("dismiss_stale_reviews_on_push") or not p.get("required_review_thread_resolution"):
+            return False
+        if review_mode == "solo-maintainer":
+            return (p.get("required_approving_review_count") == 0
+                    and p.get("require_code_owner_review") is False
+                    and p.get("require_last_push_approval") is False
+                    and p.get("allowed_merge_methods") == ["squash"])
+        return (p.get("required_approving_review_count", 0) >= 1
+                and p.get("require_code_owner_review") and p.get("require_last_push_approval"))
+    if not any(review_matches(p) for p in pr):
+        errors.append(f"PR review rules do not match explicitly configured {review_mode} policy")
     required_checks = rules.get("required_status_checks", [])
     if not any(p.get("strict_required_status_checks_policy") and not p.get("do_not_enforce_on_create")
-               and CHECKS <= {c.get("context") for c in p.get("required_status_checks", [])}
+               and CHECKS <= {c.get("context") for c in p.get("required_status_checks", [])
+                              if c.get("integration_id") == GITHUB_ACTIONS_APP}
                for p in required_checks):
         errors.append("Required status checks do not include the complete strict CI/security gate")
     for name in ["secret_scanning", "secret_scanning_push_protection"]:
@@ -61,12 +76,16 @@ def main():
         return json.loads(result.stdout)
 
     try:
+        config = json.loads((Path(__file__).resolve().parents[1] / ".github/release-policy.json").read_text())
+        if config.get("schema") != 1:
+            raise ValueError("Unrecognized repository policy schema")
         index = api(f"repos/{args.repo}/rulesets")
         rulesets = [api(f"repos/{args.repo}/rulesets/{r['id']}") for r in index]
         security = api(f"repos/{args.repo}").get("security_and_analysis") or {}
-        errors = audit(rulesets, security)
+        mode = config.get("review_mode")
+        errors = audit(rulesets, security, mode)
         print(json.dumps({"repository": args.repo, "read_only": True, "passed": not errors,
-                          "remaining": errors}, indent=2))
+                          "review_mode": mode, "remaining": errors}, indent=2))
         return int(bool(errors))
     except (ValueError, OSError, subprocess.TimeoutExpired) as error:
         parser.exit(1, f"Policy is unverified: {error}\n")

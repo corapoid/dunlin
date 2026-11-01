@@ -19,8 +19,11 @@ nie zamyka wszystkich rozszerzeń czata, projektów czy całych milestone'ów.
 Walidacja źródeł beta.3: 487 testów OK / 4 opcjonalne pominięte, build/fmt/Clippy,
 natywne regresje i loopback HTTP OK. CI/Release beta.3 zakończone sukcesem,
 prerelease opublikowane; pobrane artefakty zweryfikowane bez instalacji.
-Bieżący hardening nie jest częścią beta.3; nowe bramki mają czerwony audyt
-zależności/polityk i nie zastępują manualnej QA. [Dowody/blokery](release-acceptance.md).
+Bieżący hardening nie jest częścią beta.3: migracja pięciu obsolete pakietów
+bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 490 testów Rust
+i 25 Python zaliczone; nowe skany zmigrowanych źródeł/merge/provenance oczekują.
+Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
+[Dowody i granice](release-acceptance.md).
 
 ## Częściowo wdrożone — czego jeszcze brakuje
 
@@ -123,14 +126,16 @@ nie wynikają automatycznie z istniejących checks/search plików/A/B.
   dla nowych subsystemów z `PLAN.md`.
 - **R11 QA**: świeże konto macOS, brak harnessa, odmowa powiadomień, upgrade bazy,
   duży projekt i remote beta; pełna weryfikacja GUI pozostaje do wykonania.
+  Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla `0.1.0-beta.N`.
 - **R12 security/release — częściowo**: dependency review/Dependabot, secret
   scanning/push protection i reguły PR/statusów/no-force dla `main` już są.
   Kod CodeQL/cargo-deny oraz bramek metadanych/artefaktów i audytu reguł jest już
-  przygotowany lokalnie. Do domknięcia: pięć unmaintained zależności upstream
-  (bez automatycznych wyjątków), wykonanie nowych workflow, wymagane code-owner review,
-  podpisy i weryfikacja bypassów. Odczyt reguł: wymagane 0 aprobat, code-owner
-  review niewymagane; ostatni push przeszedł z bypassem przed statusami. Nie
-  zmieniano reguł GitHuba. Developer ID/notaryzacja zależą od konfiguracji Apple.
+  przygotowany lokalnie. Migracja wszystkich pięciu obsolete pakietów bez wyjątków
+  oraz integralność dziewięciu forków przechodzą. Za zgodą użytkownika reguły solo
+  wymagają PR, ośmiu ścisłych app-bound checków i podpisanych squash merge bez
+  bypassów; audyt reguł zaliczony, zero niezależnych aprobat nie udaje review.
+  Do domknięcia: świeże workflow po migracji, podpisany merge i mainline provenance.
+  Developer ID/notaryzacja zależą od konfiguracji Apple.
 
 Import plików sesji jest gotowy, ale automatyczny discovery/sync źródeł, natywne
 wznawianie sesji importowanych i relay/SSH import nie należą do obecnego zakresu.

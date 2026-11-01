@@ -67,17 +67,23 @@ The following are known limitations, not vulnerabilities by themselves:
 
 The unreleased hardening adds `cargo deny --locked check advisories licenses bans
 sources` for the shipped macOS arm64 graph and CodeQL scans for Rust, web,
-Python and workflow sources. There are no blanket advisory exemptions. The first
-audit found five unmaintained GPUI/syntect/font/image dependencies; the gate stays
-red until reviewed remediation or explicit scoped exceptions, rather than hiding
-the result. [Evidence and blockers](docs/release-acceptance.md).
+Python and workflow sources. No advisory exemptions are configured. All five
+obsolete GPUI/syntect/font/image packages found by the initial audit have been
+migrated out of the entire lockfile, with maintained local forks, preserved
+licenses and verified upstream provenance. `scripts/verify_vendor.py` checks
+their complete trees; `deny.toml` bans reintroduction. [Migration](vendor/README.md)
+and [acceptance evidence](docs/release-acceptance.md).
 
 `python3 scripts/repository_policy.py --repo corapoid/dunlin` audits rules read-only.
-The intended release policy requires independent/code-owner and last-push review,
-strict CI/security checks, signatures, and no unconditional bypass. Current remote
-settings do not yet meet it. Configure a real second reviewer and commit/tag
-signing before changing enforcement; never fabricate approval or automatically
-remove the sole maintainer's recovery route. CODEOWNERS alone does not enforce review.
+The explicitly approved solo-maintainer policy requires PRs, eight strict checks
+bound to the GitHub Actions app, resolved threads, signed commits and squash-only
+merges, with no bypass actors. Its remote audit passes. Zero independent approvals
+is intentional, not a claim of second-person review; CODEOWNERS documents ownership.
+GitHub signs the squash merge; no personal key or reviewer is impersonated.
+Release source authorization independently verifies the actual mainline merge,
+trusted PR/source checks and open CodeQL security alerts via read-only APIs, without
+giving build jobs owner/admin credentials. Manual GUI/TCC/real-host acceptance is
+explicitly deferred only for `0.1.0-beta.N`, never marked passed or reused for stable/RC.
 
 Artifact provenance, Apple signing/notarization, developer commit/tag signatures,
 and manual/deployed-host acceptance are distinct evidence. None substitutes for

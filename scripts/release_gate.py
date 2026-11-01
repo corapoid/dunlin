@@ -55,10 +55,33 @@ def metadata(root, value):
     if workspace_version(root) != value:
         raise ValueError("Requested version does not match the workspace")
     lock = tomllib.loads((root / "Cargo.lock").read_text())
-    packages = [p for p in lock["package"] if "source" not in p]
-    if not packages or any(p["version"] != value for p in packages):
+    # Patched third-party sources are path dependencies, not workspace packages.
+    # Check only actual workspace member identities, never exempt local forks
+    # from dependency/license/security auditing as a side-effect.
+    manifest = tomllib.loads((root / "Cargo.toml").read_text())
+    members = set()
+    for pattern in manifest["workspace"].get("members", []):
+        for directory in root.glob(pattern):
+            member = tomllib.loads((directory / "Cargo.toml").read_text())
+            members.add(member["package"]["name"])
+    if not members:  # Small standalone metadata fixtures.
+        members = {"dunlin"}
+    packages = [p for p in lock["package"] if "source" not in p and p["name"] in members]
+    if {p["name"] for p in packages} != members or any(p["version"] != value for p in packages):
         raise ValueError("Workspace Cargo.lock versions do not match")
     return changelog(root, value)
+
+
+def acceptance_policy(root, value):
+    version(value)
+    config = json.loads((root / ".github/release-policy.json").read_text())
+    if config.get("schema") != 1:
+        raise ValueError("Unknown acceptance policy")
+    manual = config.get("manual_acceptance", {})
+    if (manual.get("decision") == "deferred" and manual.get("version_series") == "0.1.0-beta"
+            and re.fullmatch(r"0\.1\.0-beta\.[0-9]+", value) and manual.get("reason")):
+        return "Manual acceptance explicitly DEFERRED for this beta, NOT passed; automatic gates mandatory"
+    raise ValueError("No applicable manual acceptance decision; stable/RC releases cannot reuse beta deferral")
 
 
 def artifact_names(value, name="Dunlin"):
@@ -184,7 +207,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     show = commands.add_parser("version")
     show.add_argument("--value")
-    for command in ["metadata", "notes"]:
+    for command in ["metadata", "notes", "acceptance"]:
         child = commands.add_parser(command)
         child.add_argument("--version", required=True, type=version)
         if command == "notes":
@@ -210,6 +233,8 @@ def main():
                            "developer-id": "Developer ID signed; NOT Apple-notarized.",
                            "notarized": "Developer ID signed and Apple-notarized app/relay; stapled app/DMG."}[args.signing]
                 print(f"Dunlin {args.version}\n\nmacOS 15+, Apple Silicon.\n\n{signing}\n\n{body}\n")
+        elif args.command == "acceptance":
+            print(acceptance_policy(ROOT, args.version))
         elif args.command == "signing-config":
             certificate, notarize = signing_configuration(os.environ)
             print(f"certificate={str(certificate).lower()}\nnotarize={str(notarize).lower()}")

@@ -1,6 +1,6 @@
 # Release acceptance / hardening — 2026-11-01
 
-## Status: not all release gates are closed
+## Status: local blockers resolved; migrated-source GitHub validation pending
 
 The already published **0.1.0-beta.3** is distinct from the **unreleased hardening
 changes** described here. Never retag beta.3 or replace its assets to imply that
@@ -56,7 +56,7 @@ new gates ran for that release. A new tag must be approved separately.
 
 ### Local validation of the hardening
 
-- 487 Rust tests passed / 4 optional ignored; 14 Python release/policy tests passed.
+- 490 Rust tests passed / 4 optional ignored; 25 Python release/policy tests passed.
 - Formatting, strict Clippy, desktop/relay/mock builds and `actionlint` passed.
 - Relay smoke and paired Git HTTP smoke passed. All nine native fixture runs
   passed: Git/Markdown/GitHub/workbench in dark and light-narrow, plus glass.
@@ -65,15 +65,16 @@ new gates ran for that release. A new tag must be approved separately.
 - A bundle built in a new disposable output directory verifies with strict
   codesign; invalid app names fail before cleanup. No installed app was replaced.
 - Web format/check/build passed using an existing supported Node runtime.
-- The combined automatic QA report is **failed**, correctly, because the dependency
-  audit is red. Repository-policy audit also exits nonzero separately. Do not
-  summarize these results as an entirely green release acceptance.
+- The migrated-source automatic QA report `dunlin-release-qa-7i3oxuxt/report.json`
+  passed all 17 then-configured checks, including audit and nine native fixtures.
+  Vendor integrity passes separately; the current runner includes it as well.
+  Earlier failed reports remain historical evidence, not overwritten successes.
 
-### Blocking findings — not waived
+### Remediated findings and accepted beta boundary
 
-1. **Dependency audit is red**, not a clean security bill. Licenses, sources and
-   bans pass; five transitive dependencies have unmaintained RustSec advisories
-   with no safe version-only upgrade:
+1. **Dependency audit passes without exceptions.** The user chose migration,
+   not exemptions. All five obsolete packages below are absent from the entire
+   current lockfile and explicitly banned against reintroduction:
 
    | Advisory | Dependency path / follow-up |
    | --- | --- |
@@ -83,47 +84,59 @@ new gates ran for that release. A new tag must be approved separately.
    | RUSTSEC-2026-0206 | rustybuzz 0.20.1 through usvg/resvg / GPUI |
    | RUSTSEC-2026-0192 | ttf-parser 0.25.1 through fontdb/usvg / GPUI |
 
-   These are maintenance advisories, not evidence of five proven exploitable
-   vulnerabilities. They must still be resolved through reviewed upstream
-   migrations, or an explicitly approved, ID-scoped, justified and expiring
-   exception. No exception was inserted merely to turn the gate green. The new
-   security prerequisite consequently blocks a subsequent release until resolved.
-2. **Repository-policy audit is red.** Existing `main` rules permit an always-bypass
-   actor, require zero approvals, do not enforce code-owner/last-push approval or
-   signed commits, and do not yet require the new security checks. Secret scanning
-   and push protection are enabled. The current owner is the only configured
-   CODEOWNER; enforcing independent approval requires a real second trusted
-   reviewer and signing setup. Do not invent a reviewer, remove the owner's only
-   recovery route, or silently bypass these missing prerequisites.
-   The release workflow now requires this audit before building. If its default
-   token cannot read security/policy metadata, supply only a read-only
-   `RELEASE_POLICY_TOKEN` with metadata/administration-read permission. Lack of
-   visibility fails closed; do not give builds admin-write credentials.
-3. **Manual R11 acceptance is not completed.** Fresh macOS account/TCC denial,
+   Nine local maintained forks replace clocks/macros/font shaping and migrate
+   bundled syntax/theme/license dumps to versioned MessagePack. Full upstream
+   archive checksums, changed-file records and tree integrity are preserved in
+   `vendor/provenance.json`; [migration details](../vendor/README.md). All ten
+   assets reproduce byte-for-byte; runtime tests preserve the exact license text.
+   No legacy decoder ships and `advisories.ignore` remains empty.
+2. **Repository-policy audit passes in explicitly approved solo mode.** Active
+   ruleset `25821094` requires PRs, resolved threads, strict eight checks bound
+   to GitHub Actions app `15368`, GitHub-verified signatures and squash-only merges.
+   There are no bypass actors. Zero independent approvals is the accepted solo
+   policy, not a fabricated second-person review. Secret scanning/push protection
+   remain enabled. The authorized policy update was backed up before applying.
+   `repository_policy.py` audits owner-visible settings separately and fails if
+   bypass visibility is missing. Release jobs instead use `release_source.py`
+   with read-only APIs: verify an actual signed mainline PR merge, trusted green
+   PR-head and merge-source checks, and no open CodeQL security alerts. They do
+   not need an owner/admin token or `RELEASE_POLICY_TOKEN`.
+3. **Manual R11 acceptance is explicitly deferred, NOT passed.** Fresh macOS account/TCC denial,
    visual/keyboard/a11y/IME/bidi checks, real GitHub write/merge lifecycle and a
    deployed relay cannot be certified by fixture smokes. Computer Use discovery
    failed: `FileNotFoundError: [Errno 2] No such file or directory: 'orca'`.
    No GUI fallback was used to change the user's installed app or permissions.
    A separate agreed test repository/account/host and the manual matrix remain
-   necessary; unit/loopback tests must not be relabeled as this acceptance.
-4. **New workflow execution / provenance is not yet confirmed.** Local workflow
-   lint/tests are not GitHub CodeQL scans or artifact attestations. The existing
-   successful beta.3 runs predate this hardening; do not attribute new checks to them.
+   necessary for full acceptance; unit/loopback tests must not be relabeled as it.
+   The user explicitly accepted deferral only for `0.1.0-beta.N`, recorded in
+   `.github/release-policy.json` and enforced by the acceptance gate. Stable/RC
+   releases cannot inherit that decision.
+4. **Migrated-source workflow execution / provenance is pending.** Initial PR #6
+   CI and dependency review passed; all four CodeQL jobs in
+   [Security](https://github.com/corapoid/dunlin/actions/runs/41319994183) passed,
+   while its pre-migration dependency audit failed. Two unpinned-action findings
+   have local SHA-pin fixes. Fresh scans must validate the migrated sources and
+   fixes before normal squash merge; mainline push CI must then produce verified
+   binary attestations. These outcomes are not yet claimed here.
+   The existing successful beta.3 runs predate this hardening.
    Developer ID/notary execution additionally depends on configured Apple credentials.
 
 ## Repeatable checks
 
 ```sh
 python3 -m unittest discover -s scripts/tests -v
+python3 scripts/verify_vendor.py
 actionlint
 cargo install cargo-deny --locked --version 0.20.2
 cargo deny --locked check advisories licenses bans sources
 python3 scripts/release_qa.py --tmp-root "$TMPDIR" --native --audit
 python3 scripts/repository_policy.py --repo corapoid/dunlin
 python3 scripts/release_gate.py metadata --version 0.1.0-beta.3
+python3 scripts/release_gate.py acceptance --version 0.1.0-beta.3
+python3 scripts/release_source.py --repo corapoid/dunlin --commit FULL_SIGNED_MAIN_SHA
 python3 scripts/release_gate.py verify --version 0.1.0-beta.3 --directory /path/to/downloads
 ```
 
-The audit commands intentionally exit nonzero for the blockers above. Reports
-must preserve those failures. Local integrity checks do not establish real-host
+The source authorization must fail until the exact signed merge and its checks
+exist. Local integrity checks do not establish real-host
 acceptance, Apple notarization or a remote CodeQL result.
