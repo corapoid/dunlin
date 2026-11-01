@@ -6,6 +6,26 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Add release metadata/artifact verification, adversarial packaging tests,
+  isolated automatic QA reports and a read-only repository-policy auditor.
+- Add pinned cargo-deny auditing and CodeQL security scans; keep discovered
+  unmaintained-dependency and policy findings visible instead of waiving them.
+
+### Fixed
+
+- Harden subsequent releases with exact tag/version checks, least-privilege
+  build/publish separation, artifact provenance, final-byte checksums and
+  changelog-backed release notes. Sign app and relay; require explicit Accepted
+  notary reports, staple before packaging and never label signed-only as notarized.
+- Validate bundle metadata before cleanup and derive the default bundle version
+  from Cargo. Support disposable output directories without replacing installed apps.
+- Draw both native glass-smoke windows before geometry checks, avoiding stale
+  background-window frames without weakening layout/focus/cleanup assertions.
+- Point website download metadata at the verified published beta.3 assets and
+  derive its page title/URLs from one version value, rather than stale beta.1 links.
+
 ## [0.1.0-beta.3] — 2026-11-01
 
 Agent workbench and GitHub CI/PR integration, safer local/relay Git workflows,

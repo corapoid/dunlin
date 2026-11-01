@@ -1,5 +1,10 @@
 # Import sesji, historia Git i integracja macOS
 
+> Historyczny zapis zakończonego zakresu, nie aktualny backlog. Liczby i informacja
+> o braku commit/push poniżej dotyczą tamtej walidacji. Źródła opublikowano do
+> beta.3; obecnie 487 testów OK / 4 opcjonalne pominięte. Ręczny odbiór nadal
+> oddzielny od natywnych smoke. Aktualny stan: [ROADMAP.md](ROADMAP.md).
+
 - [x] Import plików sesji w ustawieniach harnessa: adaptery, podgląd, dopasowanie projektów, deduplikacja i atomowy zapis.
 - [x] Graficzna historia repozytorium i tworzenie brancha z zaznaczonego commita bez checkoutu.
 - [x] Własna ikona w Project settings, z możliwością powrotu do wykrywania automatycznego.

@@ -62,3 +62,23 @@ The following are known limitations, not vulnerabilities by themselves:
 - Use FileVault or an encrypted volume for the relay database.
 - Pair devices with short-lived codes and revoke devices you no longer use.
 - Keep Dunlin, your harnesses and macOS up to date.
+
+## Release security gates
+
+The unreleased hardening adds `cargo deny --locked check advisories licenses bans
+sources` for the shipped macOS arm64 graph and CodeQL scans for Rust, web,
+Python and workflow sources. There are no blanket advisory exemptions. The first
+audit found five unmaintained GPUI/syntect/font/image dependencies; the gate stays
+red until reviewed remediation or explicit scoped exceptions, rather than hiding
+the result. [Evidence and blockers](docs/release-acceptance.md).
+
+`python3 scripts/repository_policy.py --repo corapoid/dunlin` audits rules read-only.
+The intended release policy requires independent/code-owner and last-push review,
+strict CI/security checks, signatures, and no unconditional bypass. Current remote
+settings do not yet meet it. Configure a real second reviewer and commit/tag
+signing before changing enforcement; never fabricate approval or automatically
+remove the sole maintainer's recovery route. CODEOWNERS alone does not enforce review.
+
+Artifact provenance, Apple signing/notarization, developer commit/tag signatures,
+and manual/deployed-host acceptance are distinct evidence. None substitutes for
+another, and a passing checksum/native smoke must not be advertised as all of them.

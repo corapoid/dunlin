@@ -36,13 +36,22 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
+
+      - name: Release tooling regression tests
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Release metadata
+        run: python3 scripts/release_gate.py metadata --version "$(python3 scripts/release_gate.py version)"
 
       - name: Relay smoke
         run: ./scripts/relay-smoke.sh
+
+      - name: Paired Git HTTP smoke
+        run: python3 scripts/git-operations-smoke.py --tmp-root "$RUNNER_TEMP"
 
       - name: Build app and relay
         env:

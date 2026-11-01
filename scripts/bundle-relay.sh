@@ -5,10 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-cargo build --release -p dunlin-relay
-mkdir -p dist
-cp target/release/dunlin-relay dist/dunlin-relay
-chmod +x dist/dunlin-relay
+cargo build --release -p dunlin-relay --locked
+DIST="${DUNLIN_DIST_DIR:-dist}"
+mkdir -p "$DIST"
+cp target/release/dunlin-relay "$DIST/dunlin-relay"
+chmod +x "$DIST/dunlin-relay"
 
-echo "Built dist/dunlin-relay"
-echo "Run: ./dist/dunlin-relay serve"
+echo "Built $DIST/dunlin-relay"
+echo "Run: $DIST/dunlin-relay serve"
