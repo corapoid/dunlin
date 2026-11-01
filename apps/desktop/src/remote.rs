@@ -5,8 +5,9 @@
 //! connection managed by `dunlin-agent`.
 
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
+
+use url::Url;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -95,9 +96,46 @@ pub(crate) struct RemoteSessionInfo {
     pub active_device_id: Option<String>,
 }
 
+/// Relay URLs must be HTTPS, or plain HTTP only on loopback. A self-hosted
+/// relay on Tailscale normally terminates TLS; refusing clear-text LAN URLs
+/// keeps pairing codes, bearer tokens and prompts off the wire.
+fn http_agent() -> ureq::Agent {
+    // A relay bearer token must never be forwarded through an environment
+    // proxy by accident.
+    ureq::AgentBuilder::new().try_proxy_from_env(false).build()
+}
+
+pub(crate) fn validate_relay_url(url: &str) -> Result<Url, String> {
+    let url = Url::parse(url.trim()).map_err(|_| "Invalid relay URL".to_string())?;
+    let loopback = match url.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+        None => false,
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.host().is_none()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("Relay URL must be an http(s) URL without credentials".into());
+    }
+    if url.scheme() == "http" && !loopback {
+        return Err(
+            "Plain HTTP is only allowed for loopback. Use HTTPS (for example Tailscale Serve) for a remote relay."
+                .into(),
+        );
+    }
+    Ok(url)
+}
+
 pub(crate) fn pair(url: &str, code: &str, device_name: &str) -> Result<PairResponse, String> {
+    validate_relay_url(url)?;
     let endpoint = format!("{}/v1/pair", url.trim_end_matches('/'));
-    let response = ureq::post(&endpoint)
+    let response = http_agent()
+        .post(&endpoint)
         .timeout(Duration::from_secs(15))
         .send_json(serde_json::json!({
             "code": code.trim().to_uppercase(),
@@ -108,7 +146,9 @@ pub(crate) fn pair(url: &str, code: &str, device_name: &str) -> Result<PairRespo
 }
 
 pub(crate) fn projects(url: &str, token: &str) -> Result<Vec<RemoteProjectInfo>, String> {
-    let response = ureq::get(&format!("{}/v1/projects", url.trim_end_matches('/')))
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!("{}/v1/projects", url.trim_end_matches('/')))
         .set("Authorization", &format!("Bearer {token}"))
         .timeout(Duration::from_secs(15))
         .call()
@@ -121,20 +161,24 @@ pub(crate) fn sessions(
     token: &str,
     project_id: &str,
 ) -> Result<Vec<RemoteSessionInfo>, String> {
-    let response = ureq::get(&format!(
-        "{}/v1/sessions?project={}",
-        url.trim_end_matches('/'),
-        encode(project_id)
-    ))
-    .set("Authorization", &format!("Bearer {token}"))
-    .timeout(Duration::from_secs(15))
-    .call()
-    .map_err(http_error)?;
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!(
+            "{}/v1/sessions?project={}",
+            url.trim_end_matches('/'),
+            encode(project_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .call()
+        .map_err(http_error)?;
     response.into_json().map_err(|error| error.to_string())
 }
 
 pub(crate) fn usage(url: &str, token: &str) -> Result<Vec<ProviderUsage>, String> {
-    let response = ureq::get(&format!("{}/v1/usage", url.trim_end_matches('/')))
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!("{}/v1/usage", url.trim_end_matches('/')))
         .set("Authorization", &format!("Bearer {token}"))
         .timeout(Duration::from_secs(30))
         .call()
@@ -148,63 +192,59 @@ pub(crate) fn save_transcript(
     session_id: &str,
     payload: &serde_json::Value,
 ) -> Result<(), String> {
-    ureq::put(&format!(
-        "{}/v1/sessions/{}/transcript",
-        url.trim_end_matches('/'),
-        encode(session_id)
-    ))
-    .set("Authorization", &format!("Bearer {token}"))
-    .timeout(Duration::from_secs(30))
-    .send_json(serde_json::json!({ "payload": payload }))
-    .map(|_| ())
-    .map_err(http_error)
+    validate_relay_url(url)?;
+    http_agent()
+        .put(&format!(
+            "{}/v1/sessions/{}/transcript",
+            url.trim_end_matches('/'),
+            encode(session_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .send_json(serde_json::json!({ "payload": payload }))
+        .map(|_| ())
+        .map_err(http_error)
 }
 
 pub(crate) fn delete_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
-    ureq::delete(&format!(
-        "{}/v1/sessions/{}",
-        url.trim_end_matches('/'),
-        encode(session_id)
-    ))
-    .set("Authorization", &format!("Bearer {token}"))
-    .timeout(Duration::from_secs(15))
-    .call()
-    .map(|_| ())
-    .map_err(http_error)
+    validate_relay_url(url)?;
+    http_agent()
+        .delete(&format!(
+            "{}/v1/sessions/{}",
+            url.trim_end_matches('/'),
+            encode(session_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .call()
+        .map(|_| ())
+        .map_err(http_error)
 }
 
 pub(crate) fn takeover_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
-    ureq::post(&format!(
-        "{}/v1/sessions/{}/takeover",
-        url.trim_end_matches('/'),
-        encode(session_id)
-    ))
-    .set("Authorization", &format!("Bearer {token}"))
-    .timeout(Duration::from_secs(15))
-    .send_string("")
-    .map(|_| ())
-    .map_err(http_error)
+    validate_relay_url(url)?;
+    http_agent()
+        .post(&format!(
+            "{}/v1/sessions/{}/takeover",
+            url.trim_end_matches('/'),
+            encode(session_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .send_string("")
+        .map(|_| ())
+        .map_err(http_error)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn save_token(host_id: &str, token: &str) -> Result<(), String> {
-    let status = Command::new("security")
-        .args([
-            "add-generic-password",
-            "-U",
-            "-s",
-            KEYCHAIN_SERVICE,
-            "-a",
-            host_id,
-            "-w",
-            token,
-        ])
-        .status()
-        .map_err(|error| format!("Could not access the macOS keychain: {error}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Could not save the relay token in the keychain".into())
-    }
+    security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, host_id, token.as_bytes())
+        .map_err(|error| format!("Could not save the relay token in the keychain: {error}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn save_token(_host_id: &str, _token: &str) -> Result<(), String> {
+    Err("Relay token storage requires macOS Keychain".into())
 }
 
 pub(crate) fn load_token(host_id: &str) -> Result<Option<String>, String> {
@@ -224,23 +264,26 @@ pub(crate) fn load_token(host_id: &str) -> Result<Option<String>, String> {
     Ok(Some(token))
 }
 
+#[cfg(target_os = "macos")]
 fn read_token(service: &str, host_id: &str) -> Result<Option<String>, String> {
-    let output = Command::new("security")
-        .args(["find-generic-password", "-s", service, "-a", host_id, "-w"])
-        .output()
-        .map_err(|error| format!("Could not access the macOS keychain: {error}"))?;
-    if output.status.success() {
-        return Ok(Some(
-            String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        ));
+    use security_framework::passwords::{PasswordOptions, generic_password};
+
+    match generic_password(PasswordOptions::new_generic_password(service, host_id)) {
+        Ok(bytes) => String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|_| "The relay token in the keychain is not valid UTF-8".into()),
+        // errSecItemNotFound. Anything else (for example a locked keychain) is
+        // a real error and must not be treated as "not paired".
+        Err(error) if error.code() == -25300 => Ok(None),
+        Err(error) => Err(format!(
+            "Could not read the relay token from the keychain: {error}"
+        )),
     }
-    // `security` exits 44 when the item is missing; anything else is a real
-    // error (for example a locked keychain).
-    if output.status.code() == Some(44) {
-        Ok(None)
-    } else {
-        Err("Could not read the relay token from the keychain".into())
-    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_token(_service: &str, _host_id: &str) -> Result<Option<String>, String> {
+    Err("Relay token storage requires macOS Keychain".into())
 }
 
 pub(crate) fn delete_token(host_id: &str) {
@@ -248,11 +291,13 @@ pub(crate) fn delete_token(host_id: &str) {
     delete_token_for(LEGACY_KEYCHAIN_SERVICE, host_id);
 }
 
+#[cfg(target_os = "macos")]
 fn delete_token_for(service: &str, host_id: &str) {
-    let _ = Command::new("security")
-        .args(["delete-generic-password", "-s", service, "-a", host_id])
-        .status();
+    let _ = security_framework::passwords::delete_generic_password(service, host_id);
 }
+
+#[cfg(not(target_os = "macos"))]
+fn delete_token_for(_service: &str, _host_id: &str) {}
 
 #[derive(Clone)]
 pub(crate) struct RemoteWorkspace {
@@ -293,7 +338,7 @@ impl RemoteWorkspace {
         let patch: Patch = self.get(&format!(
             "/v1/git/diff?project={}&file={}&staged={staged}",
             encode(&self.project.project_id),
-            encode(&self.relative(path))
+            encode(&entry_relative(&self.project.path, path)?)
         ))?;
         Ok(patch.patch)
     }
@@ -303,7 +348,7 @@ impl RemoteWorkspace {
             "/v1/git/stage",
             &serde_json::json!({
                 "project": self.project.project_id,
-                "file": self.relative(path),
+                "file": entry_relative(&self.project.path, path)?,
             }),
         )
     }
@@ -328,7 +373,7 @@ impl RemoteWorkspace {
             "/v1/git/unstage",
             &serde_json::json!({
                 "project": self.project.project_id,
-                "file": self.relative(path),
+                "file": entry_relative(&self.project.path, path)?,
             }),
         )
     }
@@ -358,7 +403,7 @@ impl RemoteWorkspace {
             "/v1/git/discard",
             &serde_json::json!({
                 "project": self.project.project_id,
-                "file": self.relative(path),
+                "file": entry_relative(&self.project.path, path)?,
             }),
         )
     }
@@ -407,7 +452,7 @@ impl RemoteWorkspace {
             "/v1/fs/file",
             &serde_json::json!({
                 "project": self.project.project_id,
-                "path": self.relative(path),
+                "path": entry_relative(&self.project.path, path)?,
                 "contents": contents,
                 "expected_mtime_ms": expected_mtime_ms,
             }),
@@ -444,7 +489,7 @@ impl RemoteWorkspace {
         self.get(&format!(
             "/v1/fs/stat?project={}&path={}",
             encode(&self.project.project_id),
-            encode(&self.relative(path))
+            encode(&entry_relative(&self.project.path, path)?)
         ))
     }
 
@@ -475,20 +520,10 @@ impl RemoteWorkspace {
         Ok(response.path)
     }
 
-    fn relative(&self, path: &str) -> String {
-        Path::new(path)
-            .strip_prefix(&self.project.path)
-            .map(|relative| {
-                relative
-                    .to_string_lossy()
-                    .trim_start_matches('/')
-                    .to_string()
-            })
-            .unwrap_or_else(|_| path.trim_start_matches('/').to_string())
-    }
-
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
-        let response = ureq::get(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+        validate_relay_url(&self.host.url)?;
+        let response = http_agent()
+            .get(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
             .set("Authorization", &format!("Bearer {}", self.token))
             .timeout(Duration::from_secs(30))
             .call()
@@ -497,7 +532,9 @@ impl RemoteWorkspace {
     }
 
     fn put<T: DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T, String> {
-        let response = ureq::put(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+        validate_relay_url(&self.host.url)?;
+        let response = http_agent()
+            .put(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
             .set("Authorization", &format!("Bearer {}", self.token))
             .timeout(Duration::from_secs(30))
             .send_json(body)
@@ -506,7 +543,9 @@ impl RemoteWorkspace {
     }
 
     fn post<T: DeserializeOwned>(&self, path: &str, body: &Value) -> Result<T, String> {
-        let response = ureq::post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+        validate_relay_url(&self.host.url)?;
+        let response = http_agent()
+            .post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
             .set("Authorization", &format!("Bearer {}", self.token))
             .timeout(Duration::from_secs(30))
             .send_json(body)
@@ -515,7 +554,9 @@ impl RemoteWorkspace {
     }
 
     fn post_empty(&self, path: &str, body: &Value) -> Result<(), String> {
-        ureq::post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
+        validate_relay_url(&self.host.url)?;
+        http_agent()
+            .post(&format!("{}{}", self.host.url.trim_end_matches('/'), path))
             .set("Authorization", &format!("Bearer {}", self.token))
             .timeout(Duration::from_secs(30))
             .send_json(body)
@@ -632,7 +673,7 @@ impl WorkspaceBackend {
     pub fn git_file_diff(&self, path: &str, staged: bool) -> Result<String, String> {
         match self {
             WorkspaceBackend::Local { root } => {
-                git::file_diff(root, &self.relative(root, path), staged)
+                git::file_diff(root, &entry_relative(root, path)?, staged)
             }
             WorkspaceBackend::Remote(remote) => remote.git_file_diff(path, staged),
         }
@@ -640,7 +681,7 @@ impl WorkspaceBackend {
 
     pub fn git_stage_file(&self, path: &str) -> Result<(), String> {
         match self {
-            WorkspaceBackend::Local { root } => git::stage_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Local { root } => git::stage_file(root, &entry_relative(root, path)?),
             WorkspaceBackend::Remote(remote) => remote.git_stage_file(path),
         }
     }
@@ -661,7 +702,9 @@ impl WorkspaceBackend {
 
     pub fn git_unstage_file(&self, path: &str) -> Result<(), String> {
         match self {
-            WorkspaceBackend::Local { root } => git::unstage_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Local { root } => {
+                git::unstage_file(root, &entry_relative(root, path)?)
+            }
             WorkspaceBackend::Remote(remote) => remote.git_unstage_file(path),
         }
     }
@@ -682,7 +725,9 @@ impl WorkspaceBackend {
 
     pub fn git_discard(&self, path: &str) -> Result<(), String> {
         match self {
-            WorkspaceBackend::Local { root } => git::discard_file(root, &self.relative(root, path)),
+            WorkspaceBackend::Local { root } => {
+                git::discard_file(root, &entry_relative(root, path)?)
+            }
             WorkspaceBackend::Remote(remote) => remote.git_discard(path),
         }
     }
@@ -794,18 +839,6 @@ impl WorkspaceBackend {
             WorkspaceBackend::Remote(remote) => remote.upload_file(path),
         }
     }
-
-    fn relative(&self, root: &str, path: &str) -> String {
-        Path::new(path)
-            .strip_prefix(root)
-            .map(|relative| {
-                relative
-                    .to_string_lossy()
-                    .trim_start_matches('/')
-                    .to_string()
-            })
-            .unwrap_or_else(|_| path.trim_start_matches('/').to_string())
-    }
 }
 
 fn branch_relay_error(error: String) -> String {
@@ -853,8 +886,18 @@ fn encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkspaceBackend, encode};
+    use super::{WorkspaceBackend, encode, validate_relay_url};
     use std::fs;
+
+    #[test]
+    fn relay_urls_require_tls_off_loopback() {
+        assert!(validate_relay_url("https://relay.example.test").is_ok());
+        assert!(validate_relay_url("http://127.0.0.1:8787").is_ok());
+        assert!(validate_relay_url("http://localhost:8787").is_ok());
+        assert!(validate_relay_url("http://192.168.1.10:8787").is_err());
+        assert!(validate_relay_url("http://user:secret@relay.example.test").is_err());
+        assert!(validate_relay_url("https://relay.example.test?token=x").is_err());
+    }
 
     #[test]
     fn encodes_query_values() {

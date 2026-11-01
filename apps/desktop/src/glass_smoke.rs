@@ -29,7 +29,6 @@ pub(crate) fn run() {
         auto_connect: false,
         restore_session: false,
         default_harness: "Custom ACP".into(),
-        allow_network: false,
         notifications_enabled: false,
         ..Default::default()
     };

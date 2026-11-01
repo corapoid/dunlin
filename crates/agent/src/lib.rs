@@ -1217,13 +1217,50 @@ struct WsTransport {
 
 impl WsTransport {
     fn new(url: &str, token: &str, project_id: &str) -> io::Result<Self> {
+        let parsed = url::Url::parse(url.trim()).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid relay URL: {error}"),
+            )
+        })?;
+        let loopback = match parsed.host() {
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            Some(url::Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+            None => false,
+        };
+        if parsed.host().is_none()
+            || parsed.username() != ""
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Relay URL must not contain credentials, a query or a fragment",
+            ));
+        }
+        match parsed.scheme() {
+            "https" | "wss" => {}
+            "http" | "ws" if loopback => {}
+            "http" | "ws" => {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Plain WebSocket transport is only allowed on loopback; use HTTPS/WSS",
+                ));
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Relay URL must use http(s) or ws(s)",
+                ));
+            }
+        }
         let base = url.trim_end_matches('/');
-        let ws = if let Some(rest) = base.strip_prefix("https://") {
-            format!("wss://{rest}")
-        } else if let Some(rest) = base.strip_prefix("http://") {
-            format!("ws://{rest}")
-        } else {
-            base.to_string()
+        let ws = match parsed.scheme() {
+            "https" => format!("wss://{}", base.strip_prefix("https://").unwrap_or(base)),
+            "http" => format!("ws://{}", base.strip_prefix("http://").unwrap_or(base)),
+            _ => base.to_string(),
         };
         let endpoint = if ws.ends_with("/acp") {
             format!("{ws}?project={project_id}")
@@ -1271,6 +1308,16 @@ impl ConnectTo<Client> for WsTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_transport_requires_tls_off_loopback() {
+        assert!(WsTransport::new("https://relay.example.test", "token", "prj").is_ok());
+        assert!(WsTransport::new("http://127.0.0.1:8787", "token", "prj").is_ok());
+        assert!(WsTransport::new("http://192.168.1.10:8787", "token", "prj").is_err());
+        assert!(
+            WsTransport::new("https://user:secret@relay.example.test", "token", "prj").is_err()
+        );
+    }
 
     #[test]
     fn preserves_message_ids_and_child_origin_in_projected_acp_updates() {

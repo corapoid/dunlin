@@ -35,11 +35,21 @@ pub(crate) fn init() {
     {
         let _ = fs::rename(&path, path.with_extension("log.old"));
     }
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .ok();
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(&path).ok();
+    if file.is_some() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
+    }
     let _ = LOG.set(Mutex::new(file));
 
     let default_hook = std::panic::take_hook();
@@ -74,26 +84,22 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
         HarnessEvent::SessionLoaded { session_id } => {
             format!("harness session loaded · {session_id}")
         }
-        HarnessEvent::SessionLoadFailed {
-            session_id,
-            message,
-        } => format!("session load failed · {session_id} · {message}"),
+        HarnessEvent::SessionLoadFailed { session_id, .. } => {
+            format!("session load failed · {session_id}")
+        }
         HarnessEvent::Models { session_id, .. } => format!("session models · {session_id}"),
         HarnessEvent::Modes { session_id, .. } => format!("session modes · {session_id}"),
-        HarnessEvent::ModeChangeFailed { message, .. } => format!("mode change failed · {message}"),
-        HarnessEvent::ModelChangeFailed { message, .. } => {
-            format!("model change failed · {message}")
-        }
+        HarnessEvent::ModeChangeFailed { .. } => "mode change failed".into(),
+        HarnessEvent::ModelChangeFailed { .. } => "model change failed".into(),
         HarnessEvent::Update { session_id, update } => {
             format!("harness update · {session_id} · {}", update_kind(update))
         }
         HarnessEvent::PermissionRequested {
             session_id,
-            title,
             options,
             ..
         } => format!(
-            "permission requested · {session_id} · {title} · {} options",
+            "permission requested · {session_id} · {} options",
             options.len()
         ),
         HarnessEvent::PromptFinished {
@@ -101,8 +107,8 @@ pub(crate) fn harness_event(event: &HarnessEvent) {
             stop_reason,
             ..
         } => format!("prompt finished · {session_id} · {stop_reason}"),
-        HarnessEvent::Error { message } => format!("harness error · {message}"),
-        HarnessEvent::Exited { reason } => format!("harness exited · {reason}"),
+        HarnessEvent::Error { .. } => "harness error".into(),
+        HarnessEvent::Exited { .. } => "harness exited".into(),
     };
     info(&summary);
 }
