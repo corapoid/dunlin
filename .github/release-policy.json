@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "review_mode": "solo-maintainer",
+  "authorization": "Explicit user decisions in the release-maintenance session on 2026-11-01",
+  "source_signatures": "GitHub-verified squash merge commits; no claim of a personal developer signing key",
+  "manual_acceptance": {
+    "decision": "deferred",
+    "version_series": "0.1.0-beta",
+    "reason": "User explicitly accepted deferring manual GUI/TCC/real-host acceptance for this beta series. Automated CI/security checks remain mandatory; manual tests are NOT marked passed."
+  }
+}

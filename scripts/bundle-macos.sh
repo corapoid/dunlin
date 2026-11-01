@@ -36,7 +36,7 @@ if [[ "$BUILD" == "1" ]]; then
     echo "Cargo was not found. Install Rust from https://rustup.rs or add its bin directory to PATH." >&2
     exit 1
   fi
-  cargo build --release -p dunlin
+  cargo build --release -p dunlin --locked
 fi
 
 BIN="${DUNLIN_BIN:-}"
@@ -53,17 +53,30 @@ fi
 
 APP_NAME="${DUNLIN_APP_NAME:-Dunlin}"
 BUNDLE_ID="${DUNLIN_BUNDLE_ID:-dev.dunlin.ide}"
-VERSION="${DUNLIN_VERSION:-0.1.0-beta.3}"
+VERSION="${DUNLIN_VERSION:-$(python3 scripts/release_gate.py version)}"
 BUILD_NUMBER="${DUNLIN_BUILD:-1}"
-APP="dist/$APP_NAME.app"
+python3 scripts/release_gate.py version --value "$VERSION" >/dev/null
+# Validate before any cleanup: names must not turn output paths into traversal.
+python3 - "$APP_NAME" "$BUNDLE_ID" "$BUILD_NUMBER" <<'PY'
+import re, sys
+sys.path.insert(0, 'scripts')
+from release_gate import app_name
+app_name(sys.argv[1])
+if not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+', sys.argv[2]):
+    raise SystemExit('Invalid bundle ID')
+if not re.fullmatch(r'[0-9]+', sys.argv[3]):
+    raise SystemExit('Invalid build number')
+PY
+DIST="${DUNLIN_DIST_DIR:-dist}"
+APP="$DIST/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-ICONSET="dist/$APP_NAME.iconset"
-MASTER="dist/dunlin-icon.png"
+ICONSET="$DIST/$APP_NAME.iconset"
+MASTER="$DIST/dunlin-icon.png"
 
 rm -rf "$APP" "$ICONSET"
-mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "dist"
+mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "$DIST"
 
 cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
@@ -74,9 +87,9 @@ cp assets/fonts/OFL.txt "$RESOURCES/Geist-OFL.txt"
 
 # Render the bundled SVG icon and expand it into an .icns.
 if command -v qlmanage >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
-  qlmanage -t -s 1024 -o dist assets/dunlin-icon.svg >/dev/null 2>&1
-  if [[ -f "dist/dunlin-icon.svg.png" ]]; then
-    mv "dist/dunlin-icon.svg.png" "$MASTER"
+  qlmanage -t -s 1024 -o "$DIST" assets/dunlin-icon.svg >/dev/null 2>&1
+  if [[ -f "$DIST/dunlin-icon.svg.png" ]]; then
+    mv "$DIST/dunlin-icon.svg.png" "$MASTER"
     for size in 16 32 128 256 512; do
       sips -z "$size" "$size" "$MASTER" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
       double=$((size * 2))
@@ -130,6 +143,7 @@ else
   codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
 fi
 touch "$APP"
+codesign --verify --deep --strict "$APP"
 
 echo "Built $APP"
 echo "Open with: open \"$APP\""

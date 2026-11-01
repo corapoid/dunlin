@@ -1,0 +1,36 @@
+# Audit the shipped platform. Other platform ports need their own reviewed graph.
+[graph]
+targets = ["aarch64-apple-darwin"]
+
+[advisories]
+# No blanket vulnerability exemptions. Keep any future exception ID-scoped,
+# justified, time-bounded and reviewed in SECURITY.md.
+ignore = []
+
+[licenses]
+allow = [
+    "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "ISC",
+    "BSD-2-Clause", "BSD-3-Clause", "0BSD", "Zlib", "BSL-1.0",
+    "CC0-1.0", "Unlicense", "Unicode-3.0", "CDLA-Permissive-2.0", "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+# GPUI's transitive graph currently needs multiple major versions. Warnings
+# remain visible; they are not vulnerability exemptions.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true # Local workspace paths, not registry dependencies.
+deny = [
+    { crate = "bincode", reason = "Migrated bundled syntax dumps to versioned MessagePack" },
+    { crate = "instant", reason = "Migrated to maintained web-time" },
+    { crate = "paste", reason = "Migrated to maintained pastey" },
+    { crate = "rustybuzz", reason = "Migrated SVG shaping to harfrust via resvg 0.49" },
+    { crate = "ttf-parser", reason = "Migrated font parsing to skrifa and fontdb 0.24" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

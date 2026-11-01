@@ -50,8 +50,8 @@ fn handle(
         HarnessEvent::Ready { agent, version } => {
             println!("[ready] {agent} {version}");
         }
-        HarnessEvent::SessionCreated { session_id } => {
-            println!("[session] {session_id}");
+        HarnessEvent::SessionCreated { .. } => {
+            println!("[session] created");
             *saw_session = true;
             if !*sent {
                 *sent = true;
@@ -59,8 +59,8 @@ fn handle(
                 harness.prompt(prompt);
             }
         }
-        HarnessEvent::SessionLoaded { session_id } => {
-            println!("[loaded] {session_id}");
+        HarnessEvent::SessionLoaded { .. } => {
+            println!("[session] loaded");
         }
         HarnessEvent::Update { update, .. } => match update {
             HarnessUpdate::UserMessage(text) => println!("[user] {text}"),

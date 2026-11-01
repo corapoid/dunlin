@@ -86,7 +86,7 @@ async fn run(
                 .send_request(NewSessionRequest::new(cwd))
                 .block_task()
                 .await?;
-            eprintln!("[session] {}", session.session_id);
+            eprintln!("[session] created");
 
             let response = connection
                 .send_request(PromptRequest::new(

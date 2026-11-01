@@ -1,5 +1,11 @@
 # Project navigation and light-theme polish
 
+> Historical delivery log, not the current backlog. The counts and no-commit/
+> GUI-tool-availability notes below describe those individual runs. Source work
+> has since been committed/pushed through beta.3; current validation is 487 passing
+> tests / 4 optional ignored. Native smokes do not replace manual visual/a11y QA.
+> Current status and remaining work: [ROADMAP.md](ROADMAP.md).
+
 - [x] Center Dashboard activity totals and soften light-theme dots.
 - [x] Give recent-project tiles visible light-theme containers.
 - [x] Place Dashboard data caveats at the bottom of the view.

@@ -2,6 +2,10 @@
 
 Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
 
+Statusy: `[x]` = zaimplementowany i automatycznie sprawdzony **opisany zakres**;
+nie oznacza ukończenia całego nadrzędnego modułu ani odbioru ręcznego. `[ ]` =
+pozostał kod, integracja lub odbiór. „v1” oznacza jawnie ograniczoną implementację.
+
 Aktualny przegląd brakujących zakresów (2026-11-01):
 [`REMAINING-WORK.md`](REMAINING-WORK.md). Duże niezaznaczone milestone'y poniżej
 mogą mieć gotowe części — nie należy traktować ich jako całkowicie niewdrożonych.
@@ -11,7 +15,40 @@ Kolejność wdrożeń, zależności i kryteria odbioru:
 
 ## Stan implementacji
 
-Zrealizowane do tej pory:
+### Przegląd po `0.1.0-beta.3` — 2026-11-01
+
+**Nie wszystkie rozpoczęte elementy są skończone.** Wszystkie osiem obszarów
+agent workbench oraz GitHub mają kod v1 i testy, ale pełny zaakceptowany zakres
+i ręczna macierz odbioru nie są zamknięte. Nie ma podstaw do oznaczenia całych
+M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxów.
+
+| Rozpoczęty obszar | Co działa | Co blokuje zamknięcie pełnego obszaru |
+| --- | --- | --- |
+| Rozmowy / ergonomia M1 | Kolejka, copy/retry/edit, powiadomienia, watcher, brakujący folder, podstawowe menu | Branch od wiadomości, Undo projektu/sesji, menu wiadomości/tool calli, zawijanie composera |
+| Ustawienia / grupy M2 | Lokalne modele/env, dziedziczenie i źródła wartości, jawne Apply model, hierarchia/drag & drop | Model/env relay, dalsze capability adapterów, kolejność/kolory/sync grup i ręczna QA |
+| Usage / budżety | Recorded-data Dashboard, limity kont, trwały ledger żądań/czasu/raportowanego USD | Skanery i cennik billingowy, attribution pracy wewnętrznej/subagentów, alerty globalne; reader OAuth Claude niewłączony |
+| Git v2 | Lokalna/zdalna historia, stash/worktree, operacje i blame z ochroną buforów | Checkout commita z grafu, zdalny branch create, ręczny odbiór i docelowy relay |
+| Markdown | Visual/Raw, edycja/struktura/selekcja/zasoby i regresje natywne | Ręczne GUI/IME/bidi, złożone przypadki graniczne i rzeczywisty relay |
+| Agent workbench / GitHub | Osiem implementacji v1 i potwierdzane lokalne CI/PR przez `gh` | Odbiór na prawdziwym GitHubie, dalsze capability/zdalne narzędzia, pełny billing i compiler/LSP impact; patrz M3c |
+| Skills | Własna biblioteka, walidacja i bezpieczny eksport/usuwanie | Discovery/import zewnętrznych bibliotek, enable per projekt i pełny audyt pochodzenia |
+| Graph / Trace | Hierarchie, disclosure, filtry/timing i eksport grafu | Pan/zoom/layout/minimapa/search grafu; search/klawiatura/sticky axis/wirtualizacja Trace |
+| Design / onboarding / uprawnienia | Design settings, pierwsze tokeny, podstawowe wykrywanie/trust | Migracja tokenów, Compact/Comfortable, kreator i centrum TCC, pełna QA klawiatury/a11y |
+| iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
+| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja zależności bez wyjątków i zaakceptowane reguły solo | Dalszy podział `app.rs`/Services, odroczone R11, nowe zdalne skany i provenance po merge |
+
+Lokalna walidacja beta.3: **487 testów zaliczonych, 4 opcjonalne pominięte**;
+build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
+(Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
+Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
+
+### Zamknięte opisane zakresy bazowe
+
+Kolejka promptów, file watching, obsługa brakującego folderu, bazowe powiadomienia
+macOS/badge, import plików sesji, bulk import repozytoriów oraz obecne taby edytora/
+podglądy mają implementację i testy. Ich ukończenie nie zamyka odpowiednio całych
+rozmów, onboardingu, usage, Git ani pełnego warsztatu.
+
+Zrealizowane funkcje szczegółowe:
 
 - kolejka promptów z edycją, usuwaniem, zmianą kolejności i czyszczeniem,
 - kopiowanie i ponawianie wiadomości użytkownika,
@@ -40,20 +77,26 @@ Zrealizowane do tej pory:
   wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
   zmiana harnessa tworzy nową sesję, a poprzednia zachowuje swój harness.
 
-Następne w M1: menu kontekstowe dla plików/wiadomości/tool calls, branch od
+Następne w M1: menu kontekstowe dla wiadomości/tool calls, branch od
 wiadomości, zawijanie composera, `Undo` dla projektów i sesji, status
 uprawnień powiadomień z linkiem do System Settings oraz tokeny typografii we
 wszystkich widokach.
 
 ## Release 0.1 — public beta gate
 
-Status: `0.1.0-beta.1` opublikowany 25 października 2026 jako unsigned,
-ad-hoc signed build dla macOS 15+ Apple Silicon. Kolejne poprawki beta trafiają
-na `main`, a nowy tag `v*` uruchamia release workflow.
+Status źródeł: `0.1.0-beta.3`, commit `36398df`, tag wypchnięty 1 listopada 2026.
+[CI](https://github.com/corapoid/dunlin/actions/runs/41291827294) i
+[Release](https://github.com/corapoid/dunlin/actions/runs/41291827251) zakończyły się
+**success**. Prerelease opublikowano `2026-11-01T09:19:50Z`; pobrane ZIP/DMG/relay
+mają zgodne SHA-256, wersję/tożsamość/arm64, poprawny podpis ad-hoc i weryfikację DMG.
+Nie instalowano artefaktów. Bieżące zmiany hardening są osobnym **Unreleased**:
+nie były częścią tamtych runów i nie zmieniają istniejącego taga.
+[Dowody i blokery domknięcia](release-acceptance.md).
 
 Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
-beta. Poza zakresem: iOS, terminal, computer use, automatyzacje, skills,
-artefakty i wizualny edytor Markdown.
+beta. Beta.3 zawiera także wizualny Markdown, własną bibliotekę skills oraz
+ograniczony agent workbench/GitHub. Poza ukończonym zakresem pozostają iOS,
+terminal, computer use, scheduler automatyzacji, artefakty i pełna orkiestracja.
 
 - [x] **R1. Nazwa i tożsamość** — Dunlin, bundle ID `dev.dunlin.ide`, Keychain
   service `dev.dunlin.remote`, katalog danych `Dunlin`, ikona, copyright.
@@ -73,27 +116,42 @@ artefakty i wizualny edytor Markdown.
 - [x] **R7. Release engineering** — wersja z taga, arm64 build, DMG/ZIP,
   checksums, podpis/notaryzacja opcjonalna przez sekrety.
 - [x] **R8. CI** — fmt, clippy, testy, relay smoke na macOS runnerze.
-- [x] **R9. GitHub Release** — workflow `v*`, draft release, źródła + binaria.
+- [x] **R9. GitHub Release — mechanizm** — workflow `v*`, źródła + binaria;
+  aktualny skrypt publikuje release (prerelease dla wersji beta), nie draft.
+  Powodzenie mechanizmu nie oznacza potwierdzenia bieżącego runu beta.3.
 - [x] **R10. Dokumentacja** — README ze screenshotami i porównaniem z Orca,
   CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
 - [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
-  upgrade bazy, duży projekt, remote beta.
-- [ ] **R12. Bezpieczeństwo publicznego repo** — dependency review, secret
-  scanning, CodeQL/cargo-deny, branch protection, wymagane review dla ścieżek
-  agent/network/auth, podpisane commity/release.
+  upgrade bazy, duży projekt, remote beta. Ręczny GUI/TCC/realny host jawnie
+  odroczone decyzją użytkownika wyłącznie dla `0.1.0-beta.N`, nie zaliczone.
+- [ ] **R12. Bezpieczeństwo publicznego repo — częściowo**
+  - [x] workflow dependency review i konfiguracja Dependabot,
+  - [x] GitHub secret scanning i push protection włączone (odczyt API 2026-11-01),
+  - [x] reguły `main`: PR, osiem ścisłych checków przypiętych do aplikacji Actions,
+    podpisane squash merge, brak bypassów, zakaz usuwania/non-fast-forward;
+    jawnie zatwierdzony tryb solo bez fikcyjnego review drugiej osoby,
+  - [x] kod workflow CodeQL (Rust/web/Python/Actions), cargo-deny, walidatora artefaktów,
+    raportów QA i audytu reguł; lint/testy lokalne, nie potwierdzony run nowych workflow,
+  - [x] migracja pięciu obsolete pakietów z całego lockfile, dziewięć utrzymywanych
+    forków i integralność/provenance; cargo-deny bez wyjątków, 490 testów Rust,
+    25 Python, audyt reguł solo i dziewięć natywnych smoke zaliczone lokalnie,
+  - [ ] świeże skany zmigrowanych źródeł na GitHubie, normalny podpisany squash
+    merge i weryfikacja mainline CI/provenance; pierwszy CodeQL wykonał cztery
+    języki, ale nie obejmował jeszcze migracji i poprawek SHA-pinów.
+    [Pełna macierz i odroczenia](release-acceptance.md).
 
 Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
 unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 
-## Po 0.1 — kolejne etapy
+## Pozostałe kierunki po beta.3
 
-- usage scanners Claude/Codex/OpenCode i dashboard,
+- dokładne usage scanners/cennik i pełne przekroje (podstawowy Dashboard już działa),
 - terminal + autowykrywanie komend,
-- Git v2 + global search,
-- Markdown source/preview → block editor,
+- brakujące operacje/QA Git v2 + global search FTS5,
+- odbiór i przypadki brzegowe istniejącego Visual/Raw Markdown,
 - standalone chat,
 - artefakty,
-- katalog skills,
+- discovery/import/per-project skills (własny katalog i eksport już działają),
 - automatyzacje,
 - SSH hosty,
 - computer use + helper TCC,
@@ -160,7 +218,8 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - dashboard global/projekt/model/harness, sesje, tokeny, koszt, czas,
   - oddzielny „context estimate” od „billing usage”.
 - [ ] **19. Onboarding** (M)
-  - wykrywanie harnessów, model, trust, relay/SSH, pierwszy projekt.
+   - [x] podstawowy pierwszy ekran, wykrywanie adapterów, projekt i trust,
+   - [ ] pełny wznawialny kreator model/auth/relay/SSH i odbiór.
 - [ ] **30. Centrum uprawnień macOS** (M)
   - Notifications, Accessibility, Screen Recording, Automation, FDA;
   - statusy, otwieranie System Settings, ponowne sprawdzenie.
@@ -221,6 +280,30 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
     pozostają przypisane do swojego projektu — bez cichej podmiany `cwd`,
   - izolowana historia i drafty zwykłych rozmów, niezależne od sesji projektów.
 
+## M3c — Agent workbench i GitHub — v1 w kodzie, pełny odbiór otwarty
+
+Wszystkie poniższe pozycje mają implementację oraz automatyczne testy. Nie są
+mockupami, ale nie oznaczają też pełnej realizacji pierwotnych propozycji.
+Wspólny brak odbioru: ręczne dialogi/focus/klawiatura/a11y; dla GitHuba także
+rzeczywiste konto/CI/PR. Dokładne limity i potwierdzone scenariusze:
+[agent workbench i GitHub](agent-workbench-and-github.md).
+
+| Obszar | Dostarczony zakres v1 | Granice v1 / niezakończone rozszerzenia |
+| --- | --- | --- |
+| Review zadania | Baseline, obserwowane diffy, komentarz/evidence → draft | Brak automatycznego autorstwa per tura i dowodu pokrycia testami |
+| Context inspector | Rzeczywista koperta klienta, provenance, MCP/skills | System/history/context należące do harnessa pozostają jawnie nieznane |
+| Checkpointy | Nazwane snapshoty zapisanych plików, selektywny restore z potwierdzeniem | Nie snapshot RAM/index/refs; zdalne checkpointy/restore niewdrożone |
+| Checks / problems | Potwierdzany JSON argv, wynik/exit/logi, diagnostyka Cargo | Dalsze adaptery testów i zdalne uruchamianie niewdrożone |
+| Budżety zadania | Trwała rezerwacja żądań, czas, raportowane USD, stop/zgody/retencja | Nie limit rachunku providera; wewnętrzne retry/subagenci mogą mieć nieznany koszt |
+| Porównanie A/B | Dwa detached worktree z jednego HEAD, identyczny prompt, wspólny budżet, diff/checks/preferencja | Local-only, bez sandboxa i auto-merge; nie zastępuje koordynatora M6 |
+| Impact map | Inkrementalny Rust AST, zależności leksykalne i kandydaci testów | Nie compiler/LSP/type/cfg-complete; non-Rust i zdalny indeks niewdrożone |
+| Decision memory | Jawne lokalne wersje, stale, evidence i wybrany wpis → draft | Brak sync; nie automatyczne wstrzykiwanie instrukcji ani magazyn sekretów |
+| GitHub CI/PR | GitHub.com + `gh`, polling job/step, logi zakończonych jobów, potwierdzane operacje PR/CI | Brak relay/Enterprise, fork-head creation, reviewer/assignee/labels, merge queues i pełnego live log stream |
+
+„Nieznane” koszty/context/coverage są celowymi granicami bezpieczeństwa, nie
+wynikiem równym zero ani obietnicą pełnej funkcji. Wyłączenie auto-merge,
+auto-send i cichego restartu jest zamierzonym zachowaniem, nie zaległym zadaniem.
+
 ## M4 — Zdalnie i autonomicznie
 
 - [ ] **22. Automatyzacje** (XL)
@@ -248,6 +331,8 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 - [ ] **21. Sharing artefaktów** (M)
 - [ ] **20/13. Accessibility i gęstość UI** (M)
 - [ ] **iOS** — sync grup/usage/artefaktów, powiadomienia, build z Xcode.
+  Źródła SwiftUI/ACP już istnieją, ale build i działanie na urządzeniu nie są
+  potwierdzone; to rozpoczęty, nieodebrany obszar, a nie gotowa aplikacja.
 
 ## M6 — Multi-agent orchestration
 
@@ -271,3 +356,17 @@ orkiestracji znaną z Orca/Augment Intent, ale oparte o ACP i nasze worktree.
   decyzji; pełny audit trail.
 
 Zależności: terminal, Git worktree, skills, automations, usage i graph.
+
+## Rekomendowana kolejność domknięcia
+
+1. Beta.3 i artefakty są potwierdzone; migracja bez wyjątków i reguły solo gotowe.
+   Potwierdzić świeże workflow, podpisany merge i mainline provenance,
+   bez retagowania beta.3 i bez fikcyjnych akceptacji.
+2. Odebrać rozpoczęte zakresy: ustawienia/grupy, Git, Markdown i workbench/GitHub
+   na izolowanych danych; osobno realny relay, GitHub i GUI/IME/a11y.
+3. Domknąć małe braki M1 (branch rozmowy, Undo, menu wiadomości/tool calli,
+   composer) oraz wskazane luki R12, bez automatycznej zmiany zasad repo.
+4. Potem wybrać następny zakres funkcjonalny: FTS5, billing usage albo skills
+   discovery/per-project. Nie rozpoczynać jednocześnie wszystkich dużych modułów.
+5. Terminal/Run, standalone chat, artefakty, scheduler, SSH, computer use i M6
+   pozostają osobnymi etapami; bazowe checks, relay i A/B nie realizują ich za nas.

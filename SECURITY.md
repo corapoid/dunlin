@@ -62,3 +62,29 @@ The following are known limitations, not vulnerabilities by themselves:
 - Use FileVault or an encrypted volume for the relay database.
 - Pair devices with short-lived codes and revoke devices you no longer use.
 - Keep Dunlin, your harnesses and macOS up to date.
+
+## Release security gates
+
+The unreleased hardening adds `cargo deny --locked check advisories licenses bans
+sources` for the shipped macOS arm64 graph and CodeQL scans for Rust, web,
+Python and workflow sources. No advisory exemptions are configured. All five
+obsolete GPUI/syntect/font/image packages found by the initial audit have been
+migrated out of the entire lockfile, with maintained local forks, preserved
+licenses and verified upstream provenance. `scripts/verify_vendor.py` checks
+their complete trees; `deny.toml` bans reintroduction. [Migration](vendor/README.md)
+and [acceptance evidence](docs/release-acceptance.md).
+
+`python3 scripts/repository_policy.py --repo corapoid/dunlin` audits rules read-only.
+The explicitly approved solo-maintainer policy requires PRs, eight strict checks
+bound to the GitHub Actions app, resolved threads, signed commits and squash-only
+merges, with no bypass actors. Its remote audit passes. Zero independent approvals
+is intentional, not a claim of second-person review; CODEOWNERS documents ownership.
+GitHub signs the squash merge; no personal key or reviewer is impersonated.
+Release source authorization independently verifies the actual mainline merge,
+trusted PR/source checks and open CodeQL security alerts via read-only APIs, without
+giving build jobs owner/admin credentials. Manual GUI/TCC/real-host acceptance is
+explicitly deferred only for `0.1.0-beta.N`, never marked passed or reused for stable/RC.
+
+Artifact provenance, Apple signing/notarization, developer commit/tag signatures,
+and manual/deployed-host acceptance are distinct evidence. None substitutes for
+another, and a passing checksum/native smoke must not be advertised as all of them.

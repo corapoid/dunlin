@@ -1,1 +1,17 @@
 * @corapoid
+
+# Security-sensitive boundaries. Requiring independent approval additionally
+# needs a second trusted maintainer and an enforcing repository ruleset.
+/crates/agent/ @corapoid
+/crates/relay/ @corapoid
+/crates/storage/ @corapoid
+/crates/workspace/src/git/ @corapoid
+/apps/desktop/src/harness.rs @corapoid
+/apps/desktop/src/remote/ @corapoid
+/apps/desktop/src/provider_auth.rs @corapoid
+/apps/desktop/src/task_budgets.rs @corapoid
+/apps/desktop/src/comparisons.rs @corapoid
+/.github/ @corapoid
+/scripts/ @corapoid
+/deny.toml @corapoid
+/vendor/ @corapoid

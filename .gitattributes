@@ -1,0 +1,3 @@
+# Preserve upstream whitespace in mirrored dependency sources; first-party files
+# retain normal diff whitespace checks. Reviewed changes are listed in provenance.
+vendor/** linguist-vendored=true whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab

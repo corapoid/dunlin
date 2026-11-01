@@ -527,6 +527,10 @@ pub fn discard_file(path: &str, file: &str) -> Result<(), String> {
 
 fn git(path: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git")
+        // Every caller passes argv directly (never a shell) and separates path
+        // operands with `--`. Disable Git pathspec magic as well: a filename
+        // such as `:(glob)*` must refer to that one file, not the whole tree.
+        .arg("--literal-pathspecs")
         .arg("-c")
         .arg("core.quotePath=false")
         .arg("-C")
@@ -651,6 +655,46 @@ fn untracked_lines(root: &str, relative: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn diff_paths_are_literal_operands_never_options_shell_or_pathspec_programs() {
+        let root =
+            std::env::temp_dir().join(format!("dunlin-git-literal-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.to_str().unwrap();
+        git(path, &["init", "-q"]).unwrap();
+        git(path, &["config", "user.name", "Fixture"]).unwrap();
+        git(path, &["config", "user.email", "fixture@example.invalid"]).unwrap();
+        let names = [
+            "ordinary.txt",
+            ":(glob)*",
+            "--output=INJECTED",
+            "$(touch INJECTED)",
+            ";touch INJECTED",
+        ];
+        for name in names {
+            std::fs::write(root.join(name), "before\n").unwrap();
+        }
+        stage_all(path).unwrap();
+        commit(path, "baseline").unwrap();
+        for name in names {
+            std::fs::write(root.join(name), format!("after {name}\n")).unwrap();
+        }
+        for name in names {
+            let patch = file_diff(path, name, false).unwrap();
+            assert!(patch.contains(&format!("+after {name}")));
+            assert_eq!(
+                patch
+                    .lines()
+                    .filter(|line| line.starts_with("diff --git "))
+                    .count(),
+                1
+            );
+        }
+        assert!(!root.join("INJECTED").exists());
+        assert!(file_diff(path, "../outside", false).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_normal_folder_is_not_an_error_and_initialization_is_explicit() {

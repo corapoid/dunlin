@@ -1,4 +1,4 @@
-# Plan rozwoju — 2026-10-30
+# Plan rozwoju — aktualizacja 2026-11-01 / beta.3
 
 Zakres: ustawienia, Git, search, skills, Graph/Trace, design/a11y, onboarding,
 terminal/Run, Markdown, standalone chat, SSH, computer use i orkiestracja.
@@ -6,10 +6,18 @@ Punkt wyjścia: [REMAINING-WORK.md](REMAINING-WORK.md). Ten dokument ustala
 kolejność implementacji; nie oznacza dostarczenia całego backlogu.
 
 Nowy zatwierdzony zakres: [Agent workbench i GitHub](agent-workbench-and-github.md).
-Obejmuje wszystkie osiem propozycji i pełny cykl CI/PR. Pierwsze zakresy GitHub,
-inspektora, pamięci decyzji, review/checkpointów i checks są wdrożone w opisanych
-granicach. Budżety, porównanie agentów i semantyczna mapa wpływu nadal oczekują;
-nie oznaczać całego rozszerzenia jako ukończonego.
+Obejmuje wszystkie osiem propozycji i pełny cykl CI/PR. GitHub, inspektor,
+pamięć decyzji, review/checkpointy, checks, trwałe budżety, porównanie A/B i mapa
+Rust AST mają implementacje v1 z testami. Pełny billing, compiler/LSP/non-Rust
+impact, zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte; nie oznaczać
+całego rozszerzenia jako ukończonego. Aktualna macierz jest w [ROADMAP.md](ROADMAP.md).
+
+Stan źródeł: `0.1.0-beta.3`, 487 testów OK / 4 opcjonalne pominięte; build,
+Clippy, fmt i izolowane regresje przeszły. Starsze liczby poniżej opisują
+historyczne etapy walidacji, nie bieżący zestaw. CI/Release beta.3 zakończone
+sukcesem; opublikowane artefakty pobrano i zweryfikowano bez instalacji. Oddzielny
+hardening Unreleased dodaje fail-closed bramki, ale nie zamyka czerwonych audytów
+zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 
 ## Zasady wspólne
 
@@ -71,7 +79,7 @@ nie oznaczać całego rozszerzenia jako ukończonego.
   współbieżności 4 odczytów utrzymuje slot do końca rzeczywistej pracy Git.
 - Odbiór: operacje mutujące wyłącznie w izolowanych testowych repozytoriach;
   dirty buffers, hook failure, konflikt i worktree innego procesu pokryte testami.
-  Walidacja: 450 testów OK, 4 opcjonalne pominięte; build/fmt/Clippy OK,
+   Historyczna walidacja etapu Git: 450 testów OK, 4 opcjonalne pominięte; build/fmt/Clippy OK,
   natywny smoke Git dark/light-narrow, regresja Markdown i sparowany loopback HTTP
   OK. Ręczne dialogi/hover/a11y i docelowy zdalny host nadal oczekują.
 
@@ -176,18 +184,21 @@ nie oznaczać całego rozszerzenia jako ukończonego.
 - Odbiór: bezcykliczność, duplikaty wiadomości, crash recovery, cofnięcie trust,
   konflikt merge i brak samoczynnego przekroczenia zatwierdzonego budżetu.
 
-## Najbliższe zadania
+## Najbliższe zadania — rekomendacja domknięcia rozpoczętych zakresów
 
-1. **Priorytet użytkownika: wizualny Markdown, domyślnie renderowany + Raw.**
-   Pięć rozszerzeń (selekcja, nawigacja, zagnieżdżenia, zasoby, automatyczne QA)
-   jest wdrożonych w zakresie opisanym w [Markdown editor](markdown-editor.md).
-   Pozostał ręczny odbiór GUI/IME i rzeczywistego relay; nie oznaczać tego jako
-   zakończonego. Standalone chat nie jest częścią tej iteracji.
-2. Wykonać ręczną QA 1a według [checklisty](project-runtime-settings.md);
-     nie oznaczać całego etapu ustawień jako gotowego. Automatycznie: 418 testów OK,
-   4 opcjonalne integracyjne pominięte; Clippy `-D warnings` i fmt poprawne.
-3. Dokończyć QA grup (1b) i jawnego zastosowania modelu przez ACP (1c).
-4. Wykonać ręczną QA lokalnej/zdalnej historii (2a/2e) i podglądów stanu repo (2b).
-   Zakresy 2c/2d są wdrożone; natywny smoke i testy nie zastępują ręcznego odbioru
-   potwierdzeń, hoverów i rzeczywistego relay. [Zakres/odbiór](git-operations-and-blame.md).
-5. Spike FTS5 i VT przed wyborem nowych zależności.
+1. CI/Release beta.3 i artefakty już potwierdzone. Migracja bez wyjątków i reguły
+   solo przechodzą lokalnie; potwierdzić nowe skany, podpisany merge i provenance;
+   nie retagować beta.3 ani dopisywać jej nowych wyników walidacji wstecz.
+2. Wykonać ręczny odbiór [ustawień/grup/Apply model](project-runtime-settings.md),
+   [Git local/relay](git-operations-and-blame.md) i [Markdown GUI/IME/bidi](markdown-editor.md).
+   Testy/smoke nie zastępują prawdziwego hosta, dialogów i przeglądu dostępności.
+   Użytkownik jawnie odroczył tę macierz tylko dla `0.1.0-beta.N`, bez zaliczenia.
+3. Odebrać [workbench/GitHub](agent-workbench-and-github.md) na izolowanych danych
+   i realnym koncie: wszystkie osiem v1 jest w kodzie, nie ma już osobnego zadania
+   „zaimplementować od zera budżety/porównanie/impact”. Pozostają jawne rozszerzenia.
+4. Dokończyć małe luki M1 i zdalne dowody R12; za zgodą użytkownika ustawiono
+   PR, osiem app-bound checków i podpisany squash bez bypassów w trybie solo.
+   Nie udawać niezależnego code-owner review w jednoosobowym repozytorium.
+5. Wybrać następny pionowy zakres (FTS5, billing usage lub skills), a przed
+   terminalem wykonać spike VT. Standalone chat, scheduler i M6 są osobnymi etapami;
+   istniejące checks i porównanie A/B nie oznaczają ich ukończenia.

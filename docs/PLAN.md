@@ -4,11 +4,15 @@ Ten dokument opisuje kierunek rozwoju Dunlina po wersji `0.1`: docelowy model
 usług, decyzje architektoniczne i kolejność prac. Roadmapa z konkretnymi
 kamieniami milowymi jest w [`ROADMAP.md`](ROADMAP.md).
 
-Stan po przeglądzie 2026-10-30: [`REMAINING-WORK.md`](REMAINING-WORK.md).
+Stan po przeglądzie 2026-11-01 / beta.3: [`REMAINING-WORK.md`](REMAINING-WORK.md).
 Ten plan opisuje architekturę docelową, nie listę zupełnie niewdrożonych funkcji.
 Są już m.in. globalne skills, hierarchiczne grupy, recorded-data Dashboard,
 import sesji z plików, lokalny graf Git z branch create i część feature-modułów.
 Import historii nie zastępuje planowanych skanerów billing usage.
+Doszły local/relay Git/blame, edytowalny Visual/Raw Markdown, dziedziczone
+runtime settings i wszystkie osiem obszarów workbench v1 z GitHub CI/PR.
+Nie zamyka to QA, pełnego billing/impact LSP ani nowych podsystemów;
+aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-workbench-and-github.md).
 
 ## Zasady
 
@@ -87,9 +91,11 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 
 ### Markdown
 
-- Faza 1: istniejący edytor źródła + podgląd Markdown + toolbar.
-- Faza 2: edytor blokowy: AST → bloki → edytowalne komponenty GPUI (nagłówki,
-  akapity, listy, cytaty, kod, tabele, obrazy), wspólny model undo/redo.
+- Wdrożone: source-mapped AST → edytowalne komponenty GPUI, Visual/Raw,
+  formatowanie, struktura tabel/list, selekcja i jawne zasoby projektu;
+  kanoniczne źródło oraz wspólne undo/save, bez stratnej serializacji AST.
+- Pozostają ręczna QA GUI/IME/bidi, złożone przypadki brzegowe i odbiór realnego
+  relay; [szczegóły](markdown-editor.md). Nie planować ponownie gotowej fazy 1/2.
 - Surowy tekst zawsze dostępny jednym przełącznikiem.
 - Bez HTML/JS w środku. HTML artefakty albo natywny bezpieczny podzbiór, albo
   otwarcie w przeglądarce (do decyzji przy artefaktach).
@@ -113,7 +119,9 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 
 ### Usage
 
-- ACP `usage_update` = kontekst, nie rozliczenie.
+- ACP `usage_update` dostarcza kontekst i opcjonalny raport kosztu sesji z walutą,
+  nie kompletny rachunek. Ledger v1 korzysta tylko z poprawnego USD; missing/
+  non-USD/opaque child work pozostaje unknown, nie zero ani gwarantowany billing cap.
 - Dokładne użycie z logów: Claude JSONL, Codex rollout JSONL, OpenCode SQLite.
 - Cennik per model, cache i long-context; `unpriced` zamiast zmyślania.
 - Skanery lokalne i relayowe; dashboard global/projekt/model/harness.

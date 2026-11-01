@@ -1,6 +1,18 @@
 [workspace]
 resolver = "3"
 members = ["apps/desktop", "crates/*"]
+exclude = ["vendor/*"]
+
+[patch.crates-io]
+gpui-base = { path = "vendor/gpui-base-0.8.0" }
+gpui-component = { path = "vendor/gpui-component-0.8.0" }
+gpui-pre = { path = "vendor/gpui-pre-0.3.9" }
+syntect = { path = "vendor/syntect-5.3.0" }
+two-face = { path = "vendor/two-face-0.4.5" }
+metal = { path = "vendor/metal-0.33.0" }
+pulp = { path = "vendor/pulp-0.22.3" }
+rav1e = { path = "vendor/rav1e-0.8.1" }
+cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
 
 [workspace.package]
 version = "0.1.0-beta.3"
@@ -42,9 +54,9 @@ gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
 gpui-pre-platform = { opt-level = 3 }
-rustybuzz = { opt-level = 3 }
+harfrust = { opt-level = 3 }
 taffy = { opt-level = 3 }
-ttf-parser = { opt-level = 3 }
+skrifa = { opt-level = 3 }
 dunlin = { debug = 2 }
 dunlin-ui = { debug = 2 }
 dunlin-domain = { debug = 2 }

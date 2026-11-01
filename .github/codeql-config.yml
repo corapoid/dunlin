@@ -1,0 +1,5 @@
+name: Dunlin release security analysis
+# Mirrored upstream CI templates cannot run from vendor/.github and are not
+# Dunlin workflows. Keep all patched Rust/Python/application sources in scope.
+paths-ignore:
+  - vendor/**/.github/**

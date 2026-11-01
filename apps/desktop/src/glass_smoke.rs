@@ -68,8 +68,15 @@ pub(crate) fn run() {
             loop {
                 cx.background_executor().timer(Duration::from_millis(200)).await;
                 let done = cx.update(|cx| {
-                    assert!(started.elapsed() < Duration::from_secs(20), "glass smoke stalled at stage {stage}");
+                    // Background fixture windows do not receive every native
+                    // frame. Draw both dispatch trees before reading geometry,
+                    // as the editor/Git native regressions already do.
+                    parent.update(cx, |_, window, cx| {window.refresh();window.draw(cx).clear(cx);}).unwrap();
+                    if let Some(child)=owner.read(cx).overlay_window.debug_window(){
+                        child.update(cx, |_, window, cx| {window.refresh();window.draw(cx).clear(cx);}).unwrap();
+                    }
                     let (open, panel) = { let app = owner.read(cx); (app.overlay_window.is_open(), app.overlay_window.diagnostic(cx)) };
+                    assert!(started.elapsed() < Duration::from_secs(20), "glass smoke stalled at stage {stage}; panel={panel:?}");
                     match stage {
                         0 if panel.is_some() => {
                             assert_eq!(panel.unwrap().size, size(px(1120.), px(760.)));

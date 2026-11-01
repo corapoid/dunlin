@@ -37,8 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             HarnessEvent::Ready { agent, version } => {
                 println!("[ready] {agent} {version}");
             }
-            HarnessEvent::SessionCreated { session_id } => {
-                println!("[session] {session_id}");
+            HarnessEvent::SessionCreated { .. } => {
+                println!("[session] created");
                 if !sent {
                     sent = true;
                     assert!(harness.prompt("Please write hello.txt"));

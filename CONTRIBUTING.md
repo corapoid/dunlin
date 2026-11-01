@@ -41,7 +41,9 @@ Run the same checks as CI before opening a pull request:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets
 cargo test --workspace
+python3 -m unittest discover -s scripts/tests -v
 ./scripts/relay-smoke.sh
+python3 scripts/git-operations-smoke.py
 ```
 
 To build a local app bundle:
@@ -74,7 +76,7 @@ Dependabot is enabled for Cargo and GitHub Actions and runs weekly on Monday at
 stay as separate pull requests because many Rust dependencies are still on
 `0.x`, where a minor bump can be breaking.
 
-`test` and `dependency-review` are required checks on `main`. Dependabot
+`test`, `dependency-review` and `web` are configured required checks on `main`. Dependabot
 auto-merges GitHub Actions minor/patch updates and Cargo patch updates once
 those checks pass. Security updates are enabled independently; treat them as
 urgent and review them even when CI is green.
@@ -93,10 +95,18 @@ urgent and review them even when CI is green.
 
 ## Release process
 
-Releases are cut from a `v*` tag. The workflow builds on macOS, packages the
-app and relay, and creates a draft GitHub Release. The first beta is unsigned.
-Once an Apple Developer ID is configured, add the signing and notarization
-secrets described in `.github/workflows/release.yml`.
+Releases are cut from an existing `v*` tag matching the workspace, lockfile and
+changelog. The hardening workflow runs security/source gates, builds on macOS,
+packages/verifies the app and relay, attests artifact provenance and publishes
+only after those jobs pass. Beta tags produce a prerelease, not a draft. Missing
+Apple credentials produce explicitly ad-hoc builds; partial credentials fail.
+Developer ID signing alone must never be described as notarization.
+
+For isolated automatic QA use `python3 scripts/release_qa.py --tmp-root "$TMPDIR"
+--native --audit` after installing cargo-deny 0.20.2. Native mode needs a desktop;
+it never substitutes for manual GUI/TCC/deployed-host acceptance. The current
+dependency and repository-policy audits have unresolved findings; see
+[release acceptance](docs/release-acceptance.md) before cutting another tag.
 
 ## Code of conduct
 

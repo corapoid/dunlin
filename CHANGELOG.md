@@ -6,6 +6,41 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Add release metadata/artifact verification, adversarial packaging tests,
+  isolated automatic QA reports and a read-only repository-policy auditor.
+- Add pinned cargo-deny auditing and CodeQL security scans; keep discovered
+  unmaintained-dependency and policy findings visible instead of waiving them.
+- Add complete-tree integrity and original archive provenance for nine maintained
+  dependency forks, signed-mainline source authorization and main-push CI attestations.
+- Add a read-only source-authorization rehearsal workflow, with explicit checks/PR
+  API access and no release/tag mutation, to validate the real workflow token.
+- Record approved solo-maintainer policy and beta-only manual acceptance deferral;
+  require real trusted checks/signatures without pretending independent approval.
+
+### Fixed
+
+- Remove bincode, instant, paste, rustybuzz and ttf-parser from the entire lockfile
+  without advisory exceptions. Migrate clocks/macros, resvg/font shaping and all
+  nested bundled syntax/theme/license dumps; preserve source data and exact licenses.
+- Pin workflow actions to verified commit SHAs and enforce eight app-bound checks,
+  signed squash merges and no repository bypass actors.
+- Address full Rust CodeQL findings: guard nullable rav1e C API handles/results,
+  avoid raw session/name/startup-error logging, and constrain Git to literal
+  path operands. Document six individually demonstrated analyzer false positives
+  without disabling queries or excluding patched Rust sources.
+- Harden subsequent releases with exact tag/version checks, least-privilege
+  build/publish separation, artifact provenance, final-byte checksums and
+  changelog-backed release notes. Sign app and relay; require explicit Accepted
+  notary reports, staple before packaging and never label signed-only as notarized.
+- Validate bundle metadata before cleanup and derive the default bundle version
+  from Cargo. Support disposable output directories without replacing installed apps.
+- Draw both native glass-smoke windows before geometry checks, avoiding stale
+  background-window frames without weakening layout/focus/cleanup assertions.
+- Point website download metadata at the verified published beta.3 assets and
+  derive its page title/URLs from one version value, rather than stale beta.1 links.
+
 ## [0.1.0-beta.3] — 2026-11-01
 
 Agent workbench and GitHub CI/PR integration, safer local/relay Git workflows,
