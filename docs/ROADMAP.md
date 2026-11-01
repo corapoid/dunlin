@@ -2,9 +2,12 @@
 
 Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
 
-Aktualny przegląd brakujących zakresów (2026-10-30):
+Aktualny przegląd brakujących zakresów (2026-11-01):
 [`REMAINING-WORK.md`](REMAINING-WORK.md). Duże niezaznaczone milestone'y poniżej
 mogą mieć gotowe części — nie należy traktować ich jako całkowicie niewdrożonych.
+
+Kolejność wdrożeń, zależności i kryteria odbioru:
+[`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
 
 ## Stan implementacji
 
@@ -28,6 +31,10 @@ Zrealizowane do tej pory:
 - hierarchia grup/List/Tree, bulk import repozytoriów i badge monorepo,
 - Design settings, edytor z tabami/minimapą, podgląd obrazów/PDF i scoped diffy,
 - globalny katalog skills i instalacja własnych kopii do harnessów,
+- ograniczony [agent workbench i GitHub](agent-workbench-and-github.md): CI/PR,
+  context/decision memory, review/checkpoints/checks, trwałe budżety, porównanie
+  A/B w worktree i inkrementalna mapa Rust AST. Pełny billing, semantyka LSP,
+  zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
 - composer czata inspirowany VS Code: wyśrodkowany start rozmowy, rozwijany
   wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
@@ -137,7 +144,9 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [x] override harness i permission mode, modal w menu projektu,
   - [x] precedence global → projekt,
   - [x] własna ikona projektu (embedded image, powrót do automatycznej),
-  - [ ] model, env, ustawienia per grupa,
+  - [x] lokalne domyślne modele per projekt/harness i env lokalnego procesu,
+  - [x] ustawienia per grupa, dziedziczenie global → przodkowie → projekt i źródła wartości,
+  - [ ] domyślne model/env przez relay,
   - [ ] pozostałe ustawienia stosowane automatycznie bez restartu harnessu;
     wybór harnessa z composera już tworzy nową rozmowę, a domyślne ustawienia
     globalne/projektowe dotyczą nowych sesji.
@@ -160,10 +169,15 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
 
 - [ ] **7. Git v2** (L)
   - [x] bezpieczny branch switch oraz lokalny log/DAG/refs i branch create z commita,
-  - [ ] stash, konflikty, worktree,
-  - [ ] **git graph w głównym panelu** (integracja obecnego overlaya, commit diff,
-    checkout/merge/rebase/cherry-pick i parity relay),
-  - **inline git blame** na linii kursora z hoverem na commit.
+  - [x] read-only stash/worktree oraz stan operacji i konfliktów, lokalnie/przez relay (QA GUI oczekuje),
+  - [x] mutacje stash/worktree, merge/rebase/cherry-pick i continue/abort z preflightem/potwierdzeniami, local/relay (ręczna QA oczekuje),
+  - [x] **git graph w głównym panelu**, szczegóły/lista plików i diff commita
+    (root, jawny wybór rodzica merge, rename/delete/binary; QA GUI oczekuje),
+  - [x] read-only historia przez relay: graf, szczegóły, pliki i patche z grantami projektu,
+  - [x] wskazanie commita w grafie → formularz merge/rebase/cherry-pick i potwierdzenie,
+  - [x] inline git blame na linii kursora z hoverem i przejściem do commita, cache HEAD/plik/backend oraz brak autorstwa niezapisanych linii,
+  - [ ] checkout commita bezpośrednio z grafu i zdalny branch create,
+  - [ ] ręczny odbiór mutacji, hoverów i rzeczywistego relay — [zakres i ograniczenia](git-operations-and-blame.md).
 - [ ] **8. Global search** (M)
   - FTS5 transkrypty/sesje + pliki, filtry, snippety.
 - [ ] **25. Terminal** (L)
@@ -186,8 +200,13 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [ ] discovery zewnętrznych bibliotek, enable per projekt, import folder/repo,
     pełny audyt hash/pochodzenia.
 - [ ] **27a. Markdown** (XL)
-  - v1 źródło + preview + toolbar,
-  - v2 blokowy edytor wizualny + przełącznik raw.
+  - [x] domyślny Visual + Raw, stała typografia przy kliknięciu, edytowalne komórki tabel/kod/proza i pola składni pozostałych bloków (QA GUI oczekuje),
+  - [x] operacje wierszy/kolumn tabel, wyrównanie i Tab/Shift+Tab między komórkami (QA GUI oczekuje),
+  - [x] kompaktowa typografia, Enter dla akapitów/prostych list oraz Backspace/Delete na zgodnych granicach (QA GUI oczekuje),
+  - [x] selekcja/edycja między blokami, strzałki i grafemy, zagnieżdżone listy/cytaty i wcięcia poddrzew (z walidacją i ograniczeniami),
+  - [x] właściwości linków/obrazów, jawny podgląd obrazów projektu local/relay i potwierdzane linki HTTP(S),
+  - [x] automatyczne QA: unit/transport/security oraz natywny smoke ciemny + jasny/wąski,
+  - [ ] ręczny odbiór GUI/IME/bidi i rzeczywistego sparowanego relay; dalsze złożone przypadki strukturalne — [zakres](markdown-editor.md).
 - [ ] **27b. Standalone chat** (M)
   - `ChatSpace`, scratch workspace, zwykła rozmowa bez przypisanego projektu,
   - główny composer z wyborem środowiska, harnessa, modelu i trybu pracy;
@@ -224,6 +243,8 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [x] hierarchia, collapse/expand i filtry typów,
   - [ ] search, rozszerzona klawiatura, sticky axis, wirtualizacja.
 - [ ] **12. Budżety i alerty** (M)
+  - [x] trwałe limity żądań/czasu/raportowanego USD per zadanie (także w tle),
+  - [ ] pełne rozliczanie providera/subagentów i alerty kont/globalne.
 - [ ] **21. Sharing artefaktów** (M)
 - [ ] **20/13. Accessibility i gęstość UI** (M)
 - [ ] **iOS** — sync grup/usage/artefaktów, powiadomienia, build z Xcode.
@@ -241,7 +262,9 @@ orkiestracji znaną z Orca/Augment Intent, ale oparte o ACP i nasze worktree.
 - [ ] **M6.3. Handoff i review** (L) — zakończenie zadania automatycznie
   uruchamia review/merge; konflikty: auto → agent → człowiek.
 - [ ] **M6.4. Model routing i budżet** (M) — model per rola, limity kosztu,
-  usage attribution per task.
+   usage attribution per task.
+  Osobne porównanie A/B ma już wybór modeli, wspólny ledger i potwierdzenia;
+  nie oznacza wdrożenia routingu ról ani gwarantowanego limitu rachunku.
 - [ ] **M6.5. Living spec / task board** (M) — spec aktualizowany przez agentów,
   widok zależności i statusów w grafie.
 - [ ] **M6.6. Human gates** (M) — zatwierdzanie handoffów, merge i kosztownych

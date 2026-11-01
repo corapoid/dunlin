@@ -1,4 +1,4 @@
-# Pozostałe prace — przegląd 2026-10-30
+# Pozostałe prace — przegląd 2026-11-01
 
 Źródła: `ROADMAP.md`, `PLAN.md`, obie listy `TODO-*` i aktualny kod.
 To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxów.
@@ -11,9 +11,14 @@ To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxó
 2. **Design i dostępność**: pełna migracja widoków do tokenów typografii/spacing,
    Compact/Comfortable, kompleksowy audyt klawiatury, focusu i dostępności.
    Obecne Design settings, light-theme polish i zmiana szerokości sidebara są gotowe.
-3. **Ustawienia projektu/grupy**: model i env per projekt, ustawienia per grupa,
-   stosowanie pozostałych zmian bez restartu harnessa. Harness, permission mode
-   i własna ikona projektu są gotowe.
+3. **Ustawienia projektu/grupy**: domyślne model/env przez relay i dalsze ustawienia
+   specyficzne dla adapterów. Lokalne model/env per projekt i ustawienia grup z resolverem
+   global → przodkowie → projekt, źródłami wartości i resetem dziedziczenia są
+   wdrożone. Model per harness dotyczy nowych sesji, env następnego połączenia,
+   polityka klienta kolejnych żądań. Jest jawne zastosowanie zapisanego modelu
+   do bezczynnej sesji przez ACP; bez restartowania trwających agentów.
+   Harness, permission mode i własna ikona projektu są gotowe. Ręczna QA nowych
+   dialogów nadal oczekuje wykonania.
 4. **Grupy v2**: ręczna kolejność, wybór kolorów i sync relay/iOS. Hierarchia,
    List/Tree, sortowanie, drag & drop przypisań/przenoszenia grup oraz bezpieczne
    usuwanie/promowanie/Undo już działają.
@@ -21,16 +26,25 @@ To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxó
    rozliczeniowy cennik cache/long-context/`unpriced`, cache reuse rate, pełne
    przekroje global/projekt/model/harness, budżety i alerty. Są już recorded-data
    Dashboard, aktualizacje ACP i scope-aware limity kont; nie zastępują one
-   pełnego billing usage. Lokalny reader OAuth usage Claude pozostaje niewłączony.
+   pełnego billing usage. Trwałe limity żądań/czasu/raportowanego USD per zadanie
+   są wdrożone; nie są gwarantowanym limitem rachunku ani pełnym rozliczeniem
+   wewnętrznych retry/subagentów. Lokalny reader OAuth usage Claude pozostaje niewłączony.
 6. **Onboarding i uprawnienia**: pełny kreator harness/model/trust/relay/SSH,
    centrum statusów Notifications/Accessibility/Screen Recording/Automation/FDA,
    linki do System Settings i ponowne sprawdzanie. Podstawowy pierwszy ekran,
    wykrywanie adapterów, trust i powiadomienia już istnieją.
-7. **Git v2**: stash, obsługa konfliktów, zarządzanie worktree, merge/rebase/
-   cherry-pick, inline blame, diff wybranego commita oraz docelowy graf w głównym
-   panelu. Bezpieczny switch, lokalna historia DAG/refs i tworzenie brancha z
-   zaznaczonego commita są gotowe. Nowy graf jest osobnym overlayem, tylko lokalnie;
-   parity relay i dalsza integracja grafu nadal czekają.
+7. **Git v2**: ręczna QA mutacji/hoverów i rzeczywistego relay, checkout commita z grafu
+     i zdalny branch create. Mutacje stash/worktree, merge/rebase/cherry-pick,
+     continue/abort i inline blame są wdrożone local/relay z preflightem,
+     jednorazowymi planami i ochroną buforów — [zakres](git-operations-and-blame.md).
+     Bezpieczny switch, lokalna historia DAG/refs,
+    tworzenie brancha z zaznaczonego commita oraz zakładka grafu w głównym panelu
+    z listą plików/diffem commita są gotowe w kodzie. Porównania root/merge-parent,
+    rename/delete/binary mają testy; ręczna QA nowego panelu nadal oczekuje.
+    Read-only historia przez relay (graf/szczegóły/patche) jest wdrożona z grantami
+     i przypięciem zakresu; nowe endpointy mutacji/blame wymagają aktualizacji relay.
+    Podglądy read-only stash/worktree (w tym blokady/prunable), stanu operacji
+    i konfliktów indeksu są wdrożone lokalnie i przez relay; ich GUI nadal wymaga QA.
 8. **Global search**: FTS5 transkryptów i sesji, wspólne filtry i snippety.
    Aktualne wyszukiwanie plików w projekcie nie realizuje całego zakresu.
 9. **Skills**: discovery istniejących zewnętrznych bibliotek, pełne włączanie
@@ -48,8 +62,15 @@ To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxó
 12. **Run**: wykrywanie komend z manifestów i skryptów, panel i historia uruchomień.
 13. **Artefakty**: model/storage/panel, jawne „zapisz jako artefakt”, preview/source
     dla Markdown/HTML/CSV/obrazów/diffów; później share, wygasanie i revoke.
-14. **Markdown**: dedykowane source/preview/toolbar, następnie natywny blokowy
-    edytor AST z raw mode i undo/redo. Zwykła edycja plików już działa.
+14. **Markdown**: domyślny Visual, stałe pola edycji bez zmiany typografii przy focus,
+    edytowalne komórki tabel/kod/proza i pola składni pozostałych bloków + Raw są
+    wdrożone, podobnie operacje wierszy/kolumn tabel, wyrównanie i Tab/Shift+Tab;
+    podstawowe Enter/Backspace/Delete prozy/list i kompaktowa typografia też gotowe.
+    Selekcja/edycja między blokami, strzałki/grafemy, zagnieżdżone listy/cytaty,
+    Tab/Shift+Tab poddrzew, właściwości linków/obrazów i jawne zasoby local/relay
+    również wdrożone. Smoke przeszedł w ciemnym i jasnym/wąskim oknie.
+    Pozostają ręczna QA GUI/IME/bidi, rzeczywisty sparowany relay i złożone
+    przypadki graniczne; [dokładny zakres i ograniczenia](markdown-editor.md).
 15. **Standalone chat**: ChatSpace/scratch workspace, izolowane historie/drafty,
     picker Chat/repo oraz jawnie zatwierdzany kontekst repozytorium.
 16. **Automatyzacje**: cron/RRULE, precheck, worktree, runy/historia/usage/limity,
@@ -61,7 +82,15 @@ To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxó
 19. **iOS**: działający build i sync grup/usage/artefaktów/powiadomień.
 20. **Orkiestracja multi-agent**: trwały message bus/inbox, coordinator i DAG zadań,
     worktree per subtask, handoff/review/merge, routing modeli, budżety per rola,
-    living spec/task board i human gates.
+     living spec/task board i human gates.
+     Osobne porównanie A/B już tworzy dwa worktree z jednego commita, uruchamia
+     identyczny zatwierdzony prompt ze wspólnym budżetem i zapisuje preferencję
+     bez merge. Nie zastępuje koordynatora/handoffów.
+21. **Agent workbench/GitHub**: osiem obszarów ma ograniczone implementacje;
+    pozostają ręczna QA dialogów/klawiatury/a11y, prawdziwy GitHub i wdrożony relay,
+    pełny billing, semantyka compiler/LSP/non-Rust oraz zdalne checks/comparison/index.
+    Mapa wpływu działa jako Rust AST/lexical references i kandydaci testów, nie
+    dowód pokrycia. [Dokładny zakres i walidacja](agent-workbench-and-github.md).
 
 ## Fundament i wydanie — oddzielnie od funkcji
 

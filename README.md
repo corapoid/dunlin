@@ -90,6 +90,20 @@ release assets are available.
   Relay navigation retains its existing disconnect/cancel lifecycle.
 - OpenCode (default), Claude Code, Codex and custom ACP commands. Each project
   can override the harness and permission mode.
+- Local **Project settings → Model & environment…** saves a default model ID per
+  harness and literal `NAME=value` environment overrides. Model defaults apply to
+  new conversations, not resumed ones; unavailable/rejected defaults block activation
+  instead of silently using another model. Environment changes apply to the next
+  local connection without restarting running agents and are never sent to relay.
+  Values are stored unencrypted in the local database, not Keychain: do not paste secrets.
+  Details and limits: [project runtime defaults](docs/project-runtime-settings.md).
+- **Right-click group → Group settings…** edits inheritable harness, client
+  permissions, per-harness models and local environment overrides. Resolution is
+  global → ancestor groups → project, with per-value sources and reset to inheritance.
+  Membership changes recompute defaults; group conversations retain their fixed
+  project scope and use the strictest effective member policy.
+  **Apply saved model to current session** applies its effective model explicitly
+  over ACP when idle, without a restart, prompt or changes to other conversations.
 
 ### Workspace
 
@@ -101,11 +115,50 @@ release assets are available.
   prompts or overwriting existing conversations. These are history copies, not
   resumed source sessions or billing scanners. Formats/limits: [session import](docs/session-import.md).
 - **Source Control → graph icon** or **Repository → Branch Graph & History…**
-  (`⌘⌥G`) opens the local Git DAG with refs and commit details. Select any visible
+  (`⌘⌥G`) opens the local or relay Git DAG in a main workbench tab, with refs, commit
+  messages, changed files and read-only per-file patches. Root commits compare to
+  the empty tree; merge commits offer explicit parent selection. Binary and
+  mode/rename-only changes show metadata. Chat and dirty file buffers stay intact.
+  For local repositories, select any visible
   commit and create a branch without checkout, changing staging or touching dirty
   files. Load up to 2,000 commits, or enter an older commit/branch/tag to inspect
-  its ancestry. No automatic fetch; remote graph and advanced Git actions remain
-  on the roadmap.
+  its ancestry. Relay history requires the updated, project-granted read-only
+  API; old relays report an update requirement, never a local/legacy fallback.
+  No automatic fetch; remote branch creation remains on the roadmap.
+  Details, bounds and QA: [Git history](docs/git-history.md).
+- In that Git tab, **Repository state** shows a read-only local or
+  relay inventory: stash entries, registered worktrees/locks, ongoing Git
+   operations and unmerged index paths. Stash push/apply/pop/drop, worktree
+   add/remove/prune and merge/rebase/cherry-pick with continue/abort use fresh plans
+   and explicit confirmation, locally or through an updated relay. Buffers are
+   preserved; no automatic stash, force or rollback is added.
+   Details and pending GUI QA: [repository state](docs/git-repository-state.md).
+- **Blame** in a source editor header shows unchanged-line author/commit details
+  on hover and opens the commit in history. Unsaved/modified lines get no author.
+  HEAD/file/backend caching and relay support are bounded and opt-in.
+  [Git operation/blame scope and QA](docs/git-operations-and-blame.md).
+- **GitHub · CI / PR** in repository history uses installed `gh`: polled workflow/
+  job/step statuses, completed-job logs, PR review/diffs/checks and explicitly
+  confirmed publication/merge actions. No automatic push, checkout or admin override.
+  Composer **Context… / Review… / Checks…** opens client-context provenance,
+  approved decision memory, explicit saved-file checkpoints/selective restore and
+  confirmed local check commands with evidence → draft, never automatic prompts.
+  **Budget… / Compare… / Impact…** adds durable request/time/reported-USD limits,
+  separately authorized same-commit A/B worktrees with shared limits, and incremental
+  Rust AST references/candidate tests. Unknown cost/coverage is not zero; worktrees
+  are not sandboxes and impact is not compiler/LSP-complete. No paid comparison
+  replay on restart, automatic merge or buffer discard.
+  [Bounds and pending acceptance](docs/agent-workbench-and-github.md).
+- `.md` / `.markdown` files open in **Visual** mode by default, with persistent
+  styled text editors, editable table cells and code blocks. Clicking positions
+  the caret without changing typography. HTML/metadata remain editable syntax
+  fields in Visual; the single header switch opens **Raw**. Edits share source
+  undo/save; images/resources and link navigation are blocked.
+  The contextual **Table** toolbar menu edits rows/columns/alignment; Tab/Shift+Tab
+  navigate cells, with Tab at the final cell adding a row.
+  Compact 13 px body text / 12 px code; Enter splits prose and continues simple
+  lists, while boundary Backspace/Delete joins compatible blocks with shared undo.
+  [Supported scope and limitations](docs/markdown-editor.md).
 - **Project settings → Project icon → Choose image…** embeds a bounded PNG/JPEG/
   SVG/ICO as a small normalized PNG; moving the source file does not break it.
   **Automatic** restores repository-icon discovery. The Home heading follows the
