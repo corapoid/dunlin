@@ -41,7 +41,7 @@ build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
 (Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
 Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
 
-Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **537 testów zaliczonych,
+Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **538 testów zaliczonych,
 0 pominiętych**; build, fmt i Clippy `-D warnings` przechodzą. Cztery testy
 `#[ignore]` usunięto, a remote usage dla roli `member` pokazuje jawny stan
 `Admin-only` bez żądania do relay i bez błędu. CI odrzuca `todo!()`/

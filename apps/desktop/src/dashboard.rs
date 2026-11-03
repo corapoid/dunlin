@@ -573,6 +573,7 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
 }
 
 pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    this.backfill_imported_metrics(cx);
     this.refresh_dashboard(cx);
     this.refresh_project_summaries(cx);
     let p = palette(cx);

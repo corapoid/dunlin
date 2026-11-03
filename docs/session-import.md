@@ -56,10 +56,11 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - Sesje bez przypisania są pomijane. Można zmienić automatyczne przypisanie
   i odznaczyć wybrane sesje przed potwierdzeniem.
 - Stała tożsamość harnessa i źródłowego ID chroni przed ponownym importem.
-  Nowe sesje są zapisywane w jednej transakcji. Ponowny skan oznacza istniejącą
-  kopię jako **Update imported copy**: Dunlin dokłada tylko brakujące metryki
-  tokenów i diffów oraz normalizuje stare wpisy narzędzi, nie zastępując tekstu
-  rozmowy ani lokalnych kontynuacji.
+  Nowe sesje są zapisywane w jednej transakcji. Otwarcie Dashboardu uruchamia
+  jednorazowe uzupełnienie metryk w istniejących kopiach OpenCode; ręczny skan
+  oznacza je dodatkowo jako **Update imported copy**. Obie ścieżki dokładają
+  tylko brakujące tokeny/diffy i normalizują stare wpisy narzędzi, nie
+  zastępując tekstu rozmowy ani lokalnych kontynuacji.
 - Import jest **kopią historii**, nie wznowieniem sesji źródłowej. Nie podpinamy
   oryginalnego ACP session ID. Żaden prompt, tool call ani skrypt nie jest
   wykonywany podczas importu. Rekordy narzędzi i nieznane typy są zachowane jako

@@ -75,8 +75,9 @@ All notable changes to Dunlin are documented here. The format follows
   diff counts (with legacy-table fallback); portable `dunlin.session.v1` imports
   remain a separate action.
 - Dashboard → Activity's **Tokens** and **Changed lines** metrics now include
-  imported OpenCode history. Re-scanning **Import sessions…** labels existing
-  copies **Update imported copy** and merges only missing token/diff metadata,
+  imported OpenCode history. Existing copies are repaired automatically in the
+  background when the Dashboard opens; a manual re-scan still labels them
+  **Update imported copy**. Both paths merge only missing token/diff metadata,
   keeping local follow-up turns and conversation text intact.
 - Remove the duplicate **UI font** control from Editor and the duplicate
   **Keyboard hints** control from Design; the canonical controls stay in Design
@@ -127,7 +128,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 537 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 538 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

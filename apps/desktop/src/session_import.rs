@@ -18,7 +18,7 @@ use dunlin_ui::{
 };
 use std::{
     cmp::Reverse,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
@@ -31,6 +31,7 @@ pub(crate) struct State {
     preview: Option<Preview>,
     error: Option<String>,
     generation: u64,
+    backfill_started: bool,
 }
 struct Preview {
     harness: String,
@@ -50,6 +51,12 @@ fn imported_id(harness: &str, source: &str) -> String {
         URL_SAFE_NO_PAD.encode(harness),
         URL_SAFE_NO_PAD.encode(source)
     )
+}
+
+pub(crate) fn imported_source(id: &str, harness: &str) -> Option<String> {
+    let prefix = format!("import-{}-", URL_SAFE_NO_PAD.encode(harness));
+    let encoded = id.strip_prefix(&prefix)?;
+    String::from_utf8(URL_SAFE_NO_PAD.decode(encoded).ok()?).ok()
 }
 fn read_files(harness: &str, paths: Vec<PathBuf>) -> (Vec<Candidate>, Vec<String>) {
     let mut rows = Vec::new();
@@ -276,6 +283,105 @@ fn finalize_import(
 }
 
 impl DunlinApp {
+    /// One-time background repair for imported sessions created before token
+    /// and diff metadata existed. Runs when the Dashboard is opened.
+    pub(crate) fn backfill_imported_metrics(&mut self, cx: &mut Context<Self>) {
+        if self.session_import.backfill_started {
+            return;
+        }
+        self.session_import.backfill_started = true;
+        let sources: Vec<(String, String)> = self
+            .all_sessions
+            .iter()
+            .filter_map(|session| {
+                imported_source(&session.id, "OpenCode").map(|source| (session.id.clone(), source))
+            })
+            .collect();
+        if sources.is_empty() {
+            return;
+        }
+        let Some(database) = self.store.as_ref().and_then(|store| store.database_path()) else {
+            return;
+        };
+        let Some(opencode) = dunlin_usage::billing::default_opencode_db() else {
+            return;
+        };
+        let skip = (self.harness.running || self.harness.status.is_busy())
+            .then(|| self.session().id.clone());
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let ids: HashSet<_> =
+                        sources.iter().map(|(_, source)| source.clone()).collect();
+                    let (candidates, _) = opencode_db::load_selected(&opencode, &ids)?;
+                    let candidates: HashMap<_, _> = candidates
+                        .into_iter()
+                        .map(|candidate| (candidate.source_id.clone(), candidate))
+                        .collect();
+                    let store =
+                        dunlin_storage::Store::open(&database).map_err(|e| e.to_string())?;
+                    let mut updated = Vec::new();
+                    for (session_id, source_id) in sources {
+                        if skip.as_ref().is_some_and(|skip| skip == &session_id) {
+                            continue;
+                        }
+                        let Some(candidate) = candidates.get(&source_id) else {
+                            continue;
+                        };
+                        let Ok(Some(mut transcript)) =
+                            store.load_transcript::<Vec<ChatItem>>(&session_id)
+                        else {
+                            continue;
+                        };
+                        if transcript.iter().any(|item| {
+                            matches!(
+                                item,
+                                ChatItem::User {
+                                    timing: Some(_),
+                                    ..
+                                }
+                            )
+                        }) {
+                            continue;
+                        }
+                        crate::chat_presentation::normalize_legacy(&mut transcript);
+                        if merge_imported_metrics(&mut transcript, &candidate.transcript)
+                            && store.save_transcript(&session_id, &transcript).is_ok()
+                        {
+                            updated.push(session_id);
+                        }
+                    }
+                    Ok::<_, String>(updated)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| match result {
+                Ok(updated) => {
+                    if updated.is_empty() {
+                        return;
+                    }
+                    let current = this.session().id.clone();
+                    let reload_current = updated.iter().any(|id| id == &current);
+                    for id in &updated {
+                        if id != &current {
+                            this.forget_transcript(id);
+                        }
+                    }
+                    if reload_current {
+                        this.load_transcript(&current);
+                    }
+                    this.refresh_dashboard_now(cx);
+                    this.refresh_billing(cx);
+                    cx.notify();
+                }
+                Err(error) => {
+                    crate::logging::warn(&format!("imported metrics backfill unavailable: {error}"))
+                }
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn scan_session_import(&mut self, harness: &str, cx: &mut Context<Self>) {
         if self.session_import.loading {
             return;
@@ -853,6 +959,12 @@ mod tests {
         assert_eq!(one, super::imported_id("Claude Code", "source/id"));
         assert_ne!(one, super::imported_id("OpenAI Codex", "source/id"));
         assert!(!one.contains('/'));
+        assert_eq!(
+            super::imported_source(&super::imported_id("OpenCode", "ses_123"), "OpenCode")
+                .as_deref(),
+            Some("ses_123")
+        );
+        assert!(super::imported_source(&one, "OpenCode").is_none());
     }
     #[test]
     fn session_scan_finds_nested_jsonl_and_ignores_other_files() {

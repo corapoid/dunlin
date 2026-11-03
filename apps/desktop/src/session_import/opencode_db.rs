@@ -9,7 +9,7 @@ use dunlin_agent::{TokenUsage, ToolCallView};
 use dunlin_domain::{ToolKind, ToolStatus};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 const MAX_SESSIONS: usize = 256;
@@ -17,6 +17,20 @@ const MAX_MESSAGES_PER_SESSION: usize = 30_000;
 const MAX_PARTS_PER_SESSION: usize = 60_000;
 
 pub(super) fn load(path: &Path) -> Result<(Vec<Candidate>, Vec<String>), String> {
+    load_inner(path, None)
+}
+
+pub(super) fn load_selected(
+    path: &Path,
+    ids: &HashSet<String>,
+) -> Result<(Vec<Candidate>, Vec<String>), String> {
+    load_inner(path, Some(ids))
+}
+
+fn load_inner(
+    path: &Path,
+    filter: Option<&HashSet<String>>,
+) -> Result<(Vec<Candidate>, Vec<String>), String> {
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -26,15 +40,18 @@ pub(super) fn load(path: &Path) -> Result<(Vec<Candidate>, Vec<String>), String>
     if connection
         .prepare("SELECT 1 FROM session_v2 LIMIT 1")
         .is_ok()
-        && let Ok((candidates, warnings)) = load_v2(&connection)
+        && let Ok((candidates, warnings)) = load_v2(&connection, filter)
         && !candidates.is_empty()
     {
         return Ok((candidates, warnings));
     }
-    load_v1(&connection)
+    load_v1(&connection, filter)
 }
 
-fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), String> {
+fn load_v2(
+    connection: &Connection,
+    filter: Option<&HashSet<String>>,
+) -> Result<(Vec<Candidate>, Vec<String>), String> {
     let mut warnings = Vec::new();
     let mut session_statement = connection
         .prepare(
@@ -60,6 +77,9 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
     let mut candidates = Vec::new();
     let mut skipped = 0usize;
     while let Some(Ok((id, title, directory, model, updated))) = sessions.next() {
+        if filter.is_some_and(|ids| !ids.contains(&id)) {
+            continue;
+        }
         let mut message_statement = match connection.prepare(
             "SELECT type, data FROM session_message
              WHERE session_id = ?1
@@ -207,7 +227,10 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
     Ok((candidates, warnings))
 }
 
-fn load_v1(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), String> {
+fn load_v1(
+    connection: &Connection,
+    filter: Option<&HashSet<String>>,
+) -> Result<(Vec<Candidate>, Vec<String>), String> {
     let mut warnings = Vec::new();
     let mut session_statement = connection
         .prepare(
@@ -240,6 +263,9 @@ fn load_v1(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
 
     let mut candidates = Vec::new();
     while let Some(Ok((id, title, directory, model, updated))) = sessions.next() {
+        if filter.is_some_and(|ids| !ids.contains(&id)) {
+            continue;
+        }
         let mut messages = match connection.prepare(
             "SELECT id, data FROM message
              WHERE session_id = ?1
@@ -694,9 +720,10 @@ fn ms(value: Option<i64>) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::load;
+    use super::{load, load_selected};
     use crate::harness::ChatItem;
     use rusqlite::Connection;
+    use std::collections::HashSet;
 
     #[test]
     fn reads_top_level_sessions_text_reasoning_and_tool_parts() {
@@ -817,6 +844,42 @@ mod tests {
             .expect("tool card");
         assert_eq!((tool.additions, tool.deletions), (4, 3));
         assert_eq!(tool.locations, ["src/b.rs"]);
+        assert!(warnings.is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn selected_import_only_reads_requested_sessions() {
+        let path =
+            std::env::temp_dir().join(format!("dunlin-opencode-v2-{}.db", uuid::Uuid::now_v7()));
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE session_v2 (
+                    id TEXT PRIMARY KEY, title TEXT, directory TEXT, model TEXT,
+                    parent_id TEXT, time_updated INTEGER
+                );
+                CREATE TABLE session_message (
+                    id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER,
+                    data TEXT, time_created INTEGER
+                );
+                INSERT INTO session_v2 VALUES
+                    ('s1', 'First', '/repo', '{"id":"gpt-6"}', NULL, 1700000000000),
+                    ('s2', 'Second', '/repo', '{"id":"gpt-6"}', NULL, 1700000000001);
+                INSERT INTO session_message VALUES
+                    ('m1', 's1', 'user', 1, '{"time":{"created":1700000000000},"text":"one"}', 1),
+                    ('m2', 's2', 'user', 2, '{"time":{"created":1700000000001},"text":"two"}', 2);
+                "#,
+            )
+            .unwrap();
+        drop(connection);
+
+        let ids = HashSet::from(["s2".to_string()]);
+        let (sessions, warnings) = load_selected(&path, &ids).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].source_id, "s2");
+        assert_eq!(sessions[0].title, "Second");
         assert!(warnings.is_empty());
         std::fs::remove_file(path).unwrap();
     }
