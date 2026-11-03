@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 536 passing
+> has since been committed through beta.5; current validation is 537 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -37,10 +37,13 @@
   inline-code backgrounds in dark mode.
 - [x] Replace the harness Import sessions… file picker with bounded automatic
   scanning of the standard Claude Code and Codex session folders.
-- [x] Read OpenCode top-level sessions, messages, reasoning and tool history
-  directly from `opencode.db` in read-only mode, including the current
-  `session_v2`/`session_message` schema and legacy-table fallback; keep portable
-  JSON as a separate explicit action.
+- [x] Read OpenCode top-level sessions, messages, reasoning, tool history,
+  per-turn token usage and file diff counts directly from `opencode.db` in
+  read-only mode, including the current `session_v2`/`session_message` schema
+  and legacy-table fallback; keep portable JSON as a separate explicit action.
+- [x] Feed imported token/diff counters into Dashboard → Activity **Tokens** and
+  **Changed lines**, and let a re-scan update existing imported copies without
+  replacing their conversation text or local follow-up turns.
 - [x] Remove the duplicate Editor UI-font control and the duplicate Design
   keyboard-hints control.
 - [x] Add bounded GitHub skill import from `SKILL.md` or a skill-folder link.
@@ -57,7 +60,7 @@
   legacy `[Tool · …]` records on load so coalescing cannot merge hundreds of
   outputs into one Markdown block.
 
-Validation: 536 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 537 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 

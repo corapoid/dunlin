@@ -4,8 +4,8 @@
 //! snapshots and the writable OpenCode state are never touched.
 
 use super::adapters::Candidate;
-use crate::harness::ChatItem;
-use dunlin_agent::ToolCallView;
+use crate::harness::{ChatItem, TurnTiming};
+use dunlin_agent::{TokenUsage, ToolCallView};
 use dunlin_domain::{ToolKind, ToolStatus};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -89,6 +89,8 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
             }
         };
         let mut transcript = Vec::new();
+        let mut usage = UsageTotals::default();
+        let mut turn = None;
         for (kind, data) in messages.flatten() {
             let Ok(data) = serde_json::from_str::<Value>(&data) else {
                 continue;
@@ -96,6 +98,8 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
             let at = ms(data.pointer("/time/created").and_then(Value::as_i64));
             match kind.as_str() {
                 "user" => {
+                    finish_turn(&mut transcript, &mut turn, &mut usage);
+                    let mut user_index = None;
                     if let Some(text) = data["text"].as_str().filter(|text| !text.trim().is_empty())
                     {
                         let mut content = truncate(text, 32 * 1024);
@@ -105,9 +109,20 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
                             content.push_str(&format!("\n[{} attachment(s) omitted]", files.len()));
                         }
                         transcript.push(text_item("user", &content, at));
+                        user_index = Some(transcript.len() - 1);
                     }
+                    turn = Some(PendingTurn {
+                        user_index,
+                        started_at: at,
+                        ..Default::default()
+                    });
                 }
                 "assistant" => {
+                    if let Some(tokens) = data.get("tokens")
+                        && let Some(pending) = turn.as_mut()
+                    {
+                        pending.observe(tokens, message_finished_at(&data, at));
+                    }
                     if let Some(content) = data["content"].as_array() {
                         for part in content {
                             match part["type"].as_str().unwrap_or_default() {
@@ -156,6 +171,7 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
                 _ => {}
             }
         }
+        finish_turn(&mut transcript, &mut turn, &mut usage);
         if transcript.is_empty() {
             skipped += 1;
             continue;
@@ -277,12 +293,18 @@ fn load_v1(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
         }
 
         let mut transcript = Vec::new();
+        let mut usage = UsageTotals::default();
+        let mut turn = None;
         for row in message_rows.flatten() {
             let Ok(data) = serde_json::from_str::<Value>(&row.1) else {
                 continue;
             };
             let role = data["role"].as_str().unwrap_or("assistant");
             let at = ms(data.pointer("/time/created").and_then(Value::as_i64));
+            if role == "user" {
+                finish_turn(&mut transcript, &mut turn, &mut usage);
+            }
+            let before_len = transcript.len();
             let Some(message_parts) = parts.get(&row.0) else {
                 continue;
             };
@@ -329,7 +351,29 @@ fn load_v1(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
                     _ => {}
                 }
             }
+            match role {
+                "user" => {
+                    let user_index = transcript[before_len..]
+                        .iter()
+                        .position(|item| matches!(item, ChatItem::User { .. }))
+                        .map(|offset| before_len + offset);
+                    turn = Some(PendingTurn {
+                        user_index,
+                        started_at: at,
+                        ..Default::default()
+                    });
+                }
+                "assistant" => {
+                    if let Some(tokens) = data.get("tokens")
+                        && let Some(pending) = turn.as_mut()
+                    {
+                        pending.observe(tokens, message_finished_at(&data, at));
+                    }
+                }
+                _ => {}
+            }
         }
+        finish_turn(&mut transcript, &mut turn, &mut usage);
         if transcript.is_empty() {
             warnings.push(format!("{title}: no readable transcript"));
             continue;
@@ -372,6 +416,108 @@ fn reasoning_item(text: &str, at: u64) -> ChatItem {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+struct UsageTotals {
+    input: u64,
+    output: u64,
+    reasoning: u64,
+}
+
+impl UsageTotals {
+    fn add(&mut self, tokens: &Value) {
+        let input = token_number(tokens.get("input"));
+        let output = token_number(tokens.get("output"));
+        let reasoning = token_number(tokens.get("reasoning"));
+        if input == 0 && output == 0 && reasoning == 0 {
+            self.input = self.input.saturating_add(token_number(tokens.get("total")));
+            return;
+        }
+        self.input = self.input.saturating_add(input);
+        self.output = self.output.saturating_add(output);
+        self.reasoning = self.reasoning.saturating_add(reasoning);
+    }
+
+    fn add_totals(&mut self, other: &Self) {
+        self.input = self.input.saturating_add(other.input);
+        self.output = self.output.saturating_add(other.output);
+        self.reasoning = self.reasoning.saturating_add(other.reasoning);
+    }
+
+    fn snapshot(self) -> TokenUsage {
+        TokenUsage {
+            total: self
+                .input
+                .saturating_add(self.output)
+                .saturating_add(self.reasoning),
+            input: self.input,
+            output: self.output,
+            reasoning: Some(self.reasoning),
+        }
+    }
+}
+
+fn token_number(value: Option<&Value>) -> u64 {
+    value.and_then(Value::as_u64).unwrap_or(0)
+}
+
+#[derive(Default)]
+struct PendingTurn {
+    user_index: Option<usize>,
+    started_at: u64,
+    finished_at: u64,
+    tokens: UsageTotals,
+    samples: u64,
+}
+
+impl PendingTurn {
+    fn observe(&mut self, tokens: &Value, finished_at: u64) {
+        self.tokens.add(tokens);
+        self.samples += 1;
+        self.finished_at = self.finished_at.max(finished_at);
+    }
+}
+
+fn finish_turn(
+    transcript: &mut [ChatItem],
+    turn: &mut Option<PendingTurn>,
+    cumulative: &mut UsageTotals,
+) {
+    let Some(pending) = turn.take() else {
+        return;
+    };
+    let Some(index) = pending.user_index else {
+        return;
+    };
+    if pending.samples == 0 {
+        return;
+    }
+    let Some(ChatItem::User { at_ms, timing, .. }) = transcript.get_mut(index) else {
+        return;
+    };
+    let started = if pending.started_at > 0 {
+        pending.started_at
+    } else {
+        *at_ms
+    };
+    let finished = (pending.finished_at > 0).then_some(pending.finished_at);
+    let before = *cumulative;
+    cumulative.add_totals(&pending.tokens);
+    *timing = Some(TurnTiming {
+        started_at_ms: started,
+        finished_at_ms: finished,
+        elapsed_ms: finished.and_then(|end| end.checked_sub(started)),
+        usage: Some(cumulative.snapshot()),
+        usage_before: Some(before.snapshot()),
+    });
+}
+
+fn message_finished_at(data: &Value, fallback: u64) -> u64 {
+    data.pointer("/time/completed")
+        .and_then(Value::as_i64)
+        .map(|value| ms(Some(value)))
+        .unwrap_or(fallback)
+}
+
 fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
     let title = state["title"]
         .as_str()
@@ -397,6 +543,7 @@ fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
         }
         detail.push_str(&output.to_string());
     }
+    let (additions, deletions, locations, diff) = tool_changes(state);
     ChatItem::Tool {
         view: ToolCallView {
             id,
@@ -409,14 +556,91 @@ fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
                 _ => ToolStatus::Done,
             },
             detail: truncate(&detail, 4096),
-            locations: Vec::new(),
-            additions: 0,
-            deletions: 0,
-            diff: None,
+            locations,
+            additions,
+            deletions,
+            diff,
         },
         duration_ms: 0,
         at_ms: at,
     }
+}
+
+fn tool_changes(state: &Value) -> (u32, u32, Vec<String>, Option<String>) {
+    let metadata = &state["metadata"];
+    let mut additions = 0u32;
+    let mut deletions = 0u32;
+    let mut locations = Vec::new();
+    let mut diff = None;
+    let mut consume = |file: &Value| {
+        let patch = file["patch"].as_str();
+        let (patch_additions, patch_deletions) = patch.map(diff_counts).unwrap_or_default();
+        additions = additions.saturating_add(
+            file["additions"]
+                .as_u64()
+                .map(|value| value as u32)
+                .unwrap_or(patch_additions),
+        );
+        deletions = deletions.saturating_add(
+            file["deletions"]
+                .as_u64()
+                .map(|value| value as u32)
+                .unwrap_or(patch_deletions),
+        );
+        if diff.is_none()
+            && let Some(patch) = patch.filter(|patch| !patch.trim().is_empty())
+        {
+            diff = Some(truncate(patch, 16 * 1024));
+        }
+        let path = file["file"]
+            .as_str()
+            .or_else(|| file["filePath"].as_str())
+            .or_else(|| file["relativePath"].as_str());
+        if let Some(path) = path.filter(|path| !path.trim().is_empty())
+            && !locations.iter().any(|known| known == path)
+        {
+            locations.push(path.to_string());
+        }
+    };
+
+    let mut described = false;
+    if let Some(files) = metadata["files"].as_array() {
+        for file in files {
+            consume(file);
+            described = true;
+        }
+    }
+    if !described && metadata.get("filediff").is_some() {
+        consume(&metadata["filediff"]);
+        described = true;
+    }
+    if !described
+        && let Some(patch) = metadata["diff"]
+            .as_str()
+            .filter(|patch| !patch.trim().is_empty())
+    {
+        let (add, del) = diff_counts(patch);
+        additions = additions.saturating_add(add);
+        deletions = deletions.saturating_add(del);
+        diff = Some(truncate(patch, 16 * 1024));
+    }
+    (additions, deletions, locations, diff)
+}
+
+fn diff_counts(patch: &str) -> (u32, u32) {
+    let mut additions = 0u32;
+    let mut deletions = 0u32;
+    for line in patch.lines() {
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with('+') {
+            additions = additions.saturating_add(1);
+        } else if line.starts_with('-') {
+            deletions = deletions.saturating_add(1);
+        }
+    }
+    (additions, deletions)
 }
 
 fn tool_kind(name: &str) -> ToolKind {
@@ -471,6 +695,7 @@ fn ms(value: Option<i64>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::load;
+    use crate::harness::ChatItem;
     use rusqlite::Connection;
 
     #[test]
@@ -499,12 +724,12 @@ mod tests {
                     ('s2', 'Subagent', '/repo', '{"id":"gpt-5"}', 's1', 1700000000001);
                 INSERT INTO message VALUES
                     ('m1', 's1', '{"role":"user","time":{"created":1700000000000}}', 1),
-                    ('m2', 's1', '{"role":"assistant","time":{"created":1700000001000}}', 2),
+                    ('m2', 's1', '{"role":"assistant","time":{"created":1700000001000,"completed":1700000002500},"tokens":{"input":40,"output":10,"reasoning":2,"cache":{"read":100}}}', 2),
                     ('m3', 's2', '{"role":"user"}', 3);
                 INSERT INTO part VALUES
                     ('p1', 'm1', 's1', '{"type":"text","text":"hello"}', 1),
                     ('p2', 'm2', 's1', '{"type":"reasoning","text":"thought"}', 2),
-                    ('p3', 'm2', 's1', '{"type":"tool","tool":"bash","state":{"status":"completed","input":{"cmd":"ls"},"output":"ok"}}', 3),
+                    ('p3', 'm2', 's1', '{"type":"tool","tool":"edit","state":{"status":"completed","input":{"path":"src/a.rs"},"metadata":{"files":[{"file":"src/a.rs","additions":2,"deletions":1,"patch":"--- a/src/a.rs\n+++ b/src/a.rs\n@@\n-old\n+new\n+extra"}]}}}', 3),
                     ('p4', 'm3', 's2', '{"type":"text","text":"hidden"}', 4);
                 "#,
             )
@@ -517,6 +742,27 @@ mod tests {
         assert_eq!(sessions[0].directory.as_deref(), Some("/repo"));
         assert_eq!(sessions[0].model, "gpt-5");
         assert_eq!(sessions[0].transcript.len(), 3);
+        let timing = sessions[0]
+            .transcript
+            .iter()
+            .find_map(|item| match item {
+                ChatItem::User { timing, .. } => *timing,
+                _ => None,
+            })
+            .expect("user turn timing");
+        assert_eq!(timing.usage.unwrap().total, 52);
+        assert_eq!(timing.elapsed_ms, Some(2500));
+        let tool = sessions[0]
+            .transcript
+            .iter()
+            .find_map(|item| match item {
+                ChatItem::Tool { view, .. } => Some(view),
+                _ => None,
+            })
+            .expect("tool card");
+        assert_eq!((tool.additions, tool.deletions), (2, 1));
+        assert_eq!(tool.locations, ["src/a.rs"]);
+        assert!(tool.diff.as_deref().unwrap().contains("+extra"));
         assert!(warnings.is_empty());
         std::fs::remove_file(path).unwrap();
     }
@@ -541,7 +787,7 @@ mod tests {
                     ('s2', 'Child', '/repo', '{"id":"gpt-6"}', 's1', 1700000000001);
                 INSERT INTO session_message VALUES
                     ('m1', 's1', 'user', 1, '{"time":{"created":1700000000000},"text":"hello","files":[]}', 1),
-                    ('m2', 's1', 'assistant', 2, '{"time":{"created":1700000001000},"content":[{"type":"reasoning","text":"think"},{"type":"text","text":"answer"},{"type":"tool","name":"shell","state":{"status":"completed","input":{"cmd":"ls"},"content":[{"type":"text","text":"ok"}]}}]}', 2),
+                    ('m2', 's1', 'assistant', 2, '{"time":{"created":1700000001000,"completed":1700000003000},"tokens":{"input":100,"output":20,"reasoning":5,"cache":{"read":1000}},"content":[{"type":"reasoning","text":"think"},{"type":"text","text":"answer"},{"type":"tool","name":"edit","state":{"status":"completed","input":{"path":"src/b.rs"},"metadata":{"files":[{"file":"src/b.rs","additions":4,"deletions":3,"patch":"--- a/src/b.rs\n+++ b/src/b.rs\n@@\n-one\n+two\n+three"}]}}}]}', 2),
                     ('m3', 's2', 'user', 3, '{"time":{"created":1700000002000},"text":"hidden"}', 3);
                 "#,
             )
@@ -552,6 +798,25 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].title, "Current");
         assert_eq!(sessions[0].transcript.len(), 4);
+        let timing = sessions[0]
+            .transcript
+            .iter()
+            .find_map(|item| match item {
+                ChatItem::User { timing, .. } => *timing,
+                _ => None,
+            })
+            .expect("user turn timing");
+        assert_eq!(timing.usage.unwrap().total, 125);
+        let tool = sessions[0]
+            .transcript
+            .iter()
+            .find_map(|item| match item {
+                ChatItem::Tool { view, .. } => Some(view),
+                _ => None,
+            })
+            .expect("tool card");
+        assert_eq!((tool.additions, tool.deletions), (4, 3));
+        assert_eq!(tool.locations, ["src/b.rs"]);
         assert!(warnings.is_empty());
         std::fs::remove_file(path).unwrap();
     }

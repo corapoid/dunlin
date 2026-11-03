@@ -71,8 +71,13 @@ All notable changes to Dunlin are documented here. The format follows
 - Harness **Import sessions…** scans the standard Claude Code and Codex
   session folders instead of opening a file picker. OpenCode's local
   `opencode.db` is opened read-only for top-level `session_v2`/`session_message`
-  sessions, messages, reasoning and tool history (with legacy-table fallback);
-  portable `dunlin.session.v1` imports remain a separate action.
+  sessions, messages, reasoning, tool history, per-turn token usage and file
+  diff counts (with legacy-table fallback); portable `dunlin.session.v1` imports
+  remain a separate action.
+- Dashboard → Activity's **Tokens** and **Changed lines** metrics now include
+  imported OpenCode history. Re-scanning **Import sessions…** labels existing
+  copies **Update imported copy** and merges only missing token/diff metadata,
+  keeping local follow-up turns and conversation text intact.
 - Remove the duplicate **UI font** control from Editor and the duplicate
   **Keyboard hints** control from Design; the canonical controls stay in Design
   and General.
@@ -118,7 +123,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 536 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 537 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

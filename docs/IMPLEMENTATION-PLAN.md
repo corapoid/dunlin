@@ -12,7 +12,7 @@ Rust AST mają implementacje v1 z testami. Pełny billing, compiler/LSP/non-Rust
 impact, ręczna akceptacja oraz pełna wirtualizacja grafów pozostają otwarte; nie oznaczać
 całego rozszerzenia jako ukończonego. Aktualna macierz jest w [ROADMAP.md](ROADMAP.md).
 
-Stan źródeł: `0.1.0-beta.5` + dalszy zakres, **536 testów OK / 0 pominiętych**; build, Clippy
+Stan źródeł: `0.1.0-beta.5` + dalszy zakres, **537 testów OK / 0 pominiętych**; build, Clippy
 `-D warnings`, fmt i izolowane regresje przeszły. Cztery opcjonalne testy
 integracyjne `#[ignore]` zostały usunięte. `app.rs` jest podzielony na
 `app/overlays.rs` (UI i overlaye), `app/helpers.rs` (funkcje pomocnicze) i

@@ -11,8 +11,9 @@ jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 - **OpenCode**: Dunlin otwiera lokalny `opencode.db` wyłącznie w trybie
   read-only i czyta sesje najwyższego poziomu z bieżącego schematu
   (`session_v2` + `session_message`), z fallbackiem do starszych tabel
-  `session`/`message`/`part`. Importuje tekst, reasoning i historię narzędzi;
-  nie odczytuje credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
+  `session`/`message`/`part`. Importuje tekst, reasoning, historię narzędzi,
+  zapisane liczniki tokenów oraz statystyki diffów plików; nie odczytuje
+  credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
   JSON `experimental.session.export` V2 przez **Import a portable file…**:
   `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.
   Akceptowane są także eksporty z wiadomościami `{info,parts}`.
@@ -55,14 +56,16 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - Sesje bez przypisania są pomijane. Można zmienić automatyczne przypisanie
   i odznaczyć wybrane sesje przed potwierdzeniem.
 - Stała tożsamość harnessa i źródłowego ID chroni przed ponownym importem.
-  Zapis sesji i transkryptów odbywa się w jednej transakcji, wyłącznie insert-only.
-  Kolizja nigdy nie zastępuje istniejącej rozmowy ani transkryptu.
+  Nowe sesje są zapisywane w jednej transakcji. Ponowny skan oznacza istniejącą
+  kopię jako **Update imported copy**: Dunlin dokłada tylko brakujące metryki
+  tokenów i diffów oraz normalizuje stare wpisy narzędzi, nie zastępując tekstu
+  rozmowy ani lokalnych kontynuacji.
 - Import jest **kopią historii**, nie wznowieniem sesji źródłowej. Nie podpinamy
   oryginalnego ACP session ID. Żaden prompt, tool call ani skrypt nie jest
   wykonywany podczas importu. Rekordy narzędzi i nieznane typy są zachowane jako
   tekst; załączniki nie są automatycznie pobierane ani otwierane ze źródła.
-- To nie jest skaner billing usage: import nie rekonstruuje cen, czasu pracy ani
-  rozliczeniowych liczników z niejednorodnych logów.
+- To nie jest skaner billing usage: import nie rekonstruuje cen ani czasu pracy.
+  Przenosi wyłącznie liczniki tokenów i zmienionych linii zapisane przez źródło.
 
 Skan plików jest ograniczony do standardowych folderów harnessa, maksymalnie 512
 plików i 64 MiB. OpenCode odczytuje maksymalnie 256 sesji najwyższego poziomu,
