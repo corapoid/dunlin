@@ -474,17 +474,16 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                 .id(format!("dashboard-recent:{id}"))
                 .aria_label(format!("Open recent project {name}"))
                 .flex_1()
-                .min_w(px(180.))
+                .min_w(px(220.))
                 .max_w(px(360.))
-                .min_h(px(232.))
                 .rounded(px(10.))
                 .border_1()
                 .border_color(p.border_strong)
                 .bg(p.panel)
-                .p(px(16.))
+                .p(px(14.))
                 .flex()
                 .flex_col()
-                .gap(px(10.))
+                .gap(px(9.))
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -499,42 +498,43 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(9.))
-                        .child(crate::project_icons::render(this, project, 26., &p))
+                        .gap(px(10.))
+                        .child(crate::project_icons::render(this, project, 36., &p))
                         .child(
                             div()
+                                .flex_1()
                                 .min_w(px(0.))
                                 .truncate()
+                                .text_size(px(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(p.fg)
                                 .child(name),
-                        ),
+                        )
+                        .child(crate::project_activity::info(this, project, size, cx)),
                 )
-                .children(crate::local_projects::monorepo_badge(this, project, &p))
                 .child(
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(6.))
-                        .text_size(px(11.))
-                        .text_color(p.muted_fg)
-                        .child(crate::branch_picker::badge(
-                            this,
-                            &project.id,
-                            branch.as_deref().unwrap_or("Branches…"),
-                            format!("dashboard-branch:{}", project.id),
-                            cx,
-                        )),
+                        .gap(px(8.))
+                        .children(crate::local_projects::monorepo_badge(this, project, &p))
+                        .child(
+                            div()
+                                .flex()
+                                .min_w(px(0.))
+                                .items_center()
+                                .gap(px(6.))
+                                .text_size(px(11.))
+                                .text_color(p.muted_fg)
+                                .child(crate::branch_picker::badge(
+                                    this,
+                                    &project.id,
+                                    branch.as_deref().unwrap_or("Branches…"),
+                                    format!("dashboard-branch:{}", project.id),
+                                    cx,
+                                )),
+                        ),
                 )
-                .when_some(size, |tile, size| {
-                    tile.child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(p.muted_fg)
-                            .child(format!("Project size · {}", crate::app::format_size(size))),
-                    )
-                })
-                .child(crate::project_activity::render(this, project, cx))
                 .child(div().flex_1())
                 .child(
                     div().w_full().flex().justify_end().child(

@@ -154,12 +154,15 @@ fn status_label(target: &BranchActivity, check: Option<&Check>) -> (String, bool
     (label, false)
 }
 
-pub(crate) fn render(
-    this: &DunlinApp,
-    project: &dunlin_domain::Project,
-    cx: &mut Context<DunlinApp>,
-) -> AnyElement {
-    let p = palette(cx);
+struct Details {
+    commit: String,
+    status: String,
+    warning: bool,
+    checked: String,
+    can_check: bool,
+}
+
+fn details(this: &DunlinApp, project: &dunlin_domain::Project) -> Details {
     let target = this
         .repo_summaries
         .values
@@ -178,7 +181,7 @@ pub(crate) fn render(
             .get(&project.id)
             .filter(|check| check.matches(&project.path, target))
     });
-    let (label, warning) = if project.is_remote() {
+    let (status, warning) = if project.is_remote() {
         ("Remote workspace · check locally".into(), false)
     } else if !project.trusted {
         ("Trust project to check remote".into(), false)
@@ -192,52 +195,108 @@ pub(crate) fn render(
         && target.is_some_and(|t| t.remote_name.is_some() && t.remote_ref.is_some())
         && check.is_none_or(|c| c.result.is_some())
         && !this.branch_ui.locks(&project.id);
+    let checked = check
+        .and_then(|c| c.checked_ms)
+        .and_then(|ms| Local.timestamp_millis_opt(ms).single())
+        .map(|date| {
+            format!(
+                "{} {}",
+                if check.is_some_and(|c| matches!(c.result, Some(Err(_)))) {
+                    "Last attempt"
+                } else {
+                    "Checked"
+                },
+                date.format("%H:%M:%S")
+            )
+        })
+        .unwrap_or_else(|| "Tracking data may be stale".into());
+    Details {
+        commit,
+        status,
+        warning,
+        checked,
+        can_check,
+    }
+}
+
+/// Compact project-details affordance for Dashboard tiles. The hover card keeps
+/// the tile short without hiding recorded size, commit or upstream observations.
+pub(crate) fn info(
+    this: &DunlinApp,
+    project: &dunlin_domain::Project,
+    size: Option<u64>,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    let p = palette(cx);
+    let detail = details(this, project);
+    let mut lines = Vec::new();
+    if let Some(size) = size {
+        lines.push((
+            format!("Project size · {}", crate::app::format_size(size)),
+            false,
+        ));
+    }
+    lines.push((detail.commit, false));
+    lines.push((detail.status, detail.warning));
+    lines.push((detail.checked, false));
     let id = project.id.clone();
     div()
         .flex()
-        .flex_col()
-        .gap(px(5.))
-        .text_size(px(10.5))
-        .text_color(p.muted_fg)
-        .child(commit)
+        .items_center()
+        .gap(px(2.))
         .child(
             div()
-                .text_color(if warning { p.amber } else { p.muted_fg })
-                .child(label),
-        )
-        .child(
-            div()
+                .id(format!("project-info:{id}"))
+                .aria_label("Show project details")
+                .size(px(18.))
+                .rounded_full()
                 .flex()
                 .items_center()
-                .gap(px(6.))
-                .child(
-                    div().flex_1().child(
-                        check
-                            .and_then(|c| c.checked_ms)
-                            .and_then(|ms| Local.timestamp_millis_opt(ms).single())
-                            .map(|date| format!("{} {}", if check.is_some_and(|c| matches!(c.result, Some(Err(_)))) { "Last attempt" } else { "Checked" }, date.format("%H:%M:%S")))
-                            .unwrap_or_else(|| "Tracking data may be stale".into()),
-                    ),
-                )
-                .when(can_check, |row| {
-                    row.child(
-                        div()
-                            .id(format!("check-remote:{id}"))
-                            .aria_label("Refresh read-only remote status (no fetch or pull)")
-                            .px(px(5.))
-                            .py(px(3.))
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(move |s| s.bg(p.muted))
-                            .tooltip(|window, cx| dunlin_ui::component::tooltip::Tooltip::new("Check the advertised upstream commit without fetching or pulling. Cached tracking counts may be stale; unknown remote commits require an explicit fetch to compare.").build(window, cx))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.check_project_remote(&id, true, cx);
-                            }))
-                            .child(Icon::new(IconName::RefreshCw).size(px(12.))),
-                    )
-                }),
+                .justify_center()
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.muted))
+                .on_click(|_, _, cx| cx.stop_propagation())
+                .tooltip(move |window, cx| {
+                    let lines = lines.clone();
+                    dunlin_ui::component::tooltip::Tooltip::element(move |_window, cx| {
+                        let p = palette(cx);
+                        let mut body = div()
+                            .max_w(px(360.))
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.));
+                        for (text, warning) in &lines {
+                            body = body.child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(if *warning { p.amber } else { p.muted_fg })
+                                    .child(text.clone()),
+                            );
+                        }
+                        body
+                    })
+                    .build(window, cx)
+                })
+                .child(Icon::new(IconName::Info).size(px(13.)).text_color(p.muted_fg)),
         )
+        .when(detail.can_check, |row| {
+            row.child(
+                div()
+                    .id(format!("check-remote:{id}"))
+                    .aria_label("Refresh read-only remote status (no fetch or pull)")
+                    .px(px(5.))
+                    .py(px(3.))
+                    .rounded(px(4.))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(p.muted))
+                    .tooltip(|window, cx| dunlin_ui::component::tooltip::Tooltip::new("Check the advertised upstream commit without fetching or pulling. Cached tracking counts may be stale; unknown remote commits require an explicit fetch to compare.").build(window, cx))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.check_project_remote(&id, true, cx);
+                    }))
+                    .child(Icon::new(IconName::RefreshCw).size(px(12.))),
+            )
+        })
         .into_any_element()
 }
 
