@@ -4,7 +4,87 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0-beta.5] — 2026-11-03
+
+### Added
+
+- Remote workbench endpoints for explicit checkpoints/restore, A/B comparison
+  worktrees and projects, relay context, and administrator-only GitHub CI/PR.
+  Remote restore previews are one-time plans; comparison/checkpoint payloads keep
+  their existing bounds. Clients never fall back to local paths or local `gh`.
+- Explicit multi-root group agents: local ACP `additionalDirectories` and
+  same-host relay project grants passed as a bounded `roots` list. The relay
+  revalidates every grant per request, rejects MCP servers/outside paths, and the
+  seatbelt profile permits only those roots.
+- Local billing evidence for Claude Code JSONL, Codex rollout JSONL and OpenCode
+  SQLite with complete-line checkpoints, dedupe, cache/long-context pricing and
+  explicit `unpriced`. Usage now shows provider/harness/model/project/day
+  breakdowns, alert budgets and a Dashboard summary.
+- Graph/Trace search with ancestor context, minimap, zoom controls and
+  `⌘+`/`⌘−`/`⌘0`; a two-step onboarding flow and macOS permission center for
+  Notifications, Accessibility, Screen Recording, Automation and Full Disk Access.
+- Curated ACP harness catalog (OpenCode, Claude Code, Codex, Gemini CLI, Qwen
+  Code, GitHub Copilot, Cursor, Auggie CLI, Kiro CLI, OpenClaw, Hermes Agent and
+  Qoder CLI). Missing agents expose **Install…** with the official setup page;
+  detected agents expose **Import sessions…**, and the full ACP registry is linked.
+- Semantic density tokens with Comfortable/Compact spacing and Reduce Motion.
+- Local terminal v1 lives in a hideable bottom dock with Run (`⌘J` / `⌘⇧J`),
+  not in the main view tabs: `portable-pty` PTY + `vt100` screen, independent tabs,
+  bounded scrollback, resize, ANSI/RGB/bold/inverse rendering, copy/paste and
+  explicit process cleanup. Terminal is local-only; relay/SSH PTY is not claimed.
+- Run v1: static manifest/script detection for Node, Cargo, Make, Just, Python,
+  Go, Deno, Composer, Ruby, Elixir, Gradle/Maven and `scripts/*`; confirmed exact
+  argv/cwd, project env names, PTY execution, exit/signal status, bounded history
+  and rerun. No manifest evaluation or automatic execution.
+
+### Changed
+
+- Terminal and Run moved out of the main view tabs into one hideable bottom dock
+  with status-bar toggles and `⌘J` / `⌘⇧J`.
+- Composer workbench actions (Impact/Compare/Budget/Checks/Context/Review) were
+  removed from the always-visible toolbar and remain available from the command
+  palette.
+- Settings now uses one uniform flat surface in light and dark mode, grouped
+  Workspace/Agent/System navigation with a quiet active rail, monochrome controls
+  and compact segmented buttons instead of wide, coloured controls.
+- Settings → Harnesses is a simple ACP harness list: no command or detected-path
+  rows, aligned Default/status/actions, Install until a harness is detected and
+  Import sessions afterwards.
+- Settings → Design now owns Application/Sidebar; Chat and Editor are dedicated
+  top-level tabs instead of duplicated Design subcategories.
+- Billing **By project** slices show the repository directory name, not the full
+  local path.
+- Skills and provider-account actions use compact bordered buttons with a visible
+  hover state; provider actions no longer stretch across the panel.
+- Theme changes keep Settings open, focused and active. Settings and theme-card
+  corners render uniformly, with no rectangular background or shadow spill.
+- Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
+  to Chat, so upgrading no longer fails the entire local-data load.
+- Saved preferences are now decoded separately from projects/sessions. If a
+  preference row is unreadable in the future, defaults are used and project
+  history stays available instead of being hidden behind a global load error.
+- SVG previews are rasterized at a 2048 px long edge, so small vector icons no
+  longer appear pixelated when fitted to a large panel.
+- Visual Markdown block editors no longer paint individual scrollbars; the
+  document is the only vertical scroll target.
+- Terminal `⌘F`/Find highlights matches in the visible buffer, and explicit
+  HTTP(S)/mailto links in output are clickable.
+- Settings → Usage was rebuilt around a compact summary header, metric tiles,
+  2x2 breakdown cards and a unified daily table instead of dense full-width text
+  blocks and repeated bordered rows.
+- The Terminal/Run dock can be dragged to the bottom, left or right edge and
+  resized by dragging its dedicated 9 px inner edge; double-click resets the
+  default size and position/size persist.
+- The relay GitHub endpoints require administrator role because they execute with
+  the host's `gh` credentials; project grants are still checked.
+- Relay request body limit increased to 64 MiB only to carry bounded checkpoint
+  overlays and restore previews; handlers retain their domain limits.
+
+### Validation
+
+- 527 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+  `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
+  acceptance remains pending.
 
 ## [0.1.0-beta.4] — 2026-11-01
 
@@ -509,7 +589,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.5...HEAD
+[0.1.0-beta.5]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.2
