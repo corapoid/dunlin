@@ -12,4 +12,4 @@ dunlin-domain.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ureq = { version = "2.12", features = ["json", "tls"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
