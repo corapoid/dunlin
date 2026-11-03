@@ -296,6 +296,7 @@ pub(crate) struct RepoSummary {
     pub changes: Option<usize>,
     pub activity: dunlin_workspace::git::BranchActivity,
     pub monorepo: Option<String>,
+    pub languages: Option<Vec<dunlin_workspace::languages::LanguageStat>>,
 }
 #[derive(Default)]
 pub(crate) struct RepoSummaries {
@@ -438,6 +439,19 @@ impl DunlinApp {
             .filter(|p| !p.is_remote())
             .map(|p| (p.id.clone(), p.path.clone()))
             .collect();
+        let cached_languages: std::collections::HashMap<
+            String,
+            (String, Vec<dunlin_workspace::languages::LanguageStat>),
+        > = self
+            .repo_summaries
+            .values
+            .iter()
+            .filter_map(|(id, row)| {
+                row.languages
+                    .as_ref()
+                    .map(|languages| (id.clone(), (row.path.clone(), languages.clone())))
+            })
+            .collect();
         cx.spawn(async move |this, cx| {
             let rows = cx
                 .background_executor()
@@ -465,6 +479,13 @@ impl DunlinApp {
                                         .map(str::to_string)
                                         .unwrap_or(status.branch)
                                 });
+                            let languages = cached_languages
+                                .get(&id)
+                                .filter(|(cached_path, _)| cached_path == &path)
+                                .map(|(_, languages)| languages.clone())
+                                .unwrap_or_else(|| {
+                                    dunlin_workspace::languages::detect(Path::new(&path))
+                                });
                             (
                                 id,
                                 RepoSummary {
@@ -473,6 +494,7 @@ impl DunlinApp {
                                     changes: status.error.is_none().then_some(status.changes.len()),
                                     activity,
                                     monorepo,
+                                    languages: Some(languages),
                                 },
                             )
                         })

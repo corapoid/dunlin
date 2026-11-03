@@ -803,6 +803,25 @@ fn project_row(
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
     let hover_group = format!("project-row-hover-{index}");
     let editing = this.project_group_editor == Some(index);
+    let meta = {
+        let monorepo = crate::local_projects::monorepo_badge(this, project, p);
+        let languages = crate::local_projects::language_badge(this, project, p);
+        if monorepo.is_none() && languages.is_none() {
+            None
+        } else {
+            Some(
+                div()
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_col()
+                    .items_end()
+                    .justify_center()
+                    .gap(px(3.))
+                    .children(monorepo)
+                    .children(languages),
+            )
+        }
+    };
 
     div()
         .id(("project-row", index))
@@ -855,7 +874,6 @@ fn project_row(
                         .when(pinned, |this| {
                             this.child(Icon::new(IconName::Pin).size(px(9.)).text_color(p.muted_fg))
                         })
-                        .children(crate::local_projects::monorepo_badge(this, project, p))
                         .when(missing, |this| {
                             this.child(
                                 Icon::new(IconName::TriangleAlert)
@@ -894,6 +912,7 @@ fn project_row(
                         }),
                 ),
         )
+        .when_some(meta, |row, meta| row.child(meta))
         .when(running > 0, |this| {
             this.child(
                 div()
@@ -1179,6 +1198,16 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_size(px(11.5))
                 .text_color(p.amber)
                 .child(error),
+        );
+    } else if rows.is_empty() {
+        root = root.child(
+            div()
+                .mx(px(8.))
+                .mt(px(8.))
+                .p(px(9.))
+                .text_size(px(11.0))
+                .text_color(p.muted_fg)
+                .child("Loading files…"),
         );
     } else {
         root = root.children(rows);

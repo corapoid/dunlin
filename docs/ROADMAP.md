@@ -32,7 +32,7 @@ M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxó
 | Agent workbench / GitHub | Osiem implementacji v1, lokalne CI/PR i zdalne checkpointy/compare/context/GitHub admin-only | Odbiór na prawdziwym GitHubie i relayu, dalsze capability, pełny billing i compiler/LSP impact; patrz M3c |
 | Skills | Własna biblioteka, discovery/import, instalacja per projekt, hash/pochodzenie i bezpieczny eksport/usuwanie | Ręczna QA UI i obsługa kolejnych formatów frontmatter |
 | Graph / Trace | Hierarchie, disclosure, filtry/timing, eksport grafu, search z przodkami, minimapa, zoom i skróty, sticky axis | Zaawansowany auto-layout i pełna wirtualizacja 10k+; ręczna QA fokusu/a11y |
-| Design / onboarding / uprawnienia | Design settings, tokeny scale, Compact/Comfortable, Reduce motion, jednostajne płaskie Ustawienia, dwustopniowy onboarding, katalog ACP i centrum TCC | Pełna migracja pozostałych literalnych rozmiarów, SSH/trust po otwarciu projektu, ręczna QA klawiatury/a11y/TCC |
+| Design / onboarding / uprawnienia | Design settings, tokeny scale, Compact/Comfortable, Reduce motion, jednostajne płaskie Ustawienia, dwustopniowy onboarding, katalog ACP, języki repozytoriów, odporny Explorer i centrum TCC | Pełna migracja pozostałych literalnych rozmiarów, SSH/trust po otwarciu projektu, ręczna QA klawiatury/a11y/TCC |
 | iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
 | Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje; `app.rs` podzielony na `app/overlays.rs`, `app/helpers.rs` i `app/tests.rs` | Wspólne Services/event bus, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
 
@@ -41,7 +41,7 @@ build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
 (Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
 Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
 
-Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **527 testów zaliczonych,
+Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **528 testów zaliczonych,
 0 pominiętych**; build, fmt i Clippy `-D warnings` przechodzą. Cztery testy
 `#[ignore]` usunięto, a remote usage dla roli `member` pokazuje jawny stan
 `Admin-only` bez żądania do relay i bez błędu. CI odrzuca `todo!()`/

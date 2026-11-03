@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 527 passing
+> has since been committed through beta.5; current validation is 528 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -26,8 +26,13 @@
   **By project** breakdowns.
 - [x] Give Skills and provider-account actions compact bordered buttons with a
   visible hover state.
+- [x] Recover the Explorer from watcher-driven tree-scan races and show a loading
+  state instead of a blank file pane.
+- [x] Move the Monorepo marker to the right side of each project row, show the
+  dominant language beneath it and list every detected language with percentages
+  on hover.
 
-Validation: 527 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 528 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 

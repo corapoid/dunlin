@@ -9,6 +9,7 @@ pub mod fs;
 pub mod git;
 pub mod github;
 pub mod impact;
+pub mod languages;
 pub mod preview;
 pub mod repositories;
 pub mod run;

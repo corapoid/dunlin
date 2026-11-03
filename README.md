@@ -194,7 +194,11 @@ release assets are available.
   8 directory levels, 20,000 entries, 256 projects and 8 seconds; partial imports
   report limits/errors until dismissed. Ordinary non-Git folders remain supported.
   Declared npm/Yarn, pnpm, Cargo and Go workspaces, or multi-package Nx/Turbo/Lerna
-  layouts, get a **Monorepo** badge on projects/tiles; packages stay within one root.
+  layouts, get a **Monorepo** badge on projects/tiles; packages stay within one
+  root. Project rows keep that marker on the right, show the dominant repository
+  language beneath it and reveal the full language breakdown with percentages on
+  hover. Explorer file-tree refreshes recover from watcher races and show a
+  loading state instead of leaving the pane blank.
 - Create files and folders from the Explorer toolbar or a folder's context menu.
   Drag within a project to move; drop files or folders from Finder to copy them
   into a local project while keeping the originals. Existing destinations are

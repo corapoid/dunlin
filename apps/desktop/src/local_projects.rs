@@ -43,7 +43,7 @@ impl DunlinApp {
                     let project = Project { id: format!("project-{}", uuid::Uuid::now_v7()), name, path, branch: candidate.branch, tone: tones[this.projects.len() % tones.len()], pinned: false, trusted: true, running_sessions: 0, remote: None, group_id: None, settings: Default::default() };
                     if let Some(store) = &this.store && let Err(error) = store.upsert_project(&project) { failures.push(error.to_string()); continue; }
                     existing.insert(candidate.path);
-                    this.repo_summaries.values.insert(project.id.clone(), crate::project_groups::RepoSummary { path: project.path.clone(), branch: project.branch.clone(), changes: None, activity: Default::default(), monorepo: candidate.monorepo });
+                    this.repo_summaries.values.insert(project.id.clone(), crate::project_groups::RepoSummary { path: project.path.clone(), branch: project.branch.clone(), changes: None, activity: Default::default(), monorepo: candidate.monorepo, languages: None });
                     this.projects.push(project); first.get_or_insert(this.projects.len() - 1); added += 1;
                 }
                 this.repo_summaries.invalidate();
@@ -79,6 +79,103 @@ pub(crate) fn monorepo_badge(
         .clone()?;
     Some(div().flex().flex_shrink_0().child(div().id(format!("monorepo:{}", project.id)).px(px(4.)).py(px(1.)).rounded(px(4.)).border_1().border_color(p.border_strong).bg(p.muted).text_size(px(9.)).text_color(p.muted_fg).child("Monorepo")
         .tooltip(move |window, cx| component::tooltip::Tooltip::new(format!("Detected: {kind}. Packages stay inside this project; no scripts are executed.")).build(window, cx))).into_any_element())
+}
+
+pub(crate) fn language_badge(
+    this: &DunlinApp,
+    project: &Project,
+    p: &Palette,
+) -> Option<AnyElement> {
+    let summary = this
+        .repo_summaries
+        .values
+        .get(&project.id)
+        .filter(|row| row.path == project.path)?;
+    let languages = summary.languages.as_ref()?;
+    let total = languages.iter().map(|stat| stat.bytes).sum::<u64>();
+    if total == 0 {
+        return None;
+    }
+    let dominant = languages.first()?;
+    let dominant_pct = dominant.bytes as f32 * 100.0 / total as f32;
+    let color: Hsla = rgb(dominant.color).into();
+    let tooltip_languages = languages.clone();
+    let palette = *p;
+    Some(
+        div()
+            .id(format!("project-languages:{}", project.id))
+            .flex()
+            .items_center()
+            .justify_end()
+            .gap(px(4.))
+            .child(dot(color, 5.0))
+            .child(
+                div()
+                    .text_size(px(9.5))
+                    .text_color(p.muted_fg)
+                    .child(format!("{} {:.0}%", dominant.name, dominant_pct)),
+            )
+            .tooltip(move |window, cx| {
+                let languages = tooltip_languages.clone();
+                component::tooltip::Tooltip::element(move |_window, _cx| {
+                    let mut strip = div()
+                        .h(px(4.))
+                        .w_full()
+                        .rounded_full()
+                        .overflow_hidden()
+                        .flex();
+                    let mut rows = div().flex().flex_col().gap(px(4.));
+                    for stat in &languages {
+                        let fraction = stat.bytes as f32 / total as f32;
+                        let stat_color: Hsla = rgb(stat.color).into();
+                        strip = strip.child(
+                            div()
+                                .h_full()
+                                .w(relative(fraction.clamp(0.0, 1.0)))
+                                .bg(stat_color),
+                        );
+                        rows = rows.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .child(dot(stat_color, 6.0))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_size(px(11.0))
+                                        .text_color(palette.fg)
+                                        .child(stat.name),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .font_family(dunlin_ui::theme::code_font())
+                                        .text_color(palette.muted_fg)
+                                        .child(format!("{:.1}%", fraction * 100.0)),
+                                ),
+                        );
+                    }
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .min_w(px(190.))
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(palette.fg)
+                                .child("Languages"),
+                        )
+                        .child(strip)
+                        .child(rows)
+                        .into_any_element()
+                })
+                .build(window, cx)
+            })
+            .into_any_element(),
+    )
 }
 
 #[cfg(test)]

@@ -4038,20 +4038,26 @@ impl DunlinApp {
                 .spawn(async move { backend.tree() })
                 .await;
             this.update(cx, |this, cx| {
-                if this.project().path != expected
-                    || this.project().id != project
-                    || this.explorer.tree_generation != generation
-                {
+                if this.project().path != expected || this.project().id != project {
                     return;
                 }
+                // Watcher bursts can start a newer scan while an older one is
+                // still running. Never let a stale completion replace a newer
+                // populated tree, but do apply it when the current tree is
+                // empty; otherwise continuous edits can starve the explorer.
+                let current = this.explorer.tree_generation == generation;
                 match result {
                     Ok(mut tree) => {
-                        tree.restore_expanded(&expanded);
-                        this.explorer.expand_after_scan.clear();
-                        this.file_tree = tree;
+                        if current || this.file_tree.entries.is_empty() {
+                            tree.restore_expanded(&expanded);
+                            this.explorer.expand_after_scan.clear();
+                            this.file_tree = tree;
+                        }
                     }
                     Err(error) => {
-                        this.file_tree.error = Some(error);
+                        if current || this.file_tree.entries.is_empty() {
+                            this.file_tree.error = Some(error);
+                        }
                     }
                 }
                 cx.notify();

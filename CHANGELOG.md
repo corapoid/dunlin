@@ -58,6 +58,12 @@ All notable changes to Dunlin are documented here. The format follows
   hover state; provider actions no longer stretch across the panel.
 - Theme changes keep Settings open, focused and active. Settings and theme-card
   corners render uniformly, with no rectangular background or shadow spill.
+- Explorer tree refreshes no longer starve when the watcher starts a newer scan;
+  a stale completion is ignored only when a newer populated tree exists, and an
+  empty pane shows a loading state instead of staying blank.
+- Project rows place the Monorepo marker on the right, show the dominant
+  repository language beneath it and reveal the full language breakdown with
+  percentages on hover.
 - Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
   to Chat, so upgrading no longer fails the entire local-data load.
 - Saved preferences are now decoded separately from projects/sessions. If a
@@ -82,7 +88,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 527 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 528 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 
