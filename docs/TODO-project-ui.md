@@ -84,7 +84,7 @@ real-GitHub acceptance remains outside this log.
 
 Validation: 290 tests passed (4 optional integration tests ignored), Clippy with
 warnings denied, formatting/diff checks, release bundle and strict ad-hoc signature
-verification passed. Visual GUI checks remain unavailable because the Orca CLI
+verification passed. Visual GUI checks remain unavailable because the external computer-use CLI
 cannot run in this environment; no paid AI prompts or real-repository mutations
 were used for testing. Changes remain uncommitted and unpushed.
 

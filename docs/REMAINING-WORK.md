@@ -23,8 +23,11 @@ Bieżący hardening nie jest częścią beta.3: migracja pięciu obsolete pakiet
 bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Rust
 i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
 bez bypassu i zweryfikowane atestacje obu binariów.
-**Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5:
+**Bieżąca walidacja working tree po PR #9 i zakresie beta.6:
 542 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
+README jest krótkim landing page'em, a pełny opis przeniesiono do
+[`guide.md`](guide.md); lokalny baseline wydajności jest w
+[`performance.md`](performance.md).
 Ustawienia mają jedną płaską powierzchnię, dwustopniowy onboarding i katalog
 ACP; ich ręczna QA pozostaje otwarta. Usunięto cztery
 testy `#[ignore]`; `app.rs` dzielą teraz `app/overlays.rs`, `app/helpers.rs` i

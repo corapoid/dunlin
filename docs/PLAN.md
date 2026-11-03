@@ -24,7 +24,7 @@ aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-work
    Markdown, z możliwością przełączenia na surowy tekst.
 3. Computer use dostaje osobny helper w Swift/AppKit. Dzięki temu uprawnienia
    Accessibility i Screen Recording są przyznawane helperowi, a nie całej
-   aplikacji — tak jak robi to Orca.
+   aplikacji — tak jak robią to dojrzałe agent-first IDE.
 4. Automatyzacje mogą działać przy zamkniętym Dunlinu: lokalnie przez
    LaunchAgent, zdalnie przez scheduler w relayu.
 5. SSH jest transportem do istniejącego remote mode: OpenSSH ControlMaster +
@@ -32,7 +32,7 @@ aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-work
    backendu plików.
 6. „Zapisz jako artefakt” to jawne polecenie agenta. Artefakt jest osobnym
    obiektem sesji, nie przypadkowym plikiem w repo.
-7. Przy niejasnościach patrzymy na rozwiązania Orca (MIT) i implementujemy
+7. Przy niejasnościach patrzymy na rozwiązania dojrzałych agent-first IDE i implementujemy
    niezależnie.
 
 ## Warstwy

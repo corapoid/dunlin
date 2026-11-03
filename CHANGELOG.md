@@ -4,10 +4,22 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0-beta.5] — 2026-11-03
+## [0.1.0-beta.6] — 2026-11-03
+
+This is the first published build after `0.1.0-beta.3`; it rolls up the
+beta.4/beta.5 working-tree scope together with the changes below.
 
 ### Added
 
+- Short, landing-page README with a native performance section; the detailed
+  feature and operations reference moved to [`docs/guide.md`](docs/guide.md).
+  Removed the competitor comparison table and added a “what you won't find
+  combined anywhere else” section. Performance method and local M1 results are in
+  [`docs/performance.md`](docs/performance.md).
+- Copyable **Release QA** report in Settings → Advanced, notification request /
+  **Not granted** states, an optional onboarding notification card, a trusted-
+  project banner in Chat and the `--onboarding-smoke` native fixture. The R11
+  manual matrix is [`docs/r11-qa.md`](docs/r11-qa.md).
 - Remote workbench endpoints for explicit checkpoints/restore, A/B comparison
   worktrees and projects, relay context, and administrator-only GitHub CI/PR.
   Remote restore previews are one-time plans; comparison/checkpoint payloads keep
@@ -647,8 +659,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.5...HEAD
-[0.1.0-beta.5]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.5
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...HEAD
+[0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.2

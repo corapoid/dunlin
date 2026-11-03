@@ -15,7 +15,7 @@ Kolejność wdrożeń, zależności i kryteria odbioru:
 
 ## Stan implementacji
 
-### Przegląd working tree po `0.1.0-beta.5` — 2026-11-03
+### Przegląd working tree po `0.1.0-beta.6` — 2026-11-03
 
 **Nie wszystkie rozpoczęte elementy są skończone.** Wszystkie osiem obszarów
 agent workbench oraz GitHub mają kod v1 i testy, ale pełny zaakceptowany zakres
@@ -79,6 +79,10 @@ Zrealizowane funkcje szczegółowe:
   A/B w worktree i inkrementalna mapa Rust AST. Pełny billing, semantyka LSP,
   zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte,
 - pierwsze tokeny skali w `crates/ui/src/scale.rs`.
+- krótki README i pełny przewodnik w `docs/guide.md`; usunięte porównanie konkurencyjne,
+  sekcja wyróżników i zweryfikowany baseline wydajności w
+  [`performance.md`](performance.md) (M1: ~0.30–0.36 s do pierwszego okna,
+  99–106 MiB idle, 0.4% CPU, 42.4 MiB binary).
 - composer czata inspirowany VS Code: wyśrodkowany start rozmowy, rozwijany
   wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
   zmiana harnessa tworzy nową sesję, a poprzednia zachowuje swój harness.
@@ -96,7 +100,7 @@ Status źródeł: `0.1.0-beta.3`, commit `36398df`, tag wypchnięty 1 listopada 
 **success**. Prerelease opublikowano `2026-11-01T09:19:50Z`; pobrane ZIP/DMG/relay
 mają zgodne SHA-256, wersję/tożsamość/arm64, poprawny podpis ad-hoc i weryfikację DMG.
 Nie instalowano artefaktów. Bieżące zmiany hardening są częścią
-**0.1.0-beta.5**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
+**0.1.0-beta.6**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
 [Dowody i blokery domknięcia](release-acceptance.md).
 
 Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
@@ -125,7 +129,7 @@ terminal, computer use, scheduler automatyzacji, artefakty i pełna orkiestracja
 - [x] **R9. GitHub Release — mechanizm** — workflow `v*`, źródła + binaria;
   aktualny skrypt publikuje release (prerelease dla wersji beta), nie draft.
   Powodzenie mechanizmu nie oznacza potwierdzenia bieżącego runu beta.3.
-- [x] **R10. Dokumentacja** — README ze screenshotami i porównaniem z Orca,
+- [x] **R10. Dokumentacja** — README ze screenshotami i sekcją wyróżników,
   CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
 - [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
   upgrade bazy, duży projekt, remote beta. Ręczny GUI/TCC/realny host jawnie
@@ -227,6 +231,8 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - oddzielny „context estimate” od „billing usage”.
 - [ ] **19. Onboarding** (M)
    - [x] podstawowy pierwszy ekran, wykrywanie adapterów, projekt i trust,
+   - [x] opcjonalna karta powiadomień, request TCC i stan **Not granted**,
+   - [x] banner zaufania projektu w Chat i raport QA w Advanced,
    - [ ] pełny wznawialny kreator model/auth/relay/SSH i odbiór.
 - [ ] **30. Centrum uprawnień macOS** (M)
   - Notifications, Accessibility, Screen Recording, Automation, FDA;
@@ -347,7 +353,7 @@ auto-send i cichego restartu jest zamierzonym zachowaniem, nie zaległym zadanie
 
 Cel: agenci nie tylko współistnieją w sesjach, ale przekazują sobie pracę przez
 widoczny, kontrolowany graf. To rozwinięcie graph/trace i odpowiedź na potrzebę
-orkiestracji znaną z Orca/Augment Intent, ale oparte o ACP i nasze worktree.
+orkiestracji znaną z dojrzałych agent-first IDE, ale oparte o ACP i nasze worktree.
 
 - [ ] **M6.1. Message bus** (L) — strukturalne wiadomości między sesjami,
   inbox człowieka, trwałość w SQLite, uprawnienia nadawcy/odbiorcy.
