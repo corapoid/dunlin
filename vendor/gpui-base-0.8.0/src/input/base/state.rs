@@ -443,6 +443,9 @@ pub struct InputBaseState<M: InputModeKind> {
     /// Whether a multi-line input paints an editor scrollbar. Single-line
     /// fields never show one regardless of this value.
     pub(super) scrollbar_visible: bool,
+    /// Whether wheel/trackpad scrolling moves this input instead of the
+    /// surrounding document. Embedded editors set this to `false`.
+    pub(super) scrollable: bool,
     pub(super) wrapping_indent: WrappingIndent,
     pub(super) scroll_beyond_last_line: Option<usize>,
     pub(super) cursor_surrounding_lines: Option<usize>,
@@ -749,6 +752,15 @@ impl<M: InputModeKind> InputBaseState<M> {
         }
     }
 
+    /// Enable or disable scrolling inside this input. Embedded visual editors
+    /// disable it so wheel events continue to the document scroll container.
+    pub fn set_scrollable(&mut self, scrollable: bool, cx: &mut Context<Self>) {
+        if self.scrollable != scrollable {
+            self.scrollable = scrollable;
+            cx.notify();
+        }
+    }
+
     pub fn is_multi_line(&self) -> bool {
         M::MULTI_LINE
     }
@@ -880,6 +892,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             replaceable: true,
             soft_wrap: true,
             scrollbar_visible: true,
+            scrollable: true,
             wrapping_indent: WrappingIndent::default(),
             scroll_beyond_last_line: None,
             cursor_surrounding_lines: None,
@@ -2723,6 +2736,9 @@ impl<M: InputModeKind> InputBaseState<M> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.scrollable {
+            return;
+        }
         let line_height = self
             .last_layout
             .as_ref()

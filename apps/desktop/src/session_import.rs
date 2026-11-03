@@ -12,7 +12,13 @@ use dunlin_ui::{
     },
     *,
 };
-use std::{collections::HashSet, io::Read, path::PathBuf};
+use std::{
+    cmp::Reverse,
+    collections::HashSet,
+    io::Read,
+    path::{Path, PathBuf},
+    time::UNIX_EPOCH,
+};
 
 #[derive(Default)]
 pub(crate) struct State {
@@ -81,7 +87,220 @@ fn read_files(harness: &str, paths: Vec<PathBuf>) -> (Vec<Candidate>, Vec<String
     }
     (rows, warnings)
 }
+fn discover_session_files(harness: &str) -> (Vec<PathBuf>, Vec<String>) {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return (
+            Vec::new(),
+            vec!["Home directory is unavailable; cannot scan harness folders".into()],
+        );
+    };
+    let (root, extension) = match harness {
+        "Claude Code" => {
+            let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".claude"));
+            (base.join("projects"), "jsonl")
+        }
+        "OpenAI Codex" => {
+            let base = std::env::var_os("CODEX_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".codex"));
+            (base.join("sessions"), "jsonl")
+        }
+        "OpenCode" => {
+            let base = std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".local").join("share"))
+                .join("opencode");
+            let detail = if base.join("opencode.db").is_file() {
+                "OpenCode stores sessions in opencode.db"
+            } else if base.join("storage").is_dir() {
+                "OpenCode uses its private storage schema"
+            } else {
+                "OpenCode session storage was not found"
+            };
+            return (
+                Vec::new(),
+                vec![format!(
+                    "{detail}. Run `opencode export <session>` and use Import a portable file…"
+                )],
+            );
+        }
+        _ => {
+            return (
+                Vec::new(),
+                vec![format!(
+                    "No automatic session folder is known for {harness}. Use Import a portable file…"
+                )],
+            );
+        }
+    };
+    if !root.is_dir() {
+        return (
+            Vec::new(),
+            vec![format!("No session folder found at {}", root.display())],
+        );
+    }
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+    collect_session_files(&root, extension, 0, &mut files, &mut warnings);
+    files.sort_by_key(|path| Reverse(modified_ms(path)));
+    if files.len() > 256 {
+        files.truncate(256);
+        warnings.push("Showing the 256 most recently modified session files".into());
+    }
+    if files.is_empty() {
+        warnings.push(format!(
+            "No *.{extension} session files found in {}",
+            root.display()
+        ));
+    }
+    (files, warnings)
+}
+
+fn collect_session_files(
+    dir: &Path,
+    extension: &str,
+    depth: usize,
+    files: &mut Vec<PathBuf>,
+    warnings: &mut Vec<String>,
+) {
+    if depth > 6 || files.len() >= 512 {
+        return;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else {
+        warnings.push(format!("Could not read {}", dir.display()));
+        return;
+    };
+    for entry in read.flatten() {
+        if files.len() >= 512 {
+            warnings.push("Session scan limited to 512 files".into());
+            break;
+        }
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_session_files(&path, extension, depth + 1, files, warnings);
+        } else if file_type.is_file()
+            && path.extension().and_then(|value| value.to_str()) == Some(extension)
+        {
+            files.push(path);
+        }
+    }
+}
+
+fn modified_ms(path: &Path) -> u128 {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
+fn finalize_import(
+    this: &mut DunlinApp,
+    harness: String,
+    rows: Vec<Row>,
+    warnings: Vec<String>,
+    cx: &mut Context<DunlinApp>,
+) {
+    this.session_import.loading = false;
+    let mut seen = HashSet::new();
+    let rows = rows
+        .into_iter()
+        .map(|mut row| {
+            let id = imported_id(&harness, &row.candidate.source_id);
+            row.duplicate = !seen.insert(id.clone())
+                || this.all_sessions.iter().any(|s| {
+                    s.id == id
+                        || (s.harness == harness
+                            && s.acp_session_id.as_deref()
+                                == Some(row.candidate.source_id.as_str()))
+                });
+            if row.duplicate {
+                row.selected = false;
+            }
+            if !this
+                .projects
+                .iter()
+                .any(|p| Some(&p.id) == row.project.as_ref() && !p.is_remote())
+            {
+                row.project = None;
+            }
+            row
+        })
+        .collect();
+    this.session_import.preview = Some(Preview {
+        harness,
+        rows,
+        warnings,
+    });
+    cx.notify();
+}
+
 impl DunlinApp {
+    pub(crate) fn scan_session_import(&mut self, harness: &str, cx: &mut Context<Self>) {
+        if self.session_import.loading {
+            return;
+        }
+        let harness = harness.to_string();
+        self.session_import.generation = self.session_import.generation.wrapping_add(1);
+        let generation = self.session_import.generation;
+        self.session_import.loading = true;
+        self.session_import.error = None;
+        self.session_import.preview = None;
+        cx.notify();
+        let source = harness.clone();
+        cx.spawn(async move |this, cx| {
+            let projects = this
+                .read_with(cx, |this, _| this.projects.clone())
+                .unwrap_or_default();
+            let (rows, warnings) = cx
+                .background_executor()
+                .spawn(async move {
+                    let (paths, mut warnings) = discover_session_files(&source);
+                    if paths.is_empty() {
+                        return (Vec::new(), warnings);
+                    }
+                    let (candidates, read_warnings) = read_files(&source, paths);
+                    warnings.extend(read_warnings);
+                    let rows = candidates
+                        .into_iter()
+                        .map(|candidate| {
+                            let project =
+                                adapters::match_project(candidate.directory.as_deref(), &projects);
+                            Row {
+                                candidate,
+                                project,
+                                duplicate: false,
+                                selected: true,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    (rows, warnings)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.session_import.generation == generation {
+                    finalize_import(this, harness, rows, warnings, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn choose_session_import(&mut self, harness: &str, cx: &mut Context<Self>) {
         if self.session_import.loading {
             return;
@@ -98,6 +317,7 @@ impl DunlinApp {
         let generation = self.session_import.generation;
         self.session_import.loading = true;
         self.session_import.error = None;
+        self.session_import.preview = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = receiver.await else {
@@ -134,41 +354,9 @@ impl DunlinApp {
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                if this.session_import.generation != generation {
-                    return;
+                if this.session_import.generation == generation {
+                    finalize_import(this, harness, rows, warnings, cx);
                 }
-                this.session_import.loading = false;
-                let mut seen = HashSet::new();
-                let rows = rows
-                    .into_iter()
-                    .map(|mut row| {
-                        let id = imported_id(&harness, &row.candidate.source_id);
-                        row.duplicate = !seen.insert(id.clone())
-                            || this.all_sessions.iter().any(|s| {
-                                s.id == id
-                                    || (s.harness == harness
-                                        && s.acp_session_id.as_deref()
-                                            == Some(row.candidate.source_id.as_str()))
-                            });
-                        if row.duplicate {
-                            row.selected = false;
-                        }
-                        if !this
-                            .projects
-                            .iter()
-                            .any(|p| Some(&p.id) == row.project.as_ref() && !p.is_remote())
-                        {
-                            row.project = None;
-                        }
-                        row
-                    })
-                    .collect();
-                this.session_import.preview = Some(Preview {
-                    harness,
-                    rows,
-                    warnings,
-                });
-                cx.notify();
             });
         })
         .detach();
@@ -246,7 +434,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let p = palette(cx);
     let mut body = div().flex().flex_col().gap(px(8.));
     if this.session_import.loading {
-        body = body.child("Reading selected session files…");
+        body = body.child("Scanning session files…");
     }
     if let Some(preview) = &this.session_import.preview {
         body = body.child(format!("Import preview · {} · {} sessions", preview.harness, preview.rows.len()))
@@ -420,6 +608,25 @@ mod tests {
         assert_ne!(one, super::imported_id("OpenAI Codex", "source/id"));
         assert!(!one.contains('/'));
     }
+    #[test]
+    fn session_scan_finds_nested_jsonl_and_ignores_other_files() {
+        let root =
+            std::env::temp_dir().join(format!("dunlin-session-scan-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(root.join("project-a")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden")).unwrap();
+        std::fs::write(root.join("project-a/session.jsonl"), b"{}\n").unwrap();
+        std::fs::write(root.join("project-a/notes.txt"), b"not a session").unwrap();
+        std::fs::write(root.join(".hidden/hidden.jsonl"), b"{}\n").unwrap();
+
+        let mut files = Vec::new();
+        let mut warnings = Vec::new();
+        super::collect_session_files(&root, "jsonl", 0, &mut files, &mut warnings);
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("project-a/session.jsonl"));
+        assert!(warnings.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn file_preview_reports_bad_inputs_without_touching_valid_sources() {
         let root =

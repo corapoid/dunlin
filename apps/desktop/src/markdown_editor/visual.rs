@@ -8,7 +8,7 @@ use super::{
 use crate::app::DunlinApp;
 use dunlin_ui::{
     component::{
-        Disableable, Sizable,
+        ActiveTheme, Disableable, Sizable,
         button::{Button, ButtonVariants},
         input::{
             Backspace, Delete, Editor, EditorState, Enter, IndentInline, InputEvent, OutdentInline,
@@ -30,6 +30,10 @@ pub(super) struct State {
     pub drag_anchor: Option<selection::Point>,
     pub preferred_x: Option<Pixels>,
     pub bounds: Rc<Cell<Bounds<Pixels>>>,
+    /// Palette mode used for the current editor decorations. A theme switch
+    /// must rebuild inline-code/link backgrounds or light-mode code spans keep
+    /// a light background under dark-mode text.
+    pub decorations_dark: Option<bool>,
 }
 #[derive(Clone)]
 pub(super) struct Active {
@@ -416,7 +420,10 @@ impl DunlinApp {
         if *tab.editor.read(cx).text() != doc.source {
             return;
         }
-        if tab.markdown.visual.editors.len() == doc.blocks.len()
+        let dark = cx.theme().is_dark();
+        let theme_changed = tab.markdown.visual.decorations_dark != Some(dark);
+        if !theme_changed
+            && tab.markdown.visual.editors.len() == doc.blocks.len()
             && tab
                 .markdown
                 .visual
@@ -496,6 +503,7 @@ impl DunlinApp {
             .as_ref()
             .and_then(|active| editors.iter().find(|e| e.editor == active.editor).cloned());
         tab.markdown.visual.editors = editors;
+        tab.markdown.visual.decorations_dark = Some(dark);
     }
 
     fn new_visual_editor(
@@ -511,9 +519,11 @@ impl DunlinApp {
                 .line_number(false)
                 .soft_wrap(true)
                 .scroll_beyond_last_line(None);
-            // Blocks grow with their content; their own scrollbar only creates
-            // a second, confusing scroll target. The document owns scrolling.
+            // Blocks grow with their content; their own scrollbar and wheel
+            // handling only create a second, confusing scroll target. The
+            // document owns scrolling.
             state.set_scrollbar_visible(false, cx);
+            state.set_scrollable(false, cx);
             state
         });
         let collection = editor.update(cx, |state, cx| {

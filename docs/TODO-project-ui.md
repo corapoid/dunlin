@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 528 passing
+> has since been committed through beta.5; current validation is 529 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -31,8 +31,15 @@
 - [x] Move the Monorepo marker to the right side of each project row, show the
   dominant language beneath it and list every detected language with percentages
   on hover.
+- [x] Make visual Markdown blocks non-scrollable so the document is the only
+  scroll target.
+- [x] Rebuild visual Markdown decorations after palette changes, fixing unreadable
+  inline-code backgrounds in dark mode.
+- [x] Replace the harness Import sessions… file picker with bounded automatic
+  scanning of the standard Claude Code, Codex and OpenCode session folders; keep
+  portable JSON as a separate explicit action.
 
-Validation: 528 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 529 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 

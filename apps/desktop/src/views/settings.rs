@@ -1065,7 +1065,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .on_click(cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 if !this.session_import.loading {
-                    this.choose_session_import(&import_name, cx);
+                    this.scan_session_import(&import_name, cx);
                 }
             }))
             .into_any_element()
@@ -1223,7 +1223,25 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("Import preview: OpenCode export JSON · Claude/Codex session JSONL · portable dunlin.session.v1 JSON for other agents. Histories are copied, not resumed."),
+                .child("Import sessions scans the standard Claude Code and Codex session folders and shows a preview. OpenCode requires its own `opencode export` through Import a portable file. Histories are copied, not resumed."),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    settings_text_button(
+                        "import-session-portable",
+                        "Import a portable file…",
+                        p.muted_fg,
+                        &p,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let harness = this.default_harness.clone();
+                        this.choose_session_import(&harness, cx);
+                    })),
+                ),
         )
         .child(crate::session_import::render(this, cx))
         .when(this.local_opencode(), |body| {

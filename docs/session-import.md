@@ -1,21 +1,25 @@
 # Import sesji
 
-**Settings → Harnesses → karta harnessa → Import sessions…**.
-Można wybrać kilka plików. Najpierw pojawia się podgląd tytułów, katalogów,
-liczby wpisów i przypisań. Nic nie jest zapisywane przed potwierdzeniem.
+**Settings → Harnesses → karta harnessa → Import sessions…** automatycznie
+skanuje standardowe foldery sesji wybranego harnessa. Najpierw pojawia się
+podgląd tytułów, katalogów, liczby wpisów i przypisań. Nic nie jest zapisywane
+przed potwierdzeniem. Osobny link **Import a portable file…** pozostaje dla
+jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 
 ## Obsługiwane źródła
 
-- **OpenCode**: eksport JSON `experimental.session.export` V2:
+- **OpenCode**: automatyczny skan nie czyta prywatnej bazy `opencode.db` ani
+  katalogu `storage`. Użyj `opencode export <session>` i **Import a portable
+  file…**. Obsługiwany jest eksport JSON `experimental.session.export` V2:
   `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.
   Akceptowane są także eksporty z wiadomościami `{info,parts}`.
   Publiczny endpoint to `GET /api/experimental/session/{sessionID}/export`;
   eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nie
   otwiera jego bazy SQLite ani nie odczytuje credential API.
 - **Claude Code**: jeden log sesji JSONL na plik (`sessionId`, `cwd`, `message`).
-  Typowa lokalizacja to `~/.claude/projects/<katalog>/<sessionId>.jsonl`.
+  Skan obejmuje `$CLAUDE_CONFIG_DIR/projects` lub `~/.claude/projects`, rekurencyjnie.
 - **OpenAI Codex**: rollout JSONL (`session_meta`, `response_item`, `turn_context`).
-  Typowa lokalizacja to `~/.codex/sessions/`; wybieraj logi konkretnych sesji.
+  Skan obejmuje `$CODEX_HOME/sessions` lub `~/.codex/sessions`, rekurencyjnie.
 - **Custom ACP** (również Claude/Codex): jawny format przenośny poniżej.
   ACP nie definiuje uniwersalnego eksportu historii; aplikacja nie zgaduje
   prywatnego formatu bazy niestandardowego adaptera.
@@ -57,5 +61,6 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - To nie jest skaner billing usage: import nie rekonstruuje cen, czasu pracy ani
   rozliczeniowych liczników z niejednorodnych logów.
 
-Nie ma automatycznego skanowania dysku, synchronizacji w tle ani importu sesji
-z relay/SSH. Świadomie wybrane pliki pozostają niezmienione.
+Skan jest ograniczony do standardowych folderów harnessa, maksymalnie 512
+plików i 64 MiB; nie ma synchronizacji w tle ani importu sesji z relay/SSH.
+Źródłowe pliki pozostają niezmienione.
