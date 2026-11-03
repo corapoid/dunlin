@@ -11,6 +11,7 @@ pub mod github;
 pub mod impact;
 pub mod preview;
 pub mod repositories;
+pub mod run;
 pub mod search;
 pub mod task_review;
 pub mod transfer;

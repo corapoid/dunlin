@@ -58,6 +58,8 @@ are clipped so they cannot paint or intercept clicks over the next block.
   cross field boundaries. Up/Down use native caret geometry and a retained X
   position. Table Up/Down keeps the column; entering/leaving a table crosses rows,
   not horizontal cells. The caret is revealed in the document scroll area.
+  Individual block editors do not paint their own scrollbars; the document owns
+  vertical scrolling so nested blocks cannot become accidental scroll traps.
 - Shift+arrows, Shift-click and pointer drag extend selections across fields;
   Cmd+A selects the document. Copy exports visible prose, tabs between table
   cells and newlines between rows. Cut, paste, Delete/Backspace and typing replace

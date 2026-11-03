@@ -70,6 +70,71 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn history_branch_creation_is_scoped_authenticated_and_never_moves_head() {
+    let f = Fixture::new();
+    let (first, _) = f.git_history_fixture();
+    let head = f.history_git(&["rev-parse", "HEAD"]).trim().to_string();
+    let status = f.history_git(&["status", "--porcelain"]);
+    let (_, page) = f
+        .history_get(
+            &format!("/v1/git/history?project={}", f.project),
+            Some(&f.token),
+        )
+        .await;
+    let scope = page["scope"].as_str().unwrap().to_string();
+    let body =
+        json!({"project": f.project, "scope": scope, "oid": first, "name": "feature/from-history"});
+    assert_eq!(
+        f.post("/v1/git/history/branch", None, body.clone()).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        f.post(
+            "/v1/git/history/branch",
+            Some(&f.ungranted_token),
+            body.clone()
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        f.post("/v1/git/history/branch", Some(&f.token), body.clone())
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.history_git(&["rev-parse", "feature/from-history"]).trim(),
+        first
+    );
+    assert_eq!(f.history_git(&["rev-parse", "HEAD"]).trim(), head);
+    assert_eq!(f.history_git(&["status", "--porcelain"]), status);
+    assert_eq!(
+        f.post("/v1/git/history/branch", Some(&f.token), body)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let wrong_scope =
+        json!({"project": f.project, "scope": "0".repeat(64), "oid": first, "name": "other"});
+    assert_eq!(
+        f.post("/v1/git/history/branch", Some(&f.token), wrong_scope)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let bad_name =
+        json!({"project": f.project, "scope": "0".repeat(64), "oid": first, "name": "-bad"});
+    assert_eq!(
+        f.post("/v1/git/history/branch", Some(&f.token), bad_name)
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
 async fn history_routes_require_authentication_and_project_grants_before_reading_git() {
     let f = Fixture::new();
     for endpoint in [

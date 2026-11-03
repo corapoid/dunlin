@@ -10,6 +10,7 @@ pub(super) struct State {
     pub visible: bool,
     argv: Entity<InputState>,
     prepared: Option<(uuid::Uuid, Prepared)>,
+    remote_prepared: Option<(uuid::Uuid, Vec<String>)>,
     reports: Vec<Report>,
     error: Option<String>,
     scroll: ScrollHandle,
@@ -23,6 +24,7 @@ impl State {
                     .placeholder("JSON argv, e.g. [\"cargo\",\"test\",\"--message-format=json\"]")
             }),
             prepared: None,
+            remote_prepared: None,
             reports: Vec::new(),
             error: None,
             scroll: ScrollHandle::new(),
@@ -53,6 +55,20 @@ pub(super) fn smoke_begin(app: &mut DunlinApp, w: &mut Window, cx: &mut Context<
     }];
     cx.notify();
 }
+fn validate_remote_argv(argv: Vec<String>) -> Result<Vec<String>, String> {
+    if argv.is_empty()
+        || argv.len() > 64
+        || argv[0].is_empty()
+        || argv.iter().any(|a| a.len() > 4096 || a.contains('\0'))
+        || argv.iter().map(|a| a.len()).sum::<usize>() > 16384
+    {
+        return Err(
+            "Provide a nonempty JSON argv array, at most 64 arguments / 16 KiB, without NUL".into(),
+        );
+    }
+    Ok(argv)
+}
+
 fn key(p: &Project) -> String {
     format!(
         "local-check-reports:{:x}",
@@ -63,18 +79,6 @@ impl DunlinApp {
     pub(crate) fn open_checks(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         self.open_git_history(w, cx);
         if !self.git_history.is_open_for(self.project()) {
-            return;
-        }
-        if self.project().is_remote() {
-            let v = self.git_history.view.as_mut().unwrap();
-            v.hide_tools();
-            v.context.visible = false;
-            v.github.visible = false;
-            v.review.visible = false;
-            v.checks.visible = true;
-            v.checks.reports.clear();
-            v.checks.error=Some("Relay check execution is not implemented; no local report or execution fallback was attempted.".into());
-            cx.notify();
             return;
         }
         let loaded = self
@@ -109,8 +113,10 @@ impl DunlinApp {
     }
     fn check_guard(&self) -> Result<(), String> {
         let v = self.git_history.view.as_ref().ok_or("Open Checks first")?;
-        if !owns(&v.project, self.project()) || v.project.is_remote() {
-            return Err("Local checks require this trusted local project; relay execution has no local fallback".into());
+        if !owns(&v.project, self.project()) || !v.project.trusted {
+            return Err(
+                "Checks require this trusted project; reopen history if the project changed".into(),
+            );
         }
         if self.git_history.running
             || self.branch_ui.running()
@@ -134,21 +140,41 @@ impl DunlinApp {
         }
         let v = self.git_history.view.as_mut().unwrap();
         v.checks.prepared = None;
-        let result = serde_json::from_str::<Vec<String>>(&v.checks.argv.read(cx).value())
-            .map_err(|_| "Enter an explicit JSON array of command arguments".to_string())
-            .and_then(|argv| api::prepare(&v.project.path, argv));
-        match result {
-            Ok(plan) => {
-                v.checks.prepared = Some((uuid::Uuid::now_v7(), plan));
-                v.checks.error = None;
+        v.checks.remote_prepared = None;
+        let parsed = serde_json::from_str::<Vec<String>>(&v.checks.argv.read(cx).value())
+            .map_err(|_| "Enter an explicit JSON array of command arguments".to_string());
+        if v.project.is_remote() {
+            match parsed.and_then(validate_remote_argv) {
+                Ok(argv) => {
+                    v.checks.remote_prepared = Some((uuid::Uuid::now_v7(), argv));
+                    v.checks.error = None;
+                }
+                Err(e) => v.checks.error = Some(e),
             }
-            Err(e) => v.checks.error = Some(e),
+        } else {
+            match parsed.and_then(|argv| api::prepare(&v.project.path, argv)) {
+                Ok(plan) => {
+                    v.checks.prepared = Some((uuid::Uuid::now_v7(), plan));
+                    v.checks.error = None;
+                }
+                Err(e) => v.checks.error = Some(e),
+            }
         }
         cx.notify();
     }
     fn confirm_check(&mut self, w: &mut Window, cx: &mut Context<Self>) {
         if let Err(e) = self.check_guard() {
             self.file_notice(e, cx);
+            return;
+        }
+        let remote = self.git_history.view.as_ref().and_then(|v| {
+            v.checks
+                .remote_prepared
+                .as_ref()
+                .map(|(token, argv)| (*token, argv.clone(), v.id, v.project.clone()))
+        });
+        if let Some((token, argv, id, project)) = remote {
+            self.confirm_remote_check(token, argv, id, project, w, cx);
             return;
         }
         let v = self.git_history.view.as_ref().unwrap();
@@ -185,6 +211,116 @@ impl DunlinApp {
             });}).detach();cx.notify();
         });}).detach();
     }
+    fn confirm_remote_check(
+        &mut self,
+        prepared_token: uuid::Uuid,
+        argv: Vec<String>,
+        view_id: uuid::Uuid,
+        project: Project,
+        w: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(remote) = project.remote.clone() else {
+            return;
+        };
+        let Some(host) = self.remote_host(&remote.host_id) else {
+            self.file_notice("Remote server is unavailable", cx);
+            return;
+        };
+        let token = match self.remote_token(&host.id) {
+            Ok(token) => token,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
+        };
+        let message = format!(
+            "Project: {}\nRelay: {}\nArgv: {}\n\nThis runs native project code on the relay host with that process's user permissions and inherited environment. It is NOT sandboxed, can use the network and modify relay files. Logs may contain secrets. Limit: 120 seconds / 512 KiB per stream. No automatic retry.",
+            project.name,
+            host.name,
+            serde_json::to_string(&argv).unwrap_or_default()
+        );
+        let receiver = w.prompt(
+            PromptLevel::Warning,
+            "Run this check on the relay?",
+            Some(&message),
+            &["Cancel", "Run once"],
+            cx,
+        );
+        let receiver = self.overlay_backdrop.track_native(receiver, cx);
+        let url = host.url;
+        let remote_id = remote.project_id;
+        cx.spawn(async move |this, cx| {
+            if receiver.await != Ok(1) {
+                return;
+            }
+            let started = this
+                .update(cx, |this, cx| {
+                    let Some(v) = this.git_history.view.as_mut().filter(|v| v.id == view_id)
+                    else {
+                        return false;
+                    };
+                    if !v.checks.remote_prepared.as_ref().is_some_and(|(t, a)| *t == prepared_token && *a == argv) {
+                        return false;
+                    }
+                    v.checks.remote_prepared = None;
+                    this.git_history.running = true;
+                    this.git_history.mutation_global = true;
+                    this.git_history.mutation_project = Some(project.id.clone());
+                    this.begin_git_mutation(&project.id);
+                    cx.notify();
+                    true
+                })
+                .unwrap_or(false);
+            if !started {
+                return;
+            }
+            let result = cx
+                .background_executor()
+                .spawn(async move { crate::remote::run_check(&url, &token, &remote_id, argv) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.git_history.running = false;
+                this.git_history.mutation_global = false;
+                this.git_history.mutation_project = None;
+                this.finish_git_mutation(&project.id);
+                match result {
+                    Ok(report) => {
+                        let outcome = report.result.clone();
+                        let mut reports = this
+                            .store
+                            .as_ref()
+                            .and_then(|s| s.load_setting::<Vec<Report>>(&key(&project)).ok().flatten())
+                            .unwrap_or_default();
+                        reports.insert(0, report);
+                        reports.truncate(5);
+                        let saved = this
+                            .store
+                            .as_ref()
+                            .is_some_and(|s| s.save_setting(&key(&project), &reports).is_ok());
+                        if let Some(v) = &mut this.git_history.view
+                            && v.id == view_id
+                        {
+                            v.checks.reports = reports;
+                            if !saved {
+                                v.checks.error =
+                                    Some("Report is available in this view but persistence failed".into());
+                            }
+                        }
+                        this.file_notice(
+                            format!("Relay check finished: {outcome}. Exit zero is not proof of test coverage."),
+                            cx,
+                        );
+                    }
+                    Err(error) => this.file_notice(error, cx),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     fn check_report_to_draft(&mut self, id: &str, w: &mut Window, cx: &mut Context<Self>) {
         let Some(v) = &self.git_history.view else {
             return;
@@ -259,7 +395,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let p = palette(cx);
     let running = this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
-        .child("Explicit native commands only. Logs may contain secrets: inspect before sharing. Exit status is recorded, never guessed from text. Existing reports do not verify later source changes. No automatic test discovery/execution.")
+        .child(if v.project.is_remote() { "Explicit commands run on the relay host with that process's permissions and inherited environment. Not sandboxed. Logs may contain secrets; inspect before sharing. Exit status is recorded, never guessed from text. No automatic test discovery/execution." } else { "Explicit native commands only. Logs may contain secrets: inspect before sharing. Exit status is recorded, never guessed from text. Existing reports do not verify later source changes. No automatic test discovery/execution." })
         .child(Input::new(&s.argv).small()).child(Button::new("check-prepare").small().label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
     if let Some((_, plan)) = &s.prepared {
         body = body
@@ -272,6 +408,21 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 Button::new("check-confirm")
                     .small()
                     .label("Review and confirm execution…")
+                    .disabled(running)
+                    .on_click(cx.listener(|this, _, w, cx| this.confirm_check(w, cx))),
+            );
+    }
+    if let Some((_, argv)) = &s.remote_prepared {
+        body = body
+            .child(format!(
+                "Relay project: {}\n{}",
+                v.project.path,
+                serde_json::to_string(argv).unwrap_or_default()
+            ))
+            .child(
+                Button::new("check-confirm-remote")
+                    .small()
+                    .label("Review and run on relay…")
                     .disabled(running)
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_check(w, cx))),
             );

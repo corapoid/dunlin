@@ -1,8 +1,55 @@
-//! Shared UI scale for new surfaces.
+//! Shared UI scale for semantic typography and spacing.
 //!
-//! Existing views still contain a few literal sizes from the first prototype.
-//! New code should use these tokens so a future Compact/Comfortable setting can
-//! scale the whole interface without hunting through every view.
+//! New surfaces use these tokens directly. Legacy views still contain literal
+//! sizes from the first prototype; Compact tightens the semantic tokens without
+//! shrinking hit targets or font sizes.
+
+use std::sync::atomic::{AtomicU32, Ordering};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Density {
+    Compact,
+    #[default]
+    Comfortable,
+}
+
+static COMPACT: AtomicU32 = AtomicU32::new(0);
+
+pub fn set_density(density: Density) {
+    COMPACT.store(u32::from(density == Density::Compact), Ordering::Release);
+}
+
+pub fn density() -> Density {
+    if COMPACT.load(Ordering::Acquire) == 1 {
+        Density::Compact
+    } else {
+        Density::Comfortable
+    }
+}
+
+/// Scale a spacing token. Compact keeps at least 70% so targets remain usable.
+pub fn space(value: f32) -> f32 {
+    match density() {
+        Density::Comfortable => value,
+        Density::Compact => (value * 0.74).max(1.),
+    }
+}
+
+/// Scale a control height with a hard floor for pointer/keyboard targets.
+pub fn control(value: f32) -> f32 {
+    match density() {
+        Density::Comfortable => value,
+        Density::Compact => (value * 0.9).max(20.),
+    }
+}
+
+/// Scale a text size only very slightly; Compact must not become unreadable.
+pub fn text(value: f32) -> f32 {
+    match density() {
+        Density::Comfortable => value,
+        Density::Compact => (value - 0.5).max(9.5),
+    }
+}
 
 pub const TEXT_MICRO: f32 = 10.0;
 pub const TEXT_CAPTION: f32 = 10.5;

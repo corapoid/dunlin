@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::{ActiveTheme, Icon};
+use dunlin_ui::component::Disableable;
+use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::input::Input;
+use dunlin_ui::component::{ActiveTheme, Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -25,10 +28,21 @@ pub(crate) fn render(
     }
     let all = crate::projection::nodes(&this.harness.transcript, &project, &session);
     let nodes = crate::activity::graph_nodes(&all, &this.activity.agents_expanded);
+    let visible_nodes = crate::activity::filter_graph_nodes(&nodes, &this.activity_query);
+    let zoom = this.activity.graph_zoom.clamp(0.5, 1.8);
+    let scaled_nodes = scale_nodes(&visible_nodes, zoom);
     if nodes.is_empty() {
         return super::empty_activity(
             "No agent activity yet",
             "Send your first message in Chat. Only activity from this conversation will appear here.",
+            IconName::Network,
+            cx,
+        );
+    }
+    if visible_nodes.is_empty() {
+        return super::empty_activity(
+            "No graph matches",
+            "Clear the search field to show the full agent graph.",
             IconName::Network,
             cx,
         );
@@ -107,6 +121,53 @@ pub(crate) fn render(
                 .text_color(p.muted_fg)
                 .child(format!("${total_cost:.2}")),
         )
+        .child(div().w(px(1.)).h(px(13.)).bg(p.border))
+        .child(
+            div()
+                .w(px(150.))
+                .child(Input::new(&this.activity_search).small()),
+        )
+        .child(
+            Button::new("graph-zoom-out")
+                .ghost()
+                .small()
+                .label("−")
+                .disabled(zoom <= 0.5)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.graph_zoom = (this.activity.graph_zoom - 0.1).clamp(0.5, 1.8);
+                    cx.notify();
+                })),
+        )
+        .child(
+            div()
+                .min_w(px(34.))
+                .text_center()
+                .text_size(px(10.5))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child(format!("{:.0}%", zoom * 100.)),
+        )
+        .child(
+            Button::new("graph-zoom-in")
+                .ghost()
+                .small()
+                .label("+")
+                .disabled(zoom >= 1.8)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.graph_zoom = (this.activity.graph_zoom + 0.1).clamp(0.5, 1.8);
+                    cx.notify();
+                })),
+        )
+        .child(
+            Button::new("graph-zoom-reset")
+                .ghost()
+                .small()
+                .label("Fit")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.graph_zoom = 1.;
+                    cx.notify();
+                })),
+        )
         .child(div().flex_1())
         .child(
             div()
@@ -137,9 +198,10 @@ pub(crate) fn render(
         );
 
     let content = graph_canvas(
-        &nodes,
+        &scaled_nodes,
         selected.as_deref(),
         &this.activity.agents_expanded,
+        this.reduce_motion,
         cx,
         &p,
     );
@@ -172,8 +234,8 @@ pub(crate) fn render(
 
     let detail = selected
         .as_ref()
-        .and_then(|id| nodes.iter().find(|node| &node.id == id))
-        .map(|node| node_detail(node, cx, &p));
+        .and_then(|id| visible_nodes.iter().find(|node| &node.id == id))
+        .map(|node| node_detail(node, this.reduce_motion, cx, &p));
 
     let mut root = div()
         .relative()
@@ -185,7 +247,8 @@ pub(crate) fn render(
         .bg(p.bg)
         .child(toolbar)
         .child(content)
-        .child(legend);
+        .child(legend)
+        .child(graph_minimap(&scaled_nodes, &p));
 
     if let Some(detail) = detail {
         root = root.child(detail);
@@ -193,10 +256,67 @@ pub(crate) fn render(
     root.into_any_element()
 }
 
+fn scale_nodes(nodes: &[AgentNode], zoom: f32) -> Vec<AgentNode> {
+    let width = 1150. * zoom;
+    let root = nodes.iter().find(|node| node.parent.is_none());
+    nodes
+        .iter()
+        .map(|node| {
+            let mut scaled = node.clone();
+            scaled.width = (node.width * zoom).clamp(140., node.width * 1.8);
+            scaled.height = (node.height * zoom).clamp(90., node.height * 1.8);
+            scaled.x = node.x * zoom;
+            if let Some(root) = root
+                && node.id == root.id
+            {
+                scaled.x = (width - scaled.width) / 2.;
+            }
+            scaled.y = 16. + (node.y - 16.) * zoom;
+            scaled
+        })
+        .collect()
+}
+
+fn graph_minimap(nodes: &[AgentNode], p: &Palette) -> AnyElement {
+    let (width, height) = crate::activity::graph_size(nodes);
+    let scale = 0.08;
+    let mut map = div()
+        .absolute()
+        .right(px(12.))
+        .bottom(px(44.))
+        .w(px(width * scale + 8.))
+        .h(px(height * scale + 8.))
+        .rounded(px(5.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card.opacity(0.88))
+        .overflow_hidden();
+    for node in nodes {
+        map = map.child(
+            div()
+                .absolute()
+                .left(px(4. + node.x * scale))
+                .top(px(4. + node.y * scale))
+                .w(px((node.width * scale).max(2.)))
+                .h(px((node.height * scale).max(1.5)))
+                .rounded(px(1.))
+                .bg(match node.status {
+                    AgentStatus::Running => p.blue,
+                    AgentStatus::Waiting => p.amber,
+                    AgentStatus::Done => p.green,
+                    AgentStatus::Failed => p.red,
+                    AgentStatus::Stopped => p.muted_fg,
+                }),
+        );
+    }
+    map.into_any_element()
+}
+
 fn graph_canvas(
     nodes: &[AgentNode],
     selected: Option<&str>,
     expanded: &std::collections::HashSet<String>,
+    reduce_motion: bool,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
@@ -276,7 +396,12 @@ fn graph_canvas(
     .h(px(height))
     .with_animation(
         ElementId::NamedInteger("graph-edges".into(), nodes.len() as u64),
-        Animation::new(Duration::from_millis(360)).with_easing(ease_out_quint()),
+        Animation::new(if reduce_motion {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(360)
+        })
+        .with_easing(ease_out_quint()),
         |this, t| this.opacity(t),
     )
     .into_any_element();
@@ -294,6 +419,7 @@ fn graph_canvas(
             node,
             selected == Some(node.id.as_str()),
             expanded.contains(&node.id),
+            reduce_motion,
             cx,
             p,
         ));
@@ -362,6 +488,7 @@ fn node_card(
     node: &AgentNode,
     selected: bool,
     expanded: bool,
+    reduce_motion: bool,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
@@ -548,15 +675,22 @@ fn node_card(
                         .rounded_full()
                         .with_animation(
                             ElementId::Name(format!("graph-running-{}", node.id).into()),
-                            Animation::new(Duration::from_millis(1800))
-                                .repeat_synced()
-                                .with_easing(pulsating_between(0.4, 1.0)),
+                            Animation::new(if reduce_motion {
+                                Duration::ZERO
+                            } else {
+                                Duration::from_millis(1800)
+                            })
+                            .repeat_synced()
+                            .with_easing(pulsating_between(0.4, 1.0)),
                             |this, t| this.opacity(t),
                         ),
                 ),
         );
     }
 
+    if reduce_motion {
+        return card.into_any_element();
+    }
     let node_id = node.id.clone();
     card.with_animation(
         ElementId::Name(format!("graph-node-{node_id}").into()),
@@ -609,7 +743,12 @@ fn legend_item(label: &str, color: Hsla, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn node_detail(node: &AgentNode, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+fn node_detail(
+    node: &AgentNode,
+    reduce_motion: bool,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
     let (status_color, status_soft) = agent_status_palette(p, node.status);
     let detail = div()
         .absolute()
@@ -736,6 +875,9 @@ fn node_detail(node: &AgentNode, cx: &mut Context<DunlinApp>, p: &Palette) -> An
                 ),
         );
 
+    if reduce_motion {
+        return detail.into_any_element();
+    }
     detail
         .with_animation(
             ElementId::Name(format!("graph-detail-{}", node.id).into()),

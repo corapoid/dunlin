@@ -3,6 +3,7 @@
 use super::*;
 use dunlin_ui::component::input::{Textarea, TextareaState};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -68,6 +69,9 @@ pub(super) struct State {
     memory: Memory,
     editing: Option<(String, u64)>,
     error: Option<String>,
+    remote: Option<Value>,
+    remote_loading: bool,
+    remote_error: Option<String>,
     scroll: ScrollHandle,
 }
 impl State {
@@ -85,6 +89,9 @@ impl State {
             memory: Memory::default(),
             editing: None,
             error: None,
+            remote: None,
+            remote_loading: false,
+            remote_error: None,
             scroll: ScrollHandle::new(),
         }
     }
@@ -125,6 +132,8 @@ impl DunlinApp {
         view.context.visible = true;
         view.review.visible = false;
         view.checks.visible = false;
+        let id = view.id;
+        let project = view.project.clone();
         match loaded {
             Ok(memory) => {
                 view.context.memory = memory;
@@ -132,6 +141,50 @@ impl DunlinApp {
             }
             Err(e) => view.context.error = Some(e),
         }
+        if !project.is_remote() {
+            view.context.remote = None;
+            view.context.remote_error = None;
+            view.context.remote_loading = false;
+            cx.notify();
+            return;
+        }
+        view.context.remote = None;
+        view.context.remote_error = None;
+        view.context.remote_loading = true;
+        let workspace = match self.remote_workspace_for_project(&project) {
+            Ok(workspace) => workspace,
+            Err(error) => {
+                if let Some(view) = &mut self.git_history.view
+                    && view.id == id
+                {
+                    view.context.remote_loading = false;
+                    view.context.remote_error = Some(error);
+                }
+                cx.notify();
+                return;
+            }
+        };
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { workspace.remote_context() })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                let Some(view) = this.git_history.view.as_mut().filter(|view| view.id == id) else {
+                    return;
+                };
+                view.context.remote_loading = false;
+                match result {
+                    Ok(value) => {
+                        view.context.remote = Some(value);
+                        view.context.remote_error = None;
+                    }
+                    Err(error) => view.context.remote_error = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
         cx.notify();
     }
     fn save_decision(&mut self, stale: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -314,7 +367,50 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         }
     }
     if view.project.is_remote() {
-        content=content.child("Relay session: local environment/default preferences do not configure the remote process. Server-side context remains unknown unless advertised.");
+        content = content.child("Relay session: local environment/default preferences do not configure the remote process.");
+        if s.remote_loading {
+            content = content.child("Loading relay-side context and stored project defaults…");
+        }
+        if let Some(error) = &s.remote_error {
+            content = content.child(
+                div()
+                    .text_color(p.amber)
+                    .child(format!("Relay context unavailable: {error}")),
+            );
+        }
+        if let Some(remote) = &s.remote {
+            content = content
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child("Relay-reported context"),
+                )
+                .child(format!(
+                    "Relay {} · harness {} · sandbox {} · transcript storage {}",
+                    remote["relay"]["version"].as_str().unwrap_or("unknown"),
+                    remote["relay"]["harness"].as_str().unwrap_or("unknown"),
+                    remote["relay"]["sandbox"]
+                        .as_bool()
+                        .map(|v| if v { "on" } else { "off" })
+                        .unwrap_or("unknown"),
+                    remote["relay"]["store_transcripts"]
+                        .as_bool()
+                        .map(|v| if v { "on" } else { "off" })
+                        .unwrap_or("unknown"),
+                ))
+                .child(format!(
+                    "Stored project defaults: {}",
+                    safe(&serde_json::to_string_pretty(&remote["settings"]).unwrap_or_default())
+                ))
+                .child(
+                    remote["context_boundary"]
+                        .as_str()
+                        .unwrap_or("Harness-owned context remains unknown.")
+                        .to_string(),
+                );
+        } else if !s.remote_loading {
+            content = content.child("Relay context was not loaded. Harness-owned system prompts, instructions, skills and model history remain unknown.");
+        }
     }
     content =
         content.child(div().pt(px(12.)).font_weight(FontWeight::SEMIBOLD).child(

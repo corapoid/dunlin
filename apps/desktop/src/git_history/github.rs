@@ -4,6 +4,91 @@ use dunlin_ui::component::input::{Textarea, TextareaState};
 use dunlin_workspace::github::{self as api, Action, Job, Overview, Plan, PullDetails, Run};
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
+enum PendingGithub {
+    Local(Plan),
+    Remote(crate::remote::RemoteGithubPlan),
+}
+
+impl PendingGithub {
+    fn summary(&self) -> &str {
+        match self {
+            Self::Local(plan) => &plan.summary,
+            Self::Remote(plan) => &plan.summary,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
+enum GithubBackend {
+    Local {
+        root: String,
+        remote: String,
+    },
+    Remote {
+        workspace: crate::remote::RemoteWorkspace,
+        remote: String,
+    },
+}
+
+impl GithubBackend {
+    fn load(&self) -> Result<Overview, String> {
+        match self {
+            Self::Local { root, remote } => api::load(root, remote),
+            Self::Remote { workspace, remote } => workspace.github_load(remote),
+        }
+    }
+
+    fn runs(&self, repo: &api::Repository, head: &str) -> Result<Vec<Run>, String> {
+        match self {
+            Self::Local { .. } => api::runs(repo, head),
+            Self::Remote { workspace, remote } => workspace.github_runs(remote, head),
+        }
+    }
+
+    fn jobs(&self, repo: &api::Repository, run: &Run) -> Result<(Run, Vec<Job>), String> {
+        match self {
+            Self::Local { .. } => api::refresh_run(repo, run),
+            Self::Remote { workspace, remote } => workspace.github_jobs(remote, run),
+        }
+    }
+
+    fn pull(&self, repo: &api::Repository, number: u64) -> Result<PullDetails, String> {
+        match self {
+            Self::Local { .. } => api::details(repo, number),
+            Self::Remote { workspace, remote } => workspace.github_pull(remote, number),
+        }
+    }
+
+    fn log(&self, repo: &api::Repository, run: &Run, job: &Job) -> Result<String, String> {
+        match self {
+            Self::Local { .. } => api::logs(repo, run, job),
+            Self::Remote { workspace, remote } => workspace.github_log(remote, run, job),
+        }
+    }
+
+    fn prepare(&self, repo: &api::Repository, action: Action) -> Result<PendingGithub, String> {
+        match self {
+            Self::Local { .. } => api::prepare(repo, action).map(PendingGithub::Local),
+            Self::Remote { workspace, remote } => workspace
+                .github_prepare(remote, action)
+                .map(PendingGithub::Remote),
+        }
+    }
+
+    fn execute(&self, plan: PendingGithub) -> Result<String, String> {
+        match (self, plan) {
+            (Self::Local { .. }, PendingGithub::Local(plan)) => api::execute(plan),
+            (Self::Remote { workspace, .. }, PendingGithub::Remote(plan)) => {
+                workspace.github_execute(&plan.id)
+            }
+            _ => Err("GitHub plan belongs to another backend; prepare a fresh request".into()),
+        }
+    }
+}
+
 pub(super) struct State {
     pub visible: bool,
     remote: Entity<InputState>,
@@ -17,7 +102,7 @@ pub(super) struct State {
     detail: Option<PullDetails>,
     follow: bool,
     checked: Option<Instant>,
-    pending: Option<(uuid::Uuid, Plan)>,
+    pending: Option<(uuid::Uuid, PendingGithub)>,
     title: Entity<InputState>,
     body: Entity<TextareaState>,
     base: Entity<InputState>,
@@ -82,9 +167,10 @@ enum Response {
 }
 impl DunlinApp {
     fn github_current(&self, id: uuid::Uuid) -> bool {
-        self.git_history.view.as_ref().is_some_and(|v| {
-            v.id == id && owns(&v.project, self.project()) && !v.project.is_remote()
-        })
+        self.git_history
+            .view
+            .as_ref()
+            .is_some_and(|v| v.id == id && owns(&v.project, self.project()))
     }
     pub(super) fn open_github(&mut self, cx: &mut Context<Self>) {
         if let Some(v) = &mut self.git_history.view {
@@ -102,16 +188,11 @@ impl DunlinApp {
         let Some(view) = &mut self.git_history.view else {
             return;
         };
-        if view.project.is_remote() {
-            view.github.error = Some("GitHub for relay projects requires a server-side capability. Local gh is never used as a fallback.".into());
-            cx.notify();
-            return;
-        }
         if self.git_history.running || view.github.loading {
             return;
         }
         let id = view.id;
-        let root = view.project.path.clone();
+        let project = view.project.clone();
         let remote = view.github.remote.read(cx).value().to_string();
         let repo = view.github.data.as_ref().map(|d| d.repository.clone());
         let request = uuid::Uuid::now_v7();
@@ -139,23 +220,47 @@ impl DunlinApp {
             view.github.jobs.clear();
             view.github.log = None;
         }
+        let backend = if project.is_remote() {
+            match self.remote_workspace_for_project(&project) {
+                Ok(workspace) => GithubBackend::Remote {
+                    workspace,
+                    remote: remote.clone(),
+                },
+                Err(error) => {
+                    if let Some(view) = &mut self.git_history.view
+                        && view.id == id
+                    {
+                        view.github.loading = false;
+                        view.github.error = Some(error);
+                    }
+                    cx.notify();
+                    return;
+                }
+            }
+        } else {
+            GithubBackend::Local {
+                root: project.path.clone(),
+                remote: remote.clone(),
+            }
+        };
         cx.spawn(async move |this, cx| {
             let overview = matches!(read, Read::Overview);
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     if let Read::Overview = read {
-                        return api::load(&root, &remote).map(Response::Overview);
+                        return backend.load().map(Response::Overview);
                     }
                     let repo = repo.ok_or("Load GitHub first")?;
                     match read {
-                        Read::Jobs(run) => api::refresh_run(&repo, &run)
+                        Read::Jobs(run) => backend
+                            .jobs(&repo, &run)
                             .map(|(run, jobs)| Response::Jobs(run, jobs)),
-                        Read::Pull(number) => {
-                            api::details(&repo, number).map(|d| Response::Pull(Box::new(d)))
-                        }
-                        Read::Log(run, job) => api::logs(&repo, &run, &job).map(Response::Log),
-                        Read::Runs(head) => api::runs(&repo, &head).map(Response::Runs),
+                        Read::Pull(number) => backend
+                            .pull(&repo, number)
+                            .map(|d| Response::Pull(Box::new(d))),
+                        Read::Log(run, job) => backend.log(&repo, &run, &job).map(Response::Log),
+                        Read::Runs(head) => backend.runs(&repo, &head).map(Response::Runs),
                         Read::Overview => unreachable!(),
                     }
                 })
@@ -297,12 +402,27 @@ impl DunlinApp {
         let repo = data.repository.clone();
         let id = view.id;
         let project = view.project.clone();
+        let remote = view.github.remote.read(cx).value().to_string();
         self.git_history.view.as_mut().unwrap().github.pending = None;
+        let backend = if project.is_remote() {
+            match self.remote_workspace_for_project(&project) {
+                Ok(workspace) => GithubBackend::Remote { workspace, remote },
+                Err(error) => {
+                    self.file_notice(error, cx);
+                    return;
+                }
+            }
+        } else {
+            GithubBackend::Local {
+                root: project.path.clone(),
+                remote,
+            }
+        };
         self.github_lock(&project, true);
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { api::prepare(&repo, action) })
+                .spawn(async move { backend.prepare(&repo, action) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.github_lock(&project, false);
@@ -331,10 +451,11 @@ impl DunlinApp {
         }
         let token = *token;
         let id = view.id;
+        let summary = api::display_text(plan.summary(), 70_000);
         let receiver = window.prompt(
             PromptLevel::Warning,
             "Publish this GitHub action?",
-            Some(&api::display_text(&plan.summary, 70_000)),
+            Some(&summary),
             &["Cancel", "Submit once"],
             cx,
         );
@@ -358,11 +479,26 @@ impl DunlinApp {
                 }
                 let (_, plan) = view.github.pending.take().unwrap();
                 let project = view.project.clone();
+                let remote = view.github.remote.read(cx).value().to_string();
+                let backend = if project.is_remote() {
+                    match this.remote_workspace_for_project(&project) {
+                        Ok(workspace) => GithubBackend::Remote { workspace, remote },
+                        Err(error) => {
+                            this.file_notice(error, cx);
+                            return;
+                        }
+                    }
+                } else {
+                    GithubBackend::Local {
+                        root: project.path.clone(),
+                        remote,
+                    }
+                };
                 this.github_lock(&project, true);
                 cx.spawn(async move |this, cx| {
                     let result = cx
                         .background_executor()
-                        .spawn(async move { api::execute(plan) })
+                        .spawn(async move { backend.execute(plan) })
                         .await;
                     let _ = this.update(cx, |this, cx| {
                         this.github_lock(&project, false);
@@ -1017,7 +1153,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .border_t_1()
                     .border_color(p.border)
                     .pt(px(8.))
-                    .child(plain(&plan.summary)),
+                    .child(plain(plan.summary())),
             )
             .child(
                 Button::new("github-confirm")

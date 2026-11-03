@@ -59,12 +59,13 @@ fn response(value: impl serde::Serialize) -> String {
     )
 }
 fn backend(url: String) -> WorkspaceBackend {
-    WorkspaceBackend::Remote(RemoteWorkspace {
+    WorkspaceBackend::Remote(Box::new(RemoteWorkspace {
         host: RemoteHost {
             id: "host".into(),
             name: "Mock".into(),
             url,
             user_name: "member".into(),
+            user_role: "member".into(),
             device_id: "device".into(),
         },
         project: RemoteProject {
@@ -73,7 +74,7 @@ fn backend(url: String) -> WorkspaceBackend {
             path: "/not-a-local-project".into(),
         },
         token: "test-history-token".into(),
-    })
+    }))
 }
 fn commit() -> Commit {
     Commit {

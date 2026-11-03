@@ -15,7 +15,7 @@ Kolejność wdrożeń, zależności i kryteria odbioru:
 
 ## Stan implementacji
 
-### Przegląd po `0.1.0-beta.3` — 2026-11-01
+### Przegląd working tree po `0.1.0-beta.5` — 2026-11-03
 
 **Nie wszystkie rozpoczęte elementy są skończone.** Wszystkie osiem obszarów
 agent workbench oraz GitHub mają kod v1 i testy, ale pełny zaakceptowany zakres
@@ -25,21 +25,27 @@ M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxó
 | Rozpoczęty obszar | Co działa | Co blokuje zamknięcie pełnego obszaru |
 | --- | --- | --- |
 | Rozmowy / ergonomia M1 | Kolejka, copy/retry/edit, powiadomienia, watcher, brakujący folder, podstawowe menu | Branch od wiadomości, Undo projektu/sesji, menu wiadomości/tool calli, zawijanie composera |
-| Ustawienia / grupy M2 | Lokalne modele/env, dziedziczenie i źródła wartości, jawne Apply model, hierarchia/drag & drop | Model/env relay, dalsze capability adapterów, kolejność/kolory/sync grup i ręczna QA |
-| Usage / budżety | Recorded-data Dashboard, limity kont, trwały ledger żądań/czasu/raportowanego USD | Skanery i cennik billingowy, attribution pracy wewnętrznej/subagentów, alerty globalne; reader OAuth Claude niewłączony |
-| Git v2 | Lokalna/zdalna historia, stash/worktree, operacje i blame z ochroną buforów | Checkout commita z grafu, zdalny branch create, ręczny odbiór i docelowy relay |
+| Ustawienia / grupy M2 | Lokalne modele/env, dziedziczenie i źródła wartości, jawne Apply model, hierarchia/drag & drop, jawne granty multi-root local/relay | Model/env relay dla memberów, dalsze capability adapterów, kolejność/kolory/sync grup i ręczna QA |
+| Usage / budżety | Skanery Claude/Codex/OpenCode z checkpointami i dedupe, cennik cache/long-context/`unpriced`, przekroje i alerty w Usage, limity kont, reader OAuth Claude, trwały ledger żądań/czasu/raportowanego USD; remote account usage pokazuje `Admin-only` dla `member` | Attribution pracy wewnętrznej/subagentów, ręczna QA logów i ewentualny sync billing evidence przez relay |
+| Git v2 | Lokalna/zdalna historia, checkout commita, zdalny branch create, stash/worktree, operacje i blame z ochroną buforów | Ręczny odbiór i docelowy relay |
 | Markdown | Visual/Raw, edycja/struktura/selekcja/zasoby i regresje natywne | Ręczne GUI/IME/bidi, złożone przypadki graniczne i rzeczywisty relay |
-| Agent workbench / GitHub | Osiem implementacji v1 i potwierdzane lokalne CI/PR przez `gh` | Odbiór na prawdziwym GitHubie, dalsze capability/zdalne narzędzia, pełny billing i compiler/LSP impact; patrz M3c |
-| Skills | Własna biblioteka, walidacja i bezpieczny eksport/usuwanie | Discovery/import zewnętrznych bibliotek, enable per projekt i pełny audyt pochodzenia |
-| Graph / Trace | Hierarchie, disclosure, filtry/timing i eksport grafu | Pan/zoom/layout/minimapa/search grafu; search/klawiatura/sticky axis/wirtualizacja Trace |
-| Design / onboarding / uprawnienia | Design settings, pierwsze tokeny, podstawowe wykrywanie/trust | Migracja tokenów, Compact/Comfortable, kreator i centrum TCC, pełna QA klawiatury/a11y |
+| Agent workbench / GitHub | Osiem implementacji v1, lokalne CI/PR i zdalne checkpointy/compare/context/GitHub admin-only | Odbiór na prawdziwym GitHubie i relayu, dalsze capability, pełny billing i compiler/LSP impact; patrz M3c |
+| Skills | Własna biblioteka, discovery/import, instalacja per projekt, hash/pochodzenie i bezpieczny eksport/usuwanie | Ręczna QA UI i obsługa kolejnych formatów frontmatter |
+| Graph / Trace | Hierarchie, disclosure, filtry/timing, eksport grafu, search z przodkami, minimapa, zoom i skróty, sticky axis | Zaawansowany auto-layout i pełna wirtualizacja 10k+; ręczna QA fokusu/a11y |
+| Design / onboarding / uprawnienia | Design settings, tokeny scale, Compact/Comfortable, Reduce motion, jednostajne płaskie Ustawienia, dwustopniowy onboarding, katalog ACP i centrum TCC | Pełna migracja pozostałych literalnych rozmiarów, SSH/trust po otwarciu projektu, ręczna QA klawiatury/a11y/TCC |
 | iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
-| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje | Dalszy podział `app.rs`/Services, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
+| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje; `app.rs` podzielony na `app/overlays.rs`, `app/helpers.rs` i `app/tests.rs` | Wspólne Services/event bus, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
 
 Lokalna walidacja beta.3: **487 testów zaliczonych, 4 opcjonalne pominięte**;
 build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
 (Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
 Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
+
+Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **527 testów zaliczonych,
+0 pominiętych**; build, fmt i Clippy `-D warnings` przechodzą. Cztery testy
+`#[ignore]` usunięto, a remote usage dla roli `member` pokazuje jawny stan
+`Admin-only` bez żądania do relay i bez błędu. CI odrzuca `todo!()`/
+`unimplemented!()` w `apps`/`crates`.
 
 ### Zamknięte opisane zakresy bazowe
 
@@ -90,7 +96,7 @@ Status źródeł: `0.1.0-beta.3`, commit `36398df`, tag wypchnięty 1 listopada 
 **success**. Prerelease opublikowano `2026-11-01T09:19:50Z`; pobrane ZIP/DMG/relay
 mają zgodne SHA-256, wersję/tożsamość/arm64, poprawny podpis ad-hoc i weryfikację DMG.
 Nie instalowano artefaktów. Bieżące zmiany hardening są częścią
-**0.1.0-beta.4**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
+**0.1.0-beta.5**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
 [Dowody i blokery domknięcia](release-acceptance.md).
 
 Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
@@ -240,14 +246,15 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [ ] ręczny odbiór mutacji, hoverów i rzeczywistego relay — [zakres i ograniczenia](git-operations-and-blame.md).
 - [ ] **8. Global search** (M)
   - FTS5 transkrypty/sesje + pliki, filtry, snippety.
-- [ ] **25. Terminal** (L)
-  - PTY, VT, taby/splity, scrollback, search, linki, shell integration;
-  - lokalny, SSH, relay; powiadomienie o końcu długiej komendy,
-  - spike: `libghostty-vt` vs `alacritty_terminal` (Ghostty jako referencja
-    renderowania/VT, bez zależności od webowego libghostty).
-- [ ] **26. Autowykrywanie komend** (S/M)
-  - package.json, Cargo.toml, Makefile, justfile, pyproject, skrypty;
-  - panel „Run”, ostatnie komendy.
+- [x] **25. Terminal — lokalny v1** (L)
+  - PTY (`portable-pty`) + VT (`vt100`), taby, bounded scrollback, resize,
+    copy/paste, podstawowe klawisze i ANSI/RGB są wdrożone;
+  - pozostają search/linki/splity/shell integration oraz relaya/SSH i ręczna QA;
+  - szczegóły: [terminal-and-run.md](terminal-and-run.md).
+- [x] **26. Autowykrywanie komend — v1** (S/M)
+  - package.json, Cargo.toml, Makefile, justfile, pyproject, go, deno, composer,
+    Rakefile, mix, gradle/maven i scripts/*;
+  - panel „Run”, preview/potwierdzenie, PTY, status/exit, historia i rerun.
 
 ## M3b — Treść i rozszerzenia
 
@@ -294,10 +301,10 @@ rzeczywiste konto/CI/PR. Dokładne limity i potwierdzone scenariusze:
 | Review zadania | Baseline, obserwowane diffy, komentarz/evidence → draft | Brak automatycznego autorstwa per tura i dowodu pokrycia testami |
 | Context inspector | Rzeczywista koperta klienta, provenance, MCP/skills | System/history/context należące do harnessa pozostają jawnie nieznane |
 | Checkpointy | Nazwane snapshoty zapisanych plików, selektywny restore z potwierdzeniem | Nie snapshot RAM/index/refs; zdalne checkpointy/restore niewdrożone |
-| Checks / problems | Potwierdzany JSON argv, wynik/exit/logi, diagnostyka Cargo | Dalsze adaptery testów i zdalne uruchamianie niewdrożone |
+| Checks / problems | Potwierdzany JSON argv, wynik/exit/logi, diagnostyka Cargo; zdalne uruchamianie dla każdego z grantem | Dalsze adaptery testów i sandbox/limity per użytkownik |
 | Budżety zadania | Trwała rezerwacja żądań, czas, raportowane USD, stop/zgody/retencja | Nie limit rachunku providera; wewnętrzne retry/subagenci mogą mieć nieznany koszt |
 | Porównanie A/B | Dwa detached worktree z jednego HEAD, identyczny prompt, wspólny budżet, diff/checks/preferencja | Local-only, bez sandboxa i auto-merge; nie zastępuje koordynatora M6 |
-| Impact map | Inkrementalny Rust AST, zależności leksykalne i kandydaci testów | Nie compiler/LSP/type/cfg-complete; non-Rust i zdalny indeks niewdrożone |
+| Impact map | Inkrementalny Rust AST, zależności leksykalne, kandydaci testów i zdalny indeks przez relay | Nie compiler/LSP/type/cfg-complete; non-Rust pozostaje poza zakresem |
 | Decision memory | Jawne lokalne wersje, stale, evidence i wybrany wpis → draft | Brak sync; nie automatyczne wstrzykiwanie instrukcji ani magazyn sekretów |
 | GitHub CI/PR | GitHub.com + `gh`, polling job/step, logi zakończonych jobów, potwierdzane operacje PR/CI | Brak relay/Enterprise, fork-head creation, reviewer/assignee/labels, merge queues i pełnego live log stream |
 

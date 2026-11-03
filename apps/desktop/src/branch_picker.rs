@@ -197,11 +197,11 @@ impl DunlinApp {
                     return;
                 }
             };
-            WorkspaceBackend::Remote(crate::remote::RemoteWorkspace {
+            WorkspaceBackend::Remote(Box::new(crate::remote::RemoteWorkspace {
                 host,
                 project: remote.clone(),
                 token,
-            })
+            }))
         } else {
             WorkspaceBackend::Local {
                 root: project.path.clone(),

@@ -1,0 +1,13 @@
+[package]
+publish = false
+name = "dunlin-terminal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-channel = "2.5"
+portable-pty = "0.9"
+vt100 = "0.18"
+serde.workspace = true

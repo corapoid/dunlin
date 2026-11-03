@@ -2,6 +2,245 @@
 
 use dunlin_ui::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PermissionKind {
+    Notifications,
+    Accessibility,
+    ScreenRecording,
+    Automation,
+    FullDiskAccess,
+}
+
+impl PermissionKind {
+    pub const ALL: [Self; 5] = [
+        Self::Notifications,
+        Self::Accessibility,
+        Self::ScreenRecording,
+        Self::Automation,
+        Self::FullDiskAccess,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Notifications => "Notifications",
+            Self::Accessibility => "Accessibility",
+            Self::ScreenRecording => "Screen Recording",
+            Self::Automation => "Automation",
+            Self::FullDiskAccess => "Full Disk Access",
+        }
+    }
+    pub fn settings_url(self) -> &'static str {
+        match self {
+            Self::Notifications => {
+                "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+            }
+            Self::Accessibility => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            }
+            Self::ScreenRecording => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            }
+            Self::Automation => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+            }
+            Self::FullDiskAccess => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PermissionState {
+    Granted,
+    Denied,
+    NotDetermined,
+    Unknown,
+}
+
+impl PermissionState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Granted => "Granted",
+            Self::Denied => "Denied",
+            Self::NotDetermined => "Not determined",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PermissionStatus {
+    pub kind: PermissionKind,
+    pub state: PermissionState,
+    pub detail: String,
+}
+
+type PermissionCache = std::sync::Mutex<Option<(std::time::Instant, Vec<PermissionStatus>)>>;
+
+static PERMISSION_CACHE: std::sync::OnceLock<PermissionCache> = std::sync::OnceLock::new();
+
+fn permission_cache() -> &'static PermissionCache {
+    PERMISSION_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+pub(crate) fn permission_statuses() -> Vec<PermissionStatus> {
+    if let Ok(cache) = permission_cache().lock()
+        && let Some((at, statuses)) = cache.as_ref()
+        && at.elapsed() < std::time::Duration::from_secs(30)
+    {
+        return statuses.clone();
+    }
+    refresh_permission_statuses()
+}
+
+pub(crate) fn refresh_permission_statuses() -> Vec<PermissionStatus> {
+    let statuses = PermissionKind::ALL
+        .into_iter()
+        .map(|kind| {
+            let (state, detail) = permission_status(kind);
+            PermissionStatus {
+                kind,
+                state,
+                detail,
+            }
+        })
+        .collect::<Vec<_>>();
+    if let Ok(mut cache) = permission_cache().lock() {
+        *cache = Some((std::time::Instant::now(), statuses.clone()));
+    }
+    statuses
+}
+
+pub(crate) fn open_permission_settings(kind: PermissionKind) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg(kind.settings_url())
+            .status()
+            .map_err(|error| format!("Could not open System Settings: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("System Settings could not be opened".into())
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = kind;
+        Err("macOS permission settings are unavailable on this platform".into())
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+}
+
+#[cfg(target_os = "macos")]
+fn notification_status() -> (PermissionState, String) {
+    use block2::RcBlock;
+    use objc2_user_notifications::{
+        UNAuthorizationStatus, UNNotificationSettings, UNUserNotificationCenter,
+    };
+    use std::ptr::NonNull;
+    use std::sync::mpsc;
+
+    let center = UNUserNotificationCenter::currentNotificationCenter();
+    let (tx, rx) = mpsc::sync_channel(1);
+    let block = RcBlock::new(move |settings: NonNull<UNNotificationSettings>| {
+        let status = unsafe { settings.as_ref().authorizationStatus() };
+        let _ = tx.try_send(status);
+    });
+    center.getNotificationSettingsWithCompletionHandler(&block);
+    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(status) if status == UNAuthorizationStatus::Authorized => (
+            PermissionState::Granted,
+            "Dunlin may post native notifications.".into(),
+        ),
+        Ok(status) if status == UNAuthorizationStatus::Provisional => (
+            PermissionState::Granted,
+            "Provisional notification delivery is allowed.".into(),
+        ),
+        Ok(status) if status == UNAuthorizationStatus::Denied => (
+            PermissionState::Denied,
+            "Notifications are denied in System Settings.".into(),
+        ),
+        Ok(status) if status == UNAuthorizationStatus::NotDetermined => (
+            PermissionState::NotDetermined,
+            "Dunlin requests notification authorization when it first needs to notify.".into(),
+        ),
+        _ => (
+            PermissionState::Unknown,
+            "The notification status could not be read; no permission was requested.".into(),
+        ),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn permission_status(kind: PermissionKind) -> (PermissionState, String) {
+    match kind {
+        PermissionKind::Notifications => notification_status(),
+        PermissionKind::Accessibility => {
+            let granted = unsafe { AXIsProcessTrusted() };
+            (
+                if granted {
+                    PermissionState::Granted
+                } else {
+                    PermissionState::Unknown
+                },
+                "Accessibility is not granted. macOS does not expose denied vs. not-determined without a prompt; Dunlin does not request it for ordinary chat.".into(),
+            )
+        }
+        PermissionKind::ScreenRecording => {
+            let granted = unsafe { CGPreflightScreenCaptureAccess() };
+            (
+                if granted {
+                    PermissionState::Granted
+                } else {
+                    PermissionState::Unknown
+                },
+                "Screen Recording is not granted. Checking does not capture the screen or trigger a prompt; Dunlin captures nothing by default.".into(),
+            )
+        }
+        PermissionKind::Automation => (
+            PermissionState::Unknown,
+            "Automation grants are per target application and cannot be read without triggering a system prompt. Open System Settings to review them.".into(),
+        ),
+        PermissionKind::FullDiskAccess => {
+            let probe = "/Library/Application Support/com.apple.TCC/TCC.db";
+            match std::fs::File::open(probe) {
+                Ok(_) => (
+                    PermissionState::Granted,
+                    "A protected system database is readable, which indicates Full Disk Access.".into(),
+                ),
+                Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => (
+                    PermissionState::Denied,
+                    "Protected system data is not readable. Grant Full Disk Access only if a feature needs it.".into(),
+                ),
+                Err(_) => (
+                    PermissionState::Unknown,
+                    "Full Disk Access could not be determined from this build.".into(),
+                ),
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn permission_status(kind: PermissionKind) -> (PermissionState, String) {
+    let _ = kind;
+    (
+        PermissionState::Unknown,
+        "macOS permission status is unavailable on this platform.".into(),
+    )
+}
+
 pub(crate) fn trash(path: &std::path::Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {

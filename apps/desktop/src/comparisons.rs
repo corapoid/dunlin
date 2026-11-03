@@ -38,11 +38,9 @@ impl Spec {
             return Err("Choose a label, prompt (32 KiB), 2–1,000 shared client requests and 1–86,400 seconds".into());
         }
         for choice in &self.choices {
-            if !["OpenCode", "Claude Code", "OpenAI Codex", "Custom ACP"]
-                .contains(&choice.harness.as_str())
-                || choice.model.len() > 512
-                || choice.model.chars().any(char::is_control)
-            {
+            let known = choice.harness == "Custom ACP"
+                || crate::harness_discovery::catalog_names().any(|name| name == choice.harness);
+            if !known || choice.model.len() > 512 || choice.model.chars().any(char::is_control) {
                 return Err("Choose a known ACP harness and an explicit model wire ID (or blank = advertised default)".into());
             }
         }
@@ -257,6 +255,119 @@ impl DunlinApp {
         self.save_comparisons()?;
         Ok(())
     }
+    pub(crate) fn register_remote_comparison(
+        &mut self,
+        owner: &Project,
+        spec: Spec,
+        trees: api::Trees,
+        host_id: String,
+        remote_projects: Vec<crate::remote::RemoteProjectInfo>,
+    ) -> Result<(), String> {
+        let mut run = Run {
+            id: trees.id,
+            owner: owner.id.clone(),
+            source: owner.path.clone(),
+            head: trees.head,
+            spec,
+            paths: trees.paths.clone(),
+            sides: Vec::new(),
+            error: trees.error,
+            started_ms: None,
+            budget: None,
+            preferred: None,
+            reports: Vec::new(),
+        };
+        if self.comparisons.runs.len() >= 16 {
+            return Err("Comparison retention limit reached; created trees were retained and must be inspected manually".into());
+        }
+        self.comparisons.runs.push(run.clone());
+        self.save_comparisons()?;
+        let complete = run.error.is_none()
+            && trees.paths.len() == 2
+            && trees.baselines.len() == 2
+            && remote_projects.len() == 2;
+        if !complete && run.error.is_none() {
+            run.error = Some(
+                "Relay comparison is incomplete; trees/projects were retained for manual inspection"
+                    .into(),
+            );
+            *self.comparisons.runs.last_mut().unwrap() = run.clone();
+            self.save_comparisons()?;
+            return Ok(());
+        }
+        if complete {
+            for (i, info) in remote_projects.iter().enumerate() {
+                let choice = run.spec.choices[i].clone();
+                if trees.paths[i] != info.path {
+                    run.error = Some(
+                        "Relay comparison project path does not match its worktree; no agents started"
+                            .into(),
+                    );
+                    break;
+                }
+                let mut settings = ProjectSettings {
+                    harness: Some(choice.harness.clone()),
+                    permission_mode: Some(PermissionMode::Ask),
+                    ..Default::default()
+                };
+                settings.set_default_model(&choice.harness, &choice.model)?;
+                let project = Project {
+                    id: format!("compare-project-{}", uuid::Uuid::now_v7()),
+                    name: format!("{} · {}", run.spec.label, if i == 0 { "A" } else { "B" }),
+                    path: info.path.clone(),
+                    branch: None,
+                    tone: if i == 0 {
+                        ProjectTone::Blue
+                    } else {
+                        ProjectTone::Violet
+                    },
+                    pinned: false,
+                    trusted: true,
+                    running_sessions: 0,
+                    remote: Some(dunlin_domain::RemoteProject {
+                        host_id: host_id.clone(),
+                        project_id: info.id.clone(),
+                        path: info.path.clone(),
+                    }),
+                    group_id: None,
+                    settings,
+                };
+                let mut session = crate::app::blank_session(&project.id, &choice.harness, None);
+                session.title = format!("Comparison {}", if i == 0 { "A" } else { "B" });
+                let store = self.store.as_ref().ok_or("Storage unavailable")?;
+                store
+                    .upsert_project(&project)
+                    .map_err(|_| "Could not import remote comparison project")?;
+                self.projects.push(project.clone());
+                if store.upsert_session(&session).is_err() {
+                    run.error = Some(
+                        "Remote project imported but session creation failed; inspect the retained project"
+                            .into(),
+                    );
+                    break;
+                }
+                self.all_sessions.push(session.clone());
+                run.sides.push(Side {
+                    settings: project.settings.clone(),
+                    actual_model: None,
+                    project: project.id,
+                    session: session.id,
+                    path: project.path,
+                    choice,
+                    baseline: trees.baselines[i].clone(),
+                    claimed: false,
+                    status: "prepared; no agent started".into(),
+                    error: None,
+                });
+                *self.comparisons.runs.last_mut().unwrap() = run.clone();
+                self.save_comparisons()?;
+            }
+        }
+        *self.comparisons.runs.last_mut().unwrap() = run;
+        self.save_comparisons()?;
+        Ok(())
+    }
+
     pub(crate) fn launch_comparison(
         &mut self,
         id: &str,
@@ -303,7 +414,7 @@ impl DunlinApp {
             if !self
                 .projects
                 .iter()
-                .any(|p| p.id == side.project && p.path == side.path && p.trusted && !p.is_remote())
+                .any(|p| p.id == side.project && p.path == side.path && p.trusted)
                 || !self.all_sessions.iter().any(|s| {
                     s.id == side.session
                         && s.project_id == side.project
@@ -380,8 +491,8 @@ impl DunlinApp {
         let index = self
             .projects
             .iter()
-            .position(|p| p.id == session.project_id && p.trusted && !p.is_remote())
-            .ok_or("Comparison project is no longer trusted/local")?;
+            .position(|p| p.id == session.project_id && p.trusted)
+            .ok_or("Comparison project is no longer trusted")?;
         if self.session().id == id {
             return action(self, cx);
         }
@@ -470,7 +581,6 @@ impl DunlinApp {
                     p.id == side.project
                         && p.path == side.path
                         && p.trusted
-                        && !p.is_remote()
                         && p.group_id.is_none()
                         && serde_json::to_value(&p.settings).ok()
                             == serde_json::to_value(&side.settings).ok()

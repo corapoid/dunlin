@@ -18,6 +18,10 @@ pub type Id = String;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MainView {
+    /// Older builds briefly stored Terminal/Run as main views. They are now
+    /// bottom panels; map the stale values back to Chat instead of failing the
+    /// whole settings/history load.
+    #[serde(alias = "Terminal", alias = "Run")]
     Chat,
     Graph,
     Trace,

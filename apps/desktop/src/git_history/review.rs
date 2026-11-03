@@ -4,13 +4,62 @@ use dunlin_workspace::task_review::{self as api, Change, Checkpoint, Restore};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
 
+#[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
+enum ReviewBackend {
+    Local { root: String },
+    Remote(crate::remote::RemoteWorkspace),
+}
+
+impl ReviewBackend {
+    fn capture(&self, label: &str) -> Result<Checkpoint, String> {
+        match self {
+            Self::Local { root } => api::capture(root, label),
+            Self::Remote(workspace) => workspace.review_capture(label),
+        }
+    }
+    fn changes(&self, checkpoint: &Checkpoint) -> Result<Vec<Change>, String> {
+        match self {
+            Self::Local { .. } => api::changes(checkpoint),
+            Self::Remote(workspace) => workspace.review_changes(checkpoint),
+        }
+    }
+}
+
+enum PendingRestore {
+    Local(Restore),
+    Remote {
+        id: String,
+        change: Change,
+        label: String,
+    },
+}
+
+impl PendingRestore {
+    fn change(&self) -> &Change {
+        match self {
+            Self::Local(plan) => &plan.change,
+            Self::Remote { change, .. } => change,
+        }
+    }
+    fn label(&self) -> &str {
+        match self {
+            Self::Local(plan) => &plan.checkpoint.label,
+            Self::Remote { label, .. } => label,
+        }
+    }
+    fn before_absent(&self) -> bool {
+        self.change().before.is_none()
+    }
+}
+
 pub(super) struct State {
     pub visible: bool,
     checkpoints: Vec<Checkpoint>,
     selected: Option<String>,
     changes: Vec<Change>,
     diff: Option<(String, String)>,
-    pending: Option<(uuid::Uuid, Restore)>,
+    pending: Option<(uuid::Uuid, PendingRestore)>,
     loading: bool,
     request: uuid::Uuid,
     error: Option<String>,
@@ -149,10 +198,21 @@ impl DunlinApp {
         }
         cx.notify();
     }
+    fn review_backend(&mut self, project: &Project) -> Result<ReviewBackend, String> {
+        if project.is_remote() {
+            self.remote_workspace_for_project(project)
+                .map(ReviewBackend::Remote)
+        } else {
+            Ok(ReviewBackend::Local {
+                root: project.path.clone(),
+            })
+        }
+    }
+
     fn task_guard(&self, restore: bool) -> Result<(), String> {
         let v = self.git_history.view.as_ref().ok_or("Reopen task review")?;
-        if !owns(&v.project, self.project()) || v.project.is_remote() {
-            return Err("Checkpoints require the same trusted local project. Relay capability is not implemented; no local fallback.".into());
+        if !owns(&v.project, self.project()) {
+            return Err("Checkpoints require the same trusted project; reload the tab.".into());
         }
         if self.git_history.running
             || self.branch_ui.running()
@@ -189,19 +249,35 @@ impl DunlinApp {
             self.file_notice(e, cx);
             return;
         }
-        let v = self.git_history.view.as_mut().unwrap();
-        if v.review.loading {
+        let (label, project, id) = {
+            let v = self.git_history.view.as_mut().unwrap();
+            if v.review.loading {
+                return;
+            }
+            if v.review.checkpoints.len() >= 3 {
+                self.file_notice("Three-baseline retention limit reached. Explicitly delete an obsolete checkpoint first.",cx);
+                return;
+            }
+            (
+                v.review.label.read(cx).value().to_string(),
+                v.project.clone(),
+                v.id,
+            )
+        };
+        let backend = match self.review_backend(&project) {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
+        };
+        if let Some(v) = &mut self.git_history.view
+            && v.id == id
+        {
+            v.review.loading = true;
+        } else {
             return;
         }
-        if v.review.checkpoints.len() >= 3 {
-            self.file_notice("Three-baseline retention limit reached. Explicitly delete an obsolete checkpoint first.",cx);
-            return;
-        }
-        let label = v.review.label.read(cx).value().to_string();
-        let project = v.project.clone();
-        let root = project.path.clone();
-        let id = v.id;
-        v.review.loading = true;
         self.git_history.running = true;
         self.git_history.mutation_global = true;
         self.git_history.mutation_project = Some(project.id.clone());
@@ -209,7 +285,7 @@ impl DunlinApp {
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { api::capture(&root, &label) })
+                .spawn(async move { backend.capture(&label) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.git_history.running = false;
@@ -250,33 +326,48 @@ impl DunlinApp {
         cx.notify();
     }
     fn review_changes(&mut self, checkpoint_id: String, cx: &mut Context<Self>) {
-        let Some(v) = &mut self.git_history.view else {
-            return;
+        let (project, point, id) = {
+            let Some(v) = &mut self.git_history.view else {
+                return;
+            };
+            if !v.project.trusted || v.review.loading {
+                return;
+            }
+            let Some(point) = v
+                .review
+                .checkpoints
+                .iter()
+                .find(|c| c.id == checkpoint_id)
+                .cloned()
+            else {
+                return;
+            };
+            (v.project.clone(), point, v.id)
         };
-        if !v.project.trusted || v.project.is_remote() || v.review.loading {
+        let backend = match self.review_backend(&project) {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
+        };
+        let request = uuid::Uuid::now_v7();
+        if let Some(v) = &mut self.git_history.view
+            && v.id == id
+        {
+            v.review.request = request;
+            v.review.selected = Some(checkpoint_id);
+            v.review.loading = true;
+            v.review.diff = None;
+            v.review.changes.clear();
+            v.review.pending = None;
+        } else {
             return;
         }
-        let Some(point) = v
-            .review
-            .checkpoints
-            .iter()
-            .find(|c| c.id == checkpoint_id)
-            .cloned()
-        else {
-            return;
-        };
-        let id = v.id;
-        let request = uuid::Uuid::now_v7();
-        v.review.request = request;
-        v.review.selected = Some(checkpoint_id);
-        v.review.loading = true;
-        v.review.diff = None;
-        v.review.changes.clear();
-        v.review.pending = None;
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { api::changes(&point) })
+                .spawn(async move { backend.changes(&point) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 let Some(v) = this.git_history.view.as_mut().filter(|v| {
@@ -308,35 +399,67 @@ impl DunlinApp {
                 return;
             }
         }
-        let Some(v) = &mut self.git_history.view else {
-            return;
+        let (project, point, id) = {
+            let Some(v) = &mut self.git_history.view else {
+                return;
+            };
+            if v.review.loading {
+                return;
+            }
+            let Some(point) = v
+                .review
+                .checkpoints
+                .iter()
+                .find(|c| Some(&c.id) == v.review.selected.as_ref())
+                .cloned()
+            else {
+                return;
+            };
+            (v.project.clone(), point, v.id)
         };
-        if v.review.loading {
+        let backend = match self.review_backend(&project) {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
+        };
+        let request = uuid::Uuid::now_v7();
+        if let Some(v) = &mut self.git_history.view
+            && v.id == id
+        {
+            v.review.request = request;
+            v.review.loading = true;
+            v.review.pending = None;
+            v.review.diff = None;
+        } else {
             return;
         }
-        let Some(point) = v
-            .review
-            .checkpoints
-            .iter()
-            .find(|c| Some(&c.id) == v.review.selected.as_ref())
-            .cloned()
-        else {
-            return;
-        };
-        let id = v.id;
-        let request = uuid::Uuid::now_v7();
-        v.review.request = request;
-        v.review.loading = true;
-        v.review.pending = None;
-        v.review.diff = None;
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    api::prepare_restore(&point, &name).map(|plan| {
-                        let text = diff(&plan.change);
-                        (plan, text)
-                    })
+                    match backend {
+                        ReviewBackend::Local { .. } => {
+                            api::prepare_restore(&point, &name).map(|plan| {
+                                let text = diff(&plan.change);
+                                (PendingRestore::Local(plan), text)
+                            })
+                        }
+                        ReviewBackend::Remote(workspace) => {
+                            workspace.review_restore_prepare(&point, &name).map(|plan| {
+                                let text = diff(&plan.change);
+                                (
+                                    PendingRestore::Remote {
+                                        id: plan.id,
+                                        change: plan.change,
+                                        label: point.label.clone(),
+                                    },
+                                    text,
+                                )
+                            })
+                        }
+                    }
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -350,7 +473,7 @@ impl DunlinApp {
                 v.review.loading = false;
                 match result {
                     Ok((plan, text)) => {
-                        v.review.diff = Some((plan.change.path.clone(), text));
+                        v.review.diff = Some((plan.change().path.clone(), text));
                         if restore {
                             v.review.pending = Some((uuid::Uuid::now_v7(), plan));
                         }
@@ -368,22 +491,35 @@ impl DunlinApp {
             self.file_notice(e, cx);
             return;
         }
-        let v = self.git_history.view.as_ref().unwrap();
-        let Some((token, plan)) = &v.review.pending else {
-            return;
+        let (token, id, project, summary) = {
+            let v = self.git_history.view.as_ref().unwrap();
+            let Some((token, plan)) = &v.review.pending else {
+                return;
+            };
+            (
+                *token,
+                v.id,
+                v.project.clone(),
+                format!(
+                    "{} ← {}\n{}\nThis replaces later saved changes to this ONE file, without restoring Git index/refs. Stop external editors/Git first: cross-process changes are not transactional.",
+                    plan.change().path,
+                    plan.label(),
+                    if plan.before_absent() {
+                        "The file was absent: this explicitly DELETES that one file."
+                    } else {
+                        "Restores checkpoint contents and permissions."
+                    }
+                ),
+            )
         };
-        let token = *token;
-        let id = v.id;
-        let message = format!(
-            "{} ← {}\n{}\nThis replaces later saved changes to this ONE file, without restoring Git index/refs. Stop external editors/Git first: cross-process changes are not transactional.",
-            plan.change.path,
-            plan.checkpoint.label,
-            if plan.change.before.is_none() {
-                "The file was absent: this explicitly DELETES that one file."
-            } else {
-                "Restores checkpoint contents and permissions."
+        let restore_backend = match self.review_backend(&project) {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
             }
-        );
+        };
+        let message = summary;
         let receiver = w.prompt(
             PromptLevel::Warning,
             "Restore selected checkpoint file?",
@@ -414,7 +550,18 @@ impl DunlinApp {
                 cx.spawn(async move |this, cx| {
                     let result = cx
                         .background_executor()
-                        .spawn(async move { api::restore(plan) })
+                        .spawn(async move {
+                            match (restore_backend, plan) {
+                                (_, PendingRestore::Local(plan)) => api::restore(plan),
+                                (
+                                    ReviewBackend::Remote(workspace),
+                                    PendingRestore::Remote { id, .. },
+                                ) => workspace.review_restore_execute(&id),
+                                (ReviewBackend::Local { .. }, PendingRestore::Remote { .. }) => {
+                                    Err("Restore plan belongs to a remote project".into())
+                                }
+                            }
+                        })
                         .await;
                     let _ = this.update(cx, |this, cx| {
                         this.git_history.running = false;

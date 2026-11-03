@@ -202,6 +202,87 @@ pub(super) async fn commit(
     .await
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct BranchCreateRequest {
+    project: String,
+    scope: String,
+    oid: String,
+    name: String,
+}
+
+/// Create one ref from an exact commit. This is the only history mutation:
+/// it never checks out, fetches, moves HEAD or writes the index.
+pub(super) async fn create_branch(
+    AuthUser { user, device }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<BranchCreateRequest>,
+) -> Result<StatusCode, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    validate_commit(&request.oid, 0)?;
+    if request.scope.len() != 64
+        || !request.scope.bytes().all(|b| b.is_ascii_hexdigit())
+        || request.name.is_empty()
+        || request.name.len() > 240
+        || request.name.starts_with('-')
+        || request.name == "HEAD"
+        || request.name.trim() != request.name
+    {
+        return Err(ApiError::bad_request(
+            "Branch creation requires a valid scope, full commit ID and explicit name",
+        ));
+    }
+    let permit = state
+        .history_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Git history is busy; try again",
+            )
+        })?;
+    let original = project.clone();
+    let scope = request.scope;
+    let oid = request.oid;
+    let name = request.name;
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let root = history::repository_root(&project.path, None).map_err(ApiError::bad_request)?;
+        if scope != self::scope(&project, &root) {
+            return Err(ApiError::conflict(
+                "The repository scope changed. Close and reopen Git history.",
+            ));
+        }
+        history::create_branch(&root, &name, &oid).map_err(ApiError::bad_request)?;
+        history::repository_root(&project.path, Some(&root)).map_err(|_| {
+            ApiError::conflict("The repository root changed during branch creation")
+        })?;
+        Ok(())
+    })
+    .await
+    .map_err(|_| ApiError::internal("Git history worker failed"))?;
+    let active_device = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .list_devices(&user.id)
+        .map_err(ApiError::from)?
+        .into_iter()
+        .any(|entry| entry.id == device.id && entry.revoked_at.is_none());
+    if !active_device {
+        return Err(ApiError::unauthorized());
+    }
+    let current = state.project_for_user(&user.id, &original.id)?;
+    if current.path != original.path {
+        return Err(ApiError::conflict(
+            "The project changed during branch creation",
+        ));
+    }
+    result?;
+    Ok(StatusCode::OK)
+}
+
 pub(super) async fn patch(
     AuthUser { user, device }: AuthUser,
     State(state): State<AppState>,

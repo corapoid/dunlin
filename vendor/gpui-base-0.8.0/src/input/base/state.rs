@@ -440,6 +440,9 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) searchable: bool,
     pub(super) replaceable: bool,
     pub(super) soft_wrap: bool,
+    /// Whether a multi-line input paints an editor scrollbar. Single-line
+    /// fields never show one regardless of this value.
+    pub(super) scrollbar_visible: bool,
     pub(super) wrapping_indent: WrappingIndent,
     pub(super) scroll_beyond_last_line: Option<usize>,
     pub(super) cursor_surrounding_lines: Option<usize>,
@@ -733,7 +736,17 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// thumb inside every text field, which is a control the field does not
     /// have.
     pub(crate) fn shows_scrollbar(&self) -> bool {
-        self.is_multi_line()
+        self.is_multi_line() && self.scrollbar_visible
+    }
+
+    /// Hide or show this input's editor scrollbar. Used by embedded visual
+    /// editors whose height is derived from their content and which should
+    /// scroll with the surrounding document, not independently.
+    pub fn set_scrollbar_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
+        if self.scrollbar_visible != visible {
+            self.scrollbar_visible = visible;
+            cx.notify();
+        }
     }
 
     pub fn is_multi_line(&self) -> bool {
@@ -866,6 +879,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             searchable: false,
             replaceable: true,
             soft_wrap: true,
+            scrollbar_visible: true,
             wrapping_indent: WrappingIndent::default(),
             scroll_beyond_last_line: None,
             cursor_surrounding_lines: None,

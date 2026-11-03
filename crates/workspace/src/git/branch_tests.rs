@@ -1,4 +1,4 @@
-use super::{branch_context, git, switch_branch, switch_branch_checked};
+use super::{branch_context, checkout_commit_checked, git, switch_branch, switch_branch_checked};
 use std::{fs, path::PathBuf};
 
 struct Repo(PathBuf);
@@ -80,6 +80,33 @@ fn confirmed_checkout_preserves_partial_staging_unstaged_and_untracked_work_with
     assert_eq!(repo.git(&["diff", "--cached", "--binary"]), staged);
     assert_eq!(repo.git(&["diff", "--binary"]), unstaged);
     assert!(repo.git(&["stash", "list"]).is_empty());
+}
+
+#[test]
+fn exact_commit_checkout_requires_a_clean_worktree_and_detaches_without_moving_branches() {
+    let repo = Repo::new();
+    let first = repo.git(&["rev-parse", "HEAD"]).trim().to_string();
+    repo.write("file.txt", "second\n");
+    repo.commit();
+    let second = repo.git(&["rev-parse", "HEAD"]).trim().to_string();
+    let expected = branch_context(repo.path()).unwrap();
+    checkout_commit_checked(repo.path(), &first, &expected).unwrap();
+    let detached = branch_context(repo.path()).unwrap();
+    assert_eq!(detached.current, "Detached HEAD");
+    assert_eq!(detached.head.as_deref(), Some(first.as_str()));
+    assert_eq!(repo.read("file.txt"), "one\ntwo\n");
+    assert_eq!(repo.git(&["rev-parse", "main"]).trim(), second);
+
+    let expected = branch_context(repo.path()).unwrap();
+    checkout_commit_checked(repo.path(), &second, &expected).unwrap();
+    let expected = branch_context(repo.path()).unwrap();
+    repo.write("file.txt", "dirty\n");
+    assert!(checkout_commit_checked(repo.path(), &first, &expected).is_err());
+    assert_eq!(repo.read("file.txt"), "dirty\n");
+    assert_eq!(
+        branch_context(repo.path()).unwrap().head.as_deref(),
+        Some(second.as_str())
+    );
 }
 
 #[test]

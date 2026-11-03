@@ -506,11 +506,15 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) -> Active {
         let editor = cx.new(|cx| {
-            EditorState::new(window, cx)
+            let mut state = EditorState::new(window, cx)
                 .language("plaintext")
                 .line_number(false)
                 .soft_wrap(true)
-                .scroll_beyond_last_line(None)
+                .scroll_beyond_last_line(None);
+            // Blocks grow with their content; their own scrollbar only creates
+            // a second, confusing scroll target. The document owns scrolling.
+            state.set_scrollbar_visible(false, cx);
+            state
         });
         let collection = editor.update(cx, |state, cx| {
             state.set_value(block.text.clone(), window, cx);

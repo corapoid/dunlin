@@ -8,7 +8,7 @@ pub(crate) mod titlebar;
 pub(crate) mod trace;
 
 /// Empty conversations have no execution data, not a sample agent run.
-fn empty_activity(
+pub(crate) fn empty_activity(
     title: &'static str,
     description: &'static str,
     icon_name: dunlin_ui::assets::IconName,

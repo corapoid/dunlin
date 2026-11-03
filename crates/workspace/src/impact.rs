@@ -1,6 +1,7 @@
 //! Bounded Rust AST dependency evidence. No project code, Cargo build scripts,
 //! macros, LSP servers or package installation are executed. Edges are lexical
 //! resolutions, NOT compiler/type/cfg proofs; uncertainty remains explicit.
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
@@ -11,7 +12,7 @@ use syn::{
     parse::Parser,
     visit::{self, Visit},
 };
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Symbol {
     pub id: String,
     pub name: String,
@@ -20,7 +21,7 @@ pub struct Symbol {
     pub line: u32,
     pub test: bool,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Edge {
     pub from: String,
     pub to: String,
@@ -28,7 +29,7 @@ pub struct Edge {
     pub line: u32,
     pub spelling: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Raw {
     symbol: Symbol,
     module: Vec<String>,
@@ -36,19 +37,19 @@ struct Raw {
     locals: HashSet<String>,
     self_type: Option<String>,
 }
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Unit {
     raw: Vec<Raw>,
     imports: BTreeMap<Vec<String>, BTreeMap<String, Vec<String>>>,
     children: Vec<(String, Vec<String>)>,
     warnings: Vec<String>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct Cached {
     digest: String,
     unit: Unit,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Index {
     pub root: String,
     pub head: String,
@@ -62,7 +63,7 @@ pub struct Index {
     inventory: BTreeSet<String>,
     cache: BTreeMap<String, Cached>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Impact {
     pub symbol: Symbol,
     pub references: Vec<Edge>,

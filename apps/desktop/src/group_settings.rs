@@ -342,13 +342,10 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         return div().into_any_element();
     };
     let mut harnesses = div().flex().flex_wrap().gap(px(5.));
-    for name in [
-        None,
-        Some("OpenCode"),
-        Some("Claude Code"),
-        Some("OpenAI Codex"),
-        Some("Custom ACP"),
-    ] {
+    let mut harness_options = vec![None];
+    harness_options.extend(crate::harness_discovery::catalog_names().map(Some));
+    harness_options.push(Some("Custom ACP"));
+    for name in harness_options {
         let selected = draft.settings.harness.as_deref() == name;
         harnesses = harnesses.child(
             Button::new(format!("group-harness-{}", name.unwrap_or("inherit")))

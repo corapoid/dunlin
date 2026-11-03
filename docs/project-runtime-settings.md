@@ -78,9 +78,12 @@ defaults; reconnecting an old one also receives current environment overrides.
 
 **Not a secrets store:** values are saved unencrypted in the local SQLite database
 (and may appear in its WAL/backups). Use harness authentication/Keychain for
-credentials, not this editor. Values are not attached to prompts, transcripts,
-Git files or relay configuration. Relay project runtime defaults are not supported
-by this UI; configure the server separately.
+credentials, not this editor. Local values are not attached to prompts,
+transcripts or Git files. For a remote project, a relay administrator can store
+project runtime defaults on the relay through the same editor; the relay applies
+the validated environment to the next harness process. Non-admin members see the
+values but cannot save them. Relay settings are stored unencrypted in the relay
+database and are never read from this Mac's local account catalog.
 
 Project fields use serde defaults in the existing settings JSON column. Database
 schema v7 adds a group-settings JSON column with empty defaults in a transaction;
@@ -104,7 +107,10 @@ existing groups, project settings, memberships and transcripts are preserved.
   Busy, unsupported/filtered and rejected selections must not force a fallback.
 - Tab/Shift-Tab reach input/editor/save/cancel; Esc closes the modal and returns
   focus. Check scrolling at minimum window height in light and dark themes.
-- Remote project shows a local-only explanation; no local env is sent to relay.
+- Remote project as an admin: save model/env, reconnect, and verify the relay
+  harness receives the env while no local Mac env is used. As a member, verify
+  the values are visible but saving is refused. Check that reserved `DUNLIN_*`,
+  `DYLD_*`, `LD_*`, `PATH`, `BASH_ENV`, `ENV` and `ZDOTDIR` keys are not applied.
 - Create parent/child groups, set different harness/model/env defaults, then move
   a project between them. Check per-value sources and that editors stay override-only.
 - Set Read-only in one member's effective defaults: its existing group conversation

@@ -40,6 +40,13 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      - name: Reject panic placeholders
+        run: |
+          if grep -RInE --include='*.rs' '\b(todo!|unimplemented!)' apps crates; then
+            echo "::error::Use an explicit error path instead of todo!()/unimplemented!()."
+            exit 1
+          fi
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 

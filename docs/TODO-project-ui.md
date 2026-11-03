@@ -2,9 +2,35 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed/pushed through beta.3; current validation is 487 passing
-> tests / 4 optional ignored. Native smokes do not replace manual visual/a11y QA.
+> has since been committed through beta.5; current validation is 527 passing
+> tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
+
+## Settings and onboarding simplification — 2026-11-03
+
+- [x] Replace the glass-tinted Settings sheet with one flat, uniform surface in
+  light and dark mode; group navigation into Workspace / Agent / System and mark
+  the active section with a quiet rail instead of a large coloured pill.
+- [x] Use compact 28 px buttons and content-sized segmented controls; remove the
+  wide, coloured Settings controls and the extra onboarding action menu.
+- [x] Fix Settings and theme-card corner rendering; drop the rectangular panel
+  shadow spill and keep every edge rounded.
+- [x] Make light/dark changes keep the open Settings window focused and active.
+- [x] Reduce onboarding to two steps: choose a detected harness, then
+  **Create first project…**; the default harness is preselected and missing
+  adapters no longer fill the first-run list.
+- [x] Replace the harness cards with a simple ACP harness list: no command or
+  detected path, Install… until detected, then Import sessions…; add the curated
+  ACP catalog and a link to the full registry.
+- [x] Show repository directory names rather than full paths in billing
+  **By project** breakdowns.
+- [x] Give Skills and provider-account actions compact bordered buttons with a
+  visible hover state.
+
+Validation: 527 workspace tests passed / 0 ignored; build, fmt and Clippy
+`-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
+real-GitHub acceptance remains outside this log.
+
 
 - [x] Center Dashboard activity totals and soften light-theme dots.
 - [x] Give recent-project tiles visible light-theme containers.
@@ -13,7 +39,7 @@
 - [x] Import multiple selected local folders or a collection of repositories.
 - [x] Detect declared monorepos and display a badge.
 - [x] Add a persisted project-list branch visibility preference.
-- [x] Enlarge Settings; add Design → Application / Sidebar / Agent / Editor.
+- [x] Enlarge Settings; add Design → Application / Sidebar and dedicated Chat / Editor tabs.
 - [x] Fix Settings corner clipping in the light theme.
 - [x] Hide unstarted session drafts without deleting any history.
 - [x] Run regression tests, lint and formatting checks; rebuild and verify the app.

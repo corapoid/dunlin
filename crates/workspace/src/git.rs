@@ -512,6 +512,57 @@ pub fn switch_branch(path: &str, branch: &str) -> Result<(), String> {
     switch_branch_checked(path, branch, &expected, false)
 }
 
+/// Detach HEAD at one exact commit after a fresh branch-context check. The
+/// worktree must be clean: unlike a branch switch, there is no meaningful
+/// destination to carry compatible local changes to. No stash, reset or force.
+pub fn checkout_commit_checked(
+    path: &str,
+    oid: &str,
+    expected: &BranchContext,
+) -> Result<(), String> {
+    if !matches!(oid.len(), 40 | 64) || !oid.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Select a full commit ID from this repository".into());
+    }
+    let current = branch_context(path)?;
+    if !current.same_snapshot(expected) {
+        return Err(
+            "The repository changed while history was open. Review the current changes and try again."
+                .into(),
+        );
+    }
+    if current.dirty() {
+        return Err(
+            "Commit checkout requires a clean worktree. Commit, stash or discard changes first; nothing was changed."
+                .into(),
+        );
+    }
+    let resolved = git(
+        &current.root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{oid}^{{commit}}"),
+        ],
+    )?;
+    if resolved.trim() != oid {
+        return Err("The selected commit no longer resolves exactly in this repository".into());
+    }
+    git(
+        &current.root,
+        &[
+            "switch",
+            "--detach",
+            "--no-guess",
+            "--no-overwrite-ignore",
+            "--no-recurse-submodules",
+            "--",
+            oid,
+        ],
+    )
+    .map(|_| ())
+}
+
 pub fn pull(path: &str) -> Result<(), String> {
     git(path, &["pull", "--ff-only"]).map(|_| ())
 }

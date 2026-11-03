@@ -886,33 +886,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires the installed local OpenCode service; public discovery only"]
-    fn local_console_discovery_exposes_browser_auth_without_signing_in() {
-        let directory = std::env::current_dir().unwrap();
-        let directory = directory.to_str().unwrap();
-        let service = LocalService::discover(directory).unwrap();
-        for provider_id in [crate::providers::GO, crate::providers::FREE] {
-            let provider = api(
-                directory,
-                &format!(
-                    "provider/{}",
-                    crate::providers::account_provider(provider_id)
-                ),
-            )
-            .unwrap();
-            let integration = resolved_integration(provider_id, &provider).unwrap();
-            let response = service
-                .request("GET", &auth_path(directory, &integration, ""), None)
-                .unwrap();
-            let choices = methods(response.get("data").unwrap());
-            assert!(matches!(
-                choices[preferred_method(&choices)].kind,
-                MethodKind::OAuth(_)
-            ));
-        }
-    }
-
-    #[test]
     fn auth_paths_encode_integration_attempt_and_directory() {
         let path = auth_path("/a b/?c", "provider/alias", "/connect/key");
         assert_eq!(
@@ -1050,21 +1023,5 @@ mod tests {
             !observer.join().unwrap(),
             "auth request followed a redirect"
         );
-    }
-
-    #[test]
-    #[ignore = "read-only integration check against an installed local OpenCode service"]
-    fn discovers_local_service_without_modifying_accounts() {
-        let directory = std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-        let service = LocalService::discover(&directory).unwrap_or_else(|error| panic!("{error}"));
-        let provider = api(&directory, "provider/opencode-go").unwrap();
-        let integration = resolved_integration(crate::providers::GO, &provider).unwrap();
-        let response = service
-            .request("GET", &auth_path(&directory, &integration, ""), None)
-            .unwrap();
-        assert!(!methods(&response["data"]).is_empty());
     }
 }

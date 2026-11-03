@@ -3,6 +3,48 @@ use crate::comparisons::{Choice, Spec};
 use dunlin_ui::component::input::{Textarea, TextareaState};
 use dunlin_workspace::{checks, comparison as api, task_review};
 use std::sync::{Arc, atomic::AtomicBool};
+enum CompareCheckPlan {
+    Local(checks::Prepared),
+    Remote {
+        workspace: crate::remote::RemoteWorkspace,
+        project_id: String,
+    },
+}
+
+#[allow(clippy::large_enum_variant)]
+enum PreparedComparison {
+    Local(api::Prepared),
+    Remote {
+        workspace: crate::remote::RemoteWorkspace,
+        prepared: crate::remote::RemotePreparedComparison,
+    },
+}
+
+impl PreparedComparison {
+    fn head(&self) -> &str {
+        match self {
+            Self::Local(plan) => &plan.head,
+            Self::Remote { prepared, .. } => &prepared.head,
+        }
+    }
+    fn paths(&self) -> &[String] {
+        match self {
+            Self::Local(plan) => &plan.paths,
+            Self::Remote { prepared, .. } => &prepared.paths,
+        }
+    }
+    fn confirmation_note(&self) -> &'static str {
+        match self {
+            Self::Local(_) => {
+                "Creates two detached local worktrees and imports two local projects/sessions. Source must be clean; unsaved/dirty source edits are never copied. Git may run configured hooks/filters/signing tools (not sandboxed). New projects copy the effective local environment and use Ask permissions; no group context. Partial trees are retained on failure, never automatically deleted. This action starts NO agents and incurs no provider request. Agent starts need a separate confirmation."
+            }
+            Self::Remote { .. } => {
+                "Creates two detached worktrees and relay projects/sessions on the relay host. Source must be clean; Git may run server-side hooks/filters (not sandboxed). The relay registers explicit grants for both worktree paths with Ask permissions; no group context. Partial trees are retained on failure, never automatically deleted. This action starts NO agents and incurs no provider request. Agent starts need a separate confirmation."
+            }
+        }
+    }
+}
+
 pub(super) struct State {
     pub visible: bool,
     label: Entity<InputState>,
@@ -12,7 +54,7 @@ pub(super) struct State {
     seconds: Entity<InputState>,
     requests: Entity<InputState>,
     check: Entity<InputState>,
-    pending: Option<(uuid::Uuid, api::Prepared, Spec)>,
+    pending: Option<(uuid::Uuid, PreparedComparison, Spec)>,
     preview: Option<(String, Vec<String>)>,
     error: Option<String>,
     scroll: ScrollHandle,
@@ -120,8 +162,10 @@ impl DunlinApp {
             .view
             .as_ref()
             .ok_or("Open comparisons first")?;
-        if !owns(&v.project, self.project()) || v.project.is_remote() {
-            return Err("Comparisons require the same trusted local source project; relay launch has no local fallback".into());
+        if !owns(&v.project, self.project()) {
+            return Err(
+                "Comparisons require the same trusted source project; reload the tab".into(),
+            );
         }
         if self.git_history.running
             || self.branch_ui.running()
@@ -203,11 +247,33 @@ impl DunlinApp {
         let id = v.id;
         let owner = v.project.clone();
         let root = owner.path.clone();
+        let remote = if owner.is_remote() {
+            match self.remote_workspace_for_project(&owner) {
+                Ok(workspace) => Some(workspace),
+                Err(error) => {
+                    self.file_notice(error, cx);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         self.comparison_lock(&owner, true);
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { api::prepare(&root) })
+                .spawn(async move {
+                    if let Some(workspace) = remote {
+                        workspace
+                            .compare_prepare()
+                            .map(|prepared| PreparedComparison::Remote {
+                                workspace,
+                                prepared,
+                            })
+                    } else {
+                        api::prepare(&root).map(PreparedComparison::Local)
+                    }
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.comparison_lock(&owner, false);
@@ -248,9 +314,14 @@ impl DunlinApp {
                 return;
             }
         };
+        let paths = plan.paths();
         let summary = format!(
-            "{}\nPinned commit: {}\nA: {}\nB: {}\n\nCreates two detached worktrees and local projects/sessions. Source must be clean; unsaved/dirty source edits are never copied. Git may run configured hooks/filters/signing tools (not sandboxed). New projects copy the effective local environment and use Ask permissions; no group context. Partial trees are retained on failure, never automatically deleted. This action starts NO agents and incurs no provider request. Agent starts need a separate confirmation.",
-            spec.label, plan.head, plan.paths[0], plan.paths[1]
+            "{}\nPinned commit: {}\nA: {}\nB: {}\n\n{}",
+            spec.label,
+            plan.head(),
+            paths.first().map(String::as_str).unwrap_or("unknown"),
+            paths.get(1).map(String::as_str).unwrap_or("unknown"),
+            plan.confirmation_note()
         );
         let receiver = w.prompt(
             PromptLevel::Warning,
@@ -260,13 +331,89 @@ impl DunlinApp {
             cx,
         );
         let receiver = self.overlay_backdrop.track_native(receiver, cx);
-        cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let _=this.update(cx,|this,cx|{
-            if this.comparison_guard(false).is_err(){return;}let Some(v)=this.git_history.view.as_mut().filter(|v|v.id==id&&v.compare.pending.as_ref().is_some_and(|(t,_,_)|*t==token))else{return;};let (_,plan,spec)=v.compare.pending.take().unwrap();this.comparison_lock(&owner,true);
-            cx.spawn(async move|this,cx|{let trees=cx.background_executor().spawn(async move{api::create(plan)}).await;let _=this.update(cx,|this,cx|{
-                this.comparison_lock(&owner,false);let mut trees=trees;if !this.projects.iter().any(|p|owns(&owner,p)){trees.error=Some("Source trust/identity changed; trees retained and no projects/agents started".into());}
-                match this.register_comparison(&owner,spec,trees,environment){Ok(())=>this.file_notice("Comparison paths recorded; inspect preparation errors before separately starting agents",cx),Err(e)=>this.file_notice(e,cx)}this.persist_settings(cx);cx.notify();
-            });}).detach();cx.notify();
-        });}).detach();
+        cx.spawn(async move |this, cx| {
+            if receiver.await != Ok(1) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| {
+                if this.comparison_guard(false).is_err() {
+                    return;
+                }
+                let Some(v) = this.git_history.view.as_mut().filter(|v| {
+                    v.id == id
+                        && v.compare
+                            .pending
+                            .as_ref()
+                            .is_some_and(|(t, _, _)| *t == token)
+                }) else {
+                    return;
+                };
+                let (_, plan, spec) = v.compare.pending.take().unwrap();
+                this.comparison_lock(&owner, true);
+                cx.spawn(async move |this, cx| {
+                    let outcome = cx
+                        .background_executor()
+                        .spawn(async move {
+                            match plan {
+                                PreparedComparison::Local(plan) => {
+                                    Ok::<_, String>((api::create(plan), Vec::new(), None))
+                                }
+                                PreparedComparison::Remote {
+                                    workspace,
+                                    prepared,
+                                } => {
+                                    let response = workspace.compare_create(&prepared.id)?;
+                                    Ok((
+                                        response.trees,
+                                        response.projects,
+                                        Some(workspace.host.id),
+                                    ))
+                                }
+                            }
+                        })
+                        .await;
+                    let _ = this.update(cx, |this, cx| {
+                        this.comparison_lock(&owner, false);
+                        let (mut trees, remote_projects, host) = match outcome {
+                            Ok(value) => value,
+                            Err(error) => {
+                                this.file_notice(error, cx);
+                                return;
+                            }
+                        };
+                        if !this.projects.iter().any(|p| owns(&owner, p)) {
+                            trees.error = Some(
+                                "Source trust/identity changed; trees retained and no projects/agents started"
+                                    .into(),
+                            );
+                        }
+                        let result = if let Some(host) = host {
+                            this.register_remote_comparison(
+                                &owner,
+                                spec,
+                                trees,
+                                host,
+                                remote_projects,
+                            )
+                        } else {
+                            this.register_comparison(&owner, spec, trees, environment)
+                        };
+                        match result {
+                            Ok(()) => this.file_notice(
+                                "Comparison paths recorded; inspect preparation errors before separately starting agents",
+                                cx,
+                            ),
+                            Err(e) => this.file_notice(e, cx),
+                        }
+                        this.persist_settings(cx);
+                        cx.notify();
+                    });
+                })
+                .detach();
+                cx.notify();
+            });
+        })
+        .detach();
     }
     fn confirm_comparison_start(&mut self, target: String, w: &mut Window, cx: &mut Context<Self>) {
         if let Err(e) = self.comparison_guard(false) {
@@ -313,18 +460,41 @@ impl DunlinApp {
                     })
             })
             .collect::<Vec<_>>();
+        let remote_run = run.sides.iter().any(|side| {
+            self.projects
+                .iter()
+                .find(|project| project.id == side.project)
+                .is_some_and(Project::is_remote)
+        });
+        let execution = if remote_run {
+            "Starts two ACP sessions through the relay host using its configured harness and Ask permissions. Relay worktrees are separate working directories, NOT security sandboxes; hooks and external writers are not transactional. No automatic retries or paid app-restart resume.".to_string()
+        } else {
+            format!(
+                "Starts two local ACP adapters (`{}`, `{}`) with inherited configured environment/credentials and Ask permissions. Worktrees are separate working directories, NOT security sandboxes. No automatic retries or paid app-restart resume.",
+                commands[0], commands[1]
+            )
+        };
         let summary = format!(
-            "Task {} · commit {}\nA: {} / {} · {}\nB: {} / {} · {}\nShared cap: {} client requests / {}s from start. Reported USD may be UNKNOWN; there is NO USD billing cap.\n\nStarts two local ACP adapters with inherited configured environment/credentials and Ask permissions. Worktrees are separate working directories, NOT security sandboxes. No automatic retries or paid app-restart resume. Both receive this EXACT prompt:\n\n{}",
+            "Task {} · commit {}\nA: {} / {} · {}\nB: {} / {} · {}\nShared cap: {} client requests / {}s from start. Reported USD may be UNKNOWN; there is NO USD billing cap.\n\n{}\n\nBoth receive this EXACT prompt:\n\n{}",
             run.spec.label,
             run.head,
             run.sides[0].choice.harness,
             run.sides[0].choice.model,
-            commands[0],
+            if remote_run {
+                "relay-configured"
+            } else {
+                commands[0].as_str()
+            },
             run.sides[1].choice.harness,
             run.sides[1].choice.model,
-            commands[1],
+            if remote_run {
+                "relay-configured"
+            } else {
+                commands[1].as_str()
+            },
             run.spec.requests,
             run.spec.seconds,
+            execution,
             run.spec.prompt
         );
         let receiver = w.prompt(
@@ -335,24 +505,116 @@ impl DunlinApp {
             cx,
         );
         let receiver = self.overlay_backdrop.track_native(receiver, cx);
-        cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let _=this.update(cx,|this,cx|{
-            if this.comparison_guard(false).is_err()||!owns(&owner,this.project()){return;}let approved=commands;for (i,choice) in run.spec.choices.iter().enumerate(){let command=std::env::var("DUNLIN_HARNESS_COMMAND").ok().filter(|s|!s.trim().is_empty()).unwrap_or_else(||crate::harness::harness_command(&choice.harness,&this.custom_harness_command));if command!=approved[i]{this.file_notice("Adapter command changed after confirmation; no agents started",cx);return;}}
-            this.comparison_lock(&owner,true);let check_run=run.clone();
-            cx.spawn(async move|this,cx|{
-                let result=cx.background_executor().spawn(async move{for side in &check_run.sides{api::validate_tree(&side.path,&check_run.head)?;}Ok::<_,String>(())}).await;
-                let _=this.update(cx,|this,cx|{
-                    this.comparison_lock(&owner,false);
-                    if !owns(&owner,this.project())||this.comparison_guard(false).is_err(){return;}
-                    // Validation yields to the UI: consent must still match at
-                    // the adapter boundary, not just before the worker starts.
-                    for (i,choice) in run.spec.choices.iter().enumerate(){
-                        let command=std::env::var("DUNLIN_HARNESS_COMMAND").ok().filter(|s|!s.trim().is_empty()).unwrap_or_else(||crate::harness::harness_command(&choice.harness,&this.custom_harness_command));
-                        if command!=approved[i]{this.file_notice("Adapter command changed during validation; no agents started",cx);return;}
+        let mut validators = Vec::new();
+        for side in &run.sides {
+            let Some(project) = self.projects.iter().find(|p| p.id == side.project).cloned() else {
+                self.file_notice("Comparison project disappeared", cx);
+                return;
+            };
+            if project.is_remote() {
+                match self.remote_workspace_for_project(&project) {
+                    Ok(workspace) => validators.push(Some(workspace)),
+                    Err(error) => {
+                        self.file_notice(error, cx);
+                        return;
                     }
-                    match result.and_then(|_|this.launch_comparison(&target,cx)){Ok(())=>this.file_notice("Comparison adapters started; each approved prompt is durably claimed once",cx),Err(e)=>this.file_notice(e,cx)}cx.notify();
-                });
-            }).detach();
-        });}).detach();
+                }
+            } else {
+                validators.push(None);
+            }
+        }
+        cx.spawn(async move |this, cx| {
+            if receiver.await != Ok(1) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| {
+                if this.comparison_guard(false).is_err() || !owns(&owner, this.project()) {
+                    return;
+                }
+                let approved = commands;
+                if !remote_run {
+                    for (i, choice) in run.spec.choices.iter().enumerate() {
+                        let command = std::env::var("DUNLIN_HARNESS_COMMAND")
+                            .ok()
+                            .filter(|s| !s.trim().is_empty())
+                            .unwrap_or_else(|| {
+                                crate::harness::harness_command(
+                                    &choice.harness,
+                                    &this.custom_harness_command,
+                                )
+                            });
+                        if command != approved[i] {
+                            this.file_notice(
+                                "Adapter command changed after confirmation; no agents started",
+                                cx,
+                            );
+                            return;
+                        }
+                    }
+                }
+                this.comparison_lock(&owner, true);
+                let check_run = run.clone();
+                cx.spawn(async move |this, cx| {
+                    let result = cx
+                        .background_executor()
+                        .spawn(async move {
+                            for (side, remote) in check_run.sides.iter().zip(validators) {
+                                match remote {
+                                    Some(workspace) => {
+                                        workspace.compare_validate(&check_run.head)?;
+                                    }
+                                    None => {
+                                        api::validate_tree(&side.path, &check_run.head)?;
+                                    }
+                                }
+                            }
+                            Ok::<_, String>(())
+                        })
+                        .await;
+                    let _ = this.update(cx, |this, cx| {
+                        this.comparison_lock(&owner, false);
+                        if !owns(&owner, this.project())
+                            || this.comparison_guard(false).is_err()
+                        {
+                            return;
+                        }
+                        // Validation yields to the UI: consent must still match
+                        // at the adapter boundary, not just before the worker
+                        // starts.
+                        if !remote_run {
+                            for (i, choice) in run.spec.choices.iter().enumerate() {
+                                let command = std::env::var("DUNLIN_HARNESS_COMMAND")
+                                    .ok()
+                                    .filter(|s| !s.trim().is_empty())
+                                    .unwrap_or_else(|| {
+                                        crate::harness::harness_command(
+                                            &choice.harness,
+                                            &this.custom_harness_command,
+                                        )
+                                    });
+                                if command != approved[i] {
+                                    this.file_notice(
+                                        "Adapter command changed during validation; no agents started",
+                                        cx,
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+                        match result.and_then(|_| this.launch_comparison(&target, cx)) {
+                            Ok(()) => this.file_notice(
+                                "Comparison adapters started; each approved prompt is durably claimed once",
+                                cx,
+                            ),
+                            Err(e) => this.file_notice(e, cx),
+                        }
+                        cx.notify();
+                    });
+                })
+                .detach();
+            });
+        })
+        .detach();
     }
     fn inspect_comparison(&mut self, target: String, cx: &mut Context<Self>) {
         let Some(run) = self
@@ -368,10 +630,31 @@ impl DunlinApp {
             return;
         };
         let id = v.id;
+        let mut remote_sides = Vec::new();
+        for side in &run.sides {
+            let Some(project) = self.projects.iter().find(|p| p.id == side.project).cloned() else {
+                self.file_notice("Comparison project disappeared", cx);
+                return;
+            };
+            if project.is_remote() {
+                match self.remote_workspace_for_project(&project) {
+                    Ok(workspace) => remote_sides.push(Some(workspace)),
+                    Err(error) => {
+                        self.file_notice(error, cx);
+                        return;
+                    }
+                }
+            } else {
+                remote_sides.push(None);
+            }
+        }
         cx.spawn(async move|this,cx|{
             let previews=cx.background_executor().spawn(async move{
-                run.sides.iter().map(|side|{
-                    let changes=task_review::changes(&side.baseline)?;
+                run.sides.iter().enumerate().map(|(index, side)|{
+                    let changes = match remote_sides.get(index).and_then(Option::as_ref) {
+                        Some(workspace) => workspace.compare_changes(&side.baseline)?,
+                        None => task_review::changes(&side.baseline)?,
+                    };
                     let mut text=format!("{} changed saved files since shared commit {}. Author/test coverage not inferred.\n",changes.len(),run.head);
                     for c in changes.iter().take(20){
                         text.push_str(&format!("\n{}\n",c.path));
@@ -420,20 +703,39 @@ impl DunlinApp {
         else {
             return;
         };
-        let plans = run
-            .sides
-            .iter()
-            .map(|s| checks::prepare(&s.path, argv.clone()))
-            .collect::<Result<Vec<_>, _>>();
-        let plans = match plans {
-            Ok(p) => p,
-            Err(e) => {
-                self.file_notice(e, cx);
+        let mut plans = Vec::new();
+        for side in &run.sides {
+            let Some(project) = self.projects.iter().find(|p| p.id == side.project).cloned() else {
+                self.file_notice("Comparison project disappeared", cx);
                 return;
+            };
+            if project.is_remote() {
+                match self.remote_workspace_for_project(&project) {
+                    Ok(workspace) => plans.push(CompareCheckPlan::Remote {
+                        workspace,
+                        project_id: project
+                            .remote
+                            .as_ref()
+                            .map(|remote| remote.project_id.clone())
+                            .unwrap_or_default(),
+                    }),
+                    Err(error) => {
+                        self.file_notice(error, cx);
+                        return;
+                    }
+                }
+            } else {
+                match checks::prepare(&side.path, argv.clone()) {
+                    Ok(plan) => plans.push(CompareCheckPlan::Local(plan)),
+                    Err(error) => {
+                        self.file_notice(error, cx);
+                        return;
+                    }
+                }
             }
-        };
+        }
         let summary = format!(
-            "Runs this argv ONCE in EACH comparison tree:\n{}\n{}\n{}\nNative project code is NOT sandboxed; it may change files or use credentials/network. 120s and 512 KiB per stream per command. Logs are stored locally and may contain secrets. No test success is inferred from text. No automatic retry.",
+            "Runs this argv ONCE in EACH comparison tree:\n{}\n{}\n{}\nNative project code is NOT sandboxed; local checks run with this Mac's permissions and remote checks with the relay process's permissions. Commands may change files or use credentials/network. 120s and 512 KiB per stream per command. Logs are stored locally and may contain secrets. No test success is inferred from text. No automatic retry.",
             serde_json::to_string(&argv).unwrap_or_default(),
             run.sides[0].path,
             run.sides[1].path
@@ -447,12 +749,94 @@ impl DunlinApp {
             cx,
         );
         let receiver = self.overlay_backdrop.track_native(receiver, cx);
-        cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let _=this.update(cx,|this,cx|{if this.comparison_guard(true).is_err()||!owns(&owner,this.project()){return;}this.comparison_lock(&owner,true);let cancel=Arc::new(AtomicBool::new(false));this.git_history.cancel_check=Some(cancel.clone());
-            cx.spawn(async move|this,cx|{let results=cx.background_executor().spawn(async move{plans.into_iter().enumerate().map(|(i,p)|(i,checks::run(p,cancel.clone()))).collect::<Vec<_>>()}).await;let _=this.update(cx,|this,cx|{this.comparison_lock(&owner,false);this.git_history.cancel_check=None;
-                if let Some(run)=this.comparisons.runs.iter_mut().find(|r|r.id==target){run.reports.clear();for (side,result) in results{match result{Ok(mut report)=>{report.stdout=dunlin_workspace::github::display_text(&report.stdout,40_000);report.stderr=dunlin_workspace::github::display_text(&report.stderr,40_000);run.reports.push((side,report));},Err(e)=>run.error=Some(format!("Check {} unavailable: {e}",side+1))}}}
-                if let Err(e)=this.save_comparisons(){this.file_notice(e,cx);}for tab in &mut this.workbench.tabs{tab.git_changed=true;tab.reload_generation=tab.reload_generation.wrapping_add(1);tab.conflict=Some(crate::app::EditorConflict{path:tab.inspector.path.clone(),message:"Comparison checks ran while this buffer was open; review/reload explicitly".into()});}this.refresh_git_status(cx);this.refresh_file_tree(cx);cx.notify();
-            });}).detach();cx.notify();
-        });}).detach();
+        cx.spawn(async move |this, cx| {
+            if receiver.await != Ok(1) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| {
+                if this.comparison_guard(true).is_err() || !owns(&owner, this.project()) {
+                    return;
+                }
+                this.comparison_lock(&owner, true);
+                let cancel = Arc::new(AtomicBool::new(false));
+                this.git_history.cancel_check = Some(cancel.clone());
+                cx.spawn(async move |this, cx| {
+                    let results = cx
+                        .background_executor()
+                        .spawn(async move {
+                            plans
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, plan)| {
+                                    let result = match plan {
+                                        CompareCheckPlan::Local(plan) => {
+                                            checks::run(plan, cancel.clone())
+                                        }
+                                        CompareCheckPlan::Remote {
+                                            workspace,
+                                            project_id,
+                                        } => crate::remote::run_check(
+                                            &workspace.host.url,
+                                            &workspace.token,
+                                            &project_id,
+                                            argv.clone(),
+                                        ),
+                                    };
+                                    (i, result)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .await;
+                    let _ = this.update(cx, |this, cx| {
+                        this.comparison_lock(&owner, false);
+                        this.git_history.cancel_check = None;
+                        if let Some(run) =
+                            this.comparisons.runs.iter_mut().find(|r| r.id == target)
+                        {
+                            run.reports.clear();
+                            for (side, result) in results {
+                                match result {
+                                    Ok(mut report) => {
+                                        report.stdout = dunlin_workspace::github::display_text(
+                                            &report.stdout,
+                                            40_000,
+                                        );
+                                        report.stderr = dunlin_workspace::github::display_text(
+                                            &report.stderr,
+                                            40_000,
+                                        );
+                                        run.reports.push((side, report));
+                                    }
+                                    Err(error) => {
+                                        run.error = Some(format!(
+                                            "Check {} unavailable: {error}",
+                                            side + 1
+                                        ))
+                                    }
+                                }
+                            }
+                        }
+                        if let Err(error) = this.save_comparisons() {
+                            this.file_notice(error, cx);
+                        }
+                        for tab in &mut this.workbench.tabs {
+                            tab.git_changed = true;
+                            tab.reload_generation = tab.reload_generation.wrapping_add(1);
+                            tab.conflict = Some(crate::app::EditorConflict {
+                                path: tab.inspector.path.clone(),
+                                message: "Comparison checks ran while this buffer was open; review/reload explicitly".into(),
+                            });
+                        }
+                        this.refresh_git_status(cx);
+                        this.refresh_file_tree(cx);
+                        cx.notify();
+                    });
+                })
+                .detach();
+                cx.notify();
+            });
+        })
+        .detach();
     }
 }
 pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -482,10 +866,13 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .on_click(cx.listener(|this, _, _, cx| this.prepare_comparison(cx))),
         );
     if let Some((_, plan, _)) = &s.pending {
+        let paths = plan.paths();
         body = body
             .child(format!(
                 "Commit {}\n{}\n{}",
-                plan.head, plan.paths[0], plan.paths[1]
+                plan.head(),
+                paths.first().map(String::as_str).unwrap_or("unknown"),
+                paths.get(1).map(String::as_str).unwrap_or("unknown"),
             ))
             .child(
                 Button::new("compare-create")

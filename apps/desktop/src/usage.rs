@@ -247,6 +247,47 @@ fn opencode_limits(scope: &Scope, response: &Value, now: f64) -> ProviderUsage {
 }
 
 impl DunlinApp {
+    /// Scan local provider logs only when the Usage surface asks for it. The
+    /// scan is bounded and runs off the UI thread; unknown models stay unpriced.
+    pub(crate) fn refresh_billing(&mut self, cx: &mut Context<Self>) {
+        if self.billing_loading {
+            return;
+        }
+        self.billing_loading = true;
+        self.billing_error = None;
+        cx.spawn(async move |this, cx| {
+            let report = cx
+                .background_executor()
+                .spawn(async move { dunlin_usage::billing::scan_all() })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.billing_loading = false;
+                this.billing_checked = Some(Instant::now());
+                this.billing = Some(dunlin_usage::billing::summarize(report));
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(crate) fn ensure_billing(&mut self, cx: &mut Context<Self>) {
+        if self.billing.is_none()
+            && !self.billing_loading
+            && self
+                .billing_checked
+                .is_none_or(|checked| checked.elapsed() > Duration::from_secs(120))
+        {
+            self.refresh_billing(cx);
+        }
+    }
+
+    pub(crate) fn billing_budget(&self) -> Option<f64> {
+        self.billing_budget_usd
+            .filter(|value| value.is_finite() && *value > 0.)
+            .map(f64::from)
+    }
+
     pub(crate) fn usage_target(&self) -> Scope {
         let harness = self.session_harness();
         let remote = self.project().is_remote();
@@ -370,6 +411,16 @@ pub(crate) fn probe(scope: &Scope) -> Vec<ProviderUsage> {
             vec![limits_failure(scope, &identity)]
         }
     }
+}
+
+/// Relay usage describes the host account, so members must not request it.
+pub(crate) fn restricted_to_admin(role: &str) -> bool {
+    role == "member"
+}
+
+/// The relay returns 403 with this text when a non-admin asks for usage.
+pub(crate) fn admin_only_error(error: &str) -> bool {
+    error.contains("403") && error.contains("Provider usage")
 }
 
 fn limits_failure(scope: &Scope, identity: &Value) -> ProviderUsage {
@@ -618,5 +669,17 @@ mod tests {
         let current = limits_failure(&scope, &json!({"version":"2.2.2"}));
         assert_eq!(current.plan, "Usage request failed");
         assert!(current.windows.is_empty());
+    }
+
+    #[test]
+    fn remote_usage_is_skipped_for_members_and_classifies_the_relay_403() {
+        assert!(restricted_to_admin("member"));
+        assert!(!restricted_to_admin("admin"));
+        assert!(!restricted_to_admin(""));
+        assert!(admin_only_error(
+            "relay request failed (403): Provider usage is restricted to relay administrators"
+        ));
+        assert!(!admin_only_error("relay request failed (500): unavailable"));
+        assert!(!admin_only_error("403: forbidden"));
     }
 }

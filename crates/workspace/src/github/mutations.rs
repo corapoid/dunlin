@@ -67,7 +67,7 @@ impl Action {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Plan {
     pub repository: Repository,
     pub account: String,

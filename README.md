@@ -22,13 +22,13 @@
 
 Dunlin pairs a calm, keyboard-driven workspace with a real
 [Agent Client Protocol](https://agentclientprotocol.com) client. One app can
-drive OpenCode, Claude Code, Codex or any custom ACP harness, with streaming
+drive OpenCode, Claude Code, Codex, a curated ACP catalog or any custom ACP harness, with streaming
 messages, plans, tool calls, diffs and permission requests rendered as native
 UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.4`; see [CHANGELOG.md](CHANGELOG.md).
+release. Source builds are now `0.1.0-beta.5`; see [CHANGELOG.md](CHANGELOG.md).
 Website downloads stay pinned to the last published binary release until new
 release assets are available.
 
@@ -88,14 +88,19 @@ release assets are available.
   connected adapters; idle adapters can be evicted). Pending follow-ups pause at
   background turn boundaries and resume after foreground send guards pass.
   Relay navigation retains its existing disconnect/cancel lifecycle.
-- OpenCode (default), Claude Code, Codex and custom ACP commands. Each project
-  can override the harness and permission mode.
+- OpenCode (default), Claude Code, Codex and a curated ACP catalog: Gemini CLI,
+  Qwen Code, GitHub Copilot, Cursor, Auggie CLI, Kiro CLI, OpenClaw, Hermes Agent
+  and Qoder CLI, plus custom ACP commands. Each project can override the harness
+  and permission mode. Missing agents show **Install…**, which opens the official
+  setup page; detected agents show **Import sessions…**.
 - Local **Project settings → Model & environment…** saves a default model ID per
   harness and literal `NAME=value` environment overrides. Model defaults apply to
   new conversations, not resumed ones; unavailable/rejected defaults block activation
-  instead of silently using another model. Environment changes apply to the next
-  local connection without restarting running agents and are never sent to relay.
-  Values are stored unencrypted in the local database, not Keychain: do not paste secrets.
+  instead of silently using another model. Local environment changes apply to the
+  next local connection without restarting running agents and are never sent to
+  relay. For a remote project, an administrator can store the same model/env
+  defaults on the relay; environment reaches the remote harness at its next
+  connection. Values are unencrypted: do not paste secrets.
   Details and limits: [project runtime defaults](docs/project-runtime-settings.md).
 - **Right-click group → Group settings…** edits inheritable harness, client
   permissions, per-harness models and local environment overrides. Resolution is
@@ -109,7 +114,8 @@ release assets are available.
 
 - File explorer with a debounced watcher and missing-folder recovery.
 - **Settings → Harnesses → Import sessions…** imports OpenCode export JSON,
-  Claude Code/Codex JSONL logs or a portable custom-ACP export. Preview project
+  Claude Code/Codex JSONL logs or a portable `dunlin.session.v1` export for other
+  ACP agents. Preview project
   assignments, match canonical local paths automatically and assign unmatched
   histories manually. Imports are transactional and insert-only: no source writes,
   prompts or overwriting existing conversations. These are history copies, not
@@ -124,7 +130,8 @@ release assets are available.
   files. Load up to 2,000 commits, or enter an older commit/branch/tag to inspect
   its ancestry. Relay history requires the updated, project-granted read-only
   API; old relays report an update requirement, never a local/legacy fallback.
-  No automatic fetch; remote branch creation remains on the roadmap.
+  No automatic fetch; remote branch creation is available through the scoped
+  history mutation endpoint, while commit checkout remains local-only.
   Details, bounds and QA: [Git history](docs/git-history.md).
 - In that Git tab, **Repository state** shows a read-only local or
   relay inventory: stash entries, registered worktrees/locks, ongoing Git
@@ -145,9 +152,12 @@ release assets are available.
   confirmed local check commands with evidence → draft, never automatic prompts.
   **Budget… / Compare… / Impact…** adds durable request/time/reported-USD limits,
   separately authorized same-commit A/B worktrees with shared limits, and incremental
-  Rust AST references/candidate tests. Unknown cost/coverage is not zero; worktrees
-  are not sandboxes and impact is not compiler/LSP-complete. No paid comparison
-  replay on restart, automatic merge or buffer discard.
+  Rust AST references/candidate tests. **On a relay project**, the same review,
+  comparison, context and GitHub surfaces use explicit server-side endpoints;
+  remote GitHub remains administrator-only because it uses the host's `gh`
+  account rather than a per-member token. Unknown cost/coverage is not zero;
+  worktrees are not sandboxes and impact is not compiler/LSP-complete. No paid
+  comparison replay on restart, automatic merge or buffer discard.
   [Bounds and pending acceptance](docs/agent-workbench-and-github.md).
 - `.md` / `.markdown` files open in **Visual** mode by default, with persistent
   styled text editors, editable table cells and code blocks. Clicking positions
@@ -159,6 +169,17 @@ release assets are available.
   Compact 13 px body text / 12 px code; Enter splits prose and continues simple
   lists, while boundary Backspace/Delete joins compatible blocks with shared undo.
   [Supported scope and limitations](docs/markdown-editor.md).
+- **Terminal** (`⌘J`) and **Run** (`⌘⇧J`) share one hideable dock that can be
+  dragged to the bottom, left or right edge and resized by dragging its inner
+  edge. Terminal opens independent local PTY tabs with ANSI/RGB rendering,
+  a 5,000-line scrollback, resize, copy/paste, PageUp/PageDown and basic shell
+  keys. Closing a tab kills its process; sessions are never resumed after restart.
+  Remote projects show an explicit no-PTY state and never fall back to a local
+  shell. **Run** statically detects Node/Cargo/Make/Just/Python/Go/Deno/
+  Composer/Ruby/Elixir/Gradle/Maven and script commands, shows exact argv/cwd/env
+  names, asks for confirmation and runs once in a terminal tab with exit status,
+  bounded local history and rerun. No manifest code is evaluated.
+  [Terminal and Run bounds](docs/terminal-and-run.md).
 - **Project settings → Project icon → Choose image…** embeds a bounded PNG/JPEG/
   SVG/ICO as a small normalized PNG; moving the source file does not break it.
   **Automatic** restores repository-icon discovery. The Home heading follows the
@@ -303,18 +324,28 @@ release assets are available.
   macOS 15 compatibility; a failed panel window falls back to in-window rendering.
   Trace separates idle/unrecorded gaps and compresses them on the
   active-time axis rather than extending the preceding response.
-- Settings is larger and fits the window (up to 1120 × 760 points), with rounded
-  panel-local glass and inset child backgrounds to prevent light-theme corner
-  artifacts. **Design → Application / Sidebar / Agent / Editor** groups appearance
-  controls. **Design → Sidebar → Show branch names** hides project-list branch
+- Settings is larger and fits the window (up to 1120 × 760 points), with an
+  opaque, flat surface that avoids light-theme glass artifacts and keeps the
+  active section marked by a quiet rail. **Design → Application / Sidebar**
+  groups appearance controls, while **Chat** and **Editor** have dedicated tabs,
+  including **Comfortable / Compact** semantic spacing and **Reduce motion**.
+  Compact keeps hit-target floors instead of shrinking controls blindly.
+  **Design → Sidebar → Show branch names** hides project-list branch
   labels independently of Git changes and branch controls elsewhere.
+- **Settings → Permissions** includes a macOS permission center for
+  Notifications, Accessibility, Screen Recording, Automation and Full Disk
+  Access. It distinguishes granted/denied/not-determined/unknown, opens the right
+  System Settings pane and rechecks without granting anything or triggering a
+  request. Status is cached briefly so rendering settings does not block on TCC.
 
 ### Skills and AI commits
 
 **Settings → Skills** maintains one persisted instruction library for all projects.
-Add, edit or delete skills, then explicitly install/update their global copies with
-the OpenCode, Claude Code or Codex buttons. **Other folder…** exports to a custom
-harness's global skills directory. These buttons do not install harness programs,
+Add, edit or delete skills, scan the default harness folders, or import a folder
+containing `SKILL.md`/skill directories. Install/update global copies with the
+OpenCode, Claude Code or Codex buttons, or install project-scoped copies for the
+current local project. **Other folder…** exports to a custom harness's global
+skills directory. These buttons do not install harness programs,
 sign in, change their settings or send AI requests. Review instructions first:
 agents may execute the tools they describe.
 
@@ -325,7 +356,8 @@ agents may execute the tools they describe.
 | Codex | `~/.agents/skills` |
 
 Exports contain instructions only, at `dunlin-<id>/SKILL.md`; scripts, references
-and other supporting files are not imported or synchronized. Library edits do not
+and other supporting files are not imported or synchronized. Discovery records
+the source path and SHA-256 without claiming ownership of existing files. Library edits do not
 silently update installed copies. Updates/removals require the recorded contents
 to remain unchanged: unmanaged files, external edits and symlinked skill files or
 directories are preserved. Removing a skill never recursively deletes supporting
@@ -441,6 +473,15 @@ connects when a project opens.
 | OpenCode | `opencode acp` |
 | Claude Code | `claude-agent-acp` |
 | OpenAI Codex | `codex-acp` |
+| Gemini CLI | `gemini --acp` |
+| Qwen Code | `qwen --acp` |
+| GitHub Copilot | `copilot --acp` |
+| Cursor | `cursor-agent acp` |
+| Auggie CLI | `auggie --acp` |
+| Kiro CLI | `kiro-cli acp` |
+| OpenClaw | `openclaw acp` |
+| Hermes Agent | `hermes acp` |
+| Qoder CLI | `qodercli --acp` |
 | Custom ACP | Any command that speaks ACP over stdio |
 
 The default is OpenCode. Permission modes are **Ask every time**, **Read-only**
@@ -578,11 +619,15 @@ stream by the UI; no artificial typing delay is added. Permission gates and
 errors remain visible.
 The setting persists across launches and does not remove recorded history.
 Graph defaults to agents and actual delegated sessions only. Click an agent to
-show/hide its tools; plans and tool calls never masquerade as agents. **Save SVG**
-exports the currently disclosed tree through a native save dialog, including
-offscreen nodes. Trace defaults to user requests, with per-request disclosure,
-**Requests** to collapse details, and **Expand all**. Kind filters retain parent
-requests so matching events remain navigable. Follow/zoom controls are removed.
+show/hide its tools; plans and tool calls never masquerade as agents. Search keeps
+matching nodes and their ancestor path visible. **Save SVG** exports the currently
+disclosed tree through a native save dialog, including offscreen nodes. A compact
+minimap and zoom controls provide orientation; `⌘+`, `⌘−` and `⌘0` work without
+moving keyboard focus away from chat. Trace defaults to user requests, with
+per-request disclosure, **Requests** to collapse details, **Expand all**, search,
+sticky axis labels and row-density zoom. Kind filters retain parent requests so
+matching events remain navigable. **Reduce motion** in Design disables decorative
+entrance/pulse animation without hiding status.
 Tool nodes are grouped under their owning subagent when origin metadata is available. OpenCode's child-session metadata
 and message IDs are retained so interleaved child/reasoning chunks do not split
 or pollute the root reply. Assistant answers render as Markdown, including
@@ -610,6 +655,15 @@ snapshot and attributes only verified counter differences to requests. A new
 session has a known zero baseline; after resuming, the baseline is unknown until
 a fresh snapshot arrives. Unreported per-model/per-tool consumption and legacy
 usage remain **—**, not zero or an estimate.
+**Settings → Usage** also contains local billing evidence. A bounded, read-only
+scan reads Claude Code JSONL, Codex rollout JSONL and OpenCode's SQLite message
+store, dedupes provider message ids and checkpoints complete JSONL lines. It
+reports global totals plus per-provider, per-harness, per-model, per-project and
+daily slices. Unknown models remain **unpriced**; the visible total is a lower
+bound, never a fabricated zero. Optional monthly alert budgets ($50/$100/$250)
+warn at 80% and alert at 100% of known priced spend. Scanner limits are 2,000
+files, 32 MiB total and 1 MiB per line; no log contents are uploaded.
+
 Times/duration are optional; unknown legacy timestamps and durations are not
 invented. Newly recorded turn duration starts when the prompt is dispatched and
 ends at completion/cancellation/error, including tools and approval waits.
@@ -675,6 +729,10 @@ Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
 **Settings → Remote** on macOS, or in the iOS app. A paired device receives its
 own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
 admin-only because it describes the host account, not a per-project grant.
+Non-admin members see an explicit **Admin-only** state without a relay request
+or error toast; administrators still fetch the limits. Claude Code usage is read
+through its OAuth `user:profile` scope; an expired token asks for `claude /login`
+instead of inventing percentages.
 
 Remote projects support the full macOS surface: explorer, editor with save,
 search, source control, diffs, chat, permissions, graph and trace. A session can
@@ -735,10 +793,9 @@ and intentionally honest about what is not built yet.
 ## What is not in 0.1
 
 - iOS build and sync (the SwiftUI client is a scaffold).
-- Terminal and shell integration.
+- Remote or SSH-backed terminal sessions; the terminal dock is local-only.
 - Computer use.
-- Automations, skills and artifacts.
-- Visual Markdown editor.
+- Automations and artifacts.
 - Parallel worktrees and multi-agent orchestration.
 - Universal or Intel builds.
 
@@ -754,11 +811,9 @@ cargo test --workspace
 ./scripts/relay-smoke.sh
 ```
 
-Optional installed-OpenCode checks run serially because they share its live
-location/catalog initialization: `cargo test -p dunlin -- --ignored --test-threads=1`.
-They do not send prompts or connect/disconnect MCP servers; the MCP isolation
-check creates, modifies and deletes one idle scratch session, leaving existing
-conversations and configured servers unchanged. `DUNLIN_MOCK_RICH_CHAT=1` enables
+There are no ignored integration tests in the workspace. CI rejects
+`todo!()`/`unimplemented!()` in `apps`/`crates`; unfinished relay capabilities
+return explicit errors instead of panicking. `DUNLIN_MOCK_RICH_CHAT=1` enables
 a deterministic Markdown/child-stream fixture in `mock_acp_agent`, without
 network calls or file tools.
 
@@ -819,6 +874,7 @@ crates/ui           Design system on top of GPUI Kit
 crates/domain       Shared project, session, usage, graph and trace types
 crates/workspace    Tree, search, git and filesystem operations
 crates/agent        Reusable ACP client on a dedicated worker thread
+crates/terminal     Local PTY ownership and bounded VT screen
 crates/relay        Self-hosted relay: accounts, pairing, grants, ACP-over-WS
 crates/storage      SQLite persistence (WAL, foreign keys, migrations)
 ```

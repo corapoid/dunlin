@@ -4,6 +4,8 @@ use chrono::{Days, Local, NaiveDate, TimeZone, Timelike};
 use dunlin_domain::{Project, SidebarSection};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
+use dunlin_ui::component::Sizable;
+use dunlin_ui::component::button::Button;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
@@ -790,6 +792,73 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             );
         }
     }
+    let billing_card = div()
+        .id("dashboard-billing")
+        .w_full()
+        .rounded(px(9.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .p(px(12.))
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .child(
+            div()
+                .size(px(28.))
+                .rounded(px(7.))
+                .bg(p.blue_soft)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Icon::new(IconName::ChartNoAxesColumn)
+                        .size(px(14.))
+                        .text_color(p.blue),
+                ),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.fg)
+                        .child("Local billing evidence"),
+                )
+                .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(
+                    match &this.billing {
+                        Some(summary) => format!(
+                            "{} · {} events · {} unpriced · Claude Code / Codex / OpenCode logs",
+                            summary.totals.cost_label(),
+                            summary.totals.events,
+                            summary.totals.unpriced_events
+                        ),
+                        None if this.billing_loading => "Scanning local provider logs…".into(),
+                        None => "No scan yet · unknown models stay unpriced".into(),
+                    },
+                )),
+        )
+        .child(
+            Button::new("dashboard-billing-open")
+                .small()
+                .label(if this.billing.is_some() {
+                    "Open usage"
+                } else {
+                    "Scan logs"
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.settings_open = true;
+                    this.settings_tab = crate::app::SettingsTab::Usage;
+                    cx.notify();
+                })),
+        );
+    body = body.child(billing_card);
     // Flexible spacers center short dashboards vertically without clipping the
     // top when many agents or a small window require scrolling.
     div()

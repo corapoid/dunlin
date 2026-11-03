@@ -6,7 +6,7 @@
 //! per session. Permission prompts are never answered by the relay.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -19,30 +19,40 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc};
 
 use crate::api::{AppState, Lease};
 use crate::store::{Device, Project, SessionOwner, User};
+use dunlin_domain::{ProjectSettings, validate_project_environment};
 
 const SESSION_NOT_FOUND: i64 = -32001;
 const SESSION_BUSY: i64 = -32002;
 const INVALID_PARAMS: i64 = -32602;
 const MAX_PENDING: usize = 256;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn bridge(
     socket: WebSocket,
     state: AppState,
     user: User,
     device: Device,
     project: Project,
+    allowed_roots: Vec<Project>,
     connection_id: String,
     _permit: OwnedSemaphorePermit,
 ) {
     // Names are user-controlled and unnecessary in operational logs. Keep the
     // server-generated connection identity, never raw user/project names.
-    eprintln!("[relay] acp connected · {connection_id}");
+    eprintln!(
+        "[relay] acp connected · {connection_id} · {} explicit root(s)",
+        allowed_roots.len() + 1
+    );
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (close_tx, mut close_rx) = mpsc::channel::<()>(1);
 
     let (program, args) = command_parts(&state.config.harness);
     let current_path = project.path.clone();
-    let other_projects = state
+    let extra_paths = allowed_roots
+        .iter()
+        .map(|root| root.path.clone())
+        .collect::<Vec<_>>();
+    let mut all_projects = state
         .store
         .lock()
         .ok()
@@ -50,17 +60,44 @@ pub async fn bridge(
         .map(|projects| {
             projects
                 .into_iter()
-                .filter(|candidate| candidate.path != current_path)
                 .map(|candidate| candidate.path)
                 .collect::<Vec<_>>()
         })
+        .unwrap_or_default();
+    for path in &extra_paths {
+        if !all_projects.contains(path) {
+            all_projects.push(path.clone());
+        }
+    }
+    let other_projects = all_projects
+        .into_iter()
+        .filter(|path| path != &current_path && !extra_paths.contains(path))
+        .collect::<Vec<_>>();
+    let mut allowed_paths = std::iter::once(&project.path)
+        .chain(extra_paths.iter())
+        .map(|path| {
+            std::fs::canonicalize(path)
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|_| path.clone())
+        })
+        .collect::<Vec<_>>();
+    allowed_paths.sort();
+    allowed_paths.dedup();
+    let project_settings = state
+        .store
+        .lock()
+        .ok()
+        .and_then(|store| store.project_settings(&project.id).ok().flatten())
+        .and_then(|payload| serde_json::from_str::<ProjectSettings>(&payload).ok())
         .unwrap_or_default();
     let mut harness = harness_command(
         &state.config,
         &program,
         &args,
         &project.path,
+        &extra_paths,
         &other_projects,
+        &project_settings,
     );
     let stderr = if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
         Stdio::inherit()
@@ -108,7 +145,14 @@ pub async fn bridge(
         return;
     };
     let mut lines = BufReader::new(stdout).lines();
-    let mut tracker = Tracker::default();
+    let mut tracker = Tracker {
+        pending: HashMap::new(),
+        allowed_roots: allowed_paths,
+        allowed_project_ids: allowed_roots
+            .iter()
+            .map(|project| project.id.clone())
+            .collect(),
+    };
     let mut ticker = tokio::time::interval(Duration::from_secs(30));
     let mut last_activity = Instant::now();
     let mut client_gone = false;
@@ -389,6 +433,10 @@ async fn linger_turn(
 #[derive(Default)]
 struct Tracker {
     pending: HashMap<String, Pending>,
+    /// Canonical project roots explicitly granted for this connection. An ACP
+    /// session may request a subset, never an arbitrary host path.
+    allowed_roots: Vec<String>,
+    allowed_project_ids: Vec<String>,
 }
 
 enum Pending {
@@ -400,6 +448,30 @@ enum Pending {
 }
 
 impl Tracker {
+    fn roots_authorized(&self, state: &AppState, user: &User) -> bool {
+        if self.allowed_project_ids.is_empty() {
+            return true;
+        }
+        let Ok(store) = state.store.lock() else {
+            return false;
+        };
+        let Ok(projects) = store.projects_for_user(&user.id) else {
+            return false;
+        };
+        self.allowed_project_ids.iter().all(|id| {
+            let Some(root) = projects.iter().find(|project| &project.id == id) else {
+                return false;
+            };
+            let Ok(canonical) = std::fs::canonicalize(&root.path) else {
+                return false;
+            };
+            let canonical = canonical.to_string_lossy();
+            self.allowed_roots
+                .iter()
+                .any(|path| canonical == path.as_str())
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn on_client_message(
         &mut self,
@@ -412,7 +484,7 @@ impl Tracker {
         value: &Value,
     ) -> Result<Option<String>, Value> {
         let id = value.get("id").cloned().unwrap_or(Value::Null);
-        if !still_authorized(state, user, device, project) {
+        if !still_authorized(state, user, device, project) || !self.roots_authorized(state, user) {
             return Err(error_response(
                 id,
                 -32003,
@@ -443,7 +515,7 @@ impl Tracker {
                 check_cwd(project, value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
-                check_session_scope(value).map_err(|message| {
+                check_session_scope(value, &self.allowed_roots).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
                 if is_request {
@@ -455,7 +527,7 @@ impl Tracker {
                 check_cwd(project, value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
-                check_session_scope(value).map_err(|message| {
+                check_session_scope(value, &self.allowed_roots).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
                 let session_id = session_id(value).ok_or_else(|| {
@@ -473,7 +545,7 @@ impl Tracker {
                 check_cwd(project, value).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
-                check_session_scope(value).map_err(|message| {
+                check_session_scope(value, &self.allowed_roots).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
                 let source_id = session_id(value).ok_or_else(|| {
@@ -654,19 +726,47 @@ fn check_cwd(project: &Project, value: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// ACP lets clients request extra roots and MCP servers for a session. A relay
-/// grant covers exactly one project, so those fields must stay empty; otherwise
-/// a paired device could widen the harness beyond the authorized root.
-fn check_session_scope(value: &Value) -> Result<(), String> {
-    for field in ["additionalDirectories", "mcpServers"] {
-        match value.pointer(&format!("/params/{field}")) {
-            None | Some(Value::Null) => {}
-            Some(Value::Array(items)) if items.is_empty() => {}
-            Some(_) => {
-                return Err(format!(
-                    "{field} is not allowed by this relay; use the project grant only"
-                ));
+/// Validate an ACP session's extra roots. A relay connection starts with the
+/// anchor project plus an explicit, authenticated list of additional project
+/// grants. A session may request a subset of those roots; anything else (or any
+/// MCP server) is rejected instead of widening the harness silently.
+fn check_session_scope(value: &Value, allowed_roots: &[String]) -> Result<(), String> {
+    if let Some(servers) = value.pointer("/params/mcpServers") {
+        match servers {
+            Value::Null => {}
+            Value::Array(items) if items.is_empty() => {}
+            _ => {
+                return Err(
+                    "mcpServers are not allowed by this relay; configure tools on the host".into(),
+                );
             }
+        }
+    }
+    let requested = match value.pointer("/params/additionalDirectories") {
+        None | Some(Value::Null) => return Ok(()),
+        Some(Value::Array(items)) => items,
+        Some(_) => return Err("additionalDirectories must be an array of absolute paths".into()),
+    };
+    if requested.len() > 32 {
+        return Err("At most 32 additional workspace roots are allowed".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    for item in requested {
+        let path = item
+            .as_str()
+            .ok_or("additionalDirectories entries must be strings")?;
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|_| "Additional workspace root is not available")?
+            .to_string_lossy()
+            .to_string();
+        if !allowed_roots.contains(&canonical) {
+            return Err(
+                "Additional workspace root is outside this relay connection's explicit grants"
+                    .into(),
+            );
+        }
+        if !seen.insert(canonical) {
+            return Err("Duplicate additional workspace root".into());
         }
     }
     Ok(())
@@ -826,23 +926,45 @@ fn harness_command(
     program: &str,
     args: &[String],
     project_path: &str,
+    allowed_roots: &[String],
     other_projects: &[String],
+    settings: &ProjectSettings,
 ) -> Command {
-    if config.sandbox && cfg!(target_os = "macos") && Path::new("/usr/bin/sandbox-exec").is_file() {
+    let mut command = if config.sandbox
+        && cfg!(target_os = "macos")
+        && Path::new("/usr/bin/sandbox-exec").is_file()
+    {
         let mut command = Command::new("/usr/bin/sandbox-exec");
-        let profile = sandbox_profile(project_path, other_projects, program, &config.db);
+        let profile = sandbox_profile(
+            project_path,
+            allowed_roots,
+            other_projects,
+            program,
+            &config.db,
+        );
         if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
             eprintln!("[relay] sandbox profile:\n{profile}");
         }
         command.arg("-p").arg(profile).arg(program).args(args);
-        scrub_harness_environment(&mut command);
         command
     } else {
         let mut command = Command::new(program);
         command.args(args);
-        scrub_harness_environment(&mut command);
         command
+    };
+    scrub_harness_environment(&mut command);
+    if validate_project_environment(&settings.environment).is_ok() {
+        for (key, value) in &settings.environment {
+            if !key.starts_with("DUNLIN_")
+                && !key.starts_with("DYLD_")
+                && !key.starts_with("LD_")
+                && !matches!(key.as_str(), "PATH" | "BASH_ENV" | "ENV" | "ZDOTDIR")
+            {
+                command.env(key, value);
+            }
+        }
     }
+    command
 }
 
 fn scrub_harness_environment(command: &mut Command) {
@@ -863,12 +985,18 @@ fn scrub_harness_environment(command: &mut Command) {
     }
 }
 
-fn deny_path(home: &Path, project: &Path, path: &Path, denied: &mut Vec<String>) {
-    if project == path {
+fn deny_path(
+    home: &Path,
+    project: &Path,
+    allowed: &[PathBuf],
+    path: &Path,
+    denied: &mut Vec<String>,
+) {
+    if allowed.iter().any(|root| root == path) {
         return;
     }
-    if project.starts_with(path) {
-        deny_siblings(home, path, project, denied);
+    if allowed.iter().any(|root| root.starts_with(path)) || project.starts_with(path) {
+        deny_siblings(home, path, allowed, denied);
     } else {
         denied.push(path.to_string_lossy().to_string());
     }
@@ -878,7 +1006,7 @@ fn deny_path(home: &Path, project: &Path, path: &Path, denied: &mut Vec<String>)
 /// the parent itself would also deny the project; enumerating only siblings
 /// keeps the project usable without granting access to the rest of Documents,
 /// Desktop, Downloads, etc. The cap keeps the profile bounded on huge folders.
-fn deny_siblings(home: &Path, parent: &Path, project: &Path, denied: &mut Vec<String>) {
+fn deny_siblings(home: &Path, parent: &Path, allowed: &[PathBuf], denied: &mut Vec<String>) {
     // The profile is built from configured paths. Canonicalize and require the
     // enumerated parent to remain inside the canonical home directory before
     // reading names; this is a sandbox deny-list, never a project file read.
@@ -900,12 +1028,12 @@ fn deny_siblings(home: &Path, parent: &Path, project: &Path, denied: &mut Vec<St
             return;
         }
         let path = entry.path();
-        if path == project {
+        if allowed.iter().any(|root| root == &path) {
             continue;
         }
-        if project.starts_with(&path) {
+        if allowed.iter().any(|root| root.starts_with(&path)) {
             if path.is_dir() {
-                deny_siblings(&home, &path, project, denied);
+                deny_siblings(&home, &path, allowed, denied);
             }
         } else {
             denied.push(path.to_string_lossy().to_string());
@@ -916,13 +1044,20 @@ fn deny_siblings(home: &Path, parent: &Path, project: &Path, denied: &mut Vec<St
 
 fn sandbox_profile(
     project_path: &str,
+    allowed_roots: &[String],
     other_projects: &[String],
     program: &str,
     db_path: &Path,
 ) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let home_path = Path::new(&home);
-    let project = Path::new(project_path);
+    let project = Path::new(project_path)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(project_path));
+    let mut allowed = allowed_roots.iter().map(PathBuf::from).collect::<Vec<_>>();
+    allowed.push(project.clone());
+    allowed.sort();
+    allowed.dedup();
     let mut denied = Vec::new();
 
     if !home.is_empty() {
@@ -987,7 +1122,13 @@ fn sandbox_profile(
             private.push(".config/opencode");
         }
         for suffix in private {
-            deny_path(home_path, project, &home_path.join(suffix), &mut denied);
+            deny_path(
+                home_path,
+                &project,
+                &allowed,
+                &home_path.join(suffix),
+                &mut denied,
+            );
         }
     }
     if !db_path.as_os_str().is_empty() {
@@ -996,15 +1137,24 @@ fn sandbox_profile(
         } else {
             Path::new(&home).join(db_path)
         };
-        deny_path(home_path, project, &db_path, &mut denied);
+        deny_path(home_path, &project, &allowed, &db_path, &mut denied);
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut sidecar = db_path.as_os_str().to_os_string();
             sidecar.push(suffix);
-            deny_path(home_path, project, Path::new(&sidecar), &mut denied);
+            deny_path(
+                home_path,
+                &project,
+                &allowed,
+                Path::new(&sidecar),
+                &mut denied,
+            );
         }
     }
     for path in other_projects {
-        if path != project_path {
+        let canonical = Path::new(path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(path));
+        if canonical != project && !allowed.contains(&canonical) {
             denied.push(path.clone());
         }
     }
@@ -1060,13 +1210,26 @@ mod tests {
     #[test]
     fn rejects_client_requested_extra_roots_and_mcp_servers() {
         let empty = json!({"params": {"additionalDirectories": [], "mcpServers": []}});
-        assert!(check_session_scope(&empty).is_ok());
+        assert!(check_session_scope(&empty, &[]).is_ok());
         let extra = json!({"params": {"additionalDirectories": ["/etc"]}});
-        assert!(check_session_scope(&extra).is_err());
+        assert!(check_session_scope(&extra, &[]).is_err());
         let mcp = json!({"params": {"mcpServers": [{"type": "stdio", "name": "x"}]}});
-        assert!(check_session_scope(&mcp).is_err());
+        assert!(check_session_scope(&mcp, &[]).is_err());
         let malformed = json!({"params": {"mcpServers": {}}});
-        assert!(check_session_scope(&malformed).is_err());
+        assert!(check_session_scope(&malformed, &[]).is_err());
+        let temp = std::env::temp_dir().canonicalize().unwrap();
+        let allowed = temp.join("dunlin-root-allowed");
+        std::fs::create_dir_all(&allowed).unwrap();
+        let allowed = allowed
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let accepted =
+            json!({"params": {"additionalDirectories": [allowed.clone()], "mcpServers": []}});
+        assert!(check_session_scope(&accepted, std::slice::from_ref(&allowed)).is_ok());
+        let outside = json!({"params": {"additionalDirectories": [temp.to_string_lossy()]}});
+        assert!(check_session_scope(&outside, &[allowed]).is_err());
     }
 
     #[test]
@@ -1092,6 +1255,7 @@ mod tests {
     fn sandbox_denies_other_projects_and_credentials() {
         let profile = sandbox_profile(
             "/Users/me/project",
+            &[],
             &["/Users/me/other".to_string()],
             "opencode",
             std::path::Path::new("/Users/me/Library/Application Support/Dunlin/relay.db"),
@@ -1109,11 +1273,13 @@ mod tests {
     fn sandbox_does_not_deny_the_active_project_under_documents() {
         let profile = sandbox_profile(
             "/Users/me/Documents/project",
+            &["/Users/me/Desktop/peer".to_string()],
             &[],
             "opencode",
             std::path::Path::new("/tmp/relay.db"),
         );
         assert!(!profile.contains("(subpath \"/Users/me/Documents\")"));
         assert!(!profile.contains("(subpath \"/Users/me/Documents/project\")"));
+        assert!(!profile.contains("(subpath \"/Users/me/Desktop/peer\")"));
     }
 }
