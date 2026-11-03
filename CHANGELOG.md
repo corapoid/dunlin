@@ -88,6 +88,12 @@ All notable changes to Dunlin are documented here. The format follows
   project size. **Show file sizes** in Design → Application disables all of them.
 - Session rows use compact Today/Yesterday/date labels, group by their real date,
   truncate titles in narrow sidebars and omit the redundant cost/duration chips.
+- Long imported conversations open in bounded windows: the newest 120 items are
+  laid out first and **Show earlier messages** expands them incrementally, while
+  sending a prompt resets the window to the live edge.
+- OpenCode tool parts import as tool cards instead of text, and legacy imported
+  `[Tool · …]` records are rewritten as tool cards on load, so coalescing can no
+  longer merge hundreds of outputs into one giant Markdown block.
 - Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
   to Chat, so upgrading no longer fails the entire local-data load.
 - Saved preferences are now decoded separately from projects/sessions. If a
@@ -112,7 +118,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 534 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 536 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

@@ -1135,6 +1135,7 @@ impl DunlinApp {
         let summary = session_summary(&text);
         let was_running = self.harness.running;
         let queued = self.harness.enqueue_prompt(text.clone());
+        self.chat_visible_items = crate::app::CHAT_WINDOW;
         self.chat_scroll.jump_to_latest();
         self.harness.transcript.push(ChatItem::User {
             text: text.clone(),
@@ -1310,6 +1311,9 @@ impl DunlinApp {
             self.session_list.record(session_id, items);
         }
         self.harness.transcript = loaded.unwrap_or_default();
+        crate::chat_presentation::normalize_legacy(&mut self.harness.transcript);
+        self.chat_visible_items = crate::app::CHAT_WINDOW;
+        self.expanded_tool = None;
         self.harness.started_tools.clear();
         self.harness.active_turn = None;
         self.harness.pending_prompts.clear();

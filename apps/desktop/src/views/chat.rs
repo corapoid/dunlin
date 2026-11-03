@@ -184,11 +184,39 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .flex()
         .flex_col()
         .gap(px(18.));
+    let first_visible = crate::chat_presentation::window_start(&items, this.chat_visible_items);
+
+    if first_visible > 0 {
+        inner = inner.child(
+            div().w_full().flex().justify_center().child(
+                Button::new("chat-show-earlier")
+                    .ghost()
+                    .small()
+                    .icon(IconName::ChevronUp)
+                    .label(format!(
+                        "Show {} earlier {}",
+                        first_visible,
+                        if first_visible == 1 {
+                            "message"
+                        } else {
+                            "messages"
+                        }
+                    ))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.chat_scroll.pause_following();
+                        this.chat_visible_items = this
+                            .chat_visible_items
+                            .saturating_add(crate::app::CHAT_WINDOW);
+                        cx.notify();
+                    })),
+            ),
+        );
+    }
 
     if items.is_empty() {
         inner = inner.child(empty_state(&status, this.project().is_remote(), cx, &p));
     } else {
-        let mut index = 0;
+        let mut index = first_visible;
         while index < items.len() {
             if let ChatItem::User { text, at_ms, .. } = &items[index] {
                 inner = inner.child(user_message(

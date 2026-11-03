@@ -5,6 +5,8 @@
 
 use super::adapters::Candidate;
 use crate::harness::ChatItem;
+use dunlin_agent::ToolCallView;
+use dunlin_domain::{ToolKind, ToolStatus};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -13,7 +15,6 @@ use std::path::Path;
 const MAX_SESSIONS: usize = 256;
 const MAX_MESSAGES_PER_SESSION: usize = 30_000;
 const MAX_PARTS_PER_SESSION: usize = 60_000;
-const MAX_TOOL_TEXT: usize = 16_384;
 
 pub(super) fn load(path: &Path) -> Result<(Vec<Candidate>, Vec<String>), String> {
     let connection = Connection::open_with_flags(
@@ -125,10 +126,12 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
                                     }
                                 }
                                 "tool" => {
-                                    let text = tool_text_v2(part);
-                                    if !text.trim().is_empty() {
-                                        transcript.push(text_item("tool", &text, at));
-                                    }
+                                    let name = part["name"].as_str().unwrap_or("tool");
+                                    let id = part["id"]
+                                        .as_str()
+                                        .map(str::to_owned)
+                                        .unwrap_or_else(|| format!("tool-{at}"));
+                                    transcript.push(tool_call_item(id, name, &part["state"], at));
                                 }
                                 "file" => {
                                     let name = part["filename"]
@@ -301,10 +304,12 @@ fn load_v1(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
                         }
                     }
                     "tool" => {
-                        let text = tool_text(part);
-                        if !text.trim().is_empty() {
-                            transcript.push(text_item("tool", &text, at));
-                        }
+                        let name = part["tool"].as_str().unwrap_or("tool");
+                        let id = part["id"]
+                            .as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| format!("tool-{at}"));
+                        transcript.push(tool_call_item(id, name, &part["state"], at));
                     }
                     "file" => {
                         let name = part["filename"]
@@ -367,73 +372,65 @@ fn reasoning_item(text: &str, at: u64) -> ChatItem {
     }
 }
 
-fn tool_text_v2(part: &Value) -> String {
-    let tool = part["name"].as_str().unwrap_or("tool");
-    let state = &part["state"];
-    let mut text = format!("[Tool · {tool}]");
-    if let Some(title) = state["title"]
+fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
+    let title = state["title"]
         .as_str()
         .filter(|title| !title.trim().is_empty())
-    {
-        text.push(' ');
-        text.push_str(title);
-    }
-    if let Some(status) = state["status"].as_str() {
-        text.push_str(&format!("\nStatus: {status}"));
-        if status != "completed"
-            && let Some(error) = state["error"].as_str()
-        {
-            text.push('\n');
-            text.push_str(error);
-        }
-    }
+        .unwrap_or(name)
+        .to_string();
+    let mut detail = String::new();
     if let Some(input) = state.get("input").filter(|value| !value.is_null()) {
-        text.push_str("\nInput: ");
-        text.push_str(&truncate(&input.to_string(), 4096));
+        detail.push_str(&input.to_string());
     }
     if let Some(content) = state["content"].as_array() {
         for item in content {
-            if let Some(output) = item["text"].as_str().filter(|text| !text.trim().is_empty()) {
-                text.push_str("\nOutput: ");
-                text.push_str(&truncate(output, MAX_TOOL_TEXT));
+            if let Some(text) = item["text"].as_str().filter(|text| !text.trim().is_empty()) {
+                if !detail.is_empty() {
+                    detail.push('\n');
+                }
+                detail.push_str(text);
             }
         }
     } else if let Some(output) = state.get("output").filter(|value| !value.is_null()) {
-        text.push_str("\nOutput: ");
-        text.push_str(&truncate(&output.to_string(), MAX_TOOL_TEXT));
+        if !detail.is_empty() {
+            detail.push('\n');
+        }
+        detail.push_str(&output.to_string());
     }
-    text
+    ChatItem::Tool {
+        view: ToolCallView {
+            id,
+            title,
+            kind: tool_kind(name),
+            status: match state["status"].as_str() {
+                Some("running") => ToolStatus::Running,
+                Some("pending") | Some("waiting") => ToolStatus::Waiting,
+                Some("error") | Some("failed") => ToolStatus::Failed,
+                _ => ToolStatus::Done,
+            },
+            detail: truncate(&detail, 4096),
+            locations: Vec::new(),
+            additions: 0,
+            deletions: 0,
+            diff: None,
+        },
+        duration_ms: 0,
+        at_ms: at,
+    }
 }
 
-fn tool_text(part: &Value) -> String {
-    let tool = part["tool"].as_str().unwrap_or("tool");
-    let state = &part["state"];
-    let mut text = format!("[Tool · {tool}]");
-    if let Some(title) = state["title"]
-        .as_str()
-        .filter(|title| !title.trim().is_empty())
-    {
-        text.push(' ');
-        text.push_str(title);
+fn tool_kind(name: &str) -> ToolKind {
+    match name.to_ascii_lowercase().as_str() {
+        "shell" | "bash" | "exec" => ToolKind::Shell,
+        "read" | "view" => ToolKind::Read,
+        "grep" | "glob" | "search" | "find" => ToolKind::Search,
+        "edit" | "write" | "patch" | "apply_patch" => ToolKind::Edit,
+        "webfetch" | "websearch" | "fetch" => ToolKind::Web,
+        "test" => ToolKind::Test,
+        "task" => ToolKind::Task,
+        "plan" | "todowrite" | "todoread" => ToolKind::Plan,
+        _ => ToolKind::Task,
     }
-    if let Some(status) = state["status"].as_str() {
-        text.push_str(&format!("\nStatus: {status}"));
-        if status != "completed"
-            && let Some(error) = state["error"].as_str()
-        {
-            text.push('\n');
-            text.push_str(error);
-        }
-    }
-    if let Some(input) = state.get("input").filter(|value| !value.is_null()) {
-        text.push_str("\nInput: ");
-        text.push_str(&truncate(&input.to_string(), 4096));
-    }
-    if let Some(output) = state.get("output").filter(|value| !value.is_null()) {
-        text.push_str("\nOutput: ");
-        text.push_str(&truncate(&output.to_string(), MAX_TOOL_TEXT));
-    }
-    text
 }
 
 fn truncate(value: &str, limit: usize) -> String {

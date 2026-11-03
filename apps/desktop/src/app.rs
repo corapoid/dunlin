@@ -21,6 +21,10 @@ use dunlin_workspace::{git, search};
 
 actions!(dunlin, [Quit]);
 
+/// How many transcript items are laid out at once. Long imported sessions grow
+/// this window on demand instead of building thousands of views up front.
+pub(crate) const CHAT_WINDOW: usize = 120;
+
 mod helpers;
 mod overlays;
 pub(crate) use helpers::*;
@@ -616,6 +620,7 @@ pub(crate) struct DunlinApp {
     pub chat_duration: bool,
     pub chat_logo: bool,
     pub expanded_tool: Option<usize>,
+    pub chat_visible_items: usize,
     pub chat_scroll: crate::chat_scroll::ChatScroll,
     pub trace_filter: TraceFilter,
 
@@ -1142,6 +1147,7 @@ impl DunlinApp {
             chat_duration: stored.chat_duration,
             chat_logo: stored.chat_logo,
             expanded_tool: None,
+            chat_visible_items: CHAT_WINDOW,
             chat_scroll: crate::chat_scroll::ChatScroll::default(),
             trace_filter: TraceFilter::All,
             file_tree,
@@ -2921,6 +2927,7 @@ impl DunlinApp {
                 self.group_contexts.insert(pending.id.clone(), context);
             }
             self.harness.transcript.clear();
+            self.chat_visible_items = CHAT_WINDOW;
             self.harness.session_id = None;
             self.harness.running = false;
             self.selected_node = None;
