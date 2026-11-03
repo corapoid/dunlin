@@ -1040,11 +1040,17 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         let name_owned = name.to_string();
         let import_name = name.to_string();
         let install_name = name.to_string();
+        let scanning =
+            this.session_import.loading && this.session_import.scanning.as_deref() == Some(*name);
 
         let action = if installed {
             settings_button(
                 format!("import-sessions:{name}"),
-                "Import sessions…",
+                if scanning {
+                    "Scanning…"
+                } else {
+                    "Import sessions…"
+                },
                 false,
                 &p,
             )

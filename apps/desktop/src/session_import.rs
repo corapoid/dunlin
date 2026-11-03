@@ -23,6 +23,7 @@ use std::{
 #[derive(Default)]
 pub(crate) struct State {
     pub loading: bool,
+    pub scanning: Option<String>,
     preview: Option<Preview>,
     error: Option<String>,
     generation: u64,
@@ -217,6 +218,12 @@ fn finalize_import(
     cx: &mut Context<DunlinApp>,
 ) {
     this.session_import.loading = false;
+    this.session_import.scanning = None;
+    let found = rows.len();
+    let detail = warnings
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "No session files matched this harness".into());
     let mut seen = HashSet::new();
     let rows = rows
         .into_iter()
@@ -247,6 +254,14 @@ fn finalize_import(
         rows,
         warnings,
     });
+    if found == 0 {
+        this.file_notice(format!("No sessions found: {detail}"), cx);
+    } else {
+        this.file_notice(
+            format!("Found {found} sessions · review the import preview"),
+            cx,
+        );
+    }
     cx.notify();
 }
 
@@ -259,8 +274,10 @@ impl DunlinApp {
         self.session_import.generation = self.session_import.generation.wrapping_add(1);
         let generation = self.session_import.generation;
         self.session_import.loading = true;
+        self.session_import.scanning = Some(harness.clone());
         self.session_import.error = None;
         self.session_import.preview = None;
+        self.file_notice(format!("Scanning {harness} session folders…"), cx);
         cx.notify();
         let source = harness.clone();
         cx.spawn(async move |this, cx| {
@@ -316,6 +333,7 @@ impl DunlinApp {
         self.session_import.generation = self.session_import.generation.wrapping_add(1);
         let generation = self.session_import.generation;
         self.session_import.loading = true;
+        self.session_import.scanning = Some(harness.clone());
         self.session_import.error = None;
         self.session_import.preview = None;
         cx.notify();
@@ -324,6 +342,7 @@ impl DunlinApp {
                 let _ = this.update(cx, |this, cx| {
                     if this.session_import.generation == generation {
                         this.session_import.loading = false;
+                        this.session_import.scanning = None;
                         cx.notify();
                     }
                 });
@@ -438,7 +457,13 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let p = palette(cx);
     let mut body = div().flex().flex_col().gap(px(8.));
     if this.session_import.loading {
-        body = body.child("Scanning session files…");
+        let label = this
+            .session_import
+            .scanning
+            .as_deref()
+            .map(|harness| format!("Scanning {harness} session folders…"))
+            .unwrap_or_else(|| "Scanning session files…".into());
+        body = body.child(label);
     }
     if let Some(preview) = &this.session_import.preview {
         body = body.child(format!("Import preview · {} · {} sessions", preview.harness, preview.rows.len()))
