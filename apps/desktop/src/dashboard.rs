@@ -449,7 +449,12 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
             )
             .into_any_element();
     }
-    let mut tiles = div().flex().flex_wrap().justify_center().gap(px(12.));
+    let mut tiles = div()
+        .flex()
+        .flex_wrap()
+        .items_start()
+        .justify_center()
+        .gap(px(12.));
     for id in ids {
         let Some(project) = this.projects.iter().find(|project| project.id == id) else {
             continue;
@@ -474,7 +479,7 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                 .id(format!("dashboard-recent:{id}"))
                 .aria_label(format!("Open recent project {name}"))
                 .flex_1()
-                .min_w(px(220.))
+                .min_w(px(300.))
                 .max_w(px(360.))
                 .rounded(px(10.))
                 .border_1()
@@ -515,44 +520,51 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                 .child(
                     div()
                         .flex()
+                        .flex_wrap()
                         .items_center()
+                        .justify_between()
                         .gap(px(8.))
-                        .children(crate::local_projects::monorepo_badge(this, project, &p))
                         .child(
                             div()
                                 .flex()
                                 .min_w(px(0.))
                                 .items_center()
-                                .gap(px(6.))
+                                .gap(px(8.))
+                                .children(crate::local_projects::monorepo_badge(this, project, &p))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .min_w(px(0.))
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .text_size(px(11.))
+                                        .text_color(p.muted_fg)
+                                        .child(crate::branch_picker::badge(
+                                            this,
+                                            &project.id,
+                                            branch.as_deref().unwrap_or("Branches…"),
+                                            format!("dashboard-branch:{}", project.id),
+                                            cx,
+                                        )),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .id(format!("dashboard-open:{open_id}"))
+                                .flex_shrink_0()
+                                .px(px(7.))
+                                .py(px(4.))
+                                .rounded(px(5.))
+                                .bg(p.muted)
+                                .flex()
+                                .items_center()
+                                .gap(px(5.))
                                 .text_size(px(11.))
-                                .text_color(p.muted_fg)
-                                .child(crate::branch_picker::badge(
-                                    this,
-                                    &project.id,
-                                    branch.as_deref().unwrap_or("Branches…"),
-                                    format!("dashboard-branch:{}", project.id),
-                                    cx,
-                                )),
+                                .text_color(p.fg)
+                                .cursor_pointer()
+                                .child("Open")
+                                .child(Icon::new(IconName::ChevronRight).size(px(11.))),
                         ),
-                )
-                .child(div().flex_1())
-                .child(
-                    div().w_full().flex().justify_end().child(
-                        div()
-                            .id(format!("dashboard-open:{open_id}"))
-                            .px(px(8.))
-                            .py(px(5.))
-                            .rounded(px(5.))
-                            .bg(p.muted)
-                            .flex()
-                            .items_center()
-                            .gap(px(7.))
-                            .text_size(px(11.))
-                            .text_color(p.fg)
-                            .cursor_pointer()
-                            .child("Open project")
-                            .child(Icon::new(IconName::ChevronRight).size(px(12.))),
-                    ),
                 ),
         )
     }

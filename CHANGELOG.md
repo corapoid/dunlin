@@ -92,8 +92,9 @@ All notable changes to Dunlin are documented here. The format follows
   root shows the bounded total source size, and Dashboard project tiles show the
   project size. **Show file sizes** in Design → Application disables all of them.
 - Dashboard recent-project tiles are shorter: a larger project icon, the
-  Monorepo badge and branch stay visible, while size, last commit, upstream
-  state and check time move into an info tooltip with a compact refresh action.
+  Monorepo badge and branch share one row with a compact **Open** action, while
+  size, last commit, upstream state and check time move into an info tooltip
+  with a small refresh action.
 - Session rows use compact Today/Yesterday/date labels, group by their real date,
   truncate titles in narrow sidebars and omit the redundant cost/duration chips.
 - Long imported conversations open in bounded windows: the newest 120 items are

@@ -54,8 +54,9 @@
   project total in the Explorer root and project size on Dashboard tiles.
 - [x] Add a persisted **Show file sizes** switch under Design → Application.
 - [x] Compact Dashboard recent-project tiles: enlarge the project icon, keep the
-  Monorepo badge and branch, and move size/commit/upstream/check details into an
-  info tooltip with a small refresh action.
+  Monorepo badge and branch with a compact **Open** action, and move
+  size/commit/upstream/check details into an info tooltip with a small refresh
+  action.
 - [x] Format session dates as Today/Yesterday/DD Mon, group by actual date,
   remove redundant cost/duration chips and truncate titles in narrow sidebars.
 - [x] Open long imported conversations in bounded windows with incremental
