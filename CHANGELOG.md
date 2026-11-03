@@ -86,6 +86,8 @@ All notable changes to Dunlin are documented here. The format follows
 - Explorer file rows show file and recursive folder sizes on hover, the project
   root shows the bounded total source size, and Dashboard project tiles show the
   project size. **Show file sizes** in Design → Application disables all of them.
+- Session rows use compact Today/Yesterday/date labels, group by their real date,
+  truncate titles in narrow sidebars and omit the redundant cost/duration chips.
 - Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
   to Chat, so upgrading no longer fails the entire local-data load.
 - Saved preferences are now decoded separately from projects/sessions. If a
@@ -110,7 +112,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 533 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 534 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

@@ -213,6 +213,25 @@ pub(crate) fn remote_session_summary(
     }
 }
 
+pub(crate) fn format_session_date(value: &str) -> String {
+    use chrono::{DateTime, Datelike, Local};
+    let Ok(parsed) = DateTime::parse_from_rfc3339(value) else {
+        return value.trim().to_string();
+    };
+    let local = parsed.with_timezone(&Local);
+    let date = local.date_naive();
+    let today = Local::now().date_naive();
+    if date == today {
+        "Today".into()
+    } else if date == today.pred_opt().unwrap_or(today) {
+        "Yesterday".into()
+    } else if date.year() == today.year() {
+        date.format("%d %b").to_string()
+    } else {
+        date.format("%d %b %Y").to_string()
+    }
+}
+
 pub(crate) fn relative_epoch(epoch: i64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -479,5 +498,17 @@ pub(crate) fn format_ms(ms: u64) -> String {
         format!("{:.1}s", ms as f64 / 1000.0)
     } else {
         format!("{}m {:02}s", ms / 60_000, (ms % 60_000) / 1000)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn session_dates_are_compact_and_leave_relative_labels_untouched() {
+        assert_eq!(super::format_session_date("not a date"), "not a date");
+        assert_eq!(
+            super::format_session_date("2020-01-02T03:04:05Z"),
+            "02 Jan 2020"
+        );
     }
 }

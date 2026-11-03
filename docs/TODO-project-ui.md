@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 533 passing
+> has since been committed through beta.5; current validation is 534 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -50,8 +50,10 @@
 - [x] Show file and recursive folder sizes in Explorer tooltips, the bounded
   project total in the Explorer root and project size on Dashboard tiles.
 - [x] Add a persisted **Show file sizes** switch under Design → Application.
+- [x] Format session dates as Today/Yesterday/DD Mon, group by actual date,
+  remove redundant cost/duration chips and truncate titles in narrow sidebars.
 
-Validation: 533 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 534 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 

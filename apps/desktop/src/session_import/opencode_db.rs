@@ -157,11 +157,23 @@ fn load_v2(connection: &Connection) -> Result<(Vec<Candidate>, Vec<String>), Str
             skipped += 1;
             continue;
         }
+        let title = title
+            .filter(|title| !title.trim().is_empty())
+            .unwrap_or_else(|| {
+                transcript
+                    .iter()
+                    .find_map(|item| match item {
+                        ChatItem::User { text, .. } => {
+                            let first = text.lines().next().unwrap_or("").trim();
+                            (!first.is_empty()).then(|| first.chars().take(80).collect::<String>())
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "Imported conversation".into())
+            });
         candidates.push(Candidate {
             source_id: id,
-            title: title
-                .filter(|title| !title.trim().is_empty())
-                .unwrap_or_else(|| "Imported conversation".into()),
+            title,
             directory: (!directory.trim().is_empty()).then_some(directory),
             model: model_name(model.as_deref()),
             transcript,
