@@ -672,19 +672,6 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                             ),
                             &p,
                         ))
-                        .child(divider(&p))
-                        .child(setting_row(
-                            "Keyboard hints",
-                            "Hide visual hints without disabling shortcuts.",
-                            toggle_switch(
-                                "design-shortcuts",
-                                this.show_shortcut_hints,
-                                |this| this.show_shortcut_hints = !this.show_shortcut_hints,
-                                cx,
-                                &p,
-                            ),
-                            &p,
-                        )),
                 )
                 .into_any_element()
         }
@@ -1606,13 +1593,6 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .child(
             settings_card(&p)
                 .child(setting_row(
-                    "UI font",
-                    "Interface font. Geist is bundled; other fonts come from this Mac.",
-                    font_picker(this, false, cx),
-                    &p,
-                ))
-                .child(divider(&p))
-                .child(setting_row(
                     "Code font",
                     "Monospaced face for files, traces and diffs.",
                     font_picker(this, true, cx),
@@ -2354,7 +2334,7 @@ fn billing_days(days: &[dunlin_usage::billing::Day], p: &Palette) -> AnyElement 
     card.into_any_element()
 }
 
-fn advanced(_this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
 
     let body = div()
@@ -2389,16 +2369,87 @@ fn advanced(_this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         "Lifecycle and errors · {}",
                         crate::logging::display_path()
                     ),
-                    settings_button("open-logs", "Open", false, &p)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let path = crate::logging::log_path();
-                            cx.reveal_path(&path);
-                            this.set_notice("Revealed the Dunlin log", cx);
-                        }))
-                        .into_any_element(),
+                    settings_button(
+                        "view-logs",
+                        if this.acp_log_loading {
+                            "Loading…"
+                        } else {
+                            "View log"
+                        },
+                        false,
+                        &p,
+                    )
+                    .when(this.acp_log_loading, |this| this.opacity(0.55))
+                    .on_click(cx.listener(|this, _, _, cx| this.open_acp_log(cx)))
+                    .into_any_element(),
                     &p,
                 )),
         )
+        .when_some(this.acp_log_error.clone(), |body, error| {
+            body.child(
+                div()
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(p.red.opacity(0.25))
+                    .bg(p.card)
+                    .p(px(12.))
+                    .text_size(px(11.0))
+                    .text_color(p.red)
+                    .child(error),
+            )
+        })
+        .when_some(this.acp_log_text.clone(), |body, text| {
+            body.child(
+                settings_card(&p)
+                    .p(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(11.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.fg)
+                                    .child("ACP log · last 256 KiB"),
+                            )
+                            .child(
+                                settings_text_button(
+                                    "close-acp-log",
+                                    "Close",
+                                    p.muted_fg,
+                                    &p,
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.acp_log_text = None;
+                                    cx.notify();
+                                })),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("acp-log-view")
+                            .h(px(360.))
+                            .overflow_y_scroll()
+                            .rounded(px(6.))
+                            .bg(p.subtle)
+                            .p(px(10.))
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .line_height(relative(1.35))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.fg)
+                                    .child(text),
+                            ),
+                    ),
+            )
+        })
         .child(section_label("Recovery", &p))
         .child(
             settings_card(&p)
@@ -2696,6 +2747,52 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
     );
 
     body.into_any_element()
+}
+
+impl DunlinApp {
+    pub(crate) fn open_acp_log(&mut self, cx: &mut Context<Self>) {
+        if self.acp_log_loading {
+            return;
+        }
+        self.acp_log_loading = true;
+        self.acp_log_error = None;
+        self.acp_log_text = None;
+        cx.notify();
+        let path = crate::logging::log_path();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    use std::io::{Read, Seek, SeekFrom};
+                    let mut file = std::fs::File::open(&path)
+                        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
+                    let len = file.metadata().map_err(|error| error.to_string())?.len();
+                    let start = len.saturating_sub(256 * 1024);
+                    file.seek(SeekFrom::Start(start))
+                        .map_err(|error| error.to_string())?;
+                    let mut bytes = Vec::new();
+                    file.take(256 * 1024)
+                        .read_to_end(&mut bytes)
+                        .map_err(|error| error.to_string())?;
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    if text.trim().is_empty() {
+                        Err("The ACP log is empty.".to_string())
+                    } else {
+                        Ok(text)
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.acp_log_loading = false;
+                match result {
+                    Ok(text) => this.acp_log_text = Some(text),
+                    Err(error) => this.acp_log_error = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
 }
 
 fn settings_page(content: AnyElement) -> AnyElement {

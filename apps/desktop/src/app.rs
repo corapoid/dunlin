@@ -478,6 +478,7 @@ pub(crate) struct DunlinApp {
     pub dashboard: crate::dashboard::State,
     pub skills: Vec<crate::skills::Skill>,
     pub skills_ui: crate::skills::Ui,
+    pub skills_import_url: Entity<InputState>,
     pub last_ai_target: Option<crate::ai_commit::LastTarget>,
     pub ai_commit: crate::ai_commit::State,
     pub billing: Option<dunlin_usage::billing::Summary>,
@@ -489,6 +490,9 @@ pub(crate) struct DunlinApp {
     pub onboarding_step: u8,
     pub density: UiDensity,
     pub reduce_motion: bool,
+    pub acp_log_text: Option<String>,
+    pub acp_log_error: Option<String>,
+    pub acp_log_loading: bool,
     pub terminal: crate::terminal::State,
     pub run: crate::run::State,
     pub bottom_panel: BottomPanel,
@@ -822,6 +826,10 @@ impl DunlinApp {
                 .placeholder("Group name")
                 .clean_on_escape()
         });
+        let skills_import_url = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("https://github.com/owner/repo/tree/main/skills/my-skill")
+        });
         let group_subscription = cx.subscribe_in(
             &group_input,
             window,
@@ -992,6 +1000,7 @@ impl DunlinApp {
             dashboard: Default::default(),
             skills: stored.skills.clone(),
             skills_ui: Default::default(),
+            skills_import_url,
             last_ai_target: stored.last_ai_target.clone(),
             ai_commit: Default::default(),
             billing: None,
@@ -1000,6 +1009,9 @@ impl DunlinApp {
             billing_checked: None,
             billing_budget_usd: stored.billing_budget_usd,
             billing_alerts: stored.billing_alerts,
+            acp_log_text: None,
+            acp_log_error: None,
+            acp_log_loading: false,
             onboarding_step: stored.onboarding_step,
             density: stored.density,
             reduce_motion: stored.reduce_motion,

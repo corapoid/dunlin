@@ -421,6 +421,10 @@ impl DunlinApp {
                     ),
                     cx,
                 );
+                // Imported histories must feed both the recorded dashboard
+                // counts and the local billing evidence without a manual scan.
+                self.refresh_dashboard_now(cx);
+                self.refresh_billing(cx);
             }
             Err(error) => {
                 self.session_import.error = Some(format!("Import rolled back: {error}"));

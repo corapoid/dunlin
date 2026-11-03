@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 529 passing
+> has since been committed through beta.5; current validation is 530 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -36,10 +36,16 @@
 - [x] Rebuild visual Markdown decorations after palette changes, fixing unreadable
   inline-code backgrounds in dark mode.
 - [x] Replace the harness Import sessions… file picker with bounded automatic
-  scanning of the standard Claude Code, Codex and OpenCode session folders; keep
-  portable JSON as a separate explicit action.
+  scanning of the standard Claude Code and Codex session folders; keep OpenCode's
+  export and portable JSON as separate explicit actions.
+- [x] Remove the duplicate Editor UI-font control and the duplicate Design
+  keyboard-hints control.
+- [x] Add bounded GitHub skill import from `SKILL.md` or a skill-folder link.
+- [x] Show the ACP log inline in Advanced instead of revealing a system file.
+- [x] Remove the Dashboard billing card and recorded-data footer; refresh
+  Dashboard stats and billing automatically after session import.
 
-Validation: 529 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 530 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 

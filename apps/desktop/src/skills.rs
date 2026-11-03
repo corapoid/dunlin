@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
+use url::Url;
 
 pub(crate) const COMMIT_SKILL: &str = "conventional-commits";
 const MAX_SKILL_BYTES: usize = 64 * 1024;
@@ -439,6 +441,123 @@ struct Draft {
     description: Entity<InputState>,
     body: Entity<EditorState>,
 }
+const MAX_GITHUB_SKILL_BYTES: usize = MAX_SKILL_BYTES;
+
+fn github_skill_urls(value: &str) -> Result<Vec<Url>, String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 512 {
+        return Err("Paste a GitHub link to SKILL.md or a skill folder".into());
+    }
+    let url = Url::parse(value).map_err(|_| "Invalid GitHub URL".to_string())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("Use a plain HTTPS github.com or raw.githubusercontent.com link".into());
+    }
+    let host = url.host_str().unwrap_or_default();
+    let segments = url
+        .path_segments()
+        .map(|segments| segments.filter(|s| !s.is_empty()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if host == "raw.githubusercontent.com" {
+        let mut raw = url.clone();
+        if segments.last() != Some(&"SKILL.md") {
+            let path = format!("{}/SKILL.md", url.path().trim_end_matches('/'));
+            raw.set_path(&path);
+        }
+        return Ok(vec![raw]);
+    }
+    if host != "github.com" {
+        return Err("Only github.com or raw.githubusercontent.com links are supported".into());
+    }
+    if segments.len() < 2 {
+        return Err("The GitHub link must include an owner and repository".into());
+    }
+    let (owner, repo) = (segments[0], segments[1]);
+    let mut urls = Vec::new();
+    match segments.get(2).copied() {
+        Some("blob") if segments.len() >= 5 => {
+            if segments.last() != Some(&"SKILL.md") {
+                return Err("Link directly to SKILL.md or to the skill folder".into());
+            }
+            urls.push(raw_url(owner, repo, segments[3], &segments[4..].join("/"))?);
+        }
+        Some("tree") if segments.len() >= 4 => {
+            let path = if segments.len() == 4 {
+                "SKILL.md".to_string()
+            } else {
+                format!("{}/SKILL.md", segments[4..].join("/"))
+            };
+            urls.push(raw_url(owner, repo, segments[3], &path)?);
+        }
+        Some(_) | None => {
+            let path = if segments.len() == 2 {
+                "SKILL.md".to_string()
+            } else {
+                format!("{}/SKILL.md", segments[2..].join("/"))
+            };
+            for branch in ["main", "master"] {
+                urls.push(raw_url(owner, repo, branch, &path)?);
+            }
+        }
+    }
+    Ok(urls)
+}
+
+fn raw_url(owner: &str, repo: &str, reference: &str, path: &str) -> Result<Url, String> {
+    Url::parse(&format!(
+        "https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{path}"
+    ))
+    .map_err(|_| "Could not build the GitHub raw URL".to_string())
+}
+
+fn fetch_github_skill(urls: &[Url]) -> Result<Skill, String> {
+    let agent = ureq::AgentBuilder::new()
+        .try_proxy_from_env(false)
+        .redirects(0)
+        .timeout(Duration::from_secs(20))
+        .build();
+    let mut last_error = None;
+    for url in urls {
+        let response = agent
+            .get(url.as_str())
+            .set("User-Agent", "Dunlin")
+            .set("Accept", "text/plain")
+            .call();
+        match response {
+            Ok(response) => {
+                let mut text = String::new();
+                response
+                    .into_reader()
+                    .take(MAX_GITHUB_SKILL_BYTES as u64 + 1)
+                    .read_to_string(&mut text)
+                    .map_err(|error| format!("Could not read SKILL.md: {error}"))?;
+                if text.len() > MAX_GITHUB_SKILL_BYTES {
+                    return Err("SKILL.md must fit in 64 KiB".into());
+                }
+                let mut skill = parse_skill_contents(&text, "github-skill")?;
+                skill.rendered()?;
+                skill.origin = url.to_string();
+                return Ok(skill);
+            }
+            Err(ureq::Error::Status(404, _)) => {
+                last_error = Some(format!("No SKILL.md at {url}"));
+            }
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(format!("GitHub returned HTTP {status}"));
+            }
+            Err(ureq::Error::Transport(error)) => {
+                return Err(format!("Could not reach GitHub: {error}"));
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "No SKILL.md found at the linked GitHub location".into()))
+}
+
 impl DunlinApp {
     fn edit_skill(&mut self, id: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         if self.skills_ui.busy {
@@ -528,6 +647,57 @@ impl DunlinApp {
         })
         .detach();
         cx.notify();
+    }
+
+    fn import_skill_from_github(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.skills_ui.busy {
+            return;
+        }
+        let value = self.skills_import_url.read(cx).value().to_string();
+        let urls = match github_skill_urls(&value) {
+            Ok(urls) => urls,
+            Err(error) => {
+                self.skills_ui.message = Some(error);
+                cx.notify();
+                return;
+            }
+        };
+        self.skills_import_url
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.skills_ui.busy = true;
+        self.skills_ui.message = Some("Fetching skill from GitHub…".into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { fetch_github_skill(&urls) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.skills_ui.busy = false;
+                match result {
+                    Ok(skill) => {
+                        if this.skills.iter().any(|existing| existing.id == skill.id) {
+                            this.skills_ui.message = Some(format!(
+                                "Skill “{}” already exists in the library",
+                                skill.title
+                            ));
+                        } else if this.skills.len() >= 128 {
+                            this.skills_ui.message =
+                                Some("The skill library is limited to 128 entries".into());
+                        } else {
+                            let title = skill.title.clone();
+                            this.skills.push(skill);
+                            this.persist_settings(cx);
+                            this.skills_ui.message =
+                                Some(format!("Imported “{title}” from GitHub"));
+                        }
+                    }
+                    Err(error) => this.skills_ui.message = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn scan_global_skills(&mut self, cx: &mut Context<Self>) {
@@ -863,6 +1033,51 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .detach();
                     },
                 )),
+            ),
+    );
+    body = body.child(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(p.muted_fg)
+                    .child("GitHub skill"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .h(px(28.))
+                            .flex_1()
+                            .min_w(px(0.))
+                            .px(px(9.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.bg)
+                            .flex()
+                            .items_center()
+                            .child(
+                                Input::new(&this.skills_import_url)
+                                    .appearance(false)
+                                    .bordered(false)
+                                    .h(px(26.)),
+                            ),
+                    )
+                    .child(
+                        action("import-github-skill".into(), "Import from GitHub", p).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.import_skill_from_github(window, cx)
+                            }),
+                        ),
+                    ),
             ),
     );
     if !this.skills.iter().any(|s| s.id == COMMIT_SKILL) {
@@ -1246,5 +1461,36 @@ mod tests {
         assert!(installation.path.contains(".claude"));
         uninstall(&installation, &skill.id).unwrap();
         assert!(!PathBuf::from(&installation.path).exists());
+    }
+    #[test]
+    fn github_skill_links_map_to_raw_skill_md() {
+        let repo = super::github_skill_urls("https://github.com/owner/repo").unwrap();
+        assert_eq!(
+            repo[0].as_str(),
+            "https://raw.githubusercontent.com/owner/repo/main/SKILL.md"
+        );
+        assert_eq!(
+            repo[1].as_str(),
+            "https://raw.githubusercontent.com/owner/repo/master/SKILL.md"
+        );
+        let tree = super::github_skill_urls("https://github.com/owner/repo/tree/main/skills/demo")
+            .unwrap();
+        assert_eq!(
+            tree[0].as_str(),
+            "https://raw.githubusercontent.com/owner/repo/main/skills/demo/SKILL.md"
+        );
+        let blob = super::github_skill_urls(
+            "https://github.com/owner/repo/blob/main/skills/demo/SKILL.md",
+        )
+        .unwrap();
+        assert_eq!(
+            blob[0].as_str(),
+            "https://raw.githubusercontent.com/owner/repo/main/skills/demo/SKILL.md"
+        );
+        assert!(super::github_skill_urls("http://github.com/owner/repo").is_err());
+        assert!(super::github_skill_urls("https://example.com/owner/repo").is_err());
+        assert!(
+            super::github_skill_urls("https://github.com/owner/repo/blob/main/README.md").is_err()
+        );
     }
 }

@@ -345,8 +345,9 @@ release assets are available.
 ### Skills and AI commits
 
 **Settings → Skills** maintains one persisted instruction library for all projects.
-Add, edit or delete skills, scan the default harness folders, or import a folder
-containing `SKILL.md`/skill directories. Install/update global copies with the
+Add, edit or delete skills, scan the default harness folders, import a folder
+containing `SKILL.md`/skill directories, or paste a GitHub link to a public
+`SKILL.md`/skill folder. Install/update global copies with the
 OpenCode, Claude Code or Codex buttons, or install project-scoped copies for the
 current local project. **Other folder…** exports to a custom harness's global
 skills directory. These buttons do not install harness programs,
@@ -666,7 +667,9 @@ reports global totals plus per-provider, per-harness, per-model, per-project and
 daily slices. Unknown models remain **unpriced**; the visible total is a lower
 bound, never a fabricated zero. Optional monthly alert budgets ($50/$100/$250)
 warn at 80% and alert at 100% of known priced spend. Scanner limits are 2,000
-files, 32 MiB total and 1 MiB per line; no log contents are uploaded.
+files, 32 MiB total and 1 MiB per line; no log contents are uploaded. Importing
+harness sessions refreshes the dashboard totals and starts a billing scan
+automatically; the dashboard no longer duplicates the billing evidence card.
 
 Times/duration are optional; unknown legacy timestamps and durations are not
 invented. Newly recorded turn duration starts when the prompt is dispatched and

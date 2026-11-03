@@ -68,9 +68,20 @@ All notable changes to Dunlin are documented here. The format follows
   only scroll target.
 - Visual Markdown decorations rebuild when the light/dark palette changes, so
   inline code and link backgrounds remain readable in dark mode.
-- Harness **Import sessions…** scans the standard Claude Code, Codex and
-  OpenCode session folders instead of opening a file picker. Portable
-  `dunlin.session.v1` imports remain a separate explicit action.
+- Harness **Import sessions…** scans the standard Claude Code and Codex
+  session folders instead of opening a file picker. OpenCode explains its
+  `opencode export` path; portable `dunlin.session.v1` imports remain a separate
+  explicit action.
+- Remove the duplicate **UI font** control from Editor and the duplicate
+  **Keyboard hints** control from Design; the canonical controls stay in Design
+  and General.
+- Skills can be imported from a public `github.com`/`raw.githubusercontent.com`
+  link to `SKILL.md` or a skill folder; only the bounded `SKILL.md` is fetched.
+- Settings → Advanced shows the ACP log inline (last 256 KiB) instead of
+  revealing the system log file in Finder.
+- Remove the Dashboard billing evidence card and recorded-data footer. Importing
+  sessions now refreshes Dashboard activity, project stats and local billing
+  automatically.
 - Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
   to Chat, so upgrading no longer fails the entire local-data load.
 - Saved preferences are now decoded separately from projects/sessions. If a
@@ -95,7 +106,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 529 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 530 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 
