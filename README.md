@@ -199,6 +199,10 @@ release assets are available.
   language beneath it and reveal the full language breakdown with percentages on
   hover. Explorer file-tree refreshes recover from watcher races and show a
   loading state instead of leaving the pane blank.
+- Explorer rows show a file's size or a folder's recursive size on hover, and the
+  project root shows the total source size. **Design → Application → Show file
+  sizes** turns these labels, the Explorer total and Dashboard tile sizes off.
+  Dashboard project tiles show the bounded project size alongside the branch.
 - Create files and folders from the Explorer toolbar or a folder's context menu.
   Drag within a project to move; drop files or folders from Finder to copy them
   into a local project while keeping the originals. Existing destinations are

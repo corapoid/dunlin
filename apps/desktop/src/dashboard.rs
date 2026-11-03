@@ -463,6 +463,10 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
             .and_then(|summary| summary.branch.as_ref())
             .or(project.branch.as_ref())
             .cloned();
+        let size = this
+            .show_file_sizes
+            .then(|| summary.and_then(|summary| summary.size_bytes))
+            .flatten();
         let name = project.name.clone();
         let open_id = id.clone();
         tiles = tiles.child(
@@ -522,6 +526,14 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                             cx,
                         )),
                 )
+                .when_some(size, |tile, size| {
+                    tile.child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(p.muted_fg)
+                            .child(format!("Project size · {}", crate::app::format_size(size))),
+                    )
+                })
                 .child(crate::project_activity::render(this, project, cx))
                 .child(div().flex_1())
                 .child(

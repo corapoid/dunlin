@@ -43,7 +43,7 @@ impl DunlinApp {
                     let project = Project { id: format!("project-{}", uuid::Uuid::now_v7()), name, path, branch: candidate.branch, tone: tones[this.projects.len() % tones.len()], pinned: false, trusted: true, running_sessions: 0, remote: None, group_id: None, settings: Default::default() };
                     if let Some(store) = &this.store && let Err(error) = store.upsert_project(&project) { failures.push(error.to_string()); continue; }
                     existing.insert(candidate.path);
-                    this.repo_summaries.values.insert(project.id.clone(), crate::project_groups::RepoSummary { path: project.path.clone(), branch: project.branch.clone(), changes: None, activity: Default::default(), monorepo: candidate.monorepo, languages: None });
+                    this.repo_summaries.values.insert(project.id.clone(), crate::project_groups::RepoSummary { path: project.path.clone(), branch: project.branch.clone(), changes: None, activity: Default::default(), monorepo: candidate.monorepo, languages: None, size_bytes: None });
                     this.projects.push(project); first.get_or_insert(this.projects.len() - 1); added += 1;
                 }
                 this.repo_summaries.invalidate();

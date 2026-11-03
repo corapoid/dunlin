@@ -456,9 +456,20 @@ pub(crate) fn format_bytes(bytes: usize) -> String {
         format!("{bytes} B")
     } else if bytes < 1024 * 1024 {
         format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
+    } else if bytes < 1024 * 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes < 1024usize.saturating_mul(1024 * 1024 * 1024) {
+        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else {
+        format!(
+            "{:.2} TB",
+            bytes as f64 / (1024.0 * 1024.0 * 1024.0 * 1024.0)
+        )
     }
+}
+
+pub(crate) fn format_size(bytes: u64) -> String {
+    format_bytes(bytes.min(usize::MAX as u64) as usize)
 }
 
 pub(crate) fn format_ms(ms: u64) -> String {

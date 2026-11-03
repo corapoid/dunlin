@@ -297,6 +297,7 @@ pub(crate) struct RepoSummary {
     pub activity: dunlin_workspace::git::BranchActivity,
     pub monorepo: Option<String>,
     pub languages: Option<Vec<dunlin_workspace::languages::LanguageStat>>,
+    pub size_bytes: Option<u64>,
 }
 #[derive(Default)]
 pub(crate) struct RepoSummaries {
@@ -452,6 +453,15 @@ impl DunlinApp {
                     .map(|languages| (id.clone(), (row.path.clone(), languages.clone())))
             })
             .collect();
+        let cached_sizes: std::collections::HashMap<String, (String, u64)> = self
+            .repo_summaries
+            .values
+            .iter()
+            .filter_map(|(id, row)| {
+                row.size_bytes
+                    .map(|size| (id.clone(), (row.path.clone(), size)))
+            })
+            .collect();
         cx.spawn(async move |this, cx| {
             let rows = cx
                 .background_executor()
@@ -486,6 +496,11 @@ impl DunlinApp {
                                 .unwrap_or_else(|| {
                                     dunlin_workspace::languages::detect(Path::new(&path))
                                 });
+                            let size_bytes = cached_sizes
+                                .get(&id)
+                                .filter(|(cached_path, _)| cached_path == &path)
+                                .map(|(_, size)| *size)
+                                .or_else(|| dunlin_workspace::tree::project_size(Path::new(&path)));
                             (
                                 id,
                                 RepoSummary {
@@ -495,6 +510,7 @@ impl DunlinApp {
                                     activity,
                                     monorepo,
                                     languages: Some(languages),
+                                    size_bytes,
                                 },
                             )
                         })

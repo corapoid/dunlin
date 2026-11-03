@@ -661,6 +661,19 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                         ))
                         .child(divider(&p))
                         .child(setting_row(
+                            "Show file sizes",
+                            "Show file and folder sizes in Explorer tooltips, the project total and Dashboard tiles.",
+                            toggle_switch(
+                                "show-file-sizes",
+                                this.show_file_sizes,
+                                |this| this.show_file_sizes = !this.show_file_sizes,
+                                cx,
+                                &p,
+                            ),
+                            &p,
+                        ))
+                        .child(divider(&p))
+                        .child(setting_row(
                             "Reduce motion",
                             "Disable decorative graph/trace entrance and pulse animations. Status remains visible without motion.",
                             toggle_switch(

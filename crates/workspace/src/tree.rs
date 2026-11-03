@@ -10,6 +10,9 @@ pub struct FileEntry {
     pub is_dir: bool,
     pub expanded: bool,
     pub depth: u32,
+    /// File size, or the recursive size of a directory within this bounded scan.
+    #[serde(default)]
+    pub size: u64,
     pub children: Vec<FileEntry>,
 }
 
@@ -18,6 +21,9 @@ pub struct FileTree {
     pub root: String,
     pub entries: Vec<FileEntry>,
     pub error: Option<String>,
+    /// Sum of the bounded explorer entries, excluding generated directories.
+    #[serde(default)]
+    pub total_size: u64,
 }
 
 impl FileTree {
@@ -29,15 +35,18 @@ impl FileTree {
                 root,
                 entries: Vec::new(),
                 error: Some("This folder is not available on this Mac.".to_string()),
+                total_size: 0,
             };
         }
 
         let mut count = 0;
         let entries = scan_dir(path, 0, &mut count);
+        let total_size = entries.iter().map(|entry| entry.size).sum();
         Self {
             root,
             entries,
             error: None,
+            total_size,
         }
     }
 
@@ -175,16 +184,69 @@ fn scan_dir(dir: &Path, depth: u32, count: &mut usize) -> Vec<FileEntry> {
         } else {
             Vec::new()
         };
+        let size = if is_dir {
+            children.iter().map(|child| child.size).sum()
+        } else {
+            fs::symlink_metadata(&path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(0)
+        };
         entries.push(FileEntry {
             name: name.to_string(),
             path: path.to_string_lossy().to_string(),
             is_dir,
             expanded,
             depth,
+            size,
             children,
         });
     }
     entries
+}
+
+/// Bounded source-size scan used by project tiles. It shares the Explorer's
+/// generated-directory exclusions, does not follow symlinks and caps traversal.
+pub fn project_size(root: &Path) -> Option<u64> {
+    if !root.is_dir() {
+        return None;
+    }
+    let mut total = 0u64;
+    let mut count = 0usize;
+    size_dir(root, 0, &mut total, &mut count);
+    Some(total)
+}
+
+fn size_dir(dir: &Path, depth: u32, total: &mut u64, count: &mut usize) {
+    if depth > 12 || *count >= 100_000 {
+        return;
+    }
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read.flatten() {
+        if *count >= 100_000 {
+            break;
+        }
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if is_skipped(name) {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            size_dir(&path, depth + 1, total, count);
+        } else if metadata.is_file() {
+            *count += 1;
+            *total = total.saturating_add(metadata.len());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -240,5 +302,25 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn project_size_skips_generated_directories_and_file_entry_sizes_roll_up() {
+        let root = std::env::temp_dir().join(format!("dunlin-tree-size-{}", uuid::Uuid::now_v7()));
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("target")).unwrap();
+        fs::write(root.join("src/main.rs"), vec![b'x'; 120]).unwrap();
+        fs::write(root.join("README.md"), vec![b'y'; 30]).unwrap();
+        fs::write(root.join("target/generated.rs"), vec![b'z'; 10_000]).unwrap();
+
+        let tree = FileTree::load(root.to_string_lossy().to_string());
+        assert_eq!(tree.total_size, 150);
+        let src = tree
+            .entries
+            .iter()
+            .find(|entry| entry.name == "src")
+            .unwrap();
+        assert_eq!(src.size, 120);
+        assert_eq!(super::project_size(&root), Some(150));
+        fs::remove_dir_all(root).unwrap();
     }
 }

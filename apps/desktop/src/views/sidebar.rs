@@ -1145,6 +1145,7 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         selected.as_deref(),
         &project,
         &root_path,
+        this.show_file_sizes,
         cx,
     );
 
@@ -1177,6 +1178,15 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     .child(project_name.to_uppercase()),
             )
             .child(div().flex_1())
+            .when(this.show_file_sizes, |row| {
+                row.child(
+                    div()
+                        .text_size(px(11.0))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(crate::app::format_size(this.file_tree.total_size)),
+                )
+            })
             .child(
                 div()
                     .text_size(px(11.0))
@@ -1220,6 +1230,7 @@ fn file_rows(
     selected: Option<&str>,
     project: &str,
     root: &str,
+    show_sizes: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Vec<AnyElement> {
     let p = palette(cx);
@@ -1266,6 +1277,13 @@ fn file_rows(
                     cx.notify();
                 }
             }));
+        if show_sizes {
+            let kind = if is_dir { "Folder" } else { "File" };
+            let size = crate::app::format_size(entry.size);
+            row = row.tooltip(move |window, cx| {
+                component::tooltip::Tooltip::new(format!("{kind} · {size}")).build(window, cx)
+            });
+        }
 
         if is_dir {
             row = row.child(
@@ -1321,7 +1339,14 @@ fn file_rows(
         rows.push(row.into_any_element());
 
         if is_dir && expanded {
-            rows.extend(file_rows(&entry.children, selected, project, root, cx));
+            rows.extend(file_rows(
+                &entry.children,
+                selected,
+                project,
+                root,
+                show_sizes,
+                cx,
+            ));
         }
     }
 

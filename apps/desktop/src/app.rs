@@ -128,6 +128,7 @@ pub(crate) struct StoredSettings {
     pub sidebar_collapsed: bool,
     pub notifications_enabled: bool,
     pub show_shortcut_hints: bool,
+    pub show_file_sizes: bool,
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
     pub remote_hosts: Vec<remote::RemoteHost>,
@@ -182,6 +183,7 @@ impl Default for StoredSettings {
             autosave: false,
             notifications_enabled: true,
             show_shortcut_hints: true,
+            show_file_sizes: true,
             code_font_size: 13.0,
             ui_font_family: "Geist".into(),
             code_font_family: "Geist Mono".into(),
@@ -566,6 +568,7 @@ pub(crate) struct DunlinApp {
     pub autosave: bool,
     pub notifications_enabled: bool,
     pub show_shortcut_hints: bool,
+    pub show_file_sizes: bool,
     pub code_font_size: f32,
     pub ui_font_family: String,
     pub code_font_family: String,
@@ -747,6 +750,7 @@ impl DunlinApp {
                         root: project.path.clone(),
                         entries: Vec::new(),
                         error: None,
+                        total_size: 0,
                     }
                 } else {
                     FileTree::load(project.path.clone())
@@ -756,6 +760,7 @@ impl DunlinApp {
                 root: String::new(),
                 entries: Vec::new(),
                 error: None,
+                total_size: 0,
             });
         let search_hits = Vec::new();
 
@@ -1090,6 +1095,7 @@ impl DunlinApp {
             autosave: stored.autosave,
             notifications_enabled: stored.notifications_enabled,
             show_shortcut_hints: stored.show_shortcut_hints,
+            show_file_sizes: stored.show_file_sizes,
             code_font_size: stored.code_font_size,
             ui_font_family,
             code_font_family,
@@ -3296,6 +3302,7 @@ impl DunlinApp {
                 root: String::new(),
                 entries: Vec::new(),
                 error: None,
+                total_size: 0,
             };
             self.restart_file_watcher();
             self.git = git::GitStatus::default();
@@ -3896,6 +3903,7 @@ impl DunlinApp {
             root: path.clone(),
             entries: Vec::new(),
             error: None,
+            total_size: 0,
         };
         self.refresh_file_tree(cx);
         self.search_hits = Vec::new();
@@ -4567,6 +4575,7 @@ impl DunlinApp {
             autosave: self.autosave,
             notifications_enabled: self.notifications_enabled,
             show_shortcut_hints: self.show_shortcut_hints,
+            show_file_sizes: self.show_file_sizes,
             code_font_size: self.code_font_size,
             ui_font_family: self.ui_font_family.clone(),
             code_font_family: self.code_font_family.clone(),
