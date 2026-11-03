@@ -1572,6 +1572,7 @@ dependencies = [
  "objc2-user-notifications",
  "raw-window-handle",
  "resvg",
+ "rusqlite",
  "security-framework",
  "serde",
  "serde_json",

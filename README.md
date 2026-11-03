@@ -113,9 +113,10 @@ release assets are available.
 ### Workspace
 
 - File explorer with a debounced watcher and missing-folder recovery.
-- **Settings → Harnesses → Import sessions…** scans the standard Claude Code,
-  Codex and OpenCode session folders, and accepts portable `dunlin.session.v1`
-  exports through a separate explicit action for other ACP agents. Preview project
+- **Settings → Harnesses → Import sessions…** scans the standard Claude Code and
+  Codex session folders and reads OpenCode's local `opencode.db` read-only, then
+  shows a preview. Portable `dunlin.session.v1` exports remain a separate explicit
+  action for other ACP agents. Preview project
   assignments, match canonical local paths automatically and assign unmatched
   histories manually. Imports are transactional and insert-only: no source writes,
   prompts or overwriting existing conversations. These are history copies, not

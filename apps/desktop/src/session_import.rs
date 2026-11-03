@@ -1,5 +1,7 @@
-//! Preview-first, insert-only import. No harness commands or database reads.
+//! Preview-first, insert-only import. No harness commands; OpenCode's local
+//! database is opened read-only and only session/message/part rows are read.
 mod adapters;
+mod opencode_db;
 use crate::app::{DunlinApp, blank_session};
 use adapters::Candidate;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -88,6 +90,28 @@ fn read_files(harness: &str, paths: Vec<PathBuf>) -> (Vec<Candidate>, Vec<String
     }
     (rows, warnings)
 }
+fn read_harness_sessions(harness: &str) -> (Vec<Candidate>, Vec<String>) {
+    if harness == "OpenCode" {
+        let Some(path) = dunlin_usage::billing::default_opencode_db() else {
+            return (
+                Vec::new(),
+                vec!["No opencode.db was found in the standard OpenCode data folders".into()],
+            );
+        };
+        return match opencode_db::load(&path) {
+            Ok(result) => result,
+            Err(error) => (Vec::new(), vec![error]),
+        };
+    }
+    let (paths, mut warnings) = discover_session_files(harness);
+    if paths.is_empty() {
+        return (Vec::new(), warnings);
+    }
+    let (candidates, read_warnings) = read_files(harness, paths);
+    warnings.extend(read_warnings);
+    (candidates, warnings)
+}
+
 fn discover_session_files(harness: &str) -> (Vec<PathBuf>, Vec<String>) {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return (
@@ -107,25 +131,6 @@ fn discover_session_files(harness: &str) -> (Vec<PathBuf>, Vec<String>) {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".codex"));
             (base.join("sessions"), "jsonl")
-        }
-        "OpenCode" => {
-            let base = std::env::var_os("XDG_DATA_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".local").join("share"))
-                .join("opencode");
-            let detail = if base.join("opencode.db").is_file() {
-                "OpenCode stores sessions in opencode.db"
-            } else if base.join("storage").is_dir() {
-                "OpenCode uses its private storage schema"
-            } else {
-                "OpenCode session storage was not found"
-            };
-            return (
-                Vec::new(),
-                vec![format!(
-                    "{detail}. Run `opencode export <session>` and use Import a portable file…"
-                )],
-            );
         }
         _ => {
             return (
@@ -287,12 +292,7 @@ impl DunlinApp {
             let (rows, warnings) = cx
                 .background_executor()
                 .spawn(async move {
-                    let (paths, mut warnings) = discover_session_files(&source);
-                    if paths.is_empty() {
-                        return (Vec::new(), warnings);
-                    }
-                    let (candidates, read_warnings) = read_files(&source, paths);
-                    warnings.extend(read_warnings);
+                    let (candidates, warnings) = read_harness_sessions(&source);
                     let rows = candidates
                         .into_iter()
                         .map(|candidate| {

@@ -1229,7 +1229,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("Import sessions scans the standard Claude Code and Codex session folders and shows a preview. OpenCode requires its own `opencode export` through Import a portable file. Histories are copied, not resumed."),
+                .child("Import sessions scans the standard Claude Code and Codex session folders and reads OpenCode's local session database read-only, then shows a preview. Portable dunlin.session.v1 JSON is still available separately. Histories are copied, not resumed."),
         )
         .child(
             div()

@@ -8,14 +8,16 @@ jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 
 ## Obsługiwane źródła
 
-- **OpenCode**: automatyczny skan nie czyta prywatnej bazy `opencode.db` ani
-  katalogu `storage`. Użyj `opencode export <session>` i **Import a portable
-  file…**. Obsługiwany jest eksport JSON `experimental.session.export` V2:
+- **OpenCode**: Dunlin otwiera lokalny `opencode.db` wyłącznie w trybie
+  read-only i czyta wyłącznie tabele `session`, `message` i `part`. Importuje
+  sesje najwyższego poziomu (bez subagentów), tekst, reasoning i historię narzędzi;
+  nie odczytuje credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
+  JSON `experimental.session.export` V2 przez **Import a portable file…**:
   `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.
   Akceptowane są także eksporty z wiadomościami `{info,parts}`.
   Publiczny endpoint to `GET /api/experimental/session/{sessionID}/export`;
-  eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nie
-  otwiera jego bazy SQLite ani nie odczytuje credential API.
+  eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nigdy
+  nie odczytuje credentiali ani nie zapisuje do bazy OpenCode.
 - **Claude Code**: jeden log sesji JSONL na plik (`sessionId`, `cwd`, `message`).
   Skan obejmuje `$CLAUDE_CONFIG_DIR/projects` lub `~/.claude/projects`, rekurencyjnie.
 - **OpenAI Codex**: rollout JSONL (`session_meta`, `response_item`, `turn_context`).
@@ -61,6 +63,8 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - To nie jest skaner billing usage: import nie rekonstruuje cen, czasu pracy ani
   rozliczeniowych liczników z niejednorodnych logów.
 
-Skan jest ograniczony do standardowych folderów harnessa, maksymalnie 512
-plików i 64 MiB; nie ma synchronizacji w tle ani importu sesji z relay/SSH.
-Źródłowe pliki pozostają niezmienione.
+Skan plików jest ograniczony do standardowych folderów harnessa, maksymalnie 512
+plików i 64 MiB. OpenCode odczytuje maksymalnie 256 sesji najwyższego poziomu,
+30 000 wiadomości i 60 000 części na sesję, z obcięciem dużych wyników narzędzi.
+Nie ma synchronizacji w tle ani importu sesji z relay/SSH; źródłowe pliki i baza
+OpenCode pozostają niezmienione.
