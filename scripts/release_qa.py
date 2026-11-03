@@ -79,6 +79,12 @@ def main():
                 if light:
                     command.append("--light-narrow")
                 checks.append((name, command, 100))
+        checks.append((
+            "onboarding-smoke",
+            [str(ROOT / "target/debug/dunlin"), "--onboarding-smoke",
+             str(output / f"dunlin-onboarding-smoke-{uuid.uuid4()}")],
+            60,
+        ))
     report = {"scope": "automatic-only", "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
               "source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),

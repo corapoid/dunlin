@@ -40,6 +40,24 @@ imply that new gates ran for that release. A new tag must be approved separately
   separate prerequisites. No app/relay deployment, website deployment, new tag,
   release publication or replacement of beta.3 artifacts was performed.
 
+### Post-merge working tree after PR #9
+
+PR #9 merged to `main` as `f9650e7`. The following changes are in the working
+tree and have not been released or tagged:
+
+- **527 Rust tests pass / 0 ignored** after removing the four optional
+  `#[ignore]` integration tests. Workspace build, `cargo fmt --all --check` and
+  Clippy `-D warnings` pass.
+- `app.rs` is split into `app/overlays.rs` (UI/overlays), `app/helpers.rs`
+  (helper functions) and `app/tests.rs`; shared Services/event bus remain future
+  work.
+- Remote usage is admin-only: a `member` sees an explicit `Admin-only` state
+  without a relay request or error toast; an admin still fetches limits.
+- `RemoteHost.user_role` persists the paired role (serde-defaulted for older
+  saved hosts).
+- CI rejects `todo!()`/`unimplemented!()` in `apps`/`crates`; unfinished relay
+  capabilities continue to fail closed with explicit errors.
+
 The sequence below preserves historical failures and remediation evidence; its
 earlier pending states are superseded by the final implementation acceptance above.
 
@@ -140,7 +158,9 @@ earlier pending states are superseded by the final implementation acceptance abo
    not need an owner/admin token or `RELEASE_POLICY_TOKEN`.
 3. **Manual R11 acceptance is explicitly deferred, NOT passed.** Fresh macOS account/TCC denial,
    visual/keyboard/a11y/IME/bidi checks, real GitHub write/merge lifecycle and a
-   deployed relay cannot be certified by fixture smokes. Computer Use discovery
+   deployed relay cannot be certified by fixture smokes. Use the
+   [R11 manual matrix](r11-qa.md) and the copyable QA report in Settings →
+   Advanced; a green automatic run is not manual acceptance. Computer Use discovery
    failed: `FileNotFoundError: [Errno 2] No such file or directory: 'orca'`.
    No GUI fallback was used to change the user's installed app or permissions.
    A separate agreed test repository/account/host and the manual matrix remain

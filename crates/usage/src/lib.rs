@@ -6,11 +6,15 @@
 //! grants usage scopes after a re-login, so Dunlin reports that state instead
 //! of inventing percentages. ACP context usage is not a subscription allowance.
 
+pub mod billing;
+
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use chrono::DateTime;
 
 use dunlin_domain::{ProjectTone, ProviderUsage, UsageSource, UsageWindow};
 use serde_json::{Value, json};
@@ -51,21 +55,147 @@ fn probe_codex() -> ProviderUsage {
 }
 
 fn probe_claude() -> ProviderUsage {
-    match claude_credentials() {
-        Ok(scopes) if scopes.iter().any(|scope| scope == "user:profile") => unavailable(
-            "Claude Code",
-            "probe pending",
-            "Claude Code granted usage scopes; the OAuth usage reader is not enabled yet.",
-            ProjectTone::Violet,
-        ),
-        Ok(_) => unavailable(
+    let credentials = match claude_credentials() {
+        Ok(credentials) => credentials,
+        Err(error) => {
+            return unavailable("Claude Code", "not signed in", &error, ProjectTone::Violet);
+        }
+    };
+    if !credentials
+        .scopes
+        .iter()
+        .any(|scope| scope == "user:profile")
+    {
+        return unavailable(
             "Claude Code",
             "re-auth needed",
             "Run `claude /login` to grant `user:profile`, then refresh usage.",
             ProjectTone::Violet,
-        ),
-        Err(error) => unavailable("Claude Code", "not signed in", &error, ProjectTone::Violet),
+        );
     }
+    if credentials
+        .expires_at
+        .is_some_and(|expires| expires <= now_ms() + 30_000)
+    {
+        return unavailable(
+            "Claude Code",
+            "re-auth needed",
+            "The Claude Code OAuth token expired. Run `claude /login` and refresh usage.",
+            ProjectTone::Violet,
+        );
+    }
+    match claude_usage(&credentials.access_token) {
+        Ok(usage) => usage,
+        Err(error) => unavailable("Claude Code", "unavailable", &error, ProjectTone::Violet),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ClaudeCredentials {
+    access_token: String,
+    scopes: Vec<String>,
+    expires_at: Option<i64>,
+}
+
+fn parse_claude_credentials(raw: &str) -> Result<ClaudeCredentials, String> {
+    let value: Value = serde_json::from_str(raw.trim())
+        .map_err(|_| "Claude Code credentials are not readable".to_string())?;
+    let oauth = value
+        .get("claudeAiOauth")
+        .ok_or_else(|| "Claude Code credentials have no OAuth section".to_string())?;
+    let access_token = oauth
+        .get("accessToken")
+        .and_then(Value::as_str)
+        .filter(|token| !token.is_empty())
+        .ok_or_else(|| "Claude Code OAuth access token is missing".to_string())?
+        .to_string();
+    Ok(ClaudeCredentials {
+        access_token,
+        scopes: oauth
+            .get("scopes")
+            .and_then(Value::as_array)
+            .map(|scopes| {
+                scopes
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        expires_at: oauth.get("expiresAt").and_then(Value::as_i64),
+    })
+}
+
+fn claude_usage(token: &str) -> Result<ProviderUsage, String> {
+    let response = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .get("https://api.anthropic.com/api/oauth/usage")
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("anthropic-beta", "oauth-2025-04-20")
+        .set("anthropic-version", "2023-06-01")
+        .call()
+        .map_err(|error| match error {
+            ureq::Error::Status(401 | 403, _) => {
+                "Claude Code rejected the OAuth token; run `claude /login` and refresh usage."
+                    .to_string()
+            }
+            ureq::Error::Status(code, _) => {
+                format!("Claude usage request failed (HTTP {code}); no estimate was invented.")
+            }
+            ureq::Error::Transport(_) => {
+                "Could not reach Claude usage (network error or timeout).".to_string()
+            }
+        })?;
+    let value: Value = response
+        .into_json()
+        .map_err(|_| "Claude usage returned an invalid response".to_string())?;
+    parse_claude_usage(&value)
+}
+
+fn parse_claude_usage(value: &Value) -> Result<ProviderUsage, String> {
+    let mut windows = Vec::new();
+    for (key, label) in [
+        ("five_hour", "5 hour"),
+        ("seven_day", "Weekly"),
+        ("seven_day_opus", "Weekly Opus"),
+        ("seven_day_sonnet", "Weekly Sonnet"),
+    ] {
+        let Some(window) = value.get(key) else {
+            continue;
+        };
+        let Some(used) = window.get("utilization").and_then(Value::as_f64) else {
+            continue;
+        };
+        let resets_at = window
+            .get("resets_at")
+            .and_then(Value::as_str)
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.timestamp());
+        windows.push(UsageWindow {
+            label: label.into(),
+            used_percent: used.clamp(0., 100.) as f32,
+            resets_in: resets_in(resets_at),
+            source: UsageSource::Live,
+        });
+    }
+    if windows.is_empty() {
+        return Err("Claude usage returned no limit windows".into());
+    }
+    Ok(ProviderUsage {
+        provider: "Claude Code".into(),
+        plan: "CLAUDE".into(),
+        accent: ProjectTone::Violet,
+        windows,
+        detail: "Live from Claude Code OAuth usage · refreshed just now".into(),
+    })
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn unavailable(provider: &str, plan: &str, detail: &str, accent: ProjectTone) -> ProviderUsage {
@@ -265,7 +395,7 @@ fn parse_codex_window(value: Option<&Value>) -> Option<CodexWindow> {
     })
 }
 
-fn claude_credentials() -> Result<Vec<String>, String> {
+fn claude_credentials() -> Result<ClaudeCredentials, String> {
     let raw = Command::new("security")
         .args([
             "find-generic-password",
@@ -283,20 +413,7 @@ fn claude_credentials() -> Result<Vec<String>, String> {
         })
         .ok_or_else(|| "No Claude Code credentials were found".to_string())?;
 
-    let value: Value = serde_json::from_str(raw.trim())
-        .map_err(|_| "Claude Code credentials are not readable".to_string())?;
-    Ok(value
-        .get("claudeAiOauth")
-        .and_then(|oauth| oauth.get("scopes"))
-        .and_then(Value::as_array)
-        .map(|scopes| {
-            scopes
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default())
+    parse_claude_credentials(&raw)
 }
 
 fn plan_label(plan: &str) -> String {
@@ -386,6 +503,33 @@ mod tests {
             assert!(usage.windows.is_empty());
             assert_eq!(usage.plan, "Limits unavailable");
         }
+    }
+
+    #[test]
+    fn claude_oauth_credentials_and_usage_are_parsed_without_inventing_windows() {
+        let credentials = super::parse_claude_credentials(
+            r#"{"claudeAiOauth":{"accessToken":"secret","expiresAt":9999999999999,"scopes":["user:profile","user:inference"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(credentials.access_token, "secret");
+        assert!(credentials.scopes.iter().any(|s| s == "user:profile"));
+        assert_eq!(credentials.expires_at, Some(9_999_999_999_999));
+        assert!(super::parse_claude_credentials("{}").is_err());
+
+        let usage = super::parse_claude_usage(&serde_json::json!({
+            "five_hour": {"utilization": 12.5, "resets_at": "2030-01-01T00:00:00Z"},
+            "seven_day": {"utilization": 44.0, "resets_at": "2030-01-02T00:00:00Z"},
+            "seven_day_opus": {"utilization": 1.5, "resets_at": "2030-01-03T00:00:00Z"},
+            "seven_day_sonnet": {"utilization": 99.0}
+        }))
+        .unwrap();
+        assert_eq!(usage.provider, "Claude Code");
+        assert_eq!(usage.windows.len(), 4);
+        assert_eq!(usage.windows[0].label, "5 hour");
+        assert_eq!(usage.windows[0].used_percent, 12.5);
+        assert_eq!(usage.windows[0].source, UsageSource::Live);
+        assert_eq!(usage.windows[3].label, "Weekly Sonnet");
+        assert!(super::parse_claude_usage(&serde_json::json!({})).is_err());
     }
 
     #[test]

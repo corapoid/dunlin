@@ -3,11 +3,24 @@ use crate::app::TraceFilter;
 use dunlin_domain::{AgentKind, AgentNode, SpanKind, TraceSpan};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Default)]
 pub(crate) struct State {
     session: String,
     pub agents_expanded: HashSet<String>,
     pub spans_expanded: HashSet<String>,
+    pub graph_zoom: f32,
+    pub trace_zoom: f32,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            session: String::new(),
+            agents_expanded: HashSet::new(),
+            spans_expanded: HashSet::new(),
+            graph_zoom: 1.,
+            trace_zoom: 1.,
+        }
+    }
 }
 
 impl State {
@@ -41,6 +54,71 @@ pub(crate) fn graph_nodes(all: &[AgentNode], expanded: &HashSet<String>) -> Vec<
         }
     }
     visible
+}
+
+/// Keep matches and their ancestor chain so a revealed search result remains
+/// visibly connected. Empty queries are a no-op.
+pub(crate) fn filter_graph_nodes(nodes: &[AgentNode], query: &str) -> Vec<AgentNode> {
+    let query = query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return nodes.to_vec();
+    }
+    let matches = |node: &AgentNode| {
+        node.title.to_ascii_lowercase().contains(&query)
+            || node.task.to_ascii_lowercase().contains(&query)
+            || node.model.to_ascii_lowercase().contains(&query)
+            || node.harness.to_ascii_lowercase().contains(&query)
+    };
+    let mut keep = HashSet::new();
+    for node in nodes.iter().filter(|node| matches(node)) {
+        keep.insert(node.id.clone());
+        let mut parent = node.parent.as_deref();
+        for _ in 0..=nodes.len() {
+            let Some(id) = parent else { break };
+            if !keep.insert(id.to_string()) {
+                break;
+            }
+            parent = nodes
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .and_then(|candidate| candidate.parent.as_deref());
+        }
+    }
+    nodes
+        .iter()
+        .filter(|node| keep.contains(&node.id))
+        .cloned()
+        .collect()
+}
+
+pub(crate) fn filter_spans(spans: &[TraceSpan], query: &str) -> Vec<TraceSpan> {
+    let query = query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return spans.to_vec();
+    }
+    let matches = |span: &TraceSpan| {
+        span.name.to_ascii_lowercase().contains(&query)
+            || span.agent.to_ascii_lowercase().contains(&query)
+            || span.detail.to_ascii_lowercase().contains(&query)
+    };
+    let by_id: HashMap<_, _> = spans.iter().map(|span| (span.id.as_str(), span)).collect();
+    let mut keep = HashSet::new();
+    for span in spans.iter().filter(|span| matches(span)) {
+        keep.insert(span.id.clone());
+        let mut parent = span.parent.as_deref();
+        for _ in 0..=spans.len() {
+            let Some(id) = parent else { break };
+            if !keep.insert(id.to_string()) {
+                break;
+            }
+            parent = by_id.get(id).and_then(|span| span.parent.as_deref());
+        }
+    }
+    spans
+        .iter()
+        .filter(|span| keep.contains(&span.id))
+        .cloned()
+        .collect()
 }
 
 pub(crate) fn graph_size(nodes: &[AgentNode]) -> (f32, f32) {
@@ -238,6 +316,35 @@ mod tests {
             tokens: None,
             detail: "".into(),
         }
+    }
+
+    #[test]
+    fn graph_and_trace_search_keep_ancestor_context_and_ignore_empty_queries() {
+        let all = vec![
+            node("root", None, AgentKind::Orchestrator),
+            node("child", Some("root"), AgentKind::Subagent),
+            node("tool", Some("child"), AgentKind::Tool),
+        ];
+        assert_eq!(filter_graph_nodes(&all, "  ").len(), 3);
+        let filtered = filter_graph_nodes(&all, "child");
+        assert_eq!(
+            filtered.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
+            ["root", "child"]
+        );
+        assert!(filter_graph_nodes(&all, "missing").is_empty());
+
+        let spans = vec![
+            span("root", None, SpanKind::Turn),
+            span("child", Some("root"), SpanKind::Tool),
+            span("other", Some("root"), SpanKind::Llm),
+        ];
+        let filtered = filter_spans(&spans, "child");
+        assert_eq!(
+            filtered.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            ["root", "child"]
+        );
+        assert_eq!(filter_spans(&spans, "").len(), 3);
+        assert!(filter_spans(&spans, "missing").is_empty());
     }
 
     #[test]

@@ -169,6 +169,19 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 3 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS project_settings (
+                    project_id  TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+                    payload     TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL
+                );
+
+                PRAGMA user_version = 3;
+                "#,
+            )?;
+        }
         Ok(())
     }
 
@@ -282,6 +295,26 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn project_settings(&self, project_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT payload FROM project_settings WHERE project_id = ?1",
+                [project_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn save_project_settings(&self, project_id: &str, payload: &str) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO project_settings (project_id, payload, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(project_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at",
+            params![project_id, payload, now_secs()],
+        )?;
+        Ok(())
     }
 
     pub fn grant(&self, project_id: &str, user_id: &str) -> Result<()> {

@@ -809,12 +809,13 @@ mod tests {
             stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",body.len()).as_bytes()).unwrap();
             String::from_utf8(bytes).unwrap()
         });
-        let backend = WorkspaceBackend::Remote(RemoteWorkspace {
+        let backend = WorkspaceBackend::Remote(Box::new(RemoteWorkspace {
             host: RemoteHost {
                 id: "host".into(),
                 name: "Mock".into(),
                 url,
                 user_name: "user".into(),
+                user_role: "member".into(),
                 device_id: "device".into(),
             },
             project: dunlin_domain::RemoteProject {
@@ -823,7 +824,7 @@ mod tests {
                 path: "/server/project".into(),
             },
             token: "markdown-test-token".into(),
-        });
+        }));
         let Address::Project(path) = resolve(
             "/server/project",
             "/server/project/docs/a.md",

@@ -1,21 +1,29 @@
 # Import sesji
 
-**Settings → Harnesses → karta harnessa → Import sessions…**.
-Można wybrać kilka plików. Najpierw pojawia się podgląd tytułów, katalogów,
-liczby wpisów i przypisań. Nic nie jest zapisywane przed potwierdzeniem.
+**Settings → Harnesses → karta harnessa → Import sessions…** automatycznie
+skanuje standardowe foldery sesji wybranego harnessa. Najpierw pojawia się
+podgląd tytułów, katalogów, liczby wpisów i przypisań. Nic nie jest zapisywane
+przed potwierdzeniem. Osobny link **Import a portable file…** pozostaje dla
+jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 
 ## Obsługiwane źródła
 
-- **OpenCode**: eksport JSON `experimental.session.export` V2:
+- **OpenCode**: Dunlin otwiera lokalny `opencode.db` wyłącznie w trybie
+  read-only i czyta sesje najwyższego poziomu z bieżącego schematu
+  (`session_v2` + `session_message`), z fallbackiem do starszych tabel
+  `session`/`message`/`part`. Importuje tekst, reasoning, historię narzędzi,
+  zapisane liczniki tokenów oraz statystyki diffów plików; nie odczytuje
+  credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
+  JSON `experimental.session.export` V2 przez **Import a portable file…**:
   `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.
   Akceptowane są także eksporty z wiadomościami `{info,parts}`.
   Publiczny endpoint to `GET /api/experimental/session/{sessionID}/export`;
-  eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nie
-  otwiera jego bazy SQLite ani nie odczytuje credential API.
+  eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nigdy
+  nie odczytuje credentiali ani nie zapisuje do bazy OpenCode.
 - **Claude Code**: jeden log sesji JSONL na plik (`sessionId`, `cwd`, `message`).
-  Typowa lokalizacja to `~/.claude/projects/<katalog>/<sessionId>.jsonl`.
+  Skan obejmuje `$CLAUDE_CONFIG_DIR/projects` lub `~/.claude/projects`, rekurencyjnie.
 - **OpenAI Codex**: rollout JSONL (`session_meta`, `response_item`, `turn_context`).
-  Typowa lokalizacja to `~/.codex/sessions/`; wybieraj logi konkretnych sesji.
+  Skan obejmuje `$CODEX_HOME/sessions` lub `~/.codex/sessions`, rekurencyjnie.
 - **Custom ACP** (również Claude/Codex): jawny format przenośny poniżej.
   ACP nie definiuje uniwersalnego eksportu historii; aplikacja nie zgaduje
   prywatnego formatu bazy niestandardowego adaptera.
@@ -48,14 +56,20 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - Sesje bez przypisania są pomijane. Można zmienić automatyczne przypisanie
   i odznaczyć wybrane sesje przed potwierdzeniem.
 - Stała tożsamość harnessa i źródłowego ID chroni przed ponownym importem.
-  Zapis sesji i transkryptów odbywa się w jednej transakcji, wyłącznie insert-only.
-  Kolizja nigdy nie zastępuje istniejącej rozmowy ani transkryptu.
+  Nowe sesje są zapisywane w jednej transakcji. Otwarcie Dashboardu uruchamia
+  jednorazowe uzupełnienie metryk w istniejących kopiach OpenCode; ręczny skan
+  oznacza je dodatkowo jako **Update imported copy**. Obie ścieżki dokładają
+  tylko brakujące tokeny/diffy i normalizują stare wpisy narzędzi, nie
+  zastępując tekstu rozmowy ani lokalnych kontynuacji.
 - Import jest **kopią historii**, nie wznowieniem sesji źródłowej. Nie podpinamy
   oryginalnego ACP session ID. Żaden prompt, tool call ani skrypt nie jest
   wykonywany podczas importu. Rekordy narzędzi i nieznane typy są zachowane jako
   tekst; załączniki nie są automatycznie pobierane ani otwierane ze źródła.
-- To nie jest skaner billing usage: import nie rekonstruuje cen, czasu pracy ani
-  rozliczeniowych liczników z niejednorodnych logów.
+- To nie jest skaner billing usage: import nie rekonstruuje cen ani czasu pracy.
+  Przenosi wyłącznie liczniki tokenów i zmienionych linii zapisane przez źródło.
 
-Nie ma automatycznego skanowania dysku, synchronizacji w tle ani importu sesji
-z relay/SSH. Świadomie wybrane pliki pozostają niezmienione.
+Skan plików jest ograniczony do standardowych folderów harnessa, maksymalnie 512
+plików i 64 MiB. OpenCode odczytuje maksymalnie 256 sesji najwyższego poziomu,
+30 000 wiadomości i 60 000 części na sesję, z obcięciem dużych wyników narzędzi.
+Nie ma synchronizacji w tle ani importu sesji z relay/SSH; źródłowe pliki i baza
+OpenCode pozostają niezmienione.

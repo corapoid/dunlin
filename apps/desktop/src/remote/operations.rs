@@ -144,12 +144,13 @@ mod tests {
         time::{Duration, Instant},
     };
     fn remote(url: String, root: String) -> WorkspaceBackend {
-        WorkspaceBackend::Remote(RemoteWorkspace {
+        WorkspaceBackend::Remote(Box::new(RemoteWorkspace {
             host: RemoteHost {
                 id: "host".into(),
                 name: "Mock".into(),
                 url,
                 user_name: "user".into(),
+                user_role: "member".into(),
                 device_id: "device".into(),
             },
             project: dunlin_domain::RemoteProject {
@@ -158,7 +159,7 @@ mod tests {
                 path: root,
             },
             token: "git-test-token".into(),
-        })
+        }))
     }
     fn server(
         replies: Vec<(u16, String, Option<String>)>,

@@ -72,14 +72,14 @@ pub struct PullRequest {
     pub mergeable: Option<bool>,
     pub merged: Option<bool>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Overview {
     pub repository: Repository,
     pub account: String,
     pub runs: Vec<Run>,
     pub pulls: Vec<PullRequest>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PullDetails {
     pub pull: PullRequest,
     pub files: Vec<Value>,

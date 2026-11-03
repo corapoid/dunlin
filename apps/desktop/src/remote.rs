@@ -11,7 +11,8 @@ use url::Url;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use dunlin_domain::{ProviderUsage, RemoteProject};
+use dunlin_domain::{ProjectSettings, ProviderUsage, RemoteProject};
+use dunlin_workspace::checks;
 use dunlin_workspace::fs::{FileContents, FileStat};
 use dunlin_workspace::git::GitStatus;
 use dunlin_workspace::search::SearchHit;
@@ -61,6 +62,8 @@ pub(crate) struct RemoteHost {
     pub name: String,
     pub url: String,
     pub user_name: String,
+    #[serde(default)]
+    pub user_role: String,
     pub device_id: String,
 }
 
@@ -84,6 +87,31 @@ pub(crate) struct RemoteProjectInfo {
     pub id: String,
     pub name: String,
     pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteGithubPlan {
+    pub id: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteRestorePreview {
+    pub id: String,
+    pub change: dunlin_workspace::task_review::Change,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemotePreparedComparison {
+    pub id: String,
+    pub head: String,
+    pub paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteComparisonTrees {
+    pub trees: dunlin_workspace::comparison::Trees,
+    pub projects: Vec<RemoteProjectInfo>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -154,6 +182,94 @@ pub(crate) fn projects(url: &str, token: &str) -> Result<Vec<RemoteProjectInfo>,
         .call()
         .map_err(http_error)?;
     response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn run_check(
+    url: &str,
+    token: &str,
+    project_id: &str,
+    argv: Vec<String>,
+) -> Result<checks::Report, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .post(&format!("{}/v1/checks/run", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(150))
+        .send_json(serde_json::json!({"project": project_id, "argv": argv}))
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn build_impact(
+    url: &str,
+    token: &str,
+    project_id: &str,
+) -> Result<dunlin_workspace::impact::Index, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .post(&format!("{}/v1/impact/build", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(60))
+        .send_json(serde_json::json!({"project": project_id}))
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn verify_impact(
+    url: &str,
+    token: &str,
+    project_id: &str,
+    index: &dunlin_workspace::impact::Index,
+) -> Result<(), String> {
+    validate_relay_url(url)?;
+    http_agent()
+        .post(&format!("{}/v1/impact/verify", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .send_json(serde_json::json!({"project": project_id, "index": index}))
+        .map(|_| ())
+        .map_err(http_error)
+}
+
+pub(crate) fn project_settings(
+    url: &str,
+    token: &str,
+    project_id: &str,
+) -> Result<ProjectSettings, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!(
+            "{}/v1/project/settings?project={}",
+            url.trim_end_matches('/'),
+            encode(project_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .call()
+        .map_err(http_error)?;
+    response.into_json().map_err(|error| error.to_string())
+}
+
+pub(crate) fn save_project_settings(
+    url: &str,
+    token: &str,
+    project_id: &str,
+    settings: &ProjectSettings,
+) -> Result<(), String> {
+    validate_relay_url(url)?;
+    http_agent()
+        .put(&format!(
+            "{}/v1/project/settings",
+            url.trim_end_matches('/')
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .send_json(serde_json::json!({
+            "project": project_id,
+            "settings": settings,
+        }))
+        .map(|_| ())
+        .map_err(http_error)
 }
 
 pub(crate) fn sessions(
@@ -520,6 +636,158 @@ impl RemoteWorkspace {
         Ok(response.path)
     }
 
+    pub fn compare_prepare(&self) -> Result<RemotePreparedComparison, String> {
+        self.post(
+            "/v1/compare/prepare",
+            &serde_json::json!({"project": self.project.project_id}),
+        )
+    }
+
+    pub fn compare_create(&self, id: &str) -> Result<RemoteComparisonTrees, String> {
+        self.post(
+            "/v1/compare/create",
+            &serde_json::json!({"project": self.project.project_id, "id": id}),
+        )
+    }
+
+    pub fn compare_changes(
+        &self,
+        checkpoint: &dunlin_workspace::task_review::Checkpoint,
+    ) -> Result<Vec<dunlin_workspace::task_review::Change>, String> {
+        self.post(
+            "/v1/compare/changes",
+            &serde_json::json!({"project": self.project.project_id, "checkpoint": checkpoint}),
+        )
+    }
+
+    pub fn compare_validate(&self, head: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/compare/validate",
+            &serde_json::json!({"project": self.project.project_id, "head": head}),
+        )
+    }
+
+    pub fn github_load(&self, remote: &str) -> Result<dunlin_workspace::github::Overview, String> {
+        self.post(
+            "/v1/github/load",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote}),
+        )
+    }
+
+    pub fn github_runs(
+        &self,
+        remote: &str,
+        head: &str,
+    ) -> Result<Vec<dunlin_workspace::github::Run>, String> {
+        self.post(
+            "/v1/github/runs",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote, "head": head}),
+        )
+    }
+
+    pub fn github_jobs(
+        &self,
+        remote: &str,
+        run: &dunlin_workspace::github::Run,
+    ) -> Result<
+        (
+            dunlin_workspace::github::Run,
+            Vec<dunlin_workspace::github::Job>,
+        ),
+        String,
+    > {
+        self.post(
+            "/v1/github/jobs",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote, "run": run}),
+        )
+    }
+
+    pub fn github_pull(
+        &self,
+        remote: &str,
+        number: u64,
+    ) -> Result<dunlin_workspace::github::PullDetails, String> {
+        self.post(
+            "/v1/github/pull",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote, "number": number}),
+        )
+    }
+
+    pub fn github_log(
+        &self,
+        remote: &str,
+        run: &dunlin_workspace::github::Run,
+        job: &dunlin_workspace::github::Job,
+    ) -> Result<String, String> {
+        self.post(
+            "/v1/github/log",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote, "run": run, "job": job}),
+        )
+    }
+
+    pub fn github_prepare(
+        &self,
+        remote: &str,
+        action: dunlin_workspace::github::Action,
+    ) -> Result<RemoteGithubPlan, String> {
+        self.post(
+            "/v1/github/prepare",
+            &serde_json::json!({"project": self.project.project_id, "remote": remote, "action": action}),
+        )
+    }
+
+    pub fn github_execute(&self, id: &str) -> Result<String, String> {
+        self.post(
+            "/v1/github/execute",
+            &serde_json::json!({"project": self.project.project_id, "id": id}),
+        )
+    }
+
+    pub fn review_capture(
+        &self,
+        label: &str,
+    ) -> Result<dunlin_workspace::task_review::Checkpoint, String> {
+        self.post(
+            "/v1/review/capture",
+            &serde_json::json!({"project": self.project.project_id, "label": label}),
+        )
+    }
+
+    pub fn review_changes(
+        &self,
+        checkpoint: &dunlin_workspace::task_review::Checkpoint,
+    ) -> Result<Vec<dunlin_workspace::task_review::Change>, String> {
+        self.post(
+            "/v1/review/changes",
+            &serde_json::json!({"project": self.project.project_id, "checkpoint": checkpoint}),
+        )
+    }
+
+    pub fn review_restore_prepare(
+        &self,
+        checkpoint: &dunlin_workspace::task_review::Checkpoint,
+        path: &str,
+    ) -> Result<RemoteRestorePreview, String> {
+        self.post(
+            "/v1/review/restore/prepare",
+            &serde_json::json!({"project": self.project.project_id, "checkpoint": checkpoint, "path": path}),
+        )
+    }
+
+    pub fn review_restore_execute(&self, id: &str) -> Result<(), String> {
+        self.post_empty(
+            "/v1/review/restore/execute",
+            &serde_json::json!({"project": self.project.project_id, "id": id}),
+        )
+    }
+
+    pub fn remote_context(&self) -> Result<Value, String> {
+        self.get(&format!(
+            "/v1/context?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
+
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         validate_relay_url(&self.host.url)?;
         let response = http_agent()
@@ -568,7 +836,7 @@ impl RemoteWorkspace {
 #[derive(Clone)]
 pub(crate) enum WorkspaceBackend {
     Local { root: String },
-    Remote(RemoteWorkspace),
+    Remote(Box<RemoteWorkspace>),
 }
 
 impl WorkspaceBackend {
@@ -592,6 +860,43 @@ impl WorkspaceBackend {
         match self {
             Self::Local { root } => git::switch_branch_checked(root, branch, expected, keep_changes),
             Self::Remote(remote) => remote.post_empty("/v1/git/switch-safe", &serde_json::json!({"project": remote.project.project_id, "branch": branch, "expected": expected, "keep_changes": keep_changes})).map_err(branch_relay_error),
+        }
+    }
+
+    /// Create one ref from an exact commit on the local or relay repository.
+    /// Never checks out, fetches or moves the current branch.
+    pub fn create_branch_at(&self, scope: &str, oid: &str, name: &str) -> Result<(), String> {
+        match self {
+            Self::Local { root } => {
+                let root = git::history::repository_root(root, Some(scope))?;
+                git::history::create_branch(&root, name, oid)
+            }
+            Self::Remote(remote) => remote
+                .post_empty(
+                    "/v1/git/history/branch",
+                    &serde_json::json!({
+                        "project": remote.project.project_id,
+                        "scope": scope,
+                        "oid": oid,
+                        "name": name,
+                    }),
+                )
+                .map_err(branch_relay_error),
+        }
+    }
+
+    /// Checkout one exact commit only for a local project. Remote history stays
+    /// read-only until the relay exposes an explicit checkout capability.
+    pub fn checkout_commit_at(&self, scope: &str, oid: &str) -> Result<(), String> {
+        match self {
+            Self::Local { root } => {
+                let root = git::history::repository_root(root, Some(scope))?;
+                let expected = git::branch_context(&root)?;
+                git::checkout_commit_checked(&root, oid, &expected)
+            }
+            Self::Remote(_) => {
+                Err("Commit checkout is local-only; remote history remains read-only".into())
+            }
         }
     }
     pub fn editor_baseline(&self, path: &str) -> Option<String> {

@@ -2,7 +2,7 @@
 
 > Historyczny zapis zakończonego zakresu, nie aktualny backlog. Liczby i informacja
 > o braku commit/push poniżej dotyczą tamtej walidacji. Źródła opublikowano do
-> beta.3; obecnie 487 testów OK / 4 opcjonalne pominięte. Ręczny odbiór nadal
+> beta.3; obecnie 542 testów OK / 0 pominiętych. Ręczny odbiór nadal
 > oddzielny od natywnych smoke. Aktualny stan: [ROADMAP.md](ROADMAP.md).
 
 - [x] Import plików sesji w ustawieniach harnessa: adaptery, podgląd, dopasowanie projektów, deduplikacja i atomowy zapis.

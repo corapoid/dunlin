@@ -1,4 +1,4 @@
-# Pozostałe prace — przegląd 2026-11-01
+# Pozostałe prace — przegląd 2026-11-03
 
 Źródła: `ROADMAP.md`, `PLAN.md`, obie listy `TODO-*` i aktualny kod.
 To lista brakujących zakresów, a nie kopia nieaktualnych większych checkboxów.
@@ -23,7 +23,17 @@ Bieżący hardening nie jest częścią beta.3: migracja pięciu obsolete pakiet
 bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Rust
 i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
 bez bypassu i zweryfikowane atestacje obu binariów.
-Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
+**Bieżąca walidacja working tree po PR #9 i zakresie beta.6:
+542 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
+README jest krótkim landing page'em, a pełny opis przeniesiono do
+[`guide.md`](guide.md); lokalny baseline wydajności jest w
+[`performance.md`](performance.md).
+Ustawienia mają jedną płaską powierzchnię, dwustopniowy onboarding i katalog
+ACP; ich ręczna QA pozostaje otwarta. Usunięto cztery
+testy `#[ignore]`; `app.rs` dzielą teraz `app/overlays.rs`, `app/helpers.rs` i
+`app/tests.rs`. Remote usage dla `member` jest jawnie `Admin-only` bez żądania
+i bez błędu; admin nadal pobiera limity. CI odrzuca `todo!()`/
+`unimplemented!()`. Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
 [Dowody i granice](release-acceptance.md).
 
 ## Częściowo wdrożone — czego jeszcze brakuje
@@ -31,17 +41,20 @@ Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
 1. **Rozmowy i ergonomia**: odgałęzianie od wiadomości (nie to samo co branch Git),
    Undo usuwania projektów/sesji, menu kontekstowe wiadomości i tool calli,
    dopracowanie zawijania composera w wąskim oknie.
-2. **Design i dostępność**: pełna migracja widoków do tokenów typografii/spacing,
-   Compact/Comfortable, kompleksowy audyt klawiatury, focusu i dostępności.
-   Obecne Design settings, light-theme polish i zmiana szerokości sidebara są gotowe.
-3. **Ustawienia projektu/grupy**: domyślne model/env przez relay i dalsze ustawienia
-   specyficzne dla adapterów. Lokalne model/env per projekt i ustawienia grup z resolverem
-   global → przodkowie → projekt, źródłami wartości i resetem dziedziczenia są
-   wdrożone. Model per harness dotyczy nowych sesji, env następnego połączenia,
-   polityka klienta kolejnych żądań. Jest jawne zastosowanie zapisanego modelu
-   do bezczynnej sesji przez ACP; bez restartowania trwających agentów.
-   Harness, permission mode i własna ikona projektu są gotowe. Ręczna QA nowych
-   dialogów nadal oczekuje wykonania.
+2. **Design i dostępność**: tokeny semantyczne, Compact/Comfortable i Reduce
+   Motion są wdrożone (najpierw Settings i nowe powierzchnie). Pozostają migracja
+   literalnych rozmiarów w starszych widokach oraz kompleksowy ręczny audyt
+   klawiatury, focusu, kontrastu i etykiet AX.
+3. **Ustawienia projektu/grupy**: lokalne model/env per projekt i ustawienia grup z
+   resolverem global → przodkowie → projekt, źródłami wartości i resetem
+   dziedziczenia są wdrożone. Remote project settings są przechowywane na relay i
+   administracyjnie edytowalne; zwalidowane env trafia do następnego procesu
+   harnessa, a zapisany model jest aplikowany po pojawieniu się modeli ACP.
+   Member widzi wartości, ale nie może ich zapisać. Group agents obsługują teraz
+   jawne granty multi-root: lokalne katalogi przez ACP `additionalDirectories`
+   oraz projekty relay na jednym hoście przez listę `roots` w połączeniu ACP.
+   Relay weryfikuje każdy grant przy połączeniu i każdym żądaniu, a sandbox
+   dopuszcza wyłącznie zatwierdzone rooty. Ręczna QA nowych dialogów nadal oczekuje.
 4. **Grupy v2**: ręczna kolejność, wybór kolorów i sync relay/iOS. Hierarchia,
    List/Tree, sortowanie, drag & drop przypisań/przenoszenia grup oraz bezpieczne
    usuwanie/promowanie/Undo już działają.
@@ -51,13 +64,24 @@ Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
    Dashboard, aktualizacje ACP i scope-aware limity kont; nie zastępują one
    pełnego billing usage. Trwałe limity żądań/czasu/raportowanego USD per zadanie
    są wdrożone; nie są gwarantowanym limitem rachunku ani pełnym rozliczeniem
-   wewnętrznych retry/subagentów. Lokalny reader OAuth usage Claude pozostaje niewłączony.
-6. **Onboarding i uprawnienia**: pełny kreator harness/model/trust/relay/SSH,
-   centrum statusów Notifications/Accessibility/Screen Recording/Automation/FDA,
-   linki do System Settings i ponowne sprawdzanie. Podstawowy pierwszy ekran,
-   wykrywanie adapterów, trust i powiadomienia już istnieją.
-7. **Git v2**: ręczna QA mutacji/hoverów i rzeczywistego relay, checkout commita z grafu
-     i zdalny branch create. Mutacje stash/worktree, merge/rebase/cherry-pick,
+   wewnętrznych retry/subagentów. Reader OAuth usage Claude jest włączony
+   (odczyt limitów 5h/tygodniowych przez `api.anthropic.com/api/oauth/usage`).
+   Fundament billingowy (`dunlin_usage::billing`) skanuje logi Claude Code JSONL,
+   Codex rollout JSONL i OpenCode SQLite, deduplikuje po message id, checkpointuje
+   pełne linie JSONL, liczy cache read/write i cennik znanych modeli (w tym
+   long-context); nieznane modele pozostają `unpriced`. Dashboard Usage pokazuje
+   przekroje global/provider/harness/model/projekt/dzień, a budżety alertów
+   ($50/$100/$250) ostrzegają na 80% i 100% znanego kosztu.
+   Remote usage jest admin-only po stronie relay: klient pokazuje `Admin-only`
+   dla roli `member` bez wysyłania żądania i bez toastu błędu, a administrator
+   nadal pobiera limity. To świadomy stan uprawnień, nie błąd połączenia.
+6. **Onboarding i uprawnienia**: dwustopniowy kreator harness → projekt ma
+   teraz opcjonalną kartę powiadomień (Allow/Open Settings), centrum statusów
+   Notifications/Accessibility/Screen Recording/Automation/FDA, linki do System
+   Settings, ponowne sprawdzanie oraz jawny stan **Not granted**. Chat pokazuje
+   banner zaufania projektu. Pozostają ręczna QA TCC i pełny wizard relay/SSH.
+7. **Git v2**: checkout commita z grafu i zdalny branch create są wdrożone;
+     pozostaje ręczna QA mutacji/hoverów i rzeczywistego relay. Mutacje stash/worktree, merge/rebase/cherry-pick,
      continue/abort i inline blame są wdrożone local/relay z preflightem,
      jednorazowymi planami i ochroną buforów — [zakres](git-operations-and-blame.md).
      Bezpieczny switch, lokalna historia DAG/refs,
@@ -65,28 +89,41 @@ Manualna QA jawnie odroczona dla serii beta, nie zaliczona.
     z listą plików/diffem commita są gotowe w kodzie. Porównania root/merge-parent,
     rename/delete/binary mają testy; ręczna QA nowego panelu nadal oczekuje.
     Read-only historia przez relay (graf/szczegóły/patche) jest wdrożona z grantami
-     i przypięciem zakresu; nowe endpointy mutacji/blame wymagają aktualizacji relay.
+     i przypięciem zakresu; zdalne checks działają przez `POST /v1/checks/run`
+     (jawny argv, 120 s, 512 KiB, bez sandboxa, dla każdego z grantem), a impact
+     przez `/v1/impact/build` i `/v1/impact/verify`. Zdalne checkpointy/restore,
+     compare z jawnymi projektami worktree, GitHub (admin-only, konto `gh` hosta)
+     i context inspector mają endpointy `/v1/review/*`, `/v1/compare/*`,
+     `/v1/github/*` i `/v1/context`. Pozostają mutacje/blame poza istniejącym
+     zakresem oraz ręczna QA na rzeczywistym relayu.
     Podglądy read-only stash/worktree (w tym blokady/prunable), stanu operacji
     i konfliktów indeksu są wdrożone lokalnie i przez relay; ich GUI nadal wymaga QA.
 8. **Global search**: FTS5 transkryptów i sesji, wspólne filtry i snippety.
    Aktualne wyszukiwanie plików w projekcie nie realizuje całego zakresu.
-9. **Skills**: discovery istniejących zewnętrznych bibliotek, pełne włączanie
-   per projekt, import z folderu/repo i audyt hash/pochodzenia. Globalna biblioteka,
+9. **Skills**: discovery istniejących bibliotek, import z folderu, instalacja
+   per projekt i audyt hash/pochodzenia są wdrożone. Globalna biblioteka,
    edycja/walidacja i bezpieczna instalacja/usuwanie własnych kopii do rootów
-   harnessów już istnieją.
-10. **Agent graph / Trace**: pan/zoom, zaawansowany auto-layout, minimapa,
-    wyszukiwanie, rozszerzona klawiatura, sticky axis i wirtualizacja. Obecne
-    hierarchie, zwijanie/rozwijanie, filtry, timing i eksport SVG to gotowa baza.
+   harnessów również działają; pozostaje ręczna QA UI.
+10. **Agent graph / Trace**: pan/zoom, minimapa, wyszukiwanie z zachowaniem
+    przodków, skróty `⌘+`/`⌘−`/`⌘0`, sticky axis i zoom gęstości wierszy są
+    wdrożone. Pozostają zaawansowany auto-layout, pełna wirtualizacja 10k+
+    elementów i ręczna QA fokusu/a11y.
 
 ## Dalszy backlog — nowe podsystemy i już rozpoczęte rozszerzenia
 
 Poniższa lista **nie** oznacza, że każdy moduł jest niewdrożony. Markdown,
-workbench i źródła iOS już istnieją; Run/terminal, FTS5, scheduler i koordynator
-nie wynikają automatycznie z istniejących checks/search plików/A/B.
+workbench, źródła iOS oraz lokalny terminal/Run v1 już istnieją; FTS5, scheduler
+i koordynator nie wynikają automatycznie z istniejących checks/search plików/A/B.
 
-11. **Terminal**: PTY/VT, taby/splity, scrollback, search, linki, shell integration,
-    tryb lokalny/relay/SSH; wybór silnika VT.
-12. **Run**: wykrywanie komend z manifestów i skryptów, panel i historia uruchomień.
+11. **Terminal**: lokalne PTY (`portable-pty`) + VT (`vt100`), taby, bounded
+    scrollback, resize, copy/paste, podstawowe klawisze, wyszukiwanie widocznego
+    buforu z podświetleniem i klikalne linki HTTP(S)/mailto są wdrożone.
+    Pozostają: zaznaczanie myszą, splity, shell integration, pełne OSC 8 oraz
+    transport relay/SSH. Szczegóły: [terminal i Run](terminal-and-run.md).
+12. **Run**: statyczne wykrywanie package.json/Cargo/Make/just/pyproject/go/
+    deno/composer/Rakefile/mix/gradle/maven oraz scripts/*; preview argv/cwd/env,
+    potwierdzenie, PTY, exit code/sygnał, historia i rerun są wdrożone. Pozostają
+    ręczna QA i kolejne formaty manifestów.
 13. **Artefakty**: model/storage/panel, jawne „zapisz jako artefakt”, preview/source
     dla Markdown/HTML/CSV/obrazów/diffów; później share, wygasanie i revoke.
 14. **Markdown**: domyślny Visual, stałe pola edycji bez zmiany typografii przy focus,
@@ -117,17 +154,24 @@ nie wynikają automatycznie z istniejących checks/search plików/A/B.
      bez merge. Nie zastępuje koordynatora/handoffów.
 21. **Agent workbench/GitHub**: osiem obszarów ma ograniczone implementacje;
     pozostają ręczna QA dialogów/klawiatury/a11y, prawdziwy GitHub i wdrożony relay,
-    pełny billing, semantyka compiler/LSP/non-Rust oraz zdalne checks/comparison/index.
+    pełny billing, semantyka compiler/LSP/non-Rust oraz ręczna QA zdalnych checkpointów/comparison/GitHub/context; checks, impact i wspomniane endpointy są już dostępne.
     Mapa wpływu działa jako Rust AST/lexical references i kandydaci testów, nie
     dowód pokrycia. [Dokładny zakres i walidacja](agent-workbench-and-github.md).
 
 ## Fundament i wydanie — oddzielnie od funkcji
 
-- Dalszy podział dużego `app.rs`, wspólne Services, modele/migracje i event bus
-  dla nowych subsystemów z `PLAN.md`.
+- `app.rs` jest podzielony na `app/overlays.rs`, `app/helpers.rs` i
+  `app/tests.rs`; pozostają wspólne Services, modele/migracje i event bus dla
+  nowych subsystemów z `PLAN.md`. `app.rs` nadal zawiera stan i logikę aplikacji.
+- Brak `todo!()`/`unimplemented!()` w źródłach; niedokończone ścieżki relay
+  kończą się jawnym błędem. CI egzekwuje tę regułę dla `apps`/`crates`.
 - **R11 QA**: świeże konto macOS, brak harnessa, odmowa powiadomień, upgrade bazy,
   duży projekt i remote beta; pełna weryfikacja GUI pozostaje do wykonania.
-  Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla `0.1.0-beta.N`.
+  Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla
+  `0.1.0-beta.N`. [Manualna macierz R11](r11-qa.md); Settings → Advanced →
+  Release QA generuje kopiowalny raport środowiska, a `--onboarding-smoke`
+  pokrywa świeży katalog bez projektu/harnessa i centrum uprawnień bez
+  zastępowania odbioru TCC.
 - **R12 security/release — zamknięty zakres solo/beta**: dependency review/Dependabot, secret
   scanning/push protection i reguły PR/statusów/no-force dla `main` już są.
   Kod CodeQL/cargo-deny oraz bramek metadanych/artefaktów i audytu reguł jest już

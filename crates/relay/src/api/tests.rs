@@ -8,6 +8,7 @@ use tower::ServiceExt;
 
 mod history;
 mod operations;
+mod workbench;
 
 struct Fixture {
     root: PathBuf,
@@ -61,6 +62,28 @@ impl Fixture {
         )
     }
 
+    async fn put(&self, path: &str, token: Option<&str>, body: Value) -> (StatusCode, Value) {
+        let mut request = Request::put(path).header("Content-Type", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+        let response = router(self.state.clone())
+            .oneshot(request.body(Body::from(body.to_string())).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        (
+            status,
+            if bytes.is_empty() {
+                Value::Null
+            } else {
+                serde_json::from_slice(&bytes)
+                    .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
+            },
+        )
+    }
+
     async fn preview(&self, token: Option<&str>, path: &str) -> (StatusCode, Value) {
         let mut request = Request::get(format!(
             "/v1/fs/preview?project={}&path={path}",
@@ -76,6 +99,24 @@ impl Fixture {
         let status = response.status();
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    async fn get_json(&self, path: &str, token: Option<&str>) -> (StatusCode, Value) {
+        let mut request = Request::get(path);
+        if let Some(token) = token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+        let response = router(self.state.clone())
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes)
+                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into())),
+        )
     }
 
     async fn branch_context(&self, token: Option<&str>) -> (StatusCode, Value) {
@@ -368,4 +409,73 @@ async fn attachment_upload_rejects_a_symlinked_namespace() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
     let _ = fs::remove_dir_all(&outside);
+}
+#[tokio::test]
+async fn relay_project_settings_are_granted_readable_and_admin_only_writable() {
+    let f = Fixture::new();
+    let (admin, admin_token) = {
+        let store = f.state.store.lock().unwrap();
+        let admin = store.create_user("admin", "admin").unwrap();
+        store.grant(&f.project, &admin.id).unwrap();
+        let (_, token) = store.create_device(&admin.id, "admin-test").unwrap();
+        (admin, token)
+    };
+    let path = format!("/v1/project/settings?project={}", f.project);
+    assert_eq!(f.get_json(&path, None).await.0, StatusCode::UNAUTHORIZED);
+    let (status, value) = f.get_json(&path, Some(&f.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value["environment"], json!({}));
+    let body = json!({
+        "project": f.project,
+        "settings": {
+            "harness": "OpenCode",
+            "default_models": {"OpenCode": "provider/model"},
+            "environment": {"LANG": "pl_PL.UTF-8"}
+        }
+    });
+    assert_eq!(
+        f.put("/v1/project/settings", Some(&f.token), body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        f.put("/v1/project/settings", Some(&admin_token), body)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, value) = f.get_json(&path, Some(&f.token)).await;
+    assert_eq!(value["default_models"]["OpenCode"], "provider/model");
+    assert_eq!(value["environment"]["LANG"], "pl_PL.UTF-8");
+    assert_eq!(admin.name, "admin");
+}
+
+#[tokio::test]
+async fn relay_checks_record_real_exit_status_for_granted_users() {
+    let f = Fixture::new();
+    let body = json!({
+        "project": f.project,
+        "argv": ["/bin/sh", "-c", "printf out; printf err >&2; exit 7"]
+    });
+    assert_eq!(
+        f.post("/v1/checks/run", None, body.clone()).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (status, report) = f.post("/v1/checks/run", Some(&f.token), body).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(report["exit_code"], 7);
+    assert_eq!(report["stdout"], "out");
+    assert_eq!(report["stderr"], "err");
+    assert_eq!(report["result"], "exited_nonzero");
+    assert_eq!(
+        f.post(
+            "/v1/checks/cancel",
+            Some(&f.token),
+            json!({"project": f.project, "id": "unknown"})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
 }

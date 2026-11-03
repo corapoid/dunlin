@@ -803,6 +803,25 @@ fn project_row(
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
     let hover_group = format!("project-row-hover-{index}");
     let editing = this.project_group_editor == Some(index);
+    let meta = {
+        let monorepo = crate::local_projects::monorepo_badge(this, project, p);
+        let languages = crate::local_projects::language_badge(this, project, p);
+        if monorepo.is_none() && languages.is_none() {
+            None
+        } else {
+            Some(
+                div()
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_col()
+                    .items_end()
+                    .justify_center()
+                    .gap(px(3.))
+                    .children(monorepo)
+                    .children(languages),
+            )
+        }
+    };
 
     div()
         .id(("project-row", index))
@@ -855,7 +874,6 @@ fn project_row(
                         .when(pinned, |this| {
                             this.child(Icon::new(IconName::Pin).size(px(9.)).text_color(p.muted_fg))
                         })
-                        .children(crate::local_projects::monorepo_badge(this, project, p))
                         .when(missing, |this| {
                             this.child(
                                 Icon::new(IconName::TriangleAlert)
@@ -894,6 +912,7 @@ fn project_row(
                         }),
                 ),
         )
+        .when_some(meta, |row, meta| row.child(meta))
         .when(running > 0, |this| {
             this.child(
                 div()
@@ -1126,6 +1145,7 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         selected.as_deref(),
         &project,
         &root_path,
+        this.show_file_sizes,
         cx,
     );
 
@@ -1158,6 +1178,15 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     .child(project_name.to_uppercase()),
             )
             .child(div().flex_1())
+            .when(this.show_file_sizes, |row| {
+                row.child(
+                    div()
+                        .text_size(px(11.0))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(crate::app::format_size(this.file_tree.total_size)),
+                )
+            })
             .child(
                 div()
                     .text_size(px(11.0))
@@ -1180,6 +1209,16 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_color(p.amber)
                 .child(error),
         );
+    } else if rows.is_empty() {
+        root = root.child(
+            div()
+                .mx(px(8.))
+                .mt(px(8.))
+                .p(px(9.))
+                .text_size(px(11.0))
+                .text_color(p.muted_fg)
+                .child("Loading files…"),
+        );
     } else {
         root = root.children(rows);
     }
@@ -1191,6 +1230,7 @@ fn file_rows(
     selected: Option<&str>,
     project: &str,
     root: &str,
+    show_sizes: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Vec<AnyElement> {
     let p = palette(cx);
@@ -1237,6 +1277,13 @@ fn file_rows(
                     cx.notify();
                 }
             }));
+        if show_sizes {
+            let kind = if is_dir { "Folder" } else { "File" };
+            let size = crate::app::format_size(entry.size);
+            row = row.tooltip(move |window, cx| {
+                component::tooltip::Tooltip::new(format!("{kind} · {size}")).build(window, cx)
+            });
+        }
 
         if is_dir {
             row = row.child(
@@ -1292,7 +1339,14 @@ fn file_rows(
         rows.push(row.into_any_element());
 
         if is_dir && expanded {
-            rows.extend(file_rows(&entry.children, selected, project, root, cx));
+            rows.extend(file_rows(
+                &entry.children,
+                selected,
+                project,
+                root,
+                show_sizes,
+                cx,
+            ));
         }
     }
 
@@ -2009,40 +2063,38 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let selected = this.selected_session;
     let sessions = this.sessions.clone();
 
-    let mut list = div()
-        .flex()
-        .flex_col()
-        .pb(px(10.))
-        .when(this.visible_session_count() > 0, |list| {
-            list.child(group_label("TODAY", &p))
-        })
-        .when(this.visible_session_count() == 0, |list| {
-            list.child(
-                div()
-                    .p(px(12.))
-                    .text_size(px(11.))
-                    .text_color(p.muted_fg)
-                    .child("No conversations yet. Send a message to start one."),
-            )
-        });
+    let mut list =
+        div()
+            .flex()
+            .flex_col()
+            .pb(px(10.))
+            .when(this.visible_session_count() == 0, |list| {
+                list.child(
+                    div()
+                        .p(px(12.))
+                        .text_size(px(11.))
+                        .text_color(p.muted_fg)
+                        .child("No conversations yet. Send a message to start one."),
+                )
+            });
 
-    for (position, (index, session)) in sessions
+    let mut last_group = None;
+    for (index, session) in sessions
         .iter()
         .enumerate()
         .filter(|(_, session)| this.session_visible(session))
-        .enumerate()
     {
-        if position == 2 {
-            list = list.child(group_label("EARLIER", &p));
-        }
         let active = index == selected;
         let (status_color, status_soft) = status_palette(&p, session.status);
         let title = session.title.clone();
         let harness = session.harness.clone();
         let model = session.model.clone();
-        let updated = session.updated_at.clone();
-        let cost = session.cost_usd;
-        let duration = session.duration_secs;
+        let updated = crate::app::format_session_date(&session.updated_at);
+        let group_key = updated.to_uppercase();
+        if last_group.as_deref() != Some(group_key.as_str()) {
+            list = list.child(group_label(&group_key, &p));
+            last_group = Some(group_key);
+        }
         let group = format!("session-row-{index}");
 
         list = list.child(
@@ -2100,12 +2152,13 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 })
                                 .line_height(relative(1.35))
                                 .text_color(p.fg)
+                                .truncate()
                                 .child(title),
                         )
                         .child(
                             div()
-                                .text_size(px(11.0))
-                                .font_family(dunlin_ui::theme::code_font())
+                                .flex_shrink_0()
+                                .text_size(px(10.5))
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .child(updated),
                         ),
@@ -2141,17 +2194,6 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 .child(format!("{harness} · {model}")),
                         )
                         .child(div().flex_1())
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .text_size(px(11.0))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg)
-                                .child(format!(
-                                    "${cost:.2} · {}",
-                                    crate::app::format_duration(duration)
-                                )),
-                        )
                         .child(
                             div()
                                 .id(("session-delete", index))

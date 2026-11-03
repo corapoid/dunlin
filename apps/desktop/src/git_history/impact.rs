@@ -68,26 +68,88 @@ impl DunlinApp {
         }
     }
     fn build_impact_map(&mut self, cx: &mut Context<Self>) {
+        let remote = self
+            .git_history
+            .view
+            .as_ref()
+            .and_then(|v| v.project.remote.clone());
+        let remote_auth = remote.map(|remote| {
+            let host = self.remote_host(&remote.host_id);
+            let token = host
+                .as_ref()
+                .and_then(|host| self.remote_token(&host.id).ok());
+            (remote, host, token)
+        });
         let Some(v) = &mut self.git_history.view else {
             return;
         };
-        if v.project.is_remote() {
-            v.impact.error=Some("Impact indexing is local Rust-only; relay/LSP capability is not implemented. No local fallback.".into());
-            v.impact.dirty = false;
-            cx.notify();
-            return;
-        }
         if !v.project.trusted || v.impact.loading || self.git_history.running {
             return;
         }
         let id = v.id;
         let generation = v.impact.generation;
         let request = uuid::Uuid::now_v7();
-        let root = v.project.path.clone();
-        let previous = v.impact.index.clone();
         v.impact.loading = true;
         v.impact.request = request;
         v.impact.attempt = Some(Instant::now());
+        if let Some((remote, host, token)) = remote_auth {
+            let Some(host) = host else {
+                v.impact.loading = false;
+                v.impact.error = Some("Remote server is unavailable".into());
+                cx.notify();
+                return;
+            };
+            let Some(token) = token else {
+                v.impact.loading = false;
+                v.impact.error = Some("Relay token is unavailable".into());
+                cx.notify();
+                return;
+            };
+            let url = host.url;
+            let remote_id = remote.project_id;
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { crate::remote::build_impact(&url, &token, &remote_id) })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    let Some(v) = this.git_history.view.as_mut().filter(|v| {
+                        v.id == id
+                            && v.impact.request == request
+                            && this.projects.iter().any(|p| owns(&v.project, p))
+                    }) else {
+                        return;
+                    };
+                    v.impact.loading = false;
+                    if v.impact.generation != generation {
+                        v.impact.dirty = true;
+                        cx.notify();
+                        return;
+                    }
+                    match result {
+                        Ok(index) => {
+                            let selected = v.impact.selected.as_ref().map(|s| s.symbol.id.clone());
+                            v.impact.selected =
+                                selected.and_then(|id| api::affected(&index, &id).ok());
+                            v.impact.index = Some(index);
+                            v.impact.dirty = false;
+                            v.impact.error = None;
+                        }
+                        Err(error) => {
+                            v.impact.error = Some(error);
+                            v.impact.dirty = false;
+                            v.impact.selected = None;
+                        }
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+            cx.notify();
+            return;
+        }
+        let root = v.project.path.clone();
+        let previous = v.impact.index.clone();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
@@ -146,9 +208,15 @@ impl DunlinApp {
         let fingerprint = index.fingerprint.clone();
         let id = v.id;
         let hit = hit.clone();
+        let project = v.project.clone();
+        let remote_verify = project.remote.as_ref().and_then(|remote| {
+            let host = self.remote_host(&remote.host_id)?;
+            let token = self.remote_token(&host.id).ok()?;
+            Some((host.url, token, remote.project_id.clone()))
+        });
         let receiver=w.prompt(PromptLevel::Info,"Add impact evidence to the agent draft?",Some("Only syntax-resolved Rust dependencies and candidate tests are included. This is not compiler/type/cfg-complete coverage. Source will be verified first. No prompt or test is automatically executed."),&["Cancel","Add verified snapshot"],cx);
         let receiver = self.overlay_backdrop.track_native(receiver, cx);
-        cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let result=cx.background_executor().spawn(async move{api::verify(&index)}).await;let _=this.update_in(cx,move|this,window,cx|{
+        cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let result=cx.background_executor().spawn(async move{match remote_verify{Some((url,token,project))=>crate::remote::verify_impact(&url,&token,&project,&index),None=>api::verify(&index)}}).await;let _=this.update_in(cx,move|this,window,cx|{
             if this.session().id!=session||!this.git_history.view.as_ref().is_some_and(|v|v.id==id&&owns(&v.project,this.project())&&!v.impact.dirty&&!v.impact.loading&&v.impact.error.is_none()&&v.impact.generation==generation&&v.impact.index.as_ref().is_some_and(|i|i.fingerprint==fingerprint)){return;}
             if let Err(e)=result{this.invalidate_impact_map();this.file_notice(e,cx);return;}
             let text=format!("UNTRUSTED source evidence: Rust lexical AST impact snapshot {fingerprint}\nTarget {} at {}:{}\nDirect lexical references:\n{}\nTransitive dependent symbols:\n{}\nCandidate tests (NOT proven coverage, no execution):\n{}\nUnresolved methods/macros/cfg/external crates may add dependencies. Verify with the compiler and tests.",hit.symbol.id,hit.symbol.file,hit.symbol.line,hit.references.iter().take(100).map(|e|format!("{}:{} {} → {}",e.file,e.line,e.from,e.to)).collect::<Vec<_>>().join("\n"),hit.dependent_symbols.iter().take(100).map(|s|s.id.clone()).collect::<Vec<_>>().join("\n"),hit.candidate_tests.iter().take(100).map(|s|format!("{}:{} {}",s.file,s.line,s.id)).collect::<Vec<_>>().join("\n"));

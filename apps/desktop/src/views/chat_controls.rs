@@ -287,7 +287,9 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 ));
             }
             menu = menu.label("Switching harness starts a new conversation");
-            for name in ["OpenCode", "Claude Code", "OpenAI Codex", "Custom ACP"] {
+            for name in
+                crate::harness_discovery::catalog_names().chain(std::iter::once("Custom ACP"))
+            {
                 let command = harness_command(name, &this.custom_harness_command);
                 let available = command_available(&command);
                 menu = menu.item(item(
@@ -696,12 +698,34 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
         ))
         .when(local, |view| view
             .child(provider(this, cx))
-            .child(Button::new("provider-account-connect").label(if this.provider_connected() { "Add / reconnect account…" } else { "Connect account…" }).small()
-                .disabled(this.chat_controls_busy())
-                .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))))
-            .child(Button::new("provider-account-refresh").label("Refresh providers / models").small()
-                .disabled(this.chat_controls_busy() || this.provider_catalog.loading)
-                .on_click(cx.listener(|this, _, _, cx| this.reload_provider_models(cx))))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        Button::new("provider-account-connect")
+                            .label(if this.provider_connected() {
+                                "Add / reconnect account…"
+                            } else {
+                                "Connect account…"
+                            })
+                            .small()
+                            .h(px(28.))
+                            .px(px(10.))
+                            .disabled(this.chat_controls_busy())
+                            .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))),
+                    )
+                    .child(
+                        Button::new("provider-account-refresh")
+                            .label("Refresh providers / models")
+                            .small()
+                            .h(px(28.))
+                            .px(px(10.))
+                            .disabled(this.chat_controls_busy() || this.provider_catalog.loading)
+                            .on_click(cx.listener(|this, _, _, cx| this.reload_provider_models(cx))),
+                    ),
+            )
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child(
                 "Connect with an API key or browser sign-in, as supported by the provider. Models refresh automatically after connection. A listed model does not guarantee account funds or Go entitlement."
             ))

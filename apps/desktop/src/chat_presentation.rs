@@ -1,5 +1,7 @@
 //! Presentation filters never alter the stored transcript or permission flow.
 use crate::harness::ChatItem;
+use dunlin_agent::ToolCallView;
+use dunlin_domain::{ToolKind, ToolStatus};
 
 pub(crate) fn project(
     items: &[ChatItem],
@@ -89,6 +91,119 @@ pub(crate) fn project(
         start = end;
     }
     output
+}
+
+/// First visible item for the chat window. Prefer starting on a user turn when
+/// one is close to the cutoff, otherwise the window starts mid-turn so long
+/// tool runs still load incrementally.
+pub(crate) fn window_start(items: &[ChatItem], window: usize) -> usize {
+    let cutoff = items.len().saturating_sub(window.max(1));
+    if cutoff == 0 {
+        return 0;
+    }
+    match items[..=cutoff]
+        .iter()
+        .rposition(|item| matches!(item, ChatItem::User { .. }))
+    {
+        Some(start) if cutoff - start <= window => start,
+        _ => cutoff,
+    }
+}
+
+/// Older OpenCode imports stored tool calls as `[Tool · name]` text. Rewriting
+/// them in memory keeps legacy transcripts from coalescing megabytes of output
+/// into one Markdown block and gives them the normal expandable tool card.
+pub(crate) fn normalize_legacy(items: &mut [ChatItem]) {
+    let mut counter = 0;
+    normalize_legacy_items(items, &mut counter);
+}
+
+fn normalize_legacy_items(items: &mut [ChatItem], counter: &mut usize) {
+    for item in items {
+        match item {
+            ChatItem::AgentText {
+                text,
+                message_id: None,
+                at_ms,
+                ..
+            } => {
+                if let Some(tool) = legacy_tool_item(text, *at_ms, *counter) {
+                    *counter += 1;
+                    *item = tool;
+                }
+            }
+            ChatItem::Child { items, .. } => normalize_legacy_items(items, counter),
+            _ => {}
+        }
+    }
+}
+
+fn legacy_tool_item(text: &str, at: u64, sequence: usize) -> Option<ChatItem> {
+    let rest = text.strip_prefix("[Tool · ")?;
+    let (name, body) = rest.split_once(']')?;
+    let name = name.trim();
+    if name.is_empty() || name.len() > 64 {
+        return None;
+    }
+    let mut title = String::new();
+    let mut status = ToolStatus::Done;
+    let mut detail = String::new();
+    for line in body.lines() {
+        let line = line.trim_end();
+        if let Some(value) = line.strip_prefix("Status: ") {
+            status = match value.trim() {
+                "running" => ToolStatus::Running,
+                "pending" | "waiting" => ToolStatus::Waiting,
+                "error" | "failed" => ToolStatus::Failed,
+                _ => ToolStatus::Done,
+            };
+        } else if let Some(value) = line.strip_prefix("Input: ") {
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push_str(value);
+        } else if let Some(value) = line.strip_prefix("Output: ") {
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push_str(value);
+        } else if title.is_empty() && !line.trim().is_empty() {
+            title = line.trim().to_string();
+        }
+    }
+    if !title.is_empty() {
+        detail.insert_str(0, &format!("{title}\n"));
+    }
+    let detail = detail.chars().take(4096).collect();
+    Some(ChatItem::Tool {
+        view: ToolCallView {
+            id: format!("legacy-tool-{at}-{sequence}"),
+            title: name.to_string(),
+            kind: legacy_tool_kind(name),
+            status,
+            detail,
+            locations: Vec::new(),
+            additions: 0,
+            deletions: 0,
+            diff: None,
+        },
+        duration_ms: 0,
+        at_ms: at,
+    })
+}
+
+fn legacy_tool_kind(name: &str) -> ToolKind {
+    match name.to_ascii_lowercase().as_str() {
+        "shell" | "bash" | "exec" => ToolKind::Shell,
+        "read" | "view" => ToolKind::Read,
+        "grep" | "glob" | "search" | "find" => ToolKind::Search,
+        "edit" | "write" | "patch" | "apply_patch" => ToolKind::Edit,
+        "webfetch" | "websearch" | "fetch" => ToolKind::Web,
+        "test" => ToolKind::Test,
+        "task" => ToolKind::Task,
+        "plan" | "todowrite" | "todoread" => ToolKind::Plan,
+        _ => ToolKind::Task,
+    }
 }
 
 /// Older saved transcripts have no message IDs. Join text fragments separated
@@ -235,6 +350,60 @@ mod tests {
         );
         assert!(matches!(&visible[2],ChatItem::AgentText {text,..} if text.is_empty()));
         assert!(matches!(&visible[3], ChatItem::Tool { .. }));
+    }
+
+    #[test]
+    fn chat_windows_grow_from_user_turns_and_never_stall_mid_turn() {
+        let user = |text: &str| ChatItem::User {
+            text: text.into(),
+            timing: None,
+            at_ms: 0,
+        };
+        let mut items = vec![user("start")];
+        items.extend((0..600).map(|_| message("work")));
+        items.push(user("middle"));
+        items.extend((0..50).map(|_| message("tail")));
+
+        // 652 items, window 120: cutoff 532 lands inside the long first turn,
+        // so it starts mid-turn instead of jumping back to item 1.
+        assert_eq!(window_start(&items, 120), 532);
+
+        // A nearby user turn is a nicer boundary than a torn agent group.
+        let mut short = Vec::new();
+        for turn in 0..6 {
+            short.push(user(&format!("turn {turn}")));
+            short.extend((0..19).map(|_| message("work")));
+        }
+        assert_eq!(short.len(), 120);
+        assert_eq!(window_start(&short, 40), 80);
+        assert_eq!(window_start(&short, 500), 0);
+    }
+
+    #[test]
+    fn legacy_tool_text_becomes_a_tool_card_instead_of_one_giant_markdown_block() {
+        let mut items = vec![
+            message("before"),
+            message(
+                "[Tool · shell] ls -la\nStatus: completed\nInput: {\"cmd\":\"ls\"}\nOutput: total",
+            ),
+            thought(),
+            message("after"),
+        ];
+        normalize_legacy(&mut items);
+        assert!(matches!(
+            &items[1],
+            ChatItem::Tool { view, .. }
+                if view.title == "shell" && view.detail.contains("ls -la") && view.detail.contains("total")
+        ));
+        let visible = project(&items, false, false, true);
+        assert_eq!(
+            visible
+                .iter()
+                .filter(|item| matches!(item, ChatItem::Tool { .. }))
+                .count(),
+            1
+        );
+        assert!(matches!(&visible[0], ChatItem::AgentText { text, .. } if text == "before"));
     }
 
     #[test]

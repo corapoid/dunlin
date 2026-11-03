@@ -12,9 +12,11 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use dunlin_domain::ProviderUsage;
+use dunlin_domain::{ProjectSettings, ProviderUsage, validate_project_environment};
+use dunlin_workspace::checks;
 use dunlin_workspace::fs as workspace_fs;
 use dunlin_workspace::git;
+use dunlin_workspace::impact;
 use dunlin_workspace::search;
 use dunlin_workspace::tree::FileTree;
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,31 @@ pub struct AppState {
     connections: Arc<Semaphore>,
     pair_attempts: Arc<Mutex<VecDeque<Instant>>>,
     git_plans: Arc<Mutex<HashMap<String, operations::Pending>>>,
+    github_plans: Arc<Mutex<HashMap<String, PendingGithub>>>,
+    review_plans: Arc<Mutex<HashMap<String, PendingRestore>>>,
+    compare_plans: Arc<Mutex<HashMap<String, PendingCompare>>>,
+    checks: Arc<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
+}
+
+struct PendingRestore {
+    user_id: String,
+    project_id: String,
+    prepared: Instant,
+    plan: dunlin_workspace::task_review::Restore,
+}
+
+struct PendingCompare {
+    user_id: String,
+    project_id: String,
+    prepared: Instant,
+    plan: dunlin_workspace::comparison::Prepared,
+}
+
+struct PendingGithub {
+    user_id: String,
+    project_id: String,
+    prepared: Instant,
+    plan: dunlin_workspace::github::Plan,
 }
 
 #[derive(Clone)]
@@ -62,6 +89,10 @@ impl AppState {
             connections: Arc::new(Semaphore::new(32)),
             pair_attempts: Arc::new(Mutex::new(VecDeque::new())),
             git_plans: Arc::new(Mutex::new(HashMap::new())),
+            github_plans: Arc::new(Mutex::new(HashMap::new())),
+            review_plans: Arc::new(Mutex::new(HashMap::new())),
+            compare_plans: Arc::new(Mutex::new(HashMap::new())),
+            checks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -217,6 +248,30 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/me", get(me))
         .route("/v1/usage", get(usage))
         .route("/v1/projects", get(projects))
+        .route(
+            "/v1/project/settings",
+            get(project_settings_get).put(project_settings_put),
+        )
+        .route("/v1/checks/run", post(check_run))
+        .route("/v1/checks/cancel", post(check_cancel))
+        .route("/v1/impact/build", post(impact_build))
+        .route("/v1/impact/verify", post(impact_verify))
+        .route("/v1/github/load", post(github_load))
+        .route("/v1/github/runs", post(github_runs))
+        .route("/v1/github/jobs", post(github_jobs))
+        .route("/v1/github/pull", post(github_pull))
+        .route("/v1/github/log", post(github_log))
+        .route("/v1/github/prepare", post(github_prepare))
+        .route("/v1/github/execute", post(github_execute))
+        .route("/v1/review/capture", post(review_capture))
+        .route("/v1/review/changes", post(review_changes))
+        .route("/v1/review/restore/prepare", post(review_restore_prepare))
+        .route("/v1/review/restore/execute", post(review_restore_execute))
+        .route("/v1/compare/prepare", post(compare_prepare))
+        .route("/v1/compare/create", post(compare_create))
+        .route("/v1/compare/changes", post(compare_changes))
+        .route("/v1/compare/validate", post(compare_validate))
+        .route("/v1/context", get(remote_context))
         .route("/v1/sessions", get(sessions))
         .route("/v1/sessions/{id}", delete(delete_session))
         .route("/v1/sessions/{id}/takeover", post(takeover))
@@ -241,6 +296,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/git/history", get(history::list))
         .route("/v1/git/history/commit", get(history::commit))
         .route("/v1/git/history/patch", get(history::patch))
+        .route("/v1/git/history/branch", post(history::create_branch))
         .route("/v1/git/overview", get(history::overview))
         .route("/v1/git/diff", get(git_diff))
         .route("/v1/git/stage", post(git_stage))
@@ -254,7 +310,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/git/switch", post(git_switch))
         .route("/v1/git/branch-context", get(git_branch_context))
         .route("/v1/git/switch-safe", post(git_switch_safe))
-        .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
+        // Checkpoint review payloads carry bounded base64 overlays (16 MiB
+        // encoded) plus restore previews; individual handlers still enforce
+        // their domain limits.
+        .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -332,6 +391,780 @@ async fn me(
     })))
 }
 
+#[derive(Deserialize)]
+struct ImpactRequest {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct ImpactVerifyRequest {
+    project: String,
+    index: impact::Index,
+}
+
+async fn impact_build(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ImpactRequest>,
+) -> Result<Json<impact::Index>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let permit = state
+        .history_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Impact indexing is busy; try again",
+            )
+        })?;
+    let index = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let root =
+            git::history::repository_root(&project.path, None).map_err(ApiError::bad_request)?;
+        impact::build(&root, None).map_err(ApiError::bad_request)
+    })
+    .await
+    .map_err(|_| ApiError::internal("Impact worker failed"))??;
+    Ok(Json(index))
+}
+
+async fn impact_verify(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ImpactVerifyRequest>,
+) -> Result<StatusCode, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    tokio::task::spawn_blocking(move || {
+        let root =
+            git::history::repository_root(&project.path, None).map_err(ApiError::bad_request)?;
+        if request.index.root != root {
+            return Err(ApiError::conflict(
+                "Impact index belongs to another repository",
+            ));
+        }
+        impact::verify(&request.index).map_err(ApiError::bad_request)
+    })
+    .await
+    .map_err(|_| ApiError::internal("Impact worker failed"))??;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize)]
+struct GithubLoadRequest {
+    project: String,
+    remote: String,
+}
+
+#[derive(Deserialize)]
+struct GithubRunsRequest {
+    project: String,
+    remote: String,
+    head: String,
+}
+
+#[derive(Deserialize)]
+struct GithubJobsRequest {
+    project: String,
+    remote: String,
+    run: dunlin_workspace::github::Run,
+}
+
+#[derive(Deserialize)]
+struct GithubPullRequest {
+    project: String,
+    remote: String,
+    number: u64,
+}
+
+#[derive(Deserialize)]
+struct GithubLogRequest {
+    project: String,
+    remote: String,
+    run: dunlin_workspace::github::Run,
+    job: dunlin_workspace::github::Job,
+}
+
+#[derive(Deserialize)]
+struct GithubPrepareRequest {
+    project: String,
+    remote: String,
+    action: dunlin_workspace::github::Action,
+}
+
+#[derive(Deserialize)]
+struct GithubExecuteRequest {
+    project: String,
+    id: String,
+}
+
+#[derive(Serialize)]
+struct GithubPlanResponse {
+    id: String,
+    summary: String,
+}
+
+fn github_repository(
+    project: &Project,
+    remote: &str,
+) -> Result<dunlin_workspace::github::Repository, String> {
+    dunlin_workspace::github::repository(&project.path, remote)
+}
+
+async fn github_load(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubLoadRequest>,
+) -> Result<Json<dunlin_workspace::github::Overview>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let overview =
+        run_blocking(move || dunlin_workspace::github::load(&project.path, &request.remote))
+            .await?;
+    Ok(Json(overview))
+}
+
+async fn github_runs(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubRunsRequest>,
+) -> Result<Json<Vec<dunlin_workspace::github::Run>>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let runs = run_blocking(move || {
+        let repository = github_repository(&project, &request.remote)?;
+        dunlin_workspace::github::runs(&repository, &request.head)
+    })
+    .await?;
+    Ok(Json(runs))
+}
+
+async fn github_jobs(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubJobsRequest>,
+) -> Result<
+    Json<(
+        dunlin_workspace::github::Run,
+        Vec<dunlin_workspace::github::Job>,
+    )>,
+    ApiError,
+> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let result = run_blocking(move || {
+        let repository = github_repository(&project, &request.remote)?;
+        dunlin_workspace::github::refresh_run(&repository, &request.run)
+    })
+    .await?;
+    Ok(Json(result))
+}
+
+async fn github_pull(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubPullRequest>,
+) -> Result<Json<dunlin_workspace::github::PullDetails>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let detail = run_blocking(move || {
+        let repository = github_repository(&project, &request.remote)?;
+        dunlin_workspace::github::details(&repository, request.number)
+    })
+    .await?;
+    Ok(Json(detail))
+}
+
+async fn github_log(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubLogRequest>,
+) -> Result<Json<String>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let log = run_blocking(move || {
+        let repository = github_repository(&project, &request.remote)?;
+        dunlin_workspace::github::logs(&repository, &request.run, &request.job)
+    })
+    .await?;
+    Ok(Json(log))
+}
+
+async fn github_prepare(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubPrepareRequest>,
+) -> Result<Json<GithubPlanResponse>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &request.project)?;
+    if state
+        .github_plans
+        .lock()
+        .map(|plans| plans.len())
+        .unwrap_or(0)
+        >= 64
+    {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many prepared GitHub actions; submit or wait for expiry",
+        ));
+    }
+    let plan = run_blocking(move || {
+        let repository = github_repository(&project, &request.remote)?;
+        dunlin_workspace::github::prepare(&repository, request.action)
+    })
+    .await?;
+    let id = uuid::Uuid::now_v7().to_string();
+    let summary = plan.summary.clone();
+    state
+        .github_plans
+        .lock()
+        .map_err(|_| ApiError::internal("GitHub plan registry lock poisoned"))?
+        .insert(
+            id.clone(),
+            PendingGithub {
+                user_id: user.id,
+                project_id: request.project,
+                prepared: Instant::now(),
+                plan,
+            },
+        );
+    Ok(Json(GithubPlanResponse { id, summary }))
+}
+
+async fn github_execute(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<GithubExecuteRequest>,
+) -> Result<Json<String>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
+        ));
+    }
+    state.project_for_user(&user.id, &request.project)?;
+    let pending = state
+        .github_plans
+        .lock()
+        .map_err(|_| ApiError::internal("GitHub plan registry lock poisoned"))?
+        .remove(&request.id)
+        .ok_or_else(ApiError::not_found)?;
+    if pending.user_id != user.id
+        || pending.project_id != request.project
+        || pending.prepared.elapsed() > Duration::from_secs(300)
+    {
+        return Err(ApiError::conflict(
+            "GitHub confirmation expired or belongs to another session",
+        ));
+    }
+    let result = run_blocking(move || dunlin_workspace::github::execute(pending.plan)).await?;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+struct ReviewCaptureRequest {
+    project: String,
+    label: String,
+}
+
+#[derive(Deserialize)]
+struct ReviewChangesRequest {
+    project: String,
+    checkpoint: dunlin_workspace::task_review::Checkpoint,
+}
+
+#[derive(Deserialize)]
+struct ReviewRestorePrepareRequest {
+    project: String,
+    checkpoint: dunlin_workspace::task_review::Checkpoint,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct ReviewRestoreExecuteRequest {
+    project: String,
+    id: String,
+}
+
+#[derive(Serialize)]
+struct ReviewRestorePreview {
+    id: String,
+    change: dunlin_workspace::task_review::Change,
+}
+
+fn checkpoint_root(
+    project: &Project,
+    checkpoint: &dunlin_workspace::task_review::Checkpoint,
+) -> Result<(), String> {
+    let root = git::history::repository_root(&project.path, None)?;
+    if checkpoint.root != root {
+        return Err("Checkpoint belongs to a different repository".into());
+    }
+    Ok(())
+}
+
+async fn review_capture(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ReviewCaptureRequest>,
+) -> Result<Json<dunlin_workspace::task_review::Checkpoint>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let point =
+        run_blocking(move || dunlin_workspace::task_review::capture(&project.path, &request.label))
+            .await?;
+    Ok(Json(point))
+}
+
+async fn review_changes(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ReviewChangesRequest>,
+) -> Result<Json<Vec<dunlin_workspace::task_review::Change>>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    checkpoint_root(&project, &request.checkpoint).map_err(ApiError::bad_request)?;
+    let changes =
+        run_blocking(move || dunlin_workspace::task_review::changes(&request.checkpoint)).await?;
+    Ok(Json(changes))
+}
+
+async fn review_restore_prepare(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ReviewRestorePrepareRequest>,
+) -> Result<Json<ReviewRestorePreview>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    checkpoint_root(&project, &request.checkpoint).map_err(ApiError::bad_request)?;
+    if state
+        .review_plans
+        .lock()
+        .map(|plans| plans.len())
+        .unwrap_or(0)
+        >= 64
+    {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many prepared restores; execute or wait for expiry",
+        ));
+    }
+    let plan = run_blocking(move || {
+        dunlin_workspace::task_review::prepare_restore(&request.checkpoint, &request.path)
+    })
+    .await?;
+    let change = plan.change.clone();
+    let id = uuid::Uuid::now_v7().to_string();
+    state
+        .review_plans
+        .lock()
+        .map_err(|_| ApiError::internal("Restore plan registry lock poisoned"))?
+        .insert(
+            id.clone(),
+            PendingRestore {
+                user_id: user.id,
+                project_id: request.project,
+                prepared: Instant::now(),
+                plan,
+            },
+        );
+    Ok(Json(ReviewRestorePreview { id, change }))
+}
+
+async fn review_restore_execute(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ReviewRestoreExecuteRequest>,
+) -> Result<StatusCode, ApiError> {
+    state.project_for_user(&user.id, &request.project)?;
+    let pending = state
+        .review_plans
+        .lock()
+        .map_err(|_| ApiError::internal("Restore plan registry lock poisoned"))?
+        .remove(&request.id)
+        .ok_or_else(ApiError::not_found)?;
+    if pending.user_id != user.id
+        || pending.project_id != request.project
+        || pending.prepared.elapsed() > Duration::from_secs(300)
+    {
+        return Err(ApiError::conflict(
+            "Restore preview expired or belongs to another session",
+        ));
+    }
+    run_blocking(move || dunlin_workspace::task_review::restore(pending.plan)).await?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize)]
+struct ComparePrepareRequest {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct CompareCreateRequest {
+    project: String,
+    id: String,
+}
+
+#[derive(Deserialize)]
+struct CompareChangesRequest {
+    project: String,
+    checkpoint: dunlin_workspace::task_review::Checkpoint,
+}
+
+#[derive(Deserialize)]
+struct CompareValidateRequest {
+    project: String,
+    head: String,
+}
+
+#[derive(Serialize)]
+struct ComparePreparedResponse {
+    id: String,
+    root: String,
+    head: String,
+    paths: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct CompareCreateResponse {
+    trees: dunlin_workspace::comparison::Trees,
+    projects: Vec<Project>,
+}
+
+async fn compare_prepare(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<ComparePrepareRequest>,
+) -> Result<Json<ComparePreparedResponse>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    if state
+        .compare_plans
+        .lock()
+        .map(|plans| plans.len())
+        .unwrap_or(0)
+        >= 32
+    {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Too many prepared comparisons; create or wait for expiry",
+        ));
+    }
+    let plan = run_blocking(move || dunlin_workspace::comparison::prepare(&project.path)).await?;
+    let id = plan.id.clone();
+    let response = ComparePreparedResponse {
+        id: id.clone(),
+        root: plan.root.clone(),
+        head: plan.head.clone(),
+        paths: plan.paths.to_vec(),
+    };
+    state
+        .compare_plans
+        .lock()
+        .map_err(|_| ApiError::internal("Comparison plan registry lock poisoned"))?
+        .insert(
+            id,
+            PendingCompare {
+                user_id: user.id,
+                project_id: request.project,
+                prepared: Instant::now(),
+                plan,
+            },
+        );
+    Ok(Json(response))
+}
+
+async fn compare_create(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CompareCreateRequest>,
+) -> Result<Json<CompareCreateResponse>, ApiError> {
+    let source = state.project_for_user(&user.id, &request.project)?;
+    let pending = state
+        .compare_plans
+        .lock()
+        .map_err(|_| ApiError::internal("Comparison plan registry lock poisoned"))?
+        .remove(&request.id)
+        .ok_or_else(ApiError::not_found)?;
+    if pending.user_id != user.id
+        || pending.project_id != request.project
+        || pending.prepared.elapsed() > Duration::from_secs(300)
+    {
+        return Err(ApiError::conflict(
+            "Comparison confirmation expired or belongs to another session",
+        ));
+    }
+    let head = pending.plan.head.clone();
+    let id = pending.plan.id.clone();
+    let trees =
+        tokio::task::spawn_blocking(move || dunlin_workspace::comparison::create(pending.plan))
+            .await
+            .map_err(|_| ApiError::internal("Comparison worker failed"))?;
+    let mut projects = Vec::new();
+    {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("store lock poisoned"))?;
+        for (index, path) in trees.paths.iter().enumerate() {
+            let name = format!(
+                "{} · compare {} · {}",
+                source.name,
+                &id[..id.len().min(8)],
+                if index == 0 { "A" } else { "B" }
+            );
+            if let Ok(project) = store.create_project(&name, path) {
+                if let Err(error) = store.grant(&project.id, &user.id) {
+                    eprintln!("[relay] comparison grant rejected · {error}");
+                    continue;
+                }
+                projects.push(project);
+            }
+        }
+    }
+    let mut trees = trees;
+    if projects.len() != trees.paths.len() && trees.error.is_none() {
+        trees.error = Some(
+            "Comparison trees were created but one or more relay project grants could not be registered"
+                .into(),
+        );
+    }
+    if trees.error.is_none()
+        && !projects
+            .iter()
+            .all(|project| project.path.starts_with(&trees.root))
+    {
+        trees.error = Some(
+            "Comparison worktree escaped the source repository; no agent start is authorized"
+                .into(),
+        );
+    }
+    if head.is_empty() || trees.head != head {
+        trees.error = Some("Comparison baseline commit changed while creating worktrees".into());
+    }
+    Ok(Json(CompareCreateResponse { trees, projects }))
+}
+
+async fn compare_changes(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CompareChangesRequest>,
+) -> Result<Json<Vec<dunlin_workspace::task_review::Change>>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    checkpoint_root(&project, &request.checkpoint).map_err(ApiError::bad_request)?;
+    let changes =
+        run_blocking(move || dunlin_workspace::task_review::changes(&request.checkpoint)).await?;
+    Ok(Json(changes))
+}
+
+async fn compare_validate(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CompareValidateRequest>,
+) -> Result<StatusCode, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    run_blocking(move || dunlin_workspace::comparison::validate_tree(&project.path, &request.head))
+        .await?;
+    Ok(StatusCode::OK)
+}
+
+async fn remote_context(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<ProjectQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let settings = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .project_settings(&project.id)
+        .map_err(ApiError::from)?
+        .as_deref()
+        .map(serde_json::from_str::<ProjectSettings>)
+        .transpose()
+        .map_err(|_| ApiError::internal("stored project settings are invalid"))?
+        .unwrap_or_default();
+    let mut settings = serde_json::to_value(settings)
+        .map_err(|_| ApiError::internal("project settings could not be serialized"))?;
+    if let Some(environment) = settings
+        .get_mut("environment")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for value in environment.values_mut() {
+            *value = json!("[hidden]");
+        }
+    }
+    Ok(Json(json!({
+        "project": project,
+        "settings": settings,
+        "relay": {
+            "version": env!("CARGO_PKG_VERSION"),
+            "harness": state.config.harness,
+            "sandbox": state.config.sandbox,
+            "store_transcripts": state.config.store_transcripts,
+            "max_frame_bytes": state.config.max_frame_bytes,
+        },
+        "server_time_ms": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0),
+        "context_boundary": "The relay can report its own configuration and stored project defaults. Harness-owned system prompts, discovered instructions, loaded skills and model history remain unknown.",
+    })))
+}
+
+#[derive(Deserialize)]
+struct CheckRequest {
+    project: String,
+    argv: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct CheckCancelRequest {
+    project: String,
+    id: String,
+}
+
+async fn check_run(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CheckRequest>,
+) -> Result<Json<checks::Report>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project)?;
+    let plan = tokio::task::spawn_blocking(move || checks::prepare(&project.path, request.argv))
+        .await
+        .map_err(|_| ApiError::internal("Check worker failed"))?
+        .map_err(ApiError::bad_request)?;
+    let id = uuid::Uuid::now_v7().to_string();
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    state
+        .checks
+        .lock()
+        .map_err(|_| ApiError::internal("check registry lock poisoned"))?
+        .insert(id.clone(), cancel.clone());
+    let permit = state
+        .history_reads
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::new(StatusCode::TOO_MANY_REQUESTS, "Checks are busy; try again"))?;
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        checks::run(plan, cancel)
+    })
+    .await
+    .map_err(|_| ApiError::internal("Check worker failed"))?;
+    state
+        .checks
+        .lock()
+        .map_err(|_| ApiError::internal("check registry lock poisoned"))?
+        .remove(&id);
+    Ok(Json(result.map_err(ApiError::bad_request)?))
+}
+
+async fn check_cancel(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(request): Json<CheckCancelRequest>,
+) -> Result<StatusCode, ApiError> {
+    state.project_for_user(&user.id, &request.project)?;
+    if let Some(cancel) = state
+        .checks
+        .lock()
+        .map_err(|_| ApiError::internal("check registry lock poisoned"))?
+        .get(&request.id)
+    {
+        cancel.store(true, std::sync::atomic::Ordering::Release);
+    }
+    Ok(StatusCode::OK)
+}
+
+#[derive(Deserialize)]
+struct ProjectSettingsQuery {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct ProjectSettingsBody {
+    project: String,
+    settings: ProjectSettings,
+}
+
+async fn project_settings_get(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<ProjectSettingsQuery>,
+) -> Result<Json<ProjectSettings>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let payload = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .project_settings(&project.id)
+        .map_err(ApiError::from)?;
+    let settings = payload
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|_| ApiError::internal("stored project settings are invalid"))?
+        .unwrap_or_default();
+    Ok(Json(settings))
+}
+
+async fn project_settings_put(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<ProjectSettingsBody>,
+) -> Result<StatusCode, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Project runtime settings are restricted to relay administrators",
+        ));
+    }
+    let project = state.project_for_user(&user.id, &body.project)?;
+    validate_project_environment(&body.settings.environment).map_err(ApiError::bad_request)?;
+    let payload = serde_json::to_string(&body.settings)
+        .map_err(|_| ApiError::bad_request("Project settings could not be serialized"))?;
+    if payload.len() > 128 * 1024 {
+        return Err(ApiError::bad_request("Project settings exceed 128 KiB"));
+    }
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .save_project_settings(&project.id, &payload)
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::OK)
+}
+
 async fn projects(
     AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
@@ -371,6 +1204,14 @@ async fn usage(
 #[derive(Deserialize)]
 struct ProjectQuery {
     project: String,
+}
+
+#[derive(Deserialize)]
+struct AcpQuery {
+    project: String,
+    /// Comma-separated relay project ids explicitly granted for a group
+    /// conversation. Only paths from these grants may enter the sandbox.
+    roots: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -527,14 +1368,47 @@ async fn acp_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     AuthUser { user, device }: AuthUser,
-    Query(query): Query<ProjectQuery>,
+    Query(query): Query<AcpQuery>,
 ) -> Result<Response, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
+    let mut roots = Vec::new();
+    if let Some(value) = query.roots.as_deref().filter(|value| !value.is_empty()) {
+        if value.len() > 4096 {
+            return Err(ApiError::bad_request("Too many relay workspace roots"));
+        }
+        for id in value.split(',') {
+            if id.is_empty()
+                || !id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            {
+                return Err(ApiError::bad_request("Invalid relay workspace root id"));
+            }
+            let root = state.project_for_user(&user.id, id)?;
+            if root.id != project.id && !roots.iter().any(|entry: &Project| entry.id == root.id) {
+                roots.push(root);
+            }
+        }
+        if roots.len() > 31 {
+            return Err(ApiError::bad_request(
+                "A relay group workspace supports at most 32 roots",
+            ));
+        }
+    }
     let connection_id = format!("conn-{}", uuid::Uuid::now_v7());
     let permit = state.connection_permit()?;
     let header_id = connection_id.clone();
     let mut response = ws.on_upgrade(move |socket| {
-        crate::acp::bridge(socket, state, user, device, project, connection_id, permit)
+        crate::acp::bridge(
+            socket,
+            state,
+            user,
+            device,
+            project,
+            roots,
+            connection_id,
+            permit,
+        )
     });
     if let Ok(value) = HeaderValue::from_str(&header_id) {
         response

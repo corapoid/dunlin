@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 pub(crate) struct Detected {
     pub name: &'static str,
     pub cli: Option<PathBuf>,
-    pub adapter: Option<PathBuf>,
     pub docs: &'static str,
 }
 
@@ -104,36 +103,120 @@ pub(crate) fn local_command(name: &str) -> std::process::Command {
     command
 }
 
+/// One known ACP agent. The adapter executable is what Dunlin spawns; the
+/// optional CLI is only used to describe a CLI-only installation.
+pub(crate) struct Spec {
+    pub name: &'static str,
+    pub cli: &'static str,
+    pub command: &'static str,
+    pub docs: &'static str,
+}
+
+/// A deliberately curated catalog. The ACP registry is much larger, but these
+/// agents expose stable local executables and documented ACP entry points.
+pub(crate) const SPECS: &[Spec] = &[
+    Spec {
+        name: "OpenCode",
+        cli: "opencode",
+        command: "opencode acp",
+        docs: "https://opencode.ai/docs/acp/",
+    },
+    Spec {
+        name: "Claude Code",
+        cli: "claude",
+        command: "claude-agent-acp",
+        docs: "https://github.com/zed-industries/claude-agent-acp",
+    },
+    Spec {
+        name: "OpenAI Codex",
+        cli: "codex",
+        command: "codex-acp",
+        docs: "https://github.com/zed-industries/codex-acp",
+    },
+    Spec {
+        name: "Gemini CLI",
+        cli: "gemini",
+        command: "gemini --acp",
+        docs: "https://geminicli.com/docs/cli/acp-mode",
+    },
+    Spec {
+        name: "Qwen Code",
+        cli: "qwen",
+        command: "qwen --acp",
+        docs: "https://qwenlm.github.io/qwen-code-docs/",
+    },
+    Spec {
+        name: "GitHub Copilot",
+        cli: "copilot",
+        command: "copilot --acp",
+        docs: "https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server",
+    },
+    Spec {
+        name: "Cursor",
+        cli: "cursor-agent",
+        command: "cursor-agent acp",
+        docs: "https://cursor.com/docs/cli/acp",
+    },
+    Spec {
+        name: "Auggie CLI",
+        cli: "auggie",
+        command: "auggie --acp",
+        docs: "https://docs.augmentcode.com/cli/acp",
+    },
+    Spec {
+        name: "Kiro CLI",
+        cli: "kiro-cli",
+        command: "kiro-cli acp",
+        docs: "https://kiro.dev/docs/cli/acp/",
+    },
+    Spec {
+        name: "OpenClaw",
+        cli: "openclaw",
+        command: "openclaw acp",
+        docs: "https://docs.openclaw.ai/cli/acp",
+    },
+    Spec {
+        name: "Hermes Agent",
+        cli: "hermes",
+        command: "hermes acp",
+        docs: "https://hermes-agent.nousresearch.com/docs/user-guide/features/acp",
+    },
+    Spec {
+        name: "Qoder CLI",
+        cli: "qodercli",
+        command: "qodercli --acp",
+        docs: "https://docs.qoder.com/cli/acp",
+    },
+];
+
+pub(crate) fn catalog_names() -> impl Iterator<Item = &'static str> {
+    SPECS.iter().map(|spec| spec.name)
+}
+
+pub(crate) fn catalog_command(name: &str) -> Option<&'static str> {
+    SPECS
+        .iter()
+        .find(|spec| spec.name == name)
+        .map(|spec| spec.command)
+}
+
+pub(crate) fn catalog_docs(name: &str) -> Option<&'static str> {
+    SPECS
+        .iter()
+        .find(|spec| spec.name == name)
+        .map(|spec| spec.docs)
+}
+
 pub(crate) fn discover() -> Vec<Detected> {
     let paths = search_paths();
-    [
-        (
-            "OpenCode",
-            "opencode",
-            "opencode",
-            "https://opencode.ai/docs/acp/",
-        ),
-        (
-            "Claude Code",
-            "claude",
-            "claude-agent-acp",
-            "https://github.com/zed-industries/claude-agent-acp",
-        ),
-        (
-            "OpenAI Codex",
-            "codex",
-            "codex-acp",
-            "https://github.com/zed-industries/codex-acp",
-        ),
-    ]
-    .into_iter()
-    .map(|(name, cli, adapter, docs)| Detected {
-        name,
-        cli: find_in(cli, &paths),
-        adapter: find_in(adapter, &paths),
-        docs,
-    })
-    .collect()
+    SPECS
+        .iter()
+        .map(|spec| Detected {
+            name: spec.name,
+            cli: find_in(spec.cli, &paths),
+            docs: spec.docs,
+        })
+        .collect()
 }
 
 #[cfg(test)]

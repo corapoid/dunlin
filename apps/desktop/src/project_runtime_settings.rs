@@ -11,6 +11,7 @@ use dunlin_ui::{
 };
 
 use crate::app::DunlinApp;
+use crate::remote;
 
 pub(crate) struct Draft {
     project_id: String,
@@ -18,6 +19,7 @@ pub(crate) struct Draft {
     model: Entity<InputState>,
     environment: Entity<EditorState>,
     error: Option<String>,
+    saving: bool,
 }
 
 impl Draft {
@@ -89,9 +91,21 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(project) = self.projects.get(index).filter(|p| !p.is_remote()) else {
+        let Some(project) = self.projects.get(index) else {
             return;
         };
+        if let Some(remote) = &project.remote {
+            let admin = self
+                .remote_host(&remote.host_id)
+                .is_some_and(|host| host.user_role == "admin");
+            if !admin {
+                self.set_notice(
+                    "Remote project runtime settings are admin-only; ask the relay administrator",
+                    cx,
+                );
+                return;
+            }
+        }
         let harness = match self.resolved_project_settings(project) {
             Ok(settings) => settings.harness.value,
             Err(error) => {
@@ -128,6 +142,7 @@ impl DunlinApp {
             model,
             environment,
             error: None,
+            saving: false,
         });
         cx.notify();
     }
@@ -137,11 +152,10 @@ impl DunlinApp {
             return;
         };
         // Resolve by identity, not a potentially stale modal index.
-        let Some(index) = self
-            .projects
-            .iter()
-            .position(|p| p.id == draft.project_id && !p.is_remote())
-        else {
+        if draft.saving {
+            return;
+        }
+        let Some(index) = self.projects.iter().position(|p| p.id == draft.project_id) else {
             return;
         };
         let result = updated_settings(
@@ -159,12 +173,66 @@ impl DunlinApp {
             }
         };
         let mut project = self.projects[index].clone();
-        project.settings = settings;
+        project.settings = settings.clone();
         if let Err(error) = self
             .resolved_project_settings(&project)
             .and_then(|settings| settings.process_environment())
         {
             self.project_runtime_draft.as_mut().unwrap().error = Some(error);
+            cx.notify();
+            return;
+        }
+        if let Some(remote) = project.remote.clone() {
+            let Some(host) = self.remote_host(&remote.host_id) else {
+                self.project_runtime_draft.as_mut().unwrap().error =
+                    Some("Remote server is unavailable".into());
+                cx.notify();
+                return;
+            };
+            let token = match self.remote_token(&host.id) {
+                Ok(token) => token,
+                Err(error) => {
+                    self.project_runtime_draft.as_mut().unwrap().error = Some(error);
+                    cx.notify();
+                    return;
+                }
+            };
+            let url = host.url;
+            let remote_id = remote.project_id;
+            let settings_for_save = settings.clone();
+            self.project_runtime_draft.as_mut().unwrap().saving = true;
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        remote::save_project_settings(&url, &token, &remote_id, &settings_for_save)
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    match result {
+                        Ok(()) => {
+                            if let Some(project) =
+                                this.projects.iter_mut().find(|p| p.id == project.id)
+                            {
+                                project.settings = settings;
+                                if let Some(store) = &this.store {
+                                    let _ = store.upsert_project(project);
+                                }
+                            }
+                            this.project_runtime_draft = None;
+                            this.set_notice("Saved on the relay · environment applies to the next remote connection; running agents were not restarted.", cx);
+                        }
+                        Err(error) => {
+                            if let Some(draft) = &mut this.project_runtime_draft {
+                                draft.saving = false;
+                                draft.error = Some(error);
+                            }
+                        }
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
             cx.notify();
             return;
         }
@@ -188,9 +256,6 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
     let Some(project) = this.projects.get(index) else {
         return div().into_any_element();
     };
-    if project.is_remote() {
-        return div().text_size(px(11.)).text_color(p.muted_fg).child("Model/environment defaults are local-only. Relay configuration stays on the server.").into_any_element();
-    }
     let Some(draft) = this
         .project_runtime_draft
         .as_ref()
@@ -230,7 +295,7 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
                         this.edit_project_runtime_settings(index, window, cx)
                     })),
             )
-            .when(index == this.selected_project && resolved.default_model(&this.session_harness()).is_some(), |view| view
+            .when(!project.is_remote() && index == this.selected_project && resolved.default_model(&this.session_harness()).is_some(), |view| view
                 .child(Button::new("apply-project-model").small().label("Apply saved model to current session")
                     .disabled(this.chat_controls_busy() || !this.harness.status.is_ready())
                     .on_click(cx.listener(|this, _, _, cx| this.apply_saved_project_model(cx))))
@@ -256,10 +321,14 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
             }))))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Environment overrides · NAME=value; omitted names inherit; no shell expansion"))
         .child(div().h(px(100.)).overflow_hidden().child(Editor::new(&draft.environment).h_full()))
-        .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Stored unencrypted in the local database, not Keychain. Do not paste secrets. Only the local agent and its child tools receive these values, at the next connection; never sent to relay. Values may change tool behavior."))
+        .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(if project.is_remote() {
+            "Stored on the relay for this project, unencrypted. Only relay administrators can save. Values reach the remote harness at its next connection; do not paste secrets."
+        } else {
+            "Stored unencrypted in the local database, not Keychain. Do not paste secrets. Only the local agent and its child tools receive these values, at the next connection; never sent to relay. Values may change tool behavior."
+        }))
         .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
         .child(div().flex().gap(px(6.))
-            .child(Button::new("save-project-runtime").small().primary().label("Save model & environment").on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
+            .child(Button::new("save-project-runtime").small().primary().label(if draft.saving { "Saving…" } else { "Save model & environment" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
             .child(Button::new("cancel-project-runtime").small().label("Cancel edit").on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
         .into_any_element()
 }

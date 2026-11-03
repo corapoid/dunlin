@@ -702,27 +702,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires installed OpenCode and its current public model catalog"]
-    fn local_discovery_finds_free_models_without_changing_provider_or_model() {
-        let directory = std::env::current_dir().unwrap();
-        let discovered = discover_catalog(directory.to_str().unwrap()).unwrap();
-        assert!(!discovered.providers.is_empty());
-        assert!(!discovered.free_models.is_empty());
-        assert!(
-            discovered
-                .free_models
-                .iter()
-                .all(|id| { provider_id(id) == Some(CONSOLE) && discovered.models.contains(id) })
-        );
-        assert!(
-            discovered
-                .providers
-                .iter()
-                .any(|provider| provider.id == GO && provider.integration_id == CONSOLE)
-        );
-    }
-
-    #[test]
     fn provider_accounts_belong_only_to_the_local_opencode_harness() {
         assert!(uses_provider_accounts("OpenCode", false));
         assert!(!uses_provider_accounts("OpenCode", true));

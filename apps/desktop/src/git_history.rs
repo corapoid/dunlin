@@ -563,13 +563,13 @@ impl DunlinApp {
         .detach();
         cx.notify();
     }
-    fn create_history_branch(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn checkout_history_commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(view) = self.git_history.view.as_ref() else {
             return;
         };
         if view.project.is_remote() {
             self.file_notice(
-                "Relay history is read-only; remote branch creation is not enabled",
+                "Commit checkout is local-only; remote history remains read-only",
                 cx,
             );
             return;
@@ -580,18 +580,166 @@ impl DunlinApp {
         let project = view.project.clone();
         let id = view.id;
         let oid = commit.oid.clone();
-        let name = view.name.read(cx).value().to_string();
-        let Some(expected) = view.scope.clone() else {
+        let short = oid.chars().take(10).collect::<String>();
+        let Some(scope) = view.scope.clone() else {
             return;
+        };
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
         };
         let blocked = self.git_history.running
             || self.branch_ui.running()
             || self.git_mutation_in_flight(&project.id)
             || self.ai_commit_locks_project_id(&project.id)
             || self.explorer.busy
+            || self.editor_dirty
+            || self
+                .workbench
+                .tabs
+                .iter()
+                .any(|tab| tab.project == project.id && (tab.loading || tab.dirty))
             || !self.projects.iter().any(|p| {
                 p.id == project.id && p.path == project.path && p.trusted && !p.is_remote()
             })
+            || self.live_agents().iter().any(|(owner, session, _)| {
+                owner == &project.id
+                    || self
+                        .group_contexts
+                        .get(session)
+                        .is_some_and(|g| g.roots.iter().any(|r| r.id == project.id))
+            });
+        if blocked {
+            if let Some(v) = &mut self.git_history.view {
+                v.error = Some("Save buffers and finish repository operations/agents first; commit checkout requires a clean worktree".into());
+            }
+            cx.notify();
+            return;
+        }
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            "Checkout this commit?",
+            Some(&format!(
+                "Detach HEAD at {short} in {}? The worktree must be clean; no files are discarded or stashed. You can return to a branch with the branch picker or create a branch from this commit.",
+                project.name
+            )),
+            &["Cancel", "Checkout commit"],
+            cx,
+        );
+        let answer = self.overlay_backdrop.track_native(answer, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.await != Ok(1) {
+                return;
+            }
+            let started = this
+                .update(cx, |this, cx| {
+                    if !this
+                        .projects
+                        .iter()
+                        .any(|p| p.id == project.id && p.path == project.path && p.trusted)
+                        || this.git_history.running
+                        || this.branch_ui.running()
+                        || this.editor_dirty
+                        || this
+                            .workbench
+                            .tabs
+                            .iter()
+                            .any(|tab| tab.project == project.id && (tab.loading || tab.dirty))
+                    {
+                        return false;
+                    }
+                    this.git_history.running = true;
+                    this.git_history.mutation_project = Some(project.id.clone());
+                    this.begin_git_mutation(&project.id);
+                    this.stash_editor_tab();
+                    cx.notify();
+                    true
+                })
+                .unwrap_or(false);
+            if !started {
+                return;
+            }
+            let backend = backend.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { backend.checkout_commit_at(&scope, &oid) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.git_history.running = false;
+                this.git_history.mutation_project = None;
+                this.finish_git_mutation(&project.id);
+                match result {
+                    Ok(()) => {
+                        this.repo_summaries.invalidate();
+                        this.close_inspector();
+                        this.workbench
+                            .tabs
+                            .retain(|tab| tab.project != project.id || tab.dirty);
+                        this.refresh_file_tree(cx);
+                        this.refresh_git_status(cx);
+                        this.editor_stale = true;
+                        this.file_notice(
+                            format!(
+                                "Checked out {short} in {} · detached HEAD; branches unchanged",
+                                project.name
+                            ),
+                            cx,
+                        );
+                        if this.git_history.view.as_ref().is_some_and(|v| v.id == id) {
+                            this.load_git_history(cx);
+                        }
+                        window.request_animation_frame();
+                    }
+                    Err(error) => {
+                        if let Some(v) = this.git_history.view.as_mut().filter(|v| v.id == id) {
+                            v.error = Some(error.clone());
+                        }
+                        this.file_notice(
+                            format!("Could not checkout commit in {}: {error}", project.name),
+                            cx,
+                        );
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn create_history_branch(&mut self, cx: &mut Context<Self>) {
+        let Some(view) = self.git_history.view.as_ref() else {
+            return;
+        };
+        let Some(commit) = view.selected.and_then(|i| view.rows.get(i)) else {
+            return;
+        };
+        let project = view.project.clone();
+        let id = view.id;
+        let oid = commit.oid.clone();
+        let name = view.name.read(cx).value().to_string();
+        let Some(expected) = view.scope.clone() else {
+            return;
+        };
+        let backend = match self.backend() {
+            Ok(backend) => backend,
+            Err(error) => {
+                self.file_notice(error, cx);
+                return;
+            }
+        };
+        let blocked = self.git_history.running
+            || self.branch_ui.running()
+            || self.git_mutation_in_flight(&project.id)
+            || self.ai_commit_locks_project_id(&project.id)
+            || self.explorer.busy
+            || !self
+                .projects
+                .iter()
+                .any(|p| p.id == project.id && p.path == project.path && p.trusted)
             || self.live_agents().iter().any(|(owner, session, _)| {
                 owner == &project.id
                     || self
@@ -610,14 +758,10 @@ impl DunlinApp {
         self.git_history.mutation_project = Some(project.id.clone());
         self.begin_git_mutation(&project.id);
         cx.spawn(async move |this, cx| {
-            let path = project.path.clone();
             let branch = name.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move {
-                    let root = history::repository_root(&path, Some(&expected))?;
-                    history::create_branch(&root, &branch, &oid)
-                })
+                .spawn(async move { backend.create_branch_at(&expected, &oid, &branch) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.git_history.running = false;
@@ -849,10 +993,11 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     .child(Button::new("history-inventory").ghost().small().rounded(px(4.)).label("Repository state").tooltip("Stashes, worktrees and operations").on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))))
                     .child(Button::new("history-github").ghost().small().rounded(px(4.)).label("GitHub · CI / PR").on_click(cx.listener(|this,_,_,cx|this.open_github(cx))))
                    .child(Button::new("history-selected-operation").ghost().small().rounded(px(4.)).label("Merge / rebase / pick…").tooltip("Review an operation using the selected commit").disabled(selected.is_none()||view.loading||this.git_history.running).on_click(cx.listener(|this,_,window,cx|this.operate_on_history_commit(window,cx))))
-                  .when(!view.project.is_remote(), |toolbar| toolbar.child(Button::new("history-branch-form").ghost().small().rounded(px(4.)).label("Create branch…").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| {
+                  .when(!view.project.is_remote(), |toolbar| toolbar.child(Button::new("history-checkout").ghost().small().rounded(px(4.)).label("Checkout commit…").tooltip("Detach HEAD at the selected commit; requires a clean worktree").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, window, cx| this.checkout_history_commit(window, cx)))))
+                  .child(Button::new("history-branch-form").ghost().small().rounded(px(4.)).label("Create branch…").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| {
                       if let Some(view) = &mut this.git_history.view { view.branch_form_open = !view.branch_form_open; }
                       cx.notify();
-                  }))))
+                  })))
                   .child(Button::new("history-refresh").ghost().small().rounded(px(4.)).label("Refresh").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx))))
                   .child(Button::new("history-more").ghost().small().rounded(px(4.)).label("Load more").tooltip("Load up to 2,000 commits").disabled(view.loading || this.git_history.running || view.limit >= 2000).on_click(cx.listener(|this, _, _, cx| { if let Some(v) = &mut this.git_history.view { v.limit = (v.limit + 500).min(2000); } this.load_git_history(cx); }))))
               .child(div().px(px(12.)).pb(px(6.)).flex_shrink_0().text_size(px(11.)).text_color(p.muted_fg).child(if view.loading { "Loading history…".to_string() } else { format!("{} commits · {} snapshot · cached refs · no fetch", view.rows.len(), if view.project.is_remote() { "relay" } else { "local" }) }))
@@ -861,12 +1006,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                   .child(Button::new("history-revision").ghost().small().rounded(px(4.)).label("Show history").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx)))))
              .child(div().flex_1().min_h(px(80.)).flex().flex_col().overflow_hidden().child(list))
              .child(detail_panel)
-              .when(view.branch_form_open && !view.project.is_remote(), |panel| panel.child(
+              .when(view.branch_form_open, |panel| panel.child(
                   div().px(px(12.)).py(px(8.)).flex_shrink_0().flex().flex_col().gap(px(6.)).border_t_1().border_color(p.border)
                       .child(div().flex().items_center().gap(px(8.))
                           .child(Input::new(&view.name).flex_1())
                           .child(Button::new("history-create").small().rounded(px(4.)).primary().label(if this.git_history.running { "Creating…" } else { "Create branch" }).disabled(selected.is_none() || this.git_history.running || view.loading).on_click(cx.listener(|this, _, _, cx| this.create_history_branch(cx)))))
-                      .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Creates a branch from the selected commit only — no checkout or changes to files/staging."))))
+                      .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Creates a branch on the local or relay repository from the selected commit only — no checkout or changes to files/staging."))))
               .when_some(view.error.as_ref(), |panel, error| panel.child(div().px(px(12.)).py(px(6.)).flex_shrink_0().text_size(px(12.)).text_color(p.red).child(error.clone())))
           .into_any_element()
 }
@@ -922,13 +1067,15 @@ mod tests {
             name: "Host".into(),
             url: "http://relay.invalid".into(),
             user_name: "member".into(),
+            user_role: "member".into(),
             device_id: "device".into(),
         };
-        let backend = crate::remote::WorkspaceBackend::Remote(crate::remote::RemoteWorkspace {
-            host: host.clone(),
-            project: original.remote.unwrap(),
-            token: "not-a-real-token".into(),
-        });
+        let backend =
+            crate::remote::WorkspaceBackend::Remote(Box::new(crate::remote::RemoteWorkspace {
+                host: host.clone(),
+                project: original.remote.unwrap(),
+                token: "not-a-real-token".into(),
+            }));
         assert!(super::backend_current(
             &backend,
             std::slice::from_ref(&host)

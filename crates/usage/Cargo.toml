@@ -7,5 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono = "0.4"
 dunlin-domain.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+ureq = { version = "2.12", features = ["json", "tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }

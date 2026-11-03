@@ -45,7 +45,7 @@ pub struct Checkpoint {
     overlay: BTreeMap<String, Option<Image>>,
     modes: BTreeMap<String, u32>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Change {
     pub path: String,
     pub before: Option<Image>,

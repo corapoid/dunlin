@@ -4,7 +4,157 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0-beta.6] — 2026-11-03
+
+This is the first published build after `0.1.0-beta.3`; it rolls up the
+beta.4/beta.5 working-tree scope together with the changes below.
+
+### Added
+
+- Short, landing-page README with a native performance section; the detailed
+  feature and operations reference moved to [`docs/guide.md`](docs/guide.md).
+  Removed the competitor comparison table and added a “what you won't find
+  combined anywhere else” section. Performance method and local M1 results are in
+  [`docs/performance.md`](docs/performance.md).
+- Copyable **Release QA** report in Settings → Advanced, notification request /
+  **Not granted** states, an optional onboarding notification card, a trusted-
+  project banner in Chat and the `--onboarding-smoke` native fixture. The R11
+  manual matrix is [`docs/r11-qa.md`](docs/r11-qa.md).
+- Remote workbench endpoints for explicit checkpoints/restore, A/B comparison
+  worktrees and projects, relay context, and administrator-only GitHub CI/PR.
+  Remote restore previews are one-time plans; comparison/checkpoint payloads keep
+  their existing bounds. Clients never fall back to local paths or local `gh`.
+- Explicit multi-root group agents: local ACP `additionalDirectories` and
+  same-host relay project grants passed as a bounded `roots` list. The relay
+  revalidates every grant per request, rejects MCP servers/outside paths, and the
+  seatbelt profile permits only those roots.
+- Local billing evidence for Claude Code JSONL, Codex rollout JSONL and OpenCode
+  SQLite with complete-line checkpoints, dedupe, cache/long-context pricing and
+  explicit `unpriced`. Usage now shows provider/harness/model/project/day
+  breakdowns, alert budgets and a Dashboard summary.
+- Graph/Trace search with ancestor context, minimap, zoom controls and
+  `⌘+`/`⌘−`/`⌘0`; a two-step onboarding flow and macOS permission center for
+  Notifications, Accessibility, Screen Recording, Automation and Full Disk Access.
+- Curated ACP harness catalog (OpenCode, Claude Code, Codex, Gemini CLI, Qwen
+  Code, GitHub Copilot, Cursor, Auggie CLI, Kiro CLI, OpenClaw, Hermes Agent and
+  Qoder CLI). Missing agents expose **Install…** with the official setup page;
+  detected agents expose **Import sessions…**, and the full ACP registry is linked.
+- Semantic density tokens with Comfortable/Compact spacing and Reduce Motion.
+- Local terminal v1 lives in a hideable bottom dock with Run (`⌘J` / `⌘⇧J`),
+  not in the main view tabs: `portable-pty` PTY + `vt100` screen, independent tabs,
+  bounded scrollback, resize, ANSI/RGB/bold/inverse rendering, copy/paste and
+  explicit process cleanup. Terminal is local-only; relay/SSH PTY is not claimed.
+- Run v1: static manifest/script detection for Node, Cargo, Make, Just, Python,
+  Go, Deno, Composer, Ruby, Elixir, Gradle/Maven and `scripts/*`; confirmed exact
+  argv/cwd, project env names, PTY execution, exit/signal status, bounded history
+  and rerun. No manifest evaluation or automatic execution.
+
+### Changed
+
+- Terminal and Run moved out of the main view tabs into one hideable bottom dock
+  with status-bar toggles and `⌘J` / `⌘⇧J`.
+- Composer workbench actions (Impact/Compare/Budget/Checks/Context/Review) were
+  removed from the always-visible toolbar and remain available from the command
+  palette.
+- Settings now uses one uniform flat surface in light and dark mode, grouped
+  Workspace/Agent/System navigation with a quiet active rail, monochrome controls
+  and compact segmented buttons instead of wide, coloured controls.
+- Settings → Harnesses is a simple ACP harness list: no command or detected-path
+  rows, aligned Default/status/actions, Install until a harness is detected and
+  Import sessions afterwards.
+- Settings → Design now owns Application/Sidebar; Chat and Editor are dedicated
+  top-level tabs instead of duplicated Design subcategories.
+- Billing **By project** slices show the repository directory name, not the full
+  local path.
+- Skills and provider-account actions use compact bordered buttons with a visible
+  hover state; provider actions no longer stretch across the panel.
+- Theme changes keep Settings open, focused and active. Settings and theme-card
+  corners render uniformly, with no rectangular background or shadow spill.
+- Explorer tree refreshes no longer starve when the watcher starts a newer scan;
+  a stale completion is ignored only when a newer populated tree exists, and an
+  empty pane shows a loading state instead of staying blank.
+- Project rows place the Monorepo marker on the right, show the dominant
+  repository language beneath it and reveal the full language breakdown with
+  percentages on hover.
+- Visual Markdown blocks no longer consume wheel scrolling; the document is the
+  only scroll target.
+- Visual Markdown decorations rebuild when the light/dark palette changes, so
+  inline code and link backgrounds remain readable in dark mode.
+- Harness **Import sessions…** scans the standard Claude Code and Codex
+  session folders instead of opening a file picker. OpenCode's local
+  `opencode.db` is opened read-only for top-level `session_v2`/`session_message`
+  sessions, messages, reasoning, tool history, per-turn token usage and file
+  diff counts (with legacy-table fallback); portable `dunlin.session.v1` imports
+  remain a separate action.
+- Dashboard → Activity's **Tokens** and **Changed lines** metrics now include
+  imported OpenCode history. Existing copies are repaired automatically in the
+  background when the Dashboard opens; a manual re-scan still labels them
+  **Update imported copy**. Both paths merge only missing token/diff metadata,
+  keeping local follow-up turns and conversation text intact.
+- Remove the duplicate **UI font** control from Editor and the duplicate
+  **Keyboard hints** control from Design; the canonical controls stay in Design
+  and General.
+- Skills can be imported from a public `github.com`/`raw.githubusercontent.com`
+  link to `SKILL.md` or a skill folder; only the bounded `SKILL.md` is fetched.
+- Settings → Advanced shows the ACP log inline (last 256 KiB) instead of
+  revealing the system log file in Finder.
+- Remove the Dashboard billing evidence card and recorded-data footer. Importing
+  sessions now refreshes Dashboard activity, project stats and local billing
+  automatically.
+- Explorer file rows show file and recursive folder sizes on hover, the project
+  root shows the bounded total source size, and Dashboard project tiles show the
+  project size. **Show file sizes** in Design → Application disables all of them.
+- Dashboard recent-project tiles are shorter: a larger project icon, the
+  Monorepo badge and branch share one row with a compact **Open** action, while
+  size, last commit, upstream state and check time move into an info tooltip
+  with a small refresh action.
+- Onboarding step 2 shows an optional notification permission card with
+  **Enable** (system prompt) or **Open Settings**. The permission center now
+  distinguishes **Not granted**, supports a real notification request and keeps
+  Recheck side-effect free. An untrusted project shows a clear trust banner in
+  Chat instead of silently refusing to connect.
+- Settings → Advanced gains a copyable **Release QA** report covering the data
+  directory, database schema/integrity, project/session counts, largest indexed
+  project, harness discovery, macOS permissions and remote hosts. A debug-only
+  `--onboarding-smoke` fixture covers a fresh directory, no projects, empty
+  harness discovery and the Permissions surface; the new
+  [R11 manual matrix](docs/r11-qa.md) remains explicitly separate from automatic
+  pass flags.
+- Session rows use compact Today/Yesterday/date labels, group by their real date,
+  truncate titles in narrow sidebars and omit the redundant cost/duration chips.
+- Long imported conversations open in bounded windows: the newest 120 items are
+  laid out first and **Show earlier messages** expands them incrementally, while
+  sending a prompt resets the window to the live edge.
+- OpenCode tool parts import as tool cards instead of text, and legacy imported
+  `[Tool · …]` records are rewritten as tool cards on load, so coalescing can no
+  longer merge hundreds of outputs into one giant Markdown block.
+- Stale `Terminal`/`Run` values in saved `view`/`default_view` settings deserialize
+  to Chat, so upgrading no longer fails the entire local-data load.
+- Saved preferences are now decoded separately from projects/sessions. If a
+  preference row is unreadable in the future, defaults are used and project
+  history stays available instead of being hidden behind a global load error.
+- SVG previews are rasterized at a 2048 px long edge, so small vector icons no
+  longer appear pixelated when fitted to a large panel.
+- Visual Markdown block editors no longer paint individual scrollbars; the
+  document is the only vertical scroll target.
+- Terminal `⌘F`/Find highlights matches in the visible buffer, and explicit
+  HTTP(S)/mailto links in output are clickable.
+- Settings → Usage was rebuilt around a compact summary header, metric tiles,
+  2x2 breakdown cards and a unified daily table instead of dense full-width text
+  blocks and repeated bordered rows.
+- The Terminal/Run dock can be dragged to the bottom, left or right edge and
+  resized by dragging its dedicated 9 px inner edge; double-click resets the
+  default size and position/size persist.
+- The relay GitHub endpoints require administrator role because they execute with
+  the host's `gh` credentials; project grants are still checked.
+- Relay request body limit increased to 64 MiB only to carry bounded checkpoint
+  overlays and restore previews; handlers retain their domain limits.
+
+### Validation
+
+- 542 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+  `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
+  acceptance remains pending.
 
 ## [0.1.0-beta.4] — 2026-11-01
 
@@ -509,7 +659,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...HEAD
+[0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.2

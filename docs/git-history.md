@@ -30,8 +30,9 @@ of the comparison width (170–260 logical pixels); the diff gets the remainder.
 Commit metadata shows the subject, short ID (click to copy the full ID), author
 and date without repeating the subject in the body. Only merges offer parent
 controls; a single parent is a quiet comparison caption. Toolbar actions are
-borderless. **Create branch…** reveals the local-only branch form on demand,
-leaving more vertical room for the comparison by default.
+borderless. **Create branch…** reveals the branch form on demand and works for
+both local and relay repositories; **Checkout commit…** is local-only and
+requires a clean worktree. Both leave more vertical room by default.
 
 - Select a commit to load its full message and changed-file list. With focus on
   the graph, Up/Down/Home/End select and reveal commits. Inputs/buttons retain
@@ -66,17 +67,19 @@ after closing, but their results are discarded; each Git child is timeout-bounde
   merge, rebase, index refresh or source writes. External diff/textconv drivers,
   signature checks and repository hooks are not invoked by these reads.
 - **Create branch from selected commit** remains a separate, explicit ref-only
-  action. The existing project/agent/mutation checks remain in force. Closing
-  history does not release its in-flight repository lock or quit guard; completion
-  reports the original project even if another project is visible.
+  action for local and relay repositories. **Checkout commit** detaches HEAD at
+  one exact local commit only after a fresh clean-worktree check; it never
+  stashes, resets or forces. The existing project/agent/mutation checks remain in
+  force. Closing history does not release its in-flight repository lock or quit
+  guard; completion reports the original project even if another project is visible.
 - Remote-tracking refs are cached Git refs on the selected Mac/relay, not a fresh
   observation of the repository's origin server.
 
 ## Relay transport (read-only protocol v1)
 
 The same tab works for trusted paired relay projects. No local filesystem lookup
-or Git process is used for a remote history request. Branch creation controls are
-hidden and the handler rejects remote mutation explicitly.
+or Git process is used for a remote history request. Remote branch creation uses
+an explicit, scoped mutation endpoint; commit checkout remains local-only.
 
 All routes require a bearer device token and a grant for the `project` ID:
 
@@ -86,6 +89,7 @@ All routes require a bearer device token and a grant for the `project` ID:
 | `/v1/git/history/commit` | `project`, `scope`, full `oid`, `parent` (zero-based; default 0) | commit metadata/message, comparison parent and changed files |
 | `/v1/git/history/patch` | `project`, `scope`, full `oid`, `parent`, `file` (zero-based index in that comparison) | `oid`, `parent`, exact file identity and patch |
 | `/v1/git/overview` | `project`, optional initial `scope` | stash/worktree lists, operation markers and unmerged index paths |
+| `POST /v1/git/history/branch` | JSON `project`, `scope`, full `oid`, `name` | creates one ref; no checkout/HEAD/index change |
 
 Responses are `{ "version": 1, "scope": "…", "value": … }`. The opaque SHA-256
 scope binds the server project/configured path/canonical repository root; it is

@@ -481,12 +481,14 @@ impl DunlinApp {
                 });
             }
             self.start_harness(
-                HarnessConfig::remote(
+                HarnessConfig::remote_with_roots(
                     host.url.clone(),
                     token,
                     remote_project.project_id.clone(),
                     PathBuf::from(&project.path),
-                ),
+                    self.session_remote_roots(),
+                )
+                .with_additional_directories(self.session_additional_directories()),
                 Some(host.name),
                 cx,
             );
@@ -524,7 +526,8 @@ impl DunlinApp {
             return;
         }
         let command = crate::harness_discovery::resolved_command(&command).unwrap_or(command);
-        let mut config = HarnessConfig::new(command, cwd);
+        let mut config = HarnessConfig::new(command, cwd)
+            .with_additional_directories(self.session_additional_directories());
         if let Some(path) = crate::harness_discovery::child_path() {
             config.process_env.insert("PATH".into(), path);
         }
@@ -1132,6 +1135,7 @@ impl DunlinApp {
         let summary = session_summary(&text);
         let was_running = self.harness.running;
         let queued = self.harness.enqueue_prompt(text.clone());
+        self.chat_visible_items = crate::app::CHAT_WINDOW;
         self.chat_scroll.jump_to_latest();
         self.harness.transcript.push(ChatItem::User {
             text: text.clone(),
@@ -1307,6 +1311,9 @@ impl DunlinApp {
             self.session_list.record(session_id, items);
         }
         self.harness.transcript = loaded.unwrap_or_default();
+        crate::chat_presentation::normalize_legacy(&mut self.harness.transcript);
+        self.chat_visible_items = crate::app::CHAT_WINDOW;
+        self.expanded_tool = None;
         self.harness.started_tools.clear();
         self.harness.active_turn = None;
         self.harness.pending_prompts.clear();
@@ -1409,6 +1416,7 @@ impl DunlinApp {
             return;
         }
         let path = PathBuf::from(&self.project().path);
+        let roots = self.session_additional_directories();
         let existing = self.session().acp_session_id.clone();
         self.harness.local_session_loading = true;
         self.harness.session_id = existing.clone();
@@ -1418,12 +1426,12 @@ impl DunlinApp {
         self.harness.model_changing = false;
         if let Some(harness) = self.harness.harness.as_ref() {
             if let Some(id) = existing {
-                harness.load_session(id, path);
+                harness.load_session_with_roots(id, path, roots);
             } else {
                 let model = settings
                     .default_model(&self.session_harness())
                     .map(str::to_owned);
-                harness.new_session_with_model(path, model);
+                harness.new_session_with_roots(path, roots, model);
             }
         }
     }
@@ -1974,6 +1982,24 @@ impl DunlinApp {
         }
         self.harness.models = state;
         self.harness.model_changing = false;
+        if let Some(pending) = self.pending_model.take() {
+            let Some(models) = self.harness.models.as_ref() else {
+                return;
+            };
+            if models.current != pending
+                && models.choices.iter().any(|choice| choice.id == pending)
+                && let (Some(harness), Some(session_id)) =
+                    (&self.harness.harness, &self.harness.session_id)
+                && harness.set_model(
+                    session_id.clone(),
+                    models.config_id.clone(),
+                    pending.clone(),
+                )
+            {
+                self.harness.model_changing = true;
+                self.notice = Some("Applying saved remote model…".into());
+            }
+        }
     }
 
     pub(crate) fn chat_controls_busy(&self) -> bool {
@@ -2527,20 +2553,17 @@ fn session_summary(prompt: &str) -> String {
 }
 
 pub(crate) fn harness_command(name: &str, custom: &str) -> String {
-    match name {
-        "OpenCode" => "opencode acp".into(),
-        "Claude Code" => "claude-agent-acp".into(),
-        "OpenAI Codex" => "codex-acp".into(),
-        "Custom ACP" => {
-            let custom = custom.trim();
-            if custom.is_empty() {
-                "your-agent --acp".into()
-            } else {
-                custom.to_string()
-            }
-        }
-        other => other.to_string(),
+    if name == "Custom ACP" {
+        let custom = custom.trim();
+        return if custom.is_empty() {
+            "your-agent --acp".into()
+        } else {
+            custom.to_string()
+        };
     }
+    crate::harness_discovery::catalog_command(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_string())
 }
 
 fn should_restart(status: &HarnessStatus, enabled: bool, attempts: u8) -> bool {

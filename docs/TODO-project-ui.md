@@ -2,9 +2,73 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed/pushed through beta.3; current validation is 487 passing
-> tests / 4 optional ignored. Native smokes do not replace manual visual/a11y QA.
+> has since been committed through beta.5; current validation is 542 passing
+> tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
+
+## Settings and onboarding simplification — 2026-11-03
+
+- [x] Replace the glass-tinted Settings sheet with one flat, uniform surface in
+  light and dark mode; group navigation into Workspace / Agent / System and mark
+  the active section with a quiet rail instead of a large coloured pill.
+- [x] Use compact 28 px buttons and content-sized segmented controls; remove the
+  wide, coloured Settings controls and the extra onboarding action menu.
+- [x] Fix Settings and theme-card corner rendering; drop the rectangular panel
+  shadow spill and keep every edge rounded.
+- [x] Make light/dark changes keep the open Settings window focused and active.
+- [x] Reduce onboarding to two steps: choose a detected harness, then
+  **Create first project…**; the default harness is preselected and missing
+  adapters no longer fill the first-run list.
+- [x] Replace the harness cards with a simple ACP harness list: no command or
+  detected path, Install… until detected, then Import sessions…; add the curated
+  ACP catalog and a link to the full registry.
+- [x] Show repository directory names rather than full paths in billing
+  **By project** breakdowns.
+- [x] Give Skills and provider-account actions compact bordered buttons with a
+  visible hover state.
+- [x] Recover the Explorer from watcher-driven tree-scan races and show a loading
+  state instead of a blank file pane.
+- [x] Move the Monorepo marker to the right side of each project row, show the
+  dominant language beneath it and list every detected language with percentages
+  on hover.
+- [x] Make visual Markdown blocks non-scrollable so the document is the only
+  scroll target.
+- [x] Rebuild visual Markdown decorations after palette changes, fixing unreadable
+  inline-code backgrounds in dark mode.
+- [x] Replace the harness Import sessions… file picker with bounded automatic
+  scanning of the standard Claude Code and Codex session folders.
+- [x] Read OpenCode top-level sessions, messages, reasoning, tool history,
+  per-turn token usage and file diff counts directly from `opencode.db` in
+  read-only mode, including the current `session_v2`/`session_message` schema
+  and legacy-table fallback; keep portable JSON as a separate explicit action.
+- [x] Feed imported token/diff counters into Dashboard → Activity **Tokens** and
+  **Changed lines**; existing copies are repaired automatically when the
+  Dashboard opens, and a re-scan can update them without replacing conversation
+  text or local follow-up turns.
+- [x] Remove the duplicate Editor UI-font control and the duplicate Design
+  keyboard-hints control.
+- [x] Add bounded GitHub skill import from `SKILL.md` or a skill-folder link.
+- [x] Show the ACP log inline in Advanced instead of revealing a system file.
+- [x] Remove the Dashboard billing card and recorded-data footer; refresh
+  Dashboard stats and billing automatically after session import.
+- [x] Show file and recursive folder sizes in Explorer tooltips, the bounded
+  project total in the Explorer root and project size on Dashboard tiles.
+- [x] Add a persisted **Show file sizes** switch under Design → Application.
+- [x] Compact Dashboard recent-project tiles: enlarge the project icon, keep the
+  Monorepo badge and branch with a compact **Open** action, and move
+  size/commit/upstream/check details into an info tooltip with a small refresh
+  action.
+- [x] Format session dates as Today/Yesterday/DD Mon, group by actual date,
+  remove redundant cost/duration chips and truncate titles in narrow sidebars.
+- [x] Open long imported conversations in bounded windows with incremental
+  **Show earlier messages**, import OpenCode tool parts as tool cards and rewrite
+  legacy `[Tool · …]` records on load so coalescing cannot merge hundreds of
+  outputs into one Markdown block.
+
+Validation: 542 workspace tests passed / 0 ignored; build, fmt and Clippy
+`-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
+real-GitHub acceptance remains outside this log.
+
 
 - [x] Center Dashboard activity totals and soften light-theme dots.
 - [x] Give recent-project tiles visible light-theme containers.
@@ -13,14 +77,14 @@
 - [x] Import multiple selected local folders or a collection of repositories.
 - [x] Detect declared monorepos and display a badge.
 - [x] Add a persisted project-list branch visibility preference.
-- [x] Enlarge Settings; add Design → Application / Sidebar / Agent / Editor.
+- [x] Enlarge Settings; add Design → Application / Sidebar and dedicated Chat / Editor tabs.
 - [x] Fix Settings corner clipping in the light theme.
 - [x] Hide unstarted session drafts without deleting any history.
 - [x] Run regression tests, lint and formatting checks; rebuild and verify the app.
 
 Validation: 290 tests passed (4 optional integration tests ignored), Clippy with
 warnings denied, formatting/diff checks, release bundle and strict ad-hoc signature
-verification passed. Visual GUI checks remain unavailable because the Orca CLI
+verification passed. Visual GUI checks remain unavailable because the external computer-use CLI
 cannot run in this environment; no paid AI prompts or real-repository mutations
 were used for testing. Changes remain uncommitted and unpushed.
 

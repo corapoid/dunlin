@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use dunlin_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
+use dunlin_ui::component::Disableable;
+use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::input::Input;
+use dunlin_ui::component::{Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -60,11 +63,20 @@ pub(crate) fn render(
         this.selected_node = None;
         this.selected_span = None;
     }
-    let spans = crate::projection::spans(&this.harness.transcript, &session);
-    if spans.is_empty() {
+    let all_spans = crate::projection::spans(&this.harness.transcript, &session);
+    if all_spans.is_empty() {
         return super::empty_activity(
             "No trace events yet",
             "Send your first message in Chat. Events from this conversation will appear here.",
+            IconName::ChartNoAxesGantt,
+            cx,
+        );
+    }
+    let spans = crate::activity::filter_spans(&all_spans, &this.activity_query);
+    if spans.is_empty() {
+        return super::empty_activity(
+            "No trace matches",
+            "Clear the search field to show the full trace.",
             IconName::ChartNoAxesGantt,
             cx,
         );
@@ -75,7 +87,8 @@ pub(crate) fn render(
     let total_duration = format_ms(total_ms as u64);
     let filter = this.trace_filter;
     let selected = this.selected_span.clone();
-    let row_h = trace_row_height(1.0);
+    let zoom = this.activity.trace_zoom.clamp(0.6, 1.8);
+    let row_h = trace_row_height(zoom);
     let filtered = crate::activity::trace_rows(&spans, &this.activity.spans_expanded, filter);
     let total_cost: f64 = spans.iter().map(|span| span.cost_usd).sum();
     let running = spans
@@ -153,6 +166,42 @@ pub(crate) fn render(
                     total_duration,
                     crate::activity::token_label(tokens)
                 )),
+        )
+        .child(
+            div()
+                .w(px(150.))
+                .child(Input::new(&this.activity_search).small()),
+        )
+        .child(
+            Button::new("trace-zoom-out")
+                .ghost()
+                .small()
+                .label("−")
+                .disabled(zoom <= 0.6)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.trace_zoom = (this.activity.trace_zoom - 0.1).clamp(0.6, 1.8);
+                    cx.notify();
+                })),
+        )
+        .child(
+            div()
+                .min_w(px(34.))
+                .text_center()
+                .text_size(px(10.5))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child(format!("{:.0}%", zoom * 100.)),
+        )
+        .child(
+            Button::new("trace-zoom-in")
+                .ghost()
+                .small()
+                .label("+")
+                .disabled(zoom >= 1.8)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.activity.trace_zoom = (this.activity.trace_zoom + 0.1).clamp(0.6, 1.8);
+                    cx.notify();
+                })),
         )
         .child(div().flex_1());
 
@@ -335,6 +384,7 @@ pub(crate) fn render(
             (children, expanded),
             row_h,
             &timeline,
+            this.reduce_motion,
             &p,
             cx,
         ));
@@ -359,7 +409,7 @@ pub(crate) fn render(
     let detail = selected
         .as_ref()
         .and_then(|id| spans.iter().find(|span| &span.id == id))
-        .map(|span| span_detail(span, &spans, cx, &p));
+        .map(|span| span_detail(span, &spans, this.reduce_motion, cx, &p));
 
     let mut body = div()
         .flex()
@@ -410,12 +460,14 @@ fn span_bar_geometry(start_ms: u64, duration_ms: u64, total_ms: f32) -> (f32, f3
     (start, width)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn span_row(
     span: &TraceSpan,
     selected: Option<&str>,
     disclosure: (bool, bool),
     row_h: f32,
     timeline: &Timeline,
+    reduce_motion: bool,
     p: &Palette,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
@@ -455,7 +507,12 @@ fn span_row(
         })
         .with_animation(
             ElementId::Name(format!("trace-bar-{}", span.id).into()),
-            Animation::new(Duration::from_millis(320)).with_easing(ease_out_quint()),
+            Animation::new(if reduce_motion {
+                Duration::ZERO
+            } else {
+                Duration::from_millis(320)
+            })
+            .with_easing(ease_out_quint()),
             move |this, t| this.w(relative(bar_width * t)),
         );
 
@@ -574,9 +631,13 @@ fn span_row(
                         this.child(
                             div().child(dot(status_color, 5.0)).with_animation(
                                 ElementId::Name(format!("trace-pulse-{}", span.id).into()),
-                                Animation::new(Duration::from_millis(1600))
-                                    .repeat_synced()
-                                    .with_easing(pulsating_between(0.35, 1.0)),
+                                Animation::new(if reduce_motion {
+                                    Duration::ZERO
+                                } else {
+                                    Duration::from_millis(1600)
+                                })
+                                .repeat_synced()
+                                .with_easing(pulsating_between(0.35, 1.0)),
                                 |this, t| this.opacity(t),
                             ),
                         )
@@ -601,6 +662,9 @@ fn span_row(
                 .child(bar),
         );
 
+    if reduce_motion {
+        return row.into_any_element();
+    }
     row.with_animation(
         ElementId::Name(format!("trace-row-{}", span.id).into()),
         Animation::new(Duration::from_millis(280)).with_easing(ease_out_quint()),
@@ -632,6 +696,7 @@ fn grid_lines(p: &Palette) -> AnyElement {
 fn span_detail(
     span: &TraceSpan,
     spans: &[TraceSpan],
+    reduce_motion: bool,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
@@ -999,6 +1064,9 @@ fn span_detail(
                 .child(content),
         );
 
+    if reduce_motion {
+        return detail.into_any_element();
+    }
     detail
         .with_animation(
             ElementId::Name(format!("trace-detail-{}", span.id).into()),

@@ -197,11 +197,11 @@ impl DunlinApp {
                     return;
                 }
             };
-            WorkspaceBackend::Remote(crate::remote::RemoteWorkspace {
+            WorkspaceBackend::Remote(Box::new(crate::remote::RemoteWorkspace {
                 host,
                 project: remote.clone(),
                 token,
-            })
+            }))
         } else {
             WorkspaceBackend::Local {
                 root: project.path.clone(),
@@ -495,7 +495,7 @@ impl DunlinApp {
                             let project = project.clone();
                             if let Some(store) = &this.store && let Err(error) = store.upsert_project(&project) { this.report_storage_error("save branch selection", error); }
                         }
-                        this.repo_summaries.values.insert(request.project.id.clone(), crate::project_groups::RepoSummary { path: request.project.path.clone(), branch: Some(branch.clone()), changes: status.as_ref().map(|s| s.changes.len()), activity: Default::default(), monorepo: None });
+                        this.repo_summaries.values.insert(request.project.id.clone(), crate::project_groups::RepoSummary { path: request.project.path.clone(), branch: Some(branch.clone()), changes: status.as_ref().map(|s| s.changes.len()), activity: Default::default(), monorepo: None, languages: None, size_bytes: None });
                         if this.project().id == request.project.id && this.project().path == request.project.path {
                             this.diff_view = None;
                             if this.editor_dirty {

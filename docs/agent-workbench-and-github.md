@@ -96,10 +96,21 @@ after explicit user approval; that does not install or restart local services.
   proven coverage. Dynamic receiver methods, macro expansion, ambiguous paths,
   external crates and non-Rust code remain explicitly unresolved/outside scope.
 
+**Remote workbench (new):** granted relay projects can capture/read/restore
+checkpoints through `/v1/review/*`, create real A/B worktrees with explicit
+relay projects through `/v1/compare/*`, inspect relay-reported context through
+`/v1/context`, and use `/v1/github/*` with the same typed local previews. Remote
+GitHub is administrator-only because it uses the relay host's `gh` account, not a
+per-member GitHub token. Remote comparison checks run through the existing
+bounded `/v1/checks/run`; no local path or `gh` fallback is used. Group agents may
+request multiple roots only from explicit same-host relay grants; the relay
+revalidates every grant on each request and the sandbox permits only those roots.
+
 **Still pending:** full compiler/LSP/multi-language impact mapping, complete
 provider/internal-child billing attribution, automatic per-turn provenance/test
-explanations, further test adapters, and remote comparison/index/checkpoint/check
-execution. All eight feature areas now have bounded implementations, not full
+explanations, further test adapters, manual acceptance of the remote surfaces,
+real GitHub account/relay transport, and full virtualization/auto-layout for the
+largest graphs. All eight feature areas have bounded implementations, not full
 completion of every capability in the approved proposals.
 
 ### Bounds and acceptance notes
@@ -125,6 +136,11 @@ completion of every capability in the approved proposals.
   external writers are not made transactional. Restore never retries/rolls back.
 - Checks: 120-second process-group limit, 512 KiB per stream, 200 Cargo diagnostics;
   launch/capture/timeout/cancel failures are never inferred as successful testing.
+- Remote review/compare payloads are bounded by the same checkpoint/restore limits;
+  restore previews are one-time server-side plans with a five-minute expiry.
+  Remote GitHub reads/writes require relay administrator role; project grants are
+  still checked. Multi-root ACP connections require explicit same-host project
+  grants and reject MCP servers or paths outside those grants.
 - Comparison checks keep at most two latest reports (40 KiB stored per stream);
   diffs show the first 20 changed files per side / 80 KiB text. Checks may predate
   later edits. Impact indexing: 30,000 inventory paths, 500 module scopes, 512 KiB
@@ -147,8 +163,8 @@ completion of every capability in the approved proposals.
 
 ### Current validation
 
-**487 tests passed, 4 optional integration tests ignored**; workspace desktop/relay
-build, Clippy `-D warnings`, formatting and `git diff --check` passed. The new
+**527 tests passed, 0 ignored**; workspace desktop/relay build, Clippy
+`-D warnings`, formatting and `git diff --check` passed. The new
 native GitHub/workbench smokes passed dark and light/narrow, as did the Git controller and
 Markdown regressions. The paired loopback HTTP Git smoke also passed. These do
 not replace real GitHub account/deployed-host/manual dialog acceptance.

@@ -9,13 +9,19 @@ Nowy zatwierdzony zakres: [Agent workbench i GitHub](agent-workbench-and-github.
 Obejmuje wszystkie osiem propozycji i pełny cykl CI/PR. GitHub, inspektor,
 pamięć decyzji, review/checkpointy, checks, trwałe budżety, porównanie A/B i mapa
 Rust AST mają implementacje v1 z testami. Pełny billing, compiler/LSP/non-Rust
-impact, zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte; nie oznaczać
+impact, ręczna akceptacja oraz pełna wirtualizacja grafów pozostają otwarte; nie oznaczać
 całego rozszerzenia jako ukończonego. Aktualna macierz jest w [ROADMAP.md](ROADMAP.md).
 
-Stan źródeł: `0.1.0-beta.4`, 500 testów OK / 4 opcjonalne pominięte; build,
-Clippy, fmt i izolowane regresje przeszły. Starsze liczby poniżej opisują
-historyczne etapy walidacji, nie bieżący zestaw. CI/Release beta.3 zakończone
-sukcesem; opublikowane artefakty pobrano i zweryfikowano bez instalacji.
+Stan źródeł: `0.1.0-beta.6` + dalszy zakres, **542 testów OK / 0 pominiętych**; build, Clippy
+`-D warnings`, fmt i izolowane regresje przeszły. Cztery opcjonalne testy
+integracyjne `#[ignore]` zostały usunięte. `app.rs` jest podzielony na
+`app/overlays.rs` (UI i overlaye), `app/helpers.rs` (funkcje pomocnicze) i
+`app/tests.rs`; pozostają wspólne Services i event bus. Remote usage dla roli
+`member` pokazuje jawny stan `Admin-only` bez żądania do relay i bez toastu
+błędu; administrator nadal pobiera limity. CI odrzuca `todo!()` i
+`unimplemented!()` w `apps`/`crates`. Starsze liczby poniżej opisują historyczne
+etapy walidacji, nie bieżący zestaw. CI/Release beta.3 zakończone sukcesem;
+opublikowane artefakty pobrano i zweryfikowano bez instalacji.
 Hardening beta.4 dodaje fail-closed bramki, ale nie zamyka czerwonych audytów
 zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 
@@ -53,6 +59,10 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
   oraz dalsze ustawienia specyficzne dla adapterów pozostają osobnym zakresem.
 - Odbiór 1a: stare projekty bez zmian, env nie wycieka między projektami,
   niepoprawny/niedostępny model nie wysyła promptu z innym modelem.
+- **1d, zaimplementowane; QA oczekuje:** grupy agentów mogą jawnie dodać rooty
+  ACP (`additionalDirectories`) lokalnie lub na jednym relayu. Relay weryfikuje
+  każdy grant przy połączeniu i każdym żądaniu; MCP servers i ścieżki poza grantem
+  są odrzucane, a sandbox dopuszcza wyłącznie zatwierdzone rooty.
 
 ### 2. Git (L) — po ustaleniu wspólnego kontraktu operacji
 
@@ -126,16 +136,17 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
   Nie obiecywać automatycznego nadania TCC; nie odczytywać chronionych danych
   wyłącznie w celu sprawdzenia uprawnienia.
 
-### 8. Terminal i Run (L/XL)
+### 8. Terminal i Run (L/XL) — lokalny v1 wdrożony
 
-- Spike VT (`alacritty_terminal` vs `libghostty-vt`), prototyp GPUI, licencje,
-  wydajność i testy sekwencji. Następnie lokalny PTY, resize, bounded scrollback,
-  copy/paste, search, taby/splity, historia i jawna polityka zamykania procesów.
-- Run: statyczne wykrywanie package.json/Cargo/Make/just/pyproject/skryptów,
-  bez ewaluacji manifestów; preview komendy/cwd/env, uruchomienie na żądanie,
-  status/exit code/cancel, historia i ponowienie. Dopiero potem shell integration.
-- Wspólny transport local/relay/SSH; remote wymaga jawnych grantów i backpressure.
-  Odbiór: Unicode, paste wielowierszowy, SIGINT, odłączenie i duży output.
+- Wybrano `portable-pty` + `vt100` (bez webowego libghostty). Lokalny PTY, tabs,
+  5 000-liniowy scrollback, resize/SIGWINCH, copy/paste, ANSI/RGB i podstawowe
+  klawisze są wdrożone. Pozostają search z podświetleniem, zaznaczanie myszą,
+  linki, splity, shell integration oraz transport relay/SSH.
+- Run: statyczne wykrywanie manifestów bez ewaluacji; preview argv/cwd/env,
+  potwierdzenie, PTY, exit/sygnał, historia 50 i rerun są wdrożone.
+- Szczegóły i granice: [terminal-and-run.md](terminal-and-run.md).
+- Odbiór ręczny: Unicode/IME/bidi, paste wielowierszowy, SIGINT, duży output,
+  zamykanie procesów i rzeczywisty host relay/SSH.
 
 ### 9. Markdown i standalone chat (M → XL)
 

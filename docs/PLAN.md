@@ -4,14 +4,16 @@ Ten dokument opisuje kierunek rozwoju Dunlina po wersji `0.1`: docelowy model
 usług, decyzje architektoniczne i kolejność prac. Roadmapa z konkretnymi
 kamieniami milowymi jest w [`ROADMAP.md`](ROADMAP.md).
 
-Stan po przeglądzie 2026-11-01 / beta.3: [`REMAINING-WORK.md`](REMAINING-WORK.md).
+Stan po przeglądzie 2026-11-01 / beta.4: [`REMAINING-WORK.md`](REMAINING-WORK.md).
 Ten plan opisuje architekturę docelową, nie listę zupełnie niewdrożonych funkcji.
 Są już m.in. globalne skills, hierarchiczne grupy, recorded-data Dashboard,
 import sesji z plików, lokalny graf Git z branch create i część feature-modułów.
 Import historii nie zastępuje planowanych skanerów billing usage.
 Doszły local/relay Git/blame, edytowalny Visual/Raw Markdown, dziedziczone
 runtime settings i wszystkie osiem obszarów workbench v1 z GitHub CI/PR.
-Nie zamyka to QA, pełnego billing/impact LSP ani nowych podsystemów;
+Doszły zdalne checkpointy/compare/context/GitHub, jawne granty multi-root,
+skanery billingowe z dashboardem oraz graf/trace search+zoom, onboarding i centrum
+TCC. Nie zamyka to QA, pełnego impact LSP ani nowych podsystemów;
 aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-workbench-and-github.md).
 
 ## Zasady
@@ -22,7 +24,7 @@ aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-work
    Markdown, z możliwością przełączenia na surowy tekst.
 3. Computer use dostaje osobny helper w Swift/AppKit. Dzięki temu uprawnienia
    Accessibility i Screen Recording są przyznawane helperowi, a nie całej
-   aplikacji — tak jak robi to Orca.
+   aplikacji — tak jak robią to dojrzałe agent-first IDE.
 4. Automatyzacje mogą działać przy zamkniętym Dunlinu: lokalnie przez
    LaunchAgent, zdalnie przez scheduler w relayu.
 5. SSH jest transportem do istniejącego remote mode: OpenSSH ControlMaster +
@@ -30,7 +32,7 @@ aktualne granice są w [roadmapie](ROADMAP.md) i [zakresie workbench](agent-work
    backendu plików.
 6. „Zapisz jako artefakt” to jawne polecenie agenta. Artefakt jest osobnym
    obiektem sesji, nie przypadkowym plikiem w repo.
-7. Przy niejasnościach patrzymy na rozwiązania Orca (MIT) i implementujemy
+7. Przy niejasnościach patrzymy na rozwiązania dojrzałych agent-first IDE i implementujemy
    niezależnie.
 
 ## Warstwy
@@ -52,8 +54,10 @@ crates/ssh          OpenSSH ControlMaster, bootstrap relay
 crates/mcp          lokalny serwer narzędzi dla harnessów
 ```
 
-`DunlinApp` nie może dalej rosnąć w jednym pliku. `app.rs` zostaje
-rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`.
+`DunlinApp` nie może dalej rosnąć w jednym pliku. `app.rs` jest już podzielony
+na `app/overlays.rs` (UI/overlaye), `app/helpers.rs` (funkcje pomocnicze) i
+`app/tests.rs`; pozostaje wydzielenie wspólnych serwisów przez `Services` oraz
+event busa.
 
 ## Model danych
 
@@ -154,7 +158,8 @@ rozbity na feature-moduły, a wspólne serwisy są przekazywane przez `Services`
 
 ## Kolejność prac
 
-1. Fundament: rozbicie `app.rs`, modele, migracje, design tokens, event bus.
+1. Fundament: dokończenie podziału `app.rs` (Services/event bus), modele,
+   migracje i design tokens.
 2. M1 — codzienna praca (kolejka, akcje wiadomości, powiadomienia, watcher,
    brakujący folder, toasty, menu kontekstowe, wąskie okno).
 3. M2 — ustawienia per projekt, grupy v2, usage, onboarding, centrum uprawnień.

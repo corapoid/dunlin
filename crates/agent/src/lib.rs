@@ -53,6 +53,8 @@ pub enum HarnessTransport {
         url: String,
         token: String,
         project_id: String,
+        /// Relay project ids explicitly granted for this group conversation.
+        roots: Vec<String>,
     },
 }
 
@@ -71,6 +73,10 @@ pub struct HarnessConfig {
     /// Apply only to new sessions, before accepting prompts. Never overrides a
     /// resumed session or falls back to a different model on failure.
     pub default_model: Option<String>,
+    /// Explicit extra workspace roots for the initial session. Callers can also
+    /// pass roots per command; this keeps the first automatic session scoped
+    /// when a group conversation was already attached.
+    pub additional_directories: Vec<PathBuf>,
 }
 
 impl HarnessConfig {
@@ -84,6 +90,7 @@ impl HarnessConfig {
             resume_session_id: None,
             process_env: HashMap::new(),
             default_model: None,
+            additional_directories: Vec::new(),
         }
     }
 
@@ -93,18 +100,35 @@ impl HarnessConfig {
         project_id: impl Into<String>,
         cwd: impl Into<PathBuf>,
     ) -> Self {
+        Self::remote_with_roots(url, token, project_id, cwd, Vec::new())
+    }
+
+    pub fn remote_with_roots(
+        url: impl Into<String>,
+        token: impl Into<String>,
+        project_id: impl Into<String>,
+        cwd: impl Into<PathBuf>,
+        roots: Vec<String>,
+    ) -> Self {
         Self {
             transport: HarnessTransport::Remote {
                 url: url.into(),
                 token: token.into(),
                 project_id: project_id.into(),
+                roots,
             },
             cwd: cwd.into(),
             client_name: "Dunlin".into(),
             resume_session_id: None,
             process_env: HashMap::new(),
             default_model: None,
+            additional_directories: Vec::new(),
         }
+    }
+
+    pub fn with_additional_directories(mut self, roots: Vec<PathBuf>) -> Self {
+        self.additional_directories = roots;
+        self
     }
 
     pub fn is_remote(&self) -> bool {
@@ -286,11 +310,13 @@ pub enum HarnessCommand {
     Cancel,
     NewSession {
         cwd: PathBuf,
+        additional_directories: Vec<PathBuf>,
         default_model: Option<String>,
     },
     LoadSession {
         session_id: String,
         cwd: PathBuf,
+        additional_directories: Vec<PathBuf>,
     },
     SetModel {
         session_id: String,
@@ -379,17 +405,40 @@ impl AcpHarness {
         cwd: impl Into<PathBuf>,
         default_model: Option<String>,
     ) -> bool {
+        self.new_session_with_roots(cwd, Vec::new(), default_model)
+    }
+
+    /// Create a session with an explicit ACP multi-root workspace. The caller
+    /// has already established trust for every additional directory.
+    pub fn new_session_with_roots(
+        &self,
+        cwd: impl Into<PathBuf>,
+        additional_directories: Vec<PathBuf>,
+        default_model: Option<String>,
+    ) -> bool {
         self.send(HarnessCommand::NewSession {
             cwd: cwd.into(),
+            additional_directories,
             default_model,
         })
     }
 
     /// Load an existing ACP session and replay its history.
     pub fn load_session(&self, session_id: impl Into<String>, cwd: impl Into<PathBuf>) -> bool {
+        self.load_session_with_roots(session_id, cwd, Vec::new())
+    }
+
+    /// Load a session with the complete additional-root set it should see.
+    pub fn load_session_with_roots(
+        &self,
+        session_id: impl Into<String>,
+        cwd: impl Into<PathBuf>,
+        additional_directories: Vec<PathBuf>,
+    ) -> bool {
         self.send(HarnessCommand::LoadSession {
             session_id: session_id.into(),
             cwd: cwd.into(),
+            additional_directories,
         })
     }
 
@@ -498,7 +547,8 @@ async fn run(
             url,
             token,
             project_id,
-        } => Transport::Remote(WsTransport::new(url, token, project_id)?),
+            roots,
+        } => Transport::Remote(WsTransport::new(url, token, project_id, roots.clone())?),
     };
     let pending: PendingPermissions = Arc::new(Mutex::new(HashMap::new()));
 
@@ -618,7 +668,7 @@ async fn run(
                 if !config.is_remote() {
                     if let Some(session_id) = config.resume_session_id.as_ref() {
                         if init.agent_capabilities.load_session {
-                            match open_session(&connection, &foreground_events, config.cwd.clone(), Some(session_id.clone()), None).await {
+                            match open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), Some(session_id.clone()), None).await {
                                 Ok(id) => active_session = Some(id.into()),
                                 Err(message) => {
                                     let _ = foreground_events.send(HarnessEvent::SessionLoadFailed { session_id: session_id.clone(), message: message.to_string() }).await;
@@ -631,7 +681,7 @@ async fn run(
                             }).await;
                         }
                     } else {
-                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), None, config.default_model.as_deref()).await?.into());
+                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), None, config.default_model.as_deref()).await?.into());
                     }
                 }
 
@@ -695,9 +745,9 @@ async fn run(
                                     .send_notification(CancelNotification::new(session_id.clone()));
                             }
                         }
-                        HarnessCommand::NewSession { cwd, default_model } => {
+                        HarnessCommand::NewSession { cwd, additional_directories, default_model } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, None, default_model.as_deref()).await {
+                            match open_session(&connection, &foreground_events, cwd, additional_directories, None, default_model.as_deref()).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -710,9 +760,9 @@ async fn run(
                                 }
                             }
                         }
-                        HarnessCommand::LoadSession { session_id, cwd } => {
+                        HarnessCommand::LoadSession { session_id, cwd, additional_directories } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, Some(session_id.clone()), None).await {
+                            match open_session(&connection, &foreground_events, cwd, additional_directories, Some(session_id.clone()), None).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -829,15 +879,22 @@ async fn open_session(
     connection: &ConnectionTo<Agent>,
     events: &Sender<HarnessEvent>,
     cwd: PathBuf,
+    additional_directories: Vec<PathBuf>,
     existing: Option<String>,
     default_model: Option<&str>,
 ) -> AcpResult<String> {
     // Keep the raw response: some deployed harnesses still expose `models`,
     // which newer ACP schemas intentionally no longer deserialize.
     let request = if let Some(id) = existing.as_ref() {
-        UntypedMessage::new("session/load", LoadSessionRequest::new(id.clone(), cwd))?
+        UntypedMessage::new(
+            "session/load",
+            LoadSessionRequest::new(id.clone(), cwd).additional_directories(additional_directories),
+        )?
     } else {
-        UntypedMessage::new("session/new", NewSessionRequest::new(cwd))?
+        UntypedMessage::new(
+            "session/new",
+            NewSessionRequest::new(cwd).additional_directories(additional_directories),
+        )?
     };
     let response = connection.send_request(request).block_task().await?;
     let id = existing
@@ -1216,7 +1273,7 @@ struct WsTransport {
 }
 
 impl WsTransport {
-    fn new(url: &str, token: &str, project_id: &str) -> io::Result<Self> {
+    fn new(url: &str, token: &str, project_id: &str, roots: Vec<String>) -> io::Result<Self> {
         let parsed = url::Url::parse(url.trim()).map_err(|error| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -1262,10 +1319,32 @@ impl WsTransport {
             "http" => format!("ws://{}", base.strip_prefix("http://").unwrap_or(base)),
             _ => base.to_string(),
         };
-        let endpoint = if ws.ends_with("/acp") {
-            format!("{ws}?project={project_id}")
+        let mut roots = roots;
+        roots.sort();
+        roots.dedup();
+        if roots.len() > 32
+            || roots.iter().any(|root| {
+                root.is_empty()
+                    || root.len() > 128
+                    || !root
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            })
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Relay workspace roots must be explicit project ids (max 32)",
+            ));
+        }
+        let root_query = if roots.is_empty() {
+            String::new()
         } else {
-            format!("{ws}/acp?project={project_id}")
+            format!("&roots={}", roots.join(","))
+        };
+        let endpoint = if ws.ends_with("/acp") {
+            format!("{ws}?project={project_id}{root_query}")
+        } else {
+            format!("{ws}/acp?project={project_id}{root_query}")
         };
         let mut request = endpoint
             .into_client_request()
@@ -1311,11 +1390,35 @@ mod tests {
 
     #[test]
     fn remote_transport_requires_tls_off_loopback() {
-        assert!(WsTransport::new("https://relay.example.test", "token", "prj").is_ok());
-        assert!(WsTransport::new("http://127.0.0.1:8787", "token", "prj").is_ok());
-        assert!(WsTransport::new("http://192.168.1.10:8787", "token", "prj").is_err());
+        assert!(WsTransport::new("https://relay.example.test", "token", "prj", vec![]).is_ok());
+        assert!(WsTransport::new("http://127.0.0.1:8787", "token", "prj", vec![]).is_ok());
+        assert!(WsTransport::new("http://192.168.1.10:8787", "token", "prj", vec![]).is_err());
         assert!(
-            WsTransport::new("https://user:secret@relay.example.test", "token", "prj").is_err()
+            WsTransport::new(
+                "https://user:secret@relay.example.test",
+                "token",
+                "prj",
+                vec![]
+            )
+            .is_err()
+        );
+        assert!(
+            WsTransport::new(
+                "https://relay.example.test",
+                "token",
+                "prj",
+                vec!["prj-a".into(), "prj-b".into()]
+            )
+            .is_ok()
+        );
+        assert!(
+            WsTransport::new(
+                "https://relay.example.test",
+                "token",
+                "prj",
+                vec!["../escape".into()]
+            )
+            .is_err()
         );
     }
 

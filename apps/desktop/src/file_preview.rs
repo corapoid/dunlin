@@ -73,7 +73,11 @@ pub(crate) fn decode(
             }
             let tree = resvg::usvg::Tree::from_str(text, &options).map_err(|e| e.to_string())?;
             let size = tree.size();
-            let scale = (1600. / size.width().max(size.height())).min(1.);
+            // Vector previews are rasterized for the largest supported panel,
+            // not at the document's intrinsic icon size. Otherwise a 16–64 px
+            // SVG is stretched by the GPU into a visibly pixelated bitmap.
+            let longest = size.width().max(size.height()).max(1.);
+            let scale = 2048. / longest;
             let (width, height) = (
                 (size.width() * scale).ceil().max(1.) as u32,
                 (size.height() * scale).ceil().max(1.) as u32,
@@ -368,7 +372,7 @@ mod tests {
         let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><script>alert(1)</script><image href="file:///etc/passwd" width="20" height="10"/><image href="https://127.0.0.1:1/private"/><rect width="20" height="10" fill="red"/></svg>"#;
         let preview = decode(Arc::new(svg.to_vec()), PreviewKind::Svg, 1).unwrap();
         let image = rgba(&preview);
-        assert_eq!((image.width(), image.height()), (20, 10));
+        assert_eq!((image.width(), image.height()), (2048, 1024));
         assert!(image.pixels().all(|p| p[0] > 240 && p[1] < 10));
         assert!(
             decode(
