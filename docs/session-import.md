@@ -9,8 +9,9 @@ jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 ## Obsługiwane źródła
 
 - **OpenCode**: Dunlin otwiera lokalny `opencode.db` wyłącznie w trybie
-  read-only i czyta wyłącznie tabele `session`, `message` i `part`. Importuje
-  sesje najwyższego poziomu (bez subagentów), tekst, reasoning i historię narzędzi;
+  read-only i czyta sesje najwyższego poziomu z bieżącego schematu
+  (`session_v2` + `session_message`), z fallbackiem do starszych tabel
+  `session`/`message`/`part`. Importuje tekst, reasoning i historię narzędzi;
   nie odczytuje credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
   JSON `experimental.session.export` V2 przez **Import a portable file…**:
   `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.

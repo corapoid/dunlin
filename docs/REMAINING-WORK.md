@@ -24,7 +24,7 @@ bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Ru
 i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
 bez bypassu i zweryfikowane atestacje obu binariów.
 **Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5:
-532 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
+533 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
 Ustawienia mają jedną płaską powierzchnię, dwustopniowy onboarding i katalog
 ACP; ich ręczna QA pozostaje otwarta. Usunięto cztery
 testy `#[ignore]`; `app.rs` dzielą teraz `app/overlays.rs`, `app/helpers.rs` i

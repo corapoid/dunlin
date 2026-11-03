@@ -70,8 +70,9 @@ All notable changes to Dunlin are documented here. The format follows
   inline code and link backgrounds remain readable in dark mode.
 - Harness **Import sessions…** scans the standard Claude Code and Codex
   session folders instead of opening a file picker. OpenCode's local
-  `opencode.db` is opened read-only for top-level sessions, messages, reasoning
-  and tool history; portable `dunlin.session.v1` imports remain a separate action.
+  `opencode.db` is opened read-only for top-level `session_v2`/`session_message`
+  sessions, messages, reasoning and tool history (with legacy-table fallback);
+  portable `dunlin.session.v1` imports remain a separate action.
 - Remove the duplicate **UI font** control from Editor and the duplicate
   **Keyboard hints** control from Design; the canonical controls stay in Design
   and General.
@@ -109,7 +110,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 532 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 533 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

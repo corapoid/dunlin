@@ -2,7 +2,7 @@
 
 > Historical delivery log, not the current backlog. The counts and no-commit/
 > GUI-tool-availability notes below describe those individual runs. Source work
-> has since been committed through beta.5; current validation is 532 passing
+> has since been committed through beta.5; current validation is 533 passing
 > tests / 0 ignored. Native smokes do not replace manual visual/a11y QA.
 > Current status and remaining work: [ROADMAP.md](ROADMAP.md).
 
@@ -38,8 +38,9 @@
 - [x] Replace the harness Import sessions… file picker with bounded automatic
   scanning of the standard Claude Code and Codex session folders.
 - [x] Read OpenCode top-level sessions, messages, reasoning and tool history
-  directly from `opencode.db` in read-only mode; keep portable JSON as a
-  separate explicit action.
+  directly from `opencode.db` in read-only mode, including the current
+  `session_v2`/`session_message` schema and legacy-table fallback; keep portable
+  JSON as a separate explicit action.
 - [x] Remove the duplicate Editor UI-font control and the duplicate Design
   keyboard-hints control.
 - [x] Add bounded GitHub skill import from `SKILL.md` or a skill-folder link.
@@ -50,7 +51,7 @@
   project total in the Explorer root and project size on Dashboard tiles.
 - [x] Add a persisted **Show file sizes** switch under Design → Application.
 
-Validation: 532 workspace tests passed / 0 ignored; build, fmt and Clippy
+Validation: 533 workspace tests passed / 0 ignored; build, fmt and Clippy
 `-D warnings` pass; `dist/Dunlin.app` rebuilt. Manual GUI/TCC/real-relay/
 real-GitHub acceptance remains outside this log.
 
