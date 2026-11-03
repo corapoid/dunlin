@@ -96,6 +96,18 @@ All notable changes to Dunlin are documented here. The format follows
   Monorepo badge and branch share one row with a compact **Open** action, while
   size, last commit, upstream state and check time move into an info tooltip
   with a small refresh action.
+- Onboarding step 2 shows an optional notification permission card with
+  **Enable** (system prompt) or **Open Settings**. The permission center now
+  distinguishes **Not granted**, supports a real notification request and keeps
+  Recheck side-effect free. An untrusted project shows a clear trust banner in
+  Chat instead of silently refusing to connect.
+- Settings → Advanced gains a copyable **Release QA** report covering the data
+  directory, database schema/integrity, project/session counts, largest indexed
+  project, harness discovery, macOS permissions and remote hosts. A debug-only
+  `--onboarding-smoke` fixture covers a fresh directory, no projects, empty
+  harness discovery and the Permissions surface; the new
+  [R11 manual matrix](docs/r11-qa.md) remains explicitly separate from automatic
+  pass flags.
 - Session rows use compact Today/Yesterday/date labels, group by their real date,
   truncate titles in narrow sidebars and omit the redundant cost/duration chips.
 - Long imported conversations open in bounded windows: the newest 120 items are
@@ -128,7 +140,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Validation
 
-- 538 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
+- 542 tests passed, 0 ignored; workspace build, `cargo fmt --all --check`, Clippy
   `-D warnings` and `git diff --check` pass. Manual GUI/TCC/real-relay/real-GitHub
   acceptance remains pending.
 

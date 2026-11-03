@@ -549,6 +549,8 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
                     &p,
                 ))
                 .child(divider(&p))
+                .child(notification_permission_row(this, cx, &p))
+                .child(divider(&p))
                 .child(setting_row(
                     "Show keyboard shortcuts",
                     "Show shortcut hints in the title bar, menus and command palette. Shortcuts keep working when hidden.",
@@ -1498,6 +1500,7 @@ fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                     crate::platform::PermissionState::Granted => p.green,
                     crate::platform::PermissionState::Denied => p.red,
                     crate::platform::PermissionState::NotDetermined => p.amber,
+                    crate::platform::PermissionState::NotGranted => p.amber,
                     crate::platform::PermissionState::Unknown => p.muted_fg,
                 };
                 let kind = status.kind;
@@ -2469,6 +2472,92 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     ),
             )
         })
+        .child(section_label("Release QA", &p))
+        .child(
+            settings_card(&p)
+                .p(px(14.))
+                .flex()
+                .flex_col()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(3.))
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(p.fg)
+                                .child("Environment report"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .line_height(relative(1.45))
+                                .text_color(p.muted_fg)
+                                .child("Automatic facts for the R11 manual matrix: data directory, database schema/integrity, projects, sessions, harness discovery, permissions and remote hosts. It never claims manual TCC or GUI acceptance."),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(8.))
+                        .child(
+                            settings_button("qa-run", "Run QA checks", false, &p).on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.qa_report = Some(crate::qa::capture(this));
+                                    this.qa_error = None;
+                                    this.set_notice("QA report ready", cx);
+                                    cx.notify();
+                                }),
+                            ),
+                        )
+                        .child(
+                            settings_button("qa-copy", "Copy report", false, &p).on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    let report = this
+                                        .qa_report
+                                        .clone()
+                                        .unwrap_or_else(|| crate::qa::capture(this));
+                                    cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
+                                    this.qa_report = Some(report);
+                                    this.qa_error = None;
+                                    this.set_notice("Copied the QA report", cx);
+                                    cx.notify();
+                                }),
+                            ),
+                        ),
+                )
+                .when_some(this.qa_error.clone(), |card, error| {
+                    card.child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(p.red)
+                            .child(error),
+                    )
+                })
+                .when_some(this.qa_report.clone(), |card, report| {
+                    card.child(
+                        div()
+                            .id("qa-report-view")
+                            .h(px(260.))
+                            .overflow_y_scroll()
+                            .rounded(px(6.))
+                            .bg(p.subtle)
+                            .p(px(10.))
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .line_height(relative(1.35))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.fg)
+                                    .child(report),
+                            ),
+                    )
+                }),
+        )
         .child(section_label("Recovery", &p))
         .child(
             settings_card(&p)
@@ -2993,6 +3082,33 @@ fn scope_value(label: &str, color: Hsla, _p: &Palette) -> AnyElement {
         .text_color(color)
         .child(label.to_uppercase())
         .into_any_element()
+}
+
+fn notification_permission_row(
+    _this: &mut DunlinApp,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
+    let status = crate::platform::notification_permission();
+    let control = match status.state {
+        crate::platform::PermissionState::Granted => scope_value("Granted", p.green, p),
+        crate::platform::PermissionState::NotDetermined => {
+            settings_button("notification-allow", "Allow…", true, p)
+                .on_click(cx.listener(|this, _, _, cx| this.request_notifications(cx)))
+                .into_any_element()
+        }
+        _ => settings_text_button("notification-open-settings", "Open Settings", p.amber, p)
+            .on_click(cx.listener(
+                |this, _, _, cx| match crate::platform::open_permission_settings(
+                    crate::platform::PermissionKind::Notifications,
+                ) {
+                    Ok(()) => this.set_notice("Opened notification settings", cx),
+                    Err(error) => this.set_notice(error, cx),
+                },
+            ))
+            .into_any_element(),
+    };
+    setting_row("Notification permission", &status.detail, control, p)
 }
 
 fn setting_row(title: &str, description: &str, control: AnyElement, p: &Palette) -> AnyElement {

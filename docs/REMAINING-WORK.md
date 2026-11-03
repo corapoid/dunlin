@@ -24,7 +24,7 @@ bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Ru
 i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
 bez bypassu i zweryfikowane atestacje obu binariów.
 **Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5:
-538 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
+542 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
 Ustawienia mają jedną płaską powierzchnię, dwustopniowy onboarding i katalog
 ACP; ich ręczna QA pozostaje otwarta. Usunięto cztery
 testy `#[ignore]`; `app.rs` dzielą teraz `app/overlays.rs`, `app/helpers.rs` i
@@ -72,10 +72,11 @@ i bez błędu; admin nadal pobiera limity. CI odrzuca `todo!()`/
    Remote usage jest admin-only po stronie relay: klient pokazuje `Admin-only`
    dla roli `member` bez wysyłania żądania i bez toastu błędu, a administrator
    nadal pobiera limity. To świadomy stan uprawnień, nie błąd połączenia.
-6. **Onboarding i uprawnienia**: wznawialny kreator harness → projekt/trust →
-   relay/SSH, centrum statusów Notifications/Accessibility/Screen Recording/
-   Automation/FDA, linki do System Settings i ponowne sprawdzanie. Kreator i
-   centrum są w kodzie; SSH/trust po otwarciu projektu oraz ręczna QA TCC pozostają.
+6. **Onboarding i uprawnienia**: dwustopniowy kreator harness → projekt ma
+   teraz opcjonalną kartę powiadomień (Allow/Open Settings), centrum statusów
+   Notifications/Accessibility/Screen Recording/Automation/FDA, linki do System
+   Settings, ponowne sprawdzanie oraz jawny stan **Not granted**. Chat pokazuje
+   banner zaufania projektu. Pozostają ręczna QA TCC i pełny wizard relay/SSH.
 7. **Git v2**: checkout commita z grafu i zdalny branch create są wdrożone;
      pozostaje ręczna QA mutacji/hoverów i rzeczywistego relay. Mutacje stash/worktree, merge/rebase/cherry-pick,
      continue/abort i inline blame są wdrożone local/relay z preflightem,
@@ -163,7 +164,11 @@ i koordynator nie wynikają automatycznie z istniejących checks/search plików/
   kończą się jawnym błędem. CI egzekwuje tę regułę dla `apps`/`crates`.
 - **R11 QA**: świeże konto macOS, brak harnessa, odmowa powiadomień, upgrade bazy,
   duży projekt i remote beta; pełna weryfikacja GUI pozostaje do wykonania.
-  Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla `0.1.0-beta.N`.
+  Użytkownik zaakceptował odroczenie GUI/TCC/realnego hosta tylko dla
+  `0.1.0-beta.N`. [Manualna macierz R11](r11-qa.md); Settings → Advanced →
+  Release QA generuje kopiowalny raport środowiska, a `--onboarding-smoke`
+  pokrywa świeży katalog bez projektu/harnessa i centrum uprawnień bez
+  zastępowania odbioru TCC.
 - **R12 security/release — zamknięty zakres solo/beta**: dependency review/Dependabot, secret
   scanning/push protection i reguły PR/statusów/no-force dla `main` już są.
   Kod CodeQL/cargo-deny oraz bramek metadanych/artefaktów i audytu reguł jest już

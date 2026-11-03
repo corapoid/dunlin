@@ -26,6 +26,8 @@ mod markdown_editor;
 mod mcp;
 mod minimap;
 mod native_menu;
+#[cfg(debug_assertions)]
+mod onboarding_smoke;
 mod overlay_window;
 mod platform;
 mod project_activity;
@@ -36,6 +38,7 @@ mod project_tree;
 mod projection;
 mod provider_auth;
 mod providers;
+mod qa;
 mod remote;
 mod run;
 mod session_import;
@@ -78,6 +81,11 @@ fn main() {
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--glass-smoke") {
         glass_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--onboarding-smoke") {
+        onboarding_smoke::run();
         return;
     }
     if std::env::args().nth(1).as_deref() == Some("--syntax-notices") {

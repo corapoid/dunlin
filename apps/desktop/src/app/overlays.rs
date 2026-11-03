@@ -576,7 +576,7 @@ impl DunlinApp {
                     ),
             );
         } else {
-            body = body.child(
+            body = body.child(onboarding_permission_card(cx, &p)).child(
                 div()
                     .flex()
                     .flex_col()
@@ -3262,6 +3262,87 @@ impl DunlinApp {
             .child(self.overlay_backdrop.finish())
             .into_any_element()
     }
+}
+
+fn onboarding_permission_card(cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    let status = crate::platform::notification_permission();
+    let (color, action): (Hsla, AnyElement) = match status.state {
+        crate::platform::PermissionState::Granted => (
+            p.green,
+            div()
+                .text_size(px(10.5))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.green)
+                .child("On")
+                .into_any_element(),
+        ),
+        crate::platform::PermissionState::NotDetermined => (
+            p.amber,
+            onboarding_secondary_button("onboarding-notifications-allow", "Enable", p)
+                .on_click(cx.listener(|this, _, _, cx| this.request_notifications(cx)))
+                .into_any_element(),
+        ),
+        _ => (
+            p.amber,
+            onboarding_secondary_button("onboarding-notifications-settings", "Open Settings", p)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    match crate::platform::open_permission_settings(
+                        crate::platform::PermissionKind::Notifications,
+                    ) {
+                        Ok(()) => this.set_notice("Opened notification settings", cx),
+                        Err(error) => this.set_notice(error, cx),
+                    }
+                }))
+                .into_any_element(),
+        ),
+    };
+    div()
+        .w(px(460.))
+        .rounded(px(8.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .p(px(12.))
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(Icon::new(IconName::Bell).size(px(14.)).text_color(color))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.fg)
+                        .child("Notifications"),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(p.muted_fg)
+                        .child(status.state.label()),
+                )
+                .child(action),
+        )
+        .child(
+            div()
+                .text_size(px(10.5))
+                .line_height(relative(1.4))
+                .text_color(p.muted_fg)
+                .child(status.detail),
+        )
+        .child(
+            div()
+                .text_size(px(10.0))
+                .line_height(relative(1.4))
+                .text_color(p.muted_fg.opacity(0.8))
+                .child("Optional. Accessibility, Screen Recording, Automation and Full Disk Access can be reviewed later in Settings › Permissions."),
+        )
+        .into_any_element()
 }
 
 fn onboarding_primary_button(

@@ -47,6 +47,18 @@ impl Store {
             .filter(|path| !path.is_empty())
             .map(std::path::PathBuf::from)
     }
+
+    pub fn schema_version(&self) -> Result<i64> {
+        Ok(self
+            .connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))?)
+    }
+
+    pub fn quick_check(&self) -> Result<String> {
+        Ok(self
+            .connection
+            .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?)
+    }
     /// Open (or create) a database, enabling WAL and foreign keys.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -1342,5 +1354,12 @@ mod tests {
 
         let missing: Option<serde_json::Value> = store.load_setting("missing").unwrap();
         assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn reports_schema_version_and_quick_check_for_release_qa() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(store.schema_version().unwrap(), 7);
+        assert_eq!(store.quick_check().unwrap(), "ok");
     }
 }

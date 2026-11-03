@@ -38,6 +38,7 @@ pub(crate) fn render(
             .justify_center()
             .bg(p.bg)
             .children(connection_problem)
+            .children(trust_notice(this, cx))
             .child(
                 div()
                     .w_full()
@@ -73,9 +74,71 @@ pub(crate) fn render(
         .min_h(px(0.))
         .bg(p.bg)
         .children(connection_problem)
+        .children(trust_notice(this, cx))
         .child(messages)
         .child(composer)
         .into_any_element()
+}
+
+fn trust_notice(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElement> {
+    if this.projects.is_empty() || this.project().trusted {
+        return None;
+    }
+    let p = palette(cx);
+    Some(
+        div()
+            .w_full()
+            .px(px(22.))
+            .py(px(12.))
+            .flex()
+            .justify_center()
+            .flex_shrink_0()
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(824.))
+                    .p(px(12.))
+                    .rounded(px(9.))
+                    .border_1()
+                    .border_color(p.amber.opacity(0.35))
+                    .bg(p.amber_soft)
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(
+                        Icon::new(IconName::ShieldAlert)
+                            .size(px(14.))
+                            .text_color(p.amber),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.fg)
+                                    .child("This project is not trusted"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(p.muted_fg)
+                                    .child("Agents, Git operations and project runtimes stay stopped until you trust this folder."),
+                            ),
+                    )
+                    .child(
+                        Button::new("trust-project-banner")
+                            .small()
+                            .label("Trust project")
+                            .on_click(cx.listener(|this, _, _, cx| this.toggle_project_trust(cx))),
+                    ),
+            )
+            .into_any_element(),
+    )
 }
 
 fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElement> {

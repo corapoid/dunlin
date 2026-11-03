@@ -158,7 +158,9 @@ earlier pending states are superseded by the final implementation acceptance abo
    not need an owner/admin token or `RELEASE_POLICY_TOKEN`.
 3. **Manual R11 acceptance is explicitly deferred, NOT passed.** Fresh macOS account/TCC denial,
    visual/keyboard/a11y/IME/bidi checks, real GitHub write/merge lifecycle and a
-   deployed relay cannot be certified by fixture smokes. Computer Use discovery
+   deployed relay cannot be certified by fixture smokes. Use the
+   [R11 manual matrix](r11-qa.md) and the copyable QA report in Settings →
+   Advanced; a green automatic run is not manual acceptance. Computer Use discovery
    failed: `FileNotFoundError: [Errno 2] No such file or directory: 'orca'`.
    No GUI fallback was used to change the user's installed app or permissions.
    A separate agreed test repository/account/host and the manual matrix remain

@@ -54,6 +54,7 @@ pub(crate) enum PermissionState {
     Granted,
     Denied,
     NotDetermined,
+    NotGranted,
     Unknown,
 }
 
@@ -63,8 +64,13 @@ impl PermissionState {
             Self::Granted => "Granted",
             Self::Denied => "Denied",
             Self::NotDetermined => "Not determined",
+            Self::NotGranted => "Not granted",
             Self::Unknown => "Unknown",
         }
+    }
+
+    pub fn needs_attention(self) -> bool {
+        matches!(self, Self::Denied | Self::NotDetermined | Self::NotGranted)
     }
 }
 
@@ -144,6 +150,12 @@ unsafe extern "C" {
 
 #[cfg(target_os = "macos")]
 fn notification_status() -> (PermissionState, String) {
+    if !notification_bundle_available() {
+        return (
+            PermissionState::Unknown,
+            "Notification status is unavailable outside a signed app bundle; no prompt was requested.".into(),
+        );
+    }
     use block2::RcBlock;
     use objc2_user_notifications::{
         UNAuthorizationStatus, UNNotificationSettings, UNUserNotificationCenter,
@@ -183,6 +195,62 @@ fn notification_status() -> (PermissionState, String) {
 }
 
 #[cfg(target_os = "macos")]
+fn notification_bundle_available() -> bool {
+    std::env::current_exe()
+        .is_ok_and(|path| path.to_string_lossy().contains(".app/Contents/MacOS/"))
+}
+
+pub(crate) fn notification_permission() -> PermissionStatus {
+    permission_statuses()
+        .into_iter()
+        .find(|status| status.kind == PermissionKind::Notifications)
+        .unwrap_or(PermissionStatus {
+            kind: PermissionKind::Notifications,
+            state: PermissionState::Unknown,
+            detail: "The notification status could not be read.".into(),
+        })
+}
+
+/// Request the system notification prompt. Run from a background task because
+/// the completion waits for the user's answer in System Settings.
+pub(crate) fn request_notification_authorization() -> Result<PermissionState, String> {
+    #[cfg(target_os = "macos")]
+    {
+        if !notification_bundle_available() {
+            return Err(
+                "Notification authorization requires the packaged Dunlin.app bundle".into(),
+            );
+        }
+        use block2::RcBlock;
+        use objc2::runtime::Bool;
+        use objc2_foundation::NSError;
+        use objc2_user_notifications::{UNAuthorizationOptions, UNUserNotificationCenter};
+        use std::sync::mpsc;
+
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let (tx, rx) = mpsc::sync_channel(1);
+        let block = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
+            let _ = tx.try_send(granted.as_bool());
+        });
+        center.requestAuthorizationWithOptions_completionHandler(
+            UNAuthorizationOptions::Alert
+                | UNAuthorizationOptions::Sound
+                | UNAuthorizationOptions::Badge,
+            &block,
+        );
+        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+            Ok(true) => Ok(PermissionState::Granted),
+            Ok(false) => Ok(PermissionState::Denied),
+            Err(_) => Err("Notification authorization did not finish".into()),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("macOS notification authorization is unavailable on this platform".into())
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn permission_status(kind: PermissionKind) -> (PermissionState, String) {
     match kind {
         PermissionKind::Notifications => notification_status(),
@@ -192,9 +260,13 @@ fn permission_status(kind: PermissionKind) -> (PermissionState, String) {
                 if granted {
                     PermissionState::Granted
                 } else {
-                    PermissionState::Unknown
+                    PermissionState::NotGranted
                 },
-                "Accessibility is not granted. macOS does not expose denied vs. not-determined without a prompt; Dunlin does not request it for ordinary chat.".into(),
+                if granted {
+                    "Accessibility is granted to this build.".into()
+                } else {
+                    "Accessibility is not granted. macOS does not expose denied vs. not-determined without a prompt; Dunlin does not request it for ordinary chat.".into()
+                },
             )
         }
         PermissionKind::ScreenRecording => {
@@ -203,9 +275,13 @@ fn permission_status(kind: PermissionKind) -> (PermissionState, String) {
                 if granted {
                     PermissionState::Granted
                 } else {
-                    PermissionState::Unknown
+                    PermissionState::NotGranted
                 },
-                "Screen Recording is not granted. Checking does not capture the screen or trigger a prompt; Dunlin captures nothing by default.".into(),
+                if granted {
+                    "Screen Recording is granted; Dunlin still captures nothing unless a feature asks.".into()
+                } else {
+                    "Screen Recording is not granted. Checking does not capture the screen or trigger a prompt; Dunlin captures nothing by default.".into()
+                },
             )
         }
         PermissionKind::Automation => (
@@ -293,5 +369,40 @@ pub(crate) fn set_dock_badge(label: Option<&str>) {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = label;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PermissionKind, PermissionState};
+
+    #[test]
+    fn permission_catalog_has_stable_labels_and_system_settings_links() {
+        assert_eq!(PermissionKind::ALL.len(), 5);
+        for kind in PermissionKind::ALL {
+            assert!(!kind.label().is_empty());
+            assert!(
+                kind.settings_url()
+                    .starts_with("x-apple.systempreferences:")
+            );
+        }
+        assert_eq!(PermissionState::NotGranted.label(), "Not granted");
+        assert!(PermissionState::Denied.needs_attention());
+        assert!(PermissionState::NotDetermined.needs_attention());
+        assert!(PermissionState::NotGranted.needs_attention());
+        assert!(!PermissionState::Granted.needs_attention());
+        assert!(!PermissionState::Unknown.needs_attention());
+    }
+
+    #[test]
+    fn permission_center_statuses_are_complete_and_bounded() {
+        let statuses = super::permission_statuses();
+        assert_eq!(statuses.len(), PermissionKind::ALL.len());
+        assert!(statuses.iter().all(|status| !status.detail.is_empty()));
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.kind == PermissionKind::Notifications)
+        );
     }
 }

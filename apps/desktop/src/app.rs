@@ -499,6 +499,8 @@ pub(crate) struct DunlinApp {
     pub acp_log_text: Option<String>,
     pub acp_log_error: Option<String>,
     pub acp_log_loading: bool,
+    pub qa_report: Option<String>,
+    pub qa_error: Option<String>,
     pub terminal: crate::terminal::State,
     pub run: crate::run::State,
     pub bottom_panel: BottomPanel,
@@ -1022,6 +1024,8 @@ impl DunlinApp {
             acp_log_text: None,
             acp_log_error: None,
             acp_log_loading: false,
+            qa_report: None,
+            qa_error: None,
             onboarding_step: stored.onboarding_step,
             density: stored.density,
             reduce_motion: stored.reduce_motion,
@@ -3854,6 +3858,26 @@ impl DunlinApp {
             self.notice = Some(format!("Untrusted {name} · harness stopped"));
         }
         cx.notify();
+    }
+
+    pub(crate) fn request_notifications(&mut self, cx: &mut Context<Self>) {
+        self.notice = Some("Waiting for macOS notification permission…".into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async { crate::platform::request_notification_authorization() })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                let _ = crate::platform::refresh_permission_statuses();
+                match result {
+                    Ok(state) => this.set_notice(format!("Notifications: {}", state.label()), cx),
+                    Err(error) => this.set_notice(error, cx),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(crate) fn select_project(&mut self, index: usize, cx: &mut Context<Self>) {

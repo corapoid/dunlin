@@ -13,7 +13,7 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 
 | Local fork | Change |
 | --- | --- |
-| gpui-base 0.8.0 | `instant` → existing maintained `web-time`; same clock/duration API |
+| gpui-base 0.8.0 | `instant` → existing maintained `web-time`; same clock/duration API; opt-out `scrollable` flag so embedded visual editors forward wheel input to the document |
 | gpui-component 0.8.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49 |
 | gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser |
 | metal 0.33.0 / pulp 0.22.3 / rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |

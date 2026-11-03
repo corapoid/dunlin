@@ -22,7 +22,7 @@
       "version": "0.8.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "d5cd7de73d5b2d3d18b94a928abf343922091fa77bc472f77b7d2e7e8b1823a7",
-      "tree_sha256": "d5a127b8b9ae405a753a77d09817991e2aea9469c69f75af4de59cc9825fc40a",
+      "tree_sha256": "b21b9910506cd80e8fed93ca710690b5d01b84bf7cdec5d8504d526103fa99a1",
       "files": 212,
       "changes": [
         {
@@ -39,6 +39,11 @@
           "path": "src/input/base/blink_cursor.rs",
           "upstream_sha256": "e2cd5e37849e683d596bf85528def80a84203938eb09bfa8498680786eadcb04",
           "patched_sha256": "c1ca3bed87b721ff5e4a0b61ab630a9f6e33b953bf0a072e2fe1e972bc1dd3da"
+        },
+        {
+          "path": "src/input/base/state.rs",
+          "upstream_sha256": "e0ce05a59cfc7194c0222a74c0a80e068c8dfd196ebe4a798f9b7f071f083891",
+          "patched_sha256": "27a433ca43b13bed7050426260aaf8537e1e1aa415ac3fb4ec2e0104451ff206"
         },
         {
           "path": "src/input/editor/lsp/document_colors.rs",
