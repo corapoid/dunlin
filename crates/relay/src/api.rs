@@ -35,11 +35,13 @@ pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
 pub struct AppState {
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
+    pub(crate) vault: Option<Arc<crate::vault::RelayVault>>,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
     history_reads: Arc<tokio::sync::Semaphore>,
     fs_reads: Arc<Semaphore>,
     connections: Arc<Semaphore>,
+    terminal_sessions: Arc<Semaphore>,
     pair_attempts: Arc<Mutex<VecDeque<Instant>>>,
     git_plans: Arc<Mutex<HashMap<String, operations::Pending>>>,
     github_plans: Arc<Mutex<HashMap<String, PendingGithub>>>,
@@ -78,15 +80,26 @@ pub struct Lease {
 }
 
 impl AppState {
+    #[allow(dead_code)]
     pub fn new(store: Store, config: Config) -> Self {
+        Self::new_with_vault(store, config, None)
+    }
+
+    pub(crate) fn new_with_vault(
+        store: Store,
+        config: Config,
+        vault: Option<Arc<crate::vault::RelayVault>>,
+    ) -> Self {
         Self {
             store: Arc::new(Mutex::new(store)),
             config: Arc::new(config),
+            vault,
             leases: Arc::new(Mutex::new(HashMap::new())),
             usage_cache: Arc::new(Mutex::new(None)),
             history_reads: Arc::new(tokio::sync::Semaphore::new(4)),
             fs_reads: Arc::new(Semaphore::new(8)),
             connections: Arc::new(Semaphore::new(32)),
+            terminal_sessions: Arc::new(Semaphore::new(8)),
             pair_attempts: Arc::new(Mutex::new(VecDeque::new())),
             git_plans: Arc::new(Mutex::new(HashMap::new())),
             github_plans: Arc::new(Mutex::new(HashMap::new())),
@@ -121,6 +134,18 @@ impl AppState {
                 "Too many active ACP connections; close one and retry",
             )
         })
+    }
+
+    pub(crate) fn terminal_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        self.terminal_sessions
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| {
+                ApiError::new(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Too many active relay terminals; close one and retry",
+                )
+            })
     }
 
     fn allow_pair_attempt(&self) -> bool {
@@ -247,6 +272,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/pair", post(pair))
         .route("/v1/me", get(me))
         .route("/v1/usage", get(usage))
+        .route(
+            "/v1/billing/evidence",
+            get(billing_evidence_get).post(billing_evidence_put),
+        )
         .route("/v1/projects", get(projects))
         .route(
             "/v1/project/settings",
@@ -280,8 +309,11 @@ pub fn router(state: AppState) -> Router {
             get(session_transcript).put(session_transcript_save),
         )
         .route("/acp", get(acp_ws))
+        .route("/v1/terminal", get(crate::terminal::ws))
         .route("/v1/fs/tree", get(fs_tree))
         .route("/v1/fs/file", get(fs_file).put(fs_write))
+        .route("/v1/audits", get(audit_runs))
+        .route("/v1/audits/file", get(audit_file))
         .route("/v1/fs/create", post(fs_create))
         .route("/v1/fs/mkdir", post(fs_mkdir))
         .route("/v1/fs/move", post(fs_move))
@@ -1201,6 +1233,66 @@ async fn usage(
     Ok(Json(usages))
 }
 
+#[derive(Serialize)]
+struct BillingEvidenceResponse {
+    user_id: String,
+    user_name: String,
+    device_id: String,
+    device_name: String,
+    updated_at: i64,
+    evidence: dunlin_usage::billing::Evidence,
+}
+
+async fn billing_evidence_put(
+    AuthUser { user, device }: AuthUser,
+    State(state): State<AppState>,
+    Json(evidence): Json<dunlin_usage::billing::Evidence>,
+) -> Result<StatusCode, ApiError> {
+    evidence.validate().map_err(ApiError::bad_request)?;
+    let payload = serde_json::to_string(&evidence)
+        .map_err(|_| ApiError::bad_request("Billing evidence could not be serialized"))?;
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .save_billing_evidence(&user.id, &device.id, &payload)
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::OK)
+}
+
+async fn billing_evidence_get(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<BillingEvidenceResponse>>, ApiError> {
+    if user.role != "admin" {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Aggregated billing evidence is restricted to relay administrators",
+        ));
+    }
+    let rows = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .billing_evidence(None)
+        .map_err(ApiError::from)?;
+    let mut response = Vec::with_capacity(rows.len());
+    for row in rows {
+        let evidence = serde_json::from_str(&row.payload).map_err(|_| {
+            ApiError::internal("Stored billing evidence is invalid; ask the device to sync again")
+        })?;
+        response.push(BillingEvidenceResponse {
+            user_id: row.user_id,
+            user_name: row.user_name,
+            device_id: row.device_id,
+            device_name: row.device_name,
+            updated_at: row.updated_at,
+            evidence,
+        });
+    }
+    Ok(Json(response))
+}
+
 #[derive(Deserialize)]
 struct ProjectQuery {
     project: String,
@@ -1462,6 +1554,131 @@ async fn fs_file(
         workspace_fs::read_file(&project.path, &query.path)
     })
     .await?;
+    Ok(Json(file))
+}
+
+#[derive(Deserialize)]
+struct AuditRunsQuery {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct AuditFileQuery {
+    project: String,
+    run: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct AuditRunInfo {
+    id: String,
+    files: Vec<String>,
+}
+
+fn safe_audit_run(value: &str) -> bool {
+    value.starts_with("run-")
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+fn safe_audit_file(value: &str) -> bool {
+    matches!(
+        value,
+        "dunlin-run.json"
+            | "run-metadata.json"
+            | "scan-manifest.json"
+            | "findings.json"
+            | "coverage-ledger.json"
+            | "coverage.json"
+            | "REPORT.md"
+            | "report.md"
+            | "FINDINGS-DETAIL.md"
+            | "NEEDS-VALIDATION.md"
+            | "architecture.md"
+            | "verification.json"
+            | "results.sarif"
+            | "exports/results.sarif"
+            | "dunlin-results.sarif"
+            | "dunlin-findings.json"
+            | "dunlin-findings.csv"
+            | "dunlin-report.md"
+    ) || (value.starts_with("verification-")
+        && value.ends_with(".json")
+        && value.len() <= 160
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
+}
+
+async fn audit_runs(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<AuditRunsQuery>,
+) -> Result<Json<Vec<AuditRunInfo>>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let permit = state.fs_permit()?;
+    let runs = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        let root = FsPath::new(&project.path).join(".dunlin/audits");
+        let Ok(read) = std::fs::read_dir(&root) else {
+            return Vec::new();
+        };
+        let mut runs = read
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let metadata = std::fs::symlink_metadata(entry.path()).ok()?;
+                if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                    return None;
+                }
+                let id = entry.file_name().to_str()?.to_string();
+                if !safe_audit_run(&id) {
+                    return None;
+                }
+                let mut files = std::fs::read_dir(entry.path())
+                    .ok()?
+                    .filter_map(Result::ok)
+                    .filter_map(|file| {
+                        let name = file.file_name().to_str()?.to_string();
+                        safe_audit_file(&name).then_some(name)
+                    })
+                    .take(256)
+                    .collect::<Vec<_>>();
+                if entry.path().join("exports/results.sarif").is_file() {
+                    files.push("exports/results.sarif".into());
+                }
+                Some(AuditRunInfo { id, files })
+            })
+            .take(101)
+            .collect::<Vec<_>>();
+        runs.sort_by(|a, b| a.id.cmp(&b.id));
+        runs.truncate(100);
+        runs
+    })
+    .await
+    .map_err(|_| ApiError::internal("audit list worker failed"))?;
+    Ok(Json(runs))
+}
+
+async fn audit_file(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<AuditFileQuery>,
+) -> Result<Json<workspace_fs::FileContents>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    if !safe_audit_run(&query.run) || !safe_audit_file(&query.name) {
+        return Err(ApiError::bad_request("Invalid audit artifact path"));
+    }
+    let permit = state.fs_permit()?;
+    let relative = format!(".dunlin/audits/{}/{}", query.run, query.name);
+    let file = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        workspace_fs::read_file(&project.path, &relative)
+    })
+    .await
+    .map_err(|_| ApiError::internal("audit read worker failed"))?
+    .map_err(ApiError::bad_request)?;
     Ok(Json(file))
 }
 

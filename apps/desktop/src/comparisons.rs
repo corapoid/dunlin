@@ -219,6 +219,7 @@ impl DunlinApp {
                     pinned: false,
                     trusted: true,
                     running_sessions: 0,
+                    kind: Default::default(),
                     remote: None,
                     group_id: None,
                     settings,
@@ -324,6 +325,7 @@ impl DunlinApp {
                     pinned: false,
                     trusted: true,
                     running_sessions: 0,
+                    kind: Default::default(),
                     remote: Some(dunlin_domain::RemoteProject {
                         host_id: host_id.clone(),
                         project_id: info.id.clone(),

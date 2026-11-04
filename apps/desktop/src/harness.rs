@@ -98,74 +98,6 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Render a conversation as Markdown for the clipboard.
-pub(crate) fn transcript_markdown(items: &[ChatItem]) -> String {
-    let mut out = String::new();
-    for item in items {
-        match item {
-            ChatItem::User { text, .. } => {
-                out.push_str("## You\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::AgentText { text, .. } => {
-                out.push_str("## Agent\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::Thought { text, .. } => {
-                out.push_str("### Reasoning\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::Tool {
-                view, duration_ms, ..
-            } => {
-                out.push_str(&format!(
-                    "- **{}** · {} · {} ms\n",
-                    view.title,
-                    view.status.label(),
-                    duration_ms
-                ));
-            }
-            ChatItem::Plan { items, .. } => {
-                out.push_str("### Plan\n\n");
-                for step in items {
-                    let mark = match step.status {
-                        PlanStatus::Pending => "[ ]",
-                        PlanStatus::InProgress => "[~]",
-                        PlanStatus::Completed => "[x]",
-                    };
-                    out.push_str(&format!("{} {}\n", mark, step.content));
-                }
-                out.push('\n');
-            }
-            ChatItem::Permission {
-                title, resolved, ..
-            } => {
-                out.push_str(&format!(
-                    "- **Permission** · {} · {}\n",
-                    title,
-                    resolved.as_deref().unwrap_or("pending")
-                ));
-            }
-            ChatItem::Error { message, .. } => {
-                out.push_str(&format!("> **Error:** {message}\n\n"));
-            }
-            ChatItem::Child {
-                title, id, items, ..
-            } => {
-                out.push_str(&format!(
-                    "### Subagent · {}\n\n{}\n\n",
-                    title.as_deref().unwrap_or(id),
-                    transcript_markdown(items)
-                ));
-            }
-        }
-    }
-    out.trim_end().to_string()
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HarnessStatus {
     Offline,
@@ -264,6 +196,8 @@ pub(crate) struct HarnessState {
     generation: u64,
     pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
+    /// Per-harness use-only credential session. It stays alive while parked.
+    pub vault_session: Option<crate::vault::SessionHandle>,
 }
 
 impl Default for HarnessState {
@@ -293,12 +227,16 @@ impl Default for HarnessState {
             generation: 0,
             started_tools: HashMap::new(),
             restarts: 0,
+            vault_session: None,
         }
     }
 }
 
 impl HarnessState {
     pub(crate) fn pause_for_budget(&mut self, reason: &str) {
+        if let Some(session) = &self.vault_session {
+            session.set_allowed(false);
+        }
         for item in &mut self.transcript {
             if let ChatItem::Permission {
                 request_id,
@@ -325,6 +263,12 @@ impl HarnessState {
             "Task budget paused this session: {reason}. Queued prompts were retained."
         ));
     }
+    pub(crate) fn bind_vault_session(&self, session_id: &str) {
+        if let Some(session) = &self.vault_session {
+            session.set_session_id(session_id);
+        }
+    }
+
     fn finish_turn_timing(&mut self, at_ms: u64) {
         if let Some((index, start)) = self.active_turn.take()
             && let Some(ChatItem::User {
@@ -490,6 +434,7 @@ impl DunlinApp {
                 )
                 .with_additional_directories(self.session_additional_directories()),
                 Some(host.name),
+                None,
                 cx,
             );
             return;
@@ -565,13 +510,15 @@ impl DunlinApp {
             .default_model(&self.session_harness())
             .map(str::to_owned);
         config.resume_session_id = self.session().acp_session_id.clone();
-        self.start_harness(config, None, cx);
+        let vault_session = self.attach_vault(&mut config, &project, self.vault_read_only());
+        self.start_harness(config, None, vault_session, cx);
     }
 
     fn start_harness(
         &mut self,
         config: HarnessConfig,
         remote_name: Option<String>,
+        vault_session: Option<crate::vault::SessionHandle>,
         cx: &mut Context<Self>,
     ) {
         self.harness.generation = next_generation();
@@ -580,6 +527,10 @@ impl DunlinApp {
         if let Some(previous) = self.harness.harness.take() {
             previous.shutdown();
         }
+        if let Some(previous) = self.harness.vault_session.take() {
+            previous.revoke();
+        }
+        self.harness.vault_session = vault_session;
 
         let description = config.description();
         logging::info(&format!(
@@ -627,6 +578,9 @@ impl DunlinApp {
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
         }
+        if let Some(session) = self.harness.vault_session.take() {
+            session.revoke();
+        }
         self.harness.status = HarnessStatus::Offline;
         self.harness.missing_command = None;
         self.harness.connected_harness = None;
@@ -646,6 +600,9 @@ impl DunlinApp {
         self.interrupt_live_turn(cx);
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
+        }
+        if let Some(session) = self.harness.vault_session.take() {
+            session.revoke();
         }
         self.harness.status = HarnessStatus::Offline;
         self.harness.session_id = None;
@@ -707,6 +664,9 @@ impl DunlinApp {
             .insert(self.project().id.clone(), id.clone());
         if self.harness.harness.is_none() && !self.harness.running && !self.harness.status.is_busy()
         {
+            if let Some(session) = self.harness.vault_session.take() {
+                session.revoke();
+            }
             self.harness = Default::default();
             return;
         }
@@ -719,19 +679,26 @@ impl DunlinApp {
     }
 
     pub(crate) fn restore_runtime(&mut self, id: &str) -> bool {
-        let Some(runtime) = self.parked_runtimes.remove(id) else {
+        let Some(mut runtime) = self.parked_runtimes.remove(id) else {
             return false;
         };
         if runtime.project != self.project().id || runtime.root != self.project().path {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         }
         self.harness = runtime.state;
+        self.sync_vault_read_only();
         true
     }
 
     pub(crate) fn stop_parked_runtime(&mut self, id: &str) {
         if let Some(mut runtime) = self.parked_runtimes.remove(id) {
             runtime.state.finish_turn_timing(now_ms());
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             if let Some(adapter) = &runtime.state.harness {
                 if runtime.state.running {
                     adapter.cancel();
@@ -788,6 +755,9 @@ impl DunlinApp {
             }
         }
         for runtime in self.parked_runtimes.values() {
+            if let Some(session) = &runtime.state.vault_session {
+                session.revoke();
+            }
             if let Some(adapter) = &runtime.state.harness {
                 if runtime.state.running {
                     adapter.cancel();
@@ -855,9 +825,15 @@ impl DunlinApp {
             .iter()
             .position(|p| p.id == runtime.project && p.path == runtime.root && p.trusted)
         else {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         };
         let Some(session) = self.all_sessions.iter().find(|s| s.id == id).cloned() else {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         };
         // A synchronous scope only: no UI rendering or async continuation can
@@ -895,11 +871,13 @@ impl DunlinApp {
                 self.harness.token_baseline = Some(Default::default());
                 self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id.clone());
+                self.harness.bind_vault_session(&session_id);
                 self.update_active_session(|s| s.acp_session_id = Some(session_id));
             }
             HarnessEvent::SessionLoaded { session_id } if self.is_current_session(&session_id) => {
                 self.harness.reported_cost = None;
                 self.harness.local_session_loading = false;
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.harness.token_baseline = None;
             }
@@ -978,6 +956,9 @@ impl DunlinApp {
                 self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 self.harness.harness = None;
+                if let Some(session) = self.harness.vault_session.take() {
+                    session.revoke();
+                }
                 self.harness.session_id = None;
                 self.harness.status = HarnessStatus::Exited(reason);
                 self.update_active_session(|s| s.status = SessionStatus::Failed);
@@ -1344,7 +1325,6 @@ impl DunlinApp {
                     self.connect_harness(cx);
                 }
             }
-            self.session_menu_open = false;
             self.refresh_mcp(cx);
             self.refresh_providers(cx);
             self.resume_visible_queue(cx);
@@ -1360,7 +1340,6 @@ impl DunlinApp {
             self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
-        self.session_menu_open = false;
         self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_session = index;
@@ -1594,6 +1573,7 @@ impl DunlinApp {
                         session.acp_session_id = Some(session_id.clone());
                     });
                 }
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.refresh_mcp(cx);
                 self.persist_settings(cx);
@@ -1609,6 +1589,7 @@ impl DunlinApp {
                 // Work may have happened on another client since our last snapshot.
                 self.harness.token_baseline = None;
                 self.harness.local_session_loading = false;
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.refresh_mcp(cx);
                 if self.provider_catalog.providers.is_empty()
@@ -1811,6 +1792,9 @@ impl DunlinApp {
                 self.harness.mode_changing = false;
                 self.harness.local_session_loading = false;
                 self.harness.harness = None;
+                if let Some(session) = self.harness.vault_session.take() {
+                    session.revoke();
+                }
                 self.harness.session_id = None;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
@@ -2575,6 +2559,26 @@ pub(crate) fn command_available(command: &str) -> bool {
     crate::harness_discovery::resolved_command(command).is_some()
 }
 
+/// The placeholder shipped with fresh settings is not a user configuration.
+pub(crate) fn custom_harness_configured(command: &str) -> bool {
+    let command = command.trim();
+    !command.is_empty() && command != "your-agent --acp"
+}
+
+/// Harnesses the user can pick in the composer. The complete catalog stays in
+/// Settings; here we only advertise installed adapters and a configured Custom
+/// ACP command. An uninstalled adapter must not reappear in the short picker.
+pub(crate) fn configured_harness_names(custom: &str) -> Vec<String> {
+    let mut names = crate::harness_discovery::catalog_names()
+        .filter(|name| command_available(&harness_command(name, "")))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if custom_harness_configured(custom) {
+        names.push("Custom ACP".into());
+    }
+    names
+}
+
 pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
     match status {
         PlanStatus::Pending => "queued",
@@ -2586,8 +2590,8 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatItem, HarnessState, HarnessStatus, command_available, harness_command, session_summary,
-        session_title, should_restart, transcript_markdown,
+        ChatItem, HarnessState, HarnessStatus, command_available, configured_harness_names,
+        custom_harness_configured, harness_command, session_summary, session_title, should_restart,
     };
 
     #[test]
@@ -2829,6 +2833,17 @@ mod tests {
     }
 
     #[test]
+    fn only_installed_and_configured_harnesses_enter_the_short_picker() {
+        assert!(custom_harness_configured("  /tmp/my-agent --acp  "));
+        assert!(!custom_harness_configured("   "));
+        assert!(!custom_harness_configured("your-agent --acp"));
+        let custom = configured_harness_names("  /tmp/my-agent --acp  ");
+        assert!(custom.iter().any(|name| name == "Custom ACP"));
+        let none = configured_harness_names("");
+        assert!(!none.iter().any(|name| name == "Custom ACP"));
+    }
+
+    #[test]
     fn detects_executables_on_path() {
         assert!(command_available("sh"));
         assert!(command_available("\"/bin/sh\" -c true"));
@@ -2851,39 +2866,6 @@ mod tests {
         assert!(matches!(&items[0], ChatItem::User { at_ms: 0, .. }));
         assert!(matches!(&items[1], ChatItem::AgentText { at_ms: 0, .. }));
         assert!(matches!(&items[2], ChatItem::Tool { at_ms: 0, .. }));
-    }
-
-    #[test]
-    fn transcripts_export_as_markdown() {
-        let items = vec![
-            ChatItem::User {
-                text: "Fix it".into(),
-                timing: None,
-                at_ms: 1,
-            },
-            ChatItem::AgentText {
-                text: "Done".into(),
-                streaming: false,
-                message_id: None,
-                at_ms: 2,
-            },
-            ChatItem::Plan {
-                items: vec![dunlin_agent::PlanItem {
-                    content: "Read files".into(),
-                    status: dunlin_agent::PlanStatus::Completed,
-                }],
-                at_ms: 3,
-            },
-            ChatItem::Error {
-                message: "boom".into(),
-                at_ms: 4,
-            },
-        ];
-        let markdown = transcript_markdown(&items);
-        assert!(markdown.contains("## You\n\nFix it"));
-        assert!(markdown.contains("## Agent\n\nDone"));
-        assert!(markdown.contains("[x] Read files"));
-        assert!(markdown.contains("**Error:** boom"));
     }
 
     #[test]

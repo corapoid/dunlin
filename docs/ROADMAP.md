@@ -26,12 +26,12 @@ M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxó
 | --- | --- | --- |
 | Rozmowy / ergonomia M1 | Kolejka, copy/retry/edit, powiadomienia, watcher, brakujący folder, podstawowe menu | Branch od wiadomości, Undo projektu/sesji, menu wiadomości/tool calli, zawijanie composera |
 | Ustawienia / grupy M2 | Lokalne modele/env, dziedziczenie i źródła wartości, jawne Apply model, hierarchia/drag & drop, jawne granty multi-root local/relay | Model/env relay dla memberów, dalsze capability adapterów, kolejność/kolory/sync grup i ręczna QA |
-| Usage / budżety | Skanery Claude/Codex/OpenCode z checkpointami i dedupe, cennik cache/long-context/`unpriced`, przekroje i alerty w Usage, limity kont, reader OAuth Claude, trwały ledger żądań/czasu/raportowanego USD; remote account usage pokazuje `Admin-only` dla `member` | Attribution pracy wewnętrznej/subagentów, ręczna QA logów i ewentualny sync billing evidence przez relay |
+| Usage / budżety | Skanery Claude/Codex/OpenCode z checkpointami i dedupe, cennik cache/long-context/`unpriced`, przekroje i alerty w Usage, limity kont, reader OAuth Claude, trwały ledger żądań/czasu/raportowanego USD; remote account usage pokazuje `Admin-only` dla `member`; attribution `Main/Subagent/Internal/Unknown`, źródła QA i sync agregatów przez relay (member zapisuje, admin czyta) | Ręczna QA prawdziwych logów, pełne rozliczenie providera i dalsze adaptery |
 | Git v2 | Lokalna/zdalna historia, checkout commita, zdalny branch create, stash/worktree, operacje i blame z ochroną buforów | Ręczny odbiór i docelowy relay |
 | Markdown | Visual/Raw, edycja/struktura/selekcja/zasoby i regresje natywne | Ręczne GUI/IME/bidi, złożone przypadki graniczne i rzeczywisty relay |
 | Agent workbench / GitHub | Osiem implementacji v1, lokalne CI/PR i zdalne checkpointy/compare/context/GitHub admin-only | Odbiór na prawdziwym GitHubie i relayu, dalsze capability, pełny billing i compiler/LSP impact; patrz M3c |
-| Skills | Własna biblioteka, discovery/import, instalacja per projekt, hash/pochodzenie i bezpieczny eksport/usuwanie | Ręczna QA UI i obsługa kolejnych formatów frontmatter |
-| Graph / Trace | Hierarchie, disclosure, filtry/timing, eksport grafu, search z przodkami, minimapa, zoom i skróty, sticky axis | Zaawansowany auto-layout i pełna wirtualizacja 10k+; ręczna QA fokusu/a11y |
+| Skills | Własna biblioteka, discovery/import, instalacja per projekt, hash/pochodzenie, bezpieczny eksport/usuwanie, paczki wieloplikowe, katalog Cloudflare Security Audit, odczyt/walidacja artefaktów Cloudflare oraz wyników Codex Security, fazy, triage, świeży verifier, eksporty, sandbox lokalnych checks i remote audits przez relay | Ręczna QA UI i zdalne uruchamianie Codex CLI na hoście relay |
+| Graph / Trace | Hierarchie, disclosure, filtry/timing, eksport grafu, search z przodkami, minimapa, zoom i skróty, sticky axis, tidy-tree bez limitu głębokości, wirtualizacja viewportu grafu/minimapy i wierszy trace, drzewo ARIA z aktywnym potomkiem oraz fokus ze scrollowaniem do wyboru | Ręczna QA fokusu/a11y (VoiceOver, obie motywy, wąskie okno) |
 | Design / onboarding / uprawnienia | Design settings, tokeny scale, Compact/Comfortable, Reduce motion, jednostajne płaskie Ustawienia, dwustopniowy onboarding, katalog ACP, języki repozytoriów, odporny Explorer i centrum TCC | Pełna migracja pozostałych literalnych rozmiarów, SSH/trust po otwarciu projektu, ręczna QA klawiatury/a11y/TCC |
 | iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
 | Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje; `app.rs` podzielony na `app/overlays.rs`, `app/helpers.rs` i `app/tests.rs` | Wspólne Services/event bus, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
@@ -41,8 +41,9 @@ build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
 (Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
 Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
 
-Bieżąca walidacja working tree po PR #9 (beta.4) i zakresie beta.5: **542 testów zaliczonych,
-0 pominiętych**; build, fmt i Clippy `-D warnings` przechodzą. Cztery testy
+Bieżąca walidacja working tree po PR #9 (beta.4), zakresie beta.5 i nowym v1:
+**592 testów zaliczonych, 0 pominiętych**; build, fmt i Clippy `-D warnings`
+przechodzą. Cztery testy
 `#[ignore]` usunięto, a remote usage dla roli `member` pokazuje jawny stan
 `Admin-only` bez żądania do relay i bez błędu. CI odrzuca `todo!()`/
 `unimplemented!()` w `apps`/`crates`.
@@ -253,11 +254,14 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [ ] ręczny odbiór mutacji, hoverów i rzeczywistego relay — [zakres i ograniczenia](git-operations-and-blame.md).
 - [ ] **8. Global search** (M)
   - FTS5 transkrypty/sesje + pliki, filtry, snippety.
-- [x] **25. Terminal — lokalny v1** (L)
+- [x] **25. Terminal — lokalny, relay i SSH v1** (L)
   - PTY (`portable-pty`) + VT (`vt100`), taby, bounded scrollback, resize,
     copy/paste, podstawowe klawisze i ANSI/RGB są wdrożone;
-  - pozostają search/linki/splity/shell integration oraz relaya/SSH i ręczna QA;
-  - szczegóły: [terminal-and-run.md](terminal-and-run.md).
+  - zaznaczanie myszą (słowo/linia/Shift), splity z przeciąganym dividerem,
+    shell integration OSC 133/633/7/1337, OSC 8 oraz transport relay i SSH v1
+    są wdrożone;
+  - pozostają ręczna QA GUI/IME/bidi/splitów i rzeczywisty host; szczegóły:
+    [terminal-and-run.md](terminal-and-run.md).
 - [x] **26. Autowykrywanie komend — v1** (S/M)
   - package.json, Cargo.toml, Makefile, justfile, pyproject, go, deno, composer,
     Rakefile, mix, gradle/maven i scripts/*;
@@ -281,19 +285,16 @@ unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
   - [x] właściwości linków/obrazów, jawny podgląd obrazów projektu local/relay i potwierdzane linki HTTP(S),
   - [x] automatyczne QA: unit/transport/security oraz natywny smoke ciemny + jasny/wąski,
   - [ ] ręczny odbiór GUI/IME/bidi i rzeczywistego sparowanego relay; dalsze złożone przypadki strukturalne — [zakres](markdown-editor.md).
-- [ ] **27b. Standalone chat** (M)
-  - `ChatSpace`, scratch workspace, zwykła rozmowa bez przypisanego projektu,
-  - główny composer z wyborem środowiska, harnessa, modelu i trybu pracy;
-    wspólny wzorzec UI z czatem projektowym,
-  - **picker kontekstu rozmowy „Chat / repozytorium”** jak w VS Code:
-    wyszukiwanie po nazwie i ścieżce, lista skonfigurowanych/ostatnich lokalnych
-    repozytoriów, `Open Folder…` i powrót do rozmowy bez repozytorium;
-    bez automatycznego skanowania całego dysku,
-  - repozytorium dołączane jako jawny kontekst zwykłego czata; zmiana kontekstu
-    widoczna w historii, potwierdzenie dostępu narzędzi do nowego folderu,
-  - ten picker jest przeznaczony **tylko dla standalone chat**. Sesje projektowe
-    pozostają przypisane do swojego projektu — bez cichej podmiany `cwd`,
-  - izolowana historia i drafty zwykłych rozmów, niezależne od sesji projektów.
+- [ ] **27b. Standalone chat** (M) — v1 wdrożony, QA GUI otwarte
+  - [x] `ChatSpace`, scratch workspace i `ProjectKind` z migracją v8; brak
+    sztucznego projektu w drzewie Projects,
+  - [x] główny composer z wyborem środowiska, harnessa, modelu i trybu pracy,
+  - [x] **New Standalone Chat** i **New Chat in Repository…** z jawnym
+    potwierdzeniem kontekstu; bez skanowania całego dysku,
+  - [x] izolowana historia przez osobne `project_id`; sesje projektowe
+    nigdy nie zmieniają po cichu `cwd`,
+  - [ ] ręczna QA GUI, pełny picker ostatnich repozytoriów i zmiana kontekstu
+    bez tworzenia nowej przestrzeni — [zakres](standalone-chat-worktree-usage.md).
 
 ## M3c — Agent workbench i GitHub — v1 w kodzie, pełny odbiór otwarty
 
@@ -324,9 +325,10 @@ auto-send i cichego restartu jest zamierzonym zachowaniem, nie zaległym zadanie
 - [ ] **22. Automatyzacje** (XL)
   - cron/RRULE, precheck, worktree, runy, historia, usage, powiadomienia,
   - lokalny scheduler + LaunchAgent + relay scheduler.
-- [ ] **29. SSH hosty** (XL)
-  - OpenSSH ControlMaster, Keychain, known_hosts, bootstrap relay, tunel;
-  - terminal i projekty zdalne.
+- [ ] **29. SSH hosty** (XL) — terminal SSH v1 wdrożony
+  - [x] OpenSSH PTY, ControlMaster, ssh-agent/known_hosts, jawny target i ścieżka,
+  - [ ] Keychain, bootstrap relay, tunel loopback, reconnect i cleanup procesów;
+  - [ ] terminal i projekty zdalne w pełnym zakresie SSH.
 - [ ] **23. Computer use** (XL)
   - Swift helper, TCC, AX/ScreenCaptureKit/CGEvent, allowlist, HITL, audit.
 - [ ] **30. Pełne uprawnienia** (M)
@@ -336,10 +338,13 @@ auto-send i cichego restartu jest zamierzonym zachowaniem, nie zaległym zadanie
 
 - [ ] **17. Graf** (M)
   - [x] hierarchia agentów, zwijanie/rozwijanie i eksport SVG,
-  - [ ] pan/zoom, zaawansowany auto-layout, minimap, search.
+  - [x] pan/zoom, tidy-tree auto-layout bez limitu głębokości, minimapa,
+        search i wirtualizacja viewportu.
+  - [ ] ręczna QA fokusu/a11y.
 - [ ] **18. Trace** (M)
   - [x] hierarchia, collapse/expand i filtry typów,
-  - [ ] search, rozszerzona klawiatura, sticky axis, wirtualizacja.
+  - [x] search, rozszerzona klawiatura, sticky axis, wirtualizacja wierszy.
+  - [ ] ręczna QA fokusu/a11y.
 - [ ] **12. Budżety i alerty** (M)
   - [x] trwałe limity żądań/czasu/raportowanego USD per zadanie (także w tle),
   - [ ] pełne rozliczanie providera/subagentów i alerty kont/globalne.
@@ -359,6 +364,10 @@ orkiestracji znaną z dojrzałych agent-first IDE, ale oparte o ACP i nasze work
   inbox człowieka, trwałość w SQLite, uprawnienia nadawcy/odbiorcy.
 - [ ] **M6.2. Coordinator** (XL) — spec/task → dekompozycja → zależności →
   przydział do harnessów/modeli; każdy subtask w osobnym worktree.
+  Worktree per subtask v1 jest wdrożony (`SubtaskAdd`, branch
+  `dunlin/subtask/<name>`, trwały rejestr, jawny UI); brakuje automatycznej
+  dekompozycji, startu agenta i merge.
+  [Zakres](standalone-chat-worktree-usage.md).
 - [ ] **M6.3. Handoff i review** (L) — zakończenie zadania automatycznie
   uruchamia review/merge; konflikty: auto → agent → człowiek.
 - [ ] **M6.4. Model routing i budżet** (M) — model per rola, limity kosztu,
@@ -371,6 +380,54 @@ orkiestracji znaną z dojrzałych agent-first IDE, ale oparte o ACP i nasze work
   decyzji; pełny audit trail.
 
 Zależności: terminal, Git worktree, skills, automations, usage i graph.
+
+
+## M7 — Spec workspace, intent i governance agenta
+
+Cel: artefakty governance (intent, spec, plan, tasks, agent contract) są
+natywnymi, wersjonowanymi obiektami workspace'u, a nie tekstem w czacie.
+Źródłem prawdy pozostają pliki; SQLite jest indeksem i magazynem dowodów.
+
+Zrealizowane:
+
+- [x] **M7.1. Intent + spec cockpit** — intent capture/interview, 10 faz SDD,
+  Clarify/Checklist/Analyze/Converge, bramki implementacji, drift i coverage.
+- [x] **M7.2. Approval i dowody** — decyzje hash-bound, HEAD commit, notatki,
+  eksport logu, indeks artefaktów, evidence per task.
+- [x] **M7.3. Relay read-only indexing** — artefakty z projektów relay/SSH przez
+  istniejący backend, ładowane w tle.
+- [x] **M7.4. Task worktree + merge gate** — automatyczne tworzenie worktree po
+  potwierdzeniu, `task_id` w rejestrze, gate ukończenia taska i dowody
+  commit/branch/GitHub CI/PR.
+- [x] **M7.5. Traceability** — interaktywne drzewo requirement → task →
+  worktree/evidence/sesja.
+- [x] **M7.6. Contract runtime audit** — heurystyczny audyt tool calli,
+  permission ceiling, policy lint z `AGENTS.md`, manual eval prompt.
+- [x] **M7.7. Global switch** — Settings → General wyłącza intent/spec/contract
+  i powiązane komendy packów bez usuwania plików.
+
+Pozostałe:
+
+- [ ] **M7.8. Compare harnesses on one spec** (M) — ten sam intent/spec,
+  dwa harnessy/modele, wspólny ledger i human preference.
+- [ ] **M7.9. Spec Kit extension runtime** (M) — wykonywanie hooków/komend
+  rozszerzeń Spec Kit z jawnymi uprawnieniami i timeoutami.
+- [ ] **M7.10. Spec-aware review** (M) — kryteria akceptacji i coverage obok
+  diffu, podpis reviewera powiązany z commitem.
+- [ ] **M7.11. MCP connector host + sidecar** (XL) — launch MCP z manifestu,
+  capability grants, sandbox/seatbelt, audyt i kill switch.
+- [ ] **M7.12. Podpisy i katalog packów** (L) — publisher keys, pinning,
+  aktualizacje wymagające ponownej zgody, prywatne katalogi.
+- [ ] **M7.13. Team/relay governance** (XL) — komentarze, współdzielone
+  approvals, role, publikacja speców i read-only linki.
+- [ ] **M7.14. Remote authoring** (M) — tworzenie/edycja intentu i agent
+  contractu na relayu, nie tylko read-only indexing.
+- [ ] **M7.15. Cost attribution** (M) — koszt per requirement/task, nie tylko
+  per sesja/projekt.
+- [ ] **M7.16. Automated behavior evals** (L) — grader, scenariusze i wyniki
+  per harness/model; manual eval prompt już istnieje.
+
+Zależności: storage, Git worktree, relay grants, skills, usage, M6 handoff.
 
 ## Rekomendowana kolejność domknięcia
 

@@ -15,7 +15,7 @@ rav1e = { path = "vendor/rav1e-0.8.1" }
 cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
 
 [workspace.package]
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.8"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"
@@ -28,7 +28,11 @@ gpui-kit = { version = "0.8.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
+dunlin-artifacts = { path = "crates/artifacts" }
+dunlin-audit = { path = "crates/audit" }
+dunlin-plugin = { path = "crates/plugin" }
 dunlin-storage = { path = "crates/storage" }
+dunlin-vault = { path = "crates/vault" }
 dunlin-workspace = { path = "crates/workspace" }
 dunlin-usage = { path = "crates/usage" }
 dunlin-terminal = { path = "crates/terminal" }

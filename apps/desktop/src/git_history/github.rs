@@ -165,6 +165,42 @@ enum Response {
     Log(String),
     Runs(Vec<Run>),
 }
+impl State {
+    /// Evidence that the user has already loaded/selected in the GitHub view.
+    /// Never fetches or invents a PR/check from an account or remote.
+    pub(crate) fn attachable_evidence(&self) -> Vec<(String, String, String)> {
+        let mut evidence = Vec::new();
+        if let Some(run) = &self.selected_run {
+            evidence.push((
+                "ci".into(),
+                format!("{}-{}", run.id, run.run_attempt),
+                format!(
+                    "CI run {} attempt {} · {} · {} · {}",
+                    run.id,
+                    run.run_attempt,
+                    run.name.as_deref().unwrap_or("workflow"),
+                    run.status,
+                    run.conclusion.as_deref().unwrap_or("no conclusion")
+                ),
+            ));
+        }
+        if let Some(detail) = &self.detail {
+            evidence.push((
+                "pr".into(),
+                detail.pull.head.sha.clone(),
+                format!(
+                    "PR #{} · {} · state {} · checks {}",
+                    detail.pull.number,
+                    detail.pull.title,
+                    detail.pull.state,
+                    detail.checks.len()
+                ),
+            ));
+        }
+        evidence
+    }
+}
+
 impl DunlinApp {
     fn github_current(&self, id: uuid::Uuid) -> bool {
         self.git_history
@@ -172,7 +208,7 @@ impl DunlinApp {
             .as_ref()
             .is_some_and(|v| v.id == id && owns(&v.project, self.project()))
     }
-    pub(super) fn open_github(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn open_github(&mut self, cx: &mut Context<Self>) {
         if let Some(v) = &mut self.git_history.view {
             v.hide_tools();
             v.github.visible = true;

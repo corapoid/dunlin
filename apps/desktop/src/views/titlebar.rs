@@ -20,7 +20,9 @@ pub(crate) fn render(
     let compact = window.viewport_size().width < px(1050.);
     let has_projects = !this.projects.is_empty();
     let dashboard = this.section == SidebarSection::Dashboard;
-    let show_session_context = !dashboard && has_projects && this.view != MainView::Chat;
+    let security = this.section == SidebarSection::Security && this.security_enabled;
+    let show_session_context =
+        !dashboard && !security && has_projects && this.view != MainView::Chat;
     let show_shortcut_hints = this.show_shortcut_hints;
     let project = this.project().clone();
     let session = this.session().clone();
@@ -115,7 +117,7 @@ pub(crate) fn render(
         .gap(px(2.));
 
     let epoch = this.view_epoch;
-    if has_projects && !dashboard {
+    if has_projects && !dashboard && !security {
         for view in MainView::ALL {
             let active = this.view == view;
             let (icon_name, hint) = match view {
@@ -187,9 +189,61 @@ pub(crate) fn render(
 
             center = center.child(tab);
         }
+        center = center.child(
+            div()
+                .id("title-new-session")
+                .aria_label("New session")
+                .h(px(24.))
+                .w(px(26.))
+                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .hover(move |style| style.bg(p.hover))
+                .tooltip(move |window, cx| {
+                    dunlin_ui::component::tooltip::Tooltip::new(if show_shortcut_hints {
+                        "New session (⌘N)"
+                    } else {
+                        "New session"
+                    })
+                    .build(window, cx)
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.new_session(cx)))
+                .child(
+                    Icon::new(IconName::Plus)
+                        .size(px(13.5))
+                        .text_color(p.muted_fg),
+                ),
+        );
     }
     let center = if dashboard {
         crate::dashboard::metric_switcher(this, compact, cx)
+    } else if security {
+        div()
+            .flex_shrink_0()
+            .h(px(28.))
+            .px(px(10.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(p.border)
+            .bg(p.muted)
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(
+                Icon::new(IconName::ShieldCheck)
+                    .size(px(13.))
+                    .text_color(p.fg),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(p.fg)
+                    .child("Security"),
+            )
+            .into_any_element()
     } else if has_projects {
         center.into_any_element()
     } else {
@@ -197,6 +251,7 @@ pub(crate) fn render(
     };
 
     let sidebar_collapsed = this.sidebar_collapsed;
+    let minimal_mode = this.minimal_mode;
     let right = div()
         .flex_1()
         .min_w(px(0.))
@@ -204,32 +259,11 @@ pub(crate) fn render(
         .items_center()
         .justify_end()
         .gap(px(6.))
-        .when(has_projects && !dashboard, |bar| {
+        .child(super::host_control::render(this, cx))
+        .when(has_projects && !dashboard && !security, |bar| {
             bar.when(
                 this.view == MainView::Chat && !this.final_answer_only,
                 |bar| bar.child(super::chat::reasoning_toggle(this, cx)),
-            )
-            .child(
-                div()
-                    .id("title-session-menu")
-                    .aria_label("Session menu")
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .when(this.session_menu_open, |button| button.bg(p.muted))
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.session_menu_open = !this.session_menu_open;
-                        cx.notify();
-                    }))
-                    .child(
-                        Icon::new(IconName::Ellipsis)
-                            .size(px(15.))
-                            .text_color(p.muted_fg),
-                    ),
             )
         })
         .when(show_session_context, |this| {
@@ -252,7 +286,7 @@ pub(crate) fn render(
                     ),
             )
         })
-        .when(has_projects, |this| {
+        .when(has_projects && !minimal_mode, |this| {
             this.child(
                 div()
                     .id("title-sidebar")
@@ -312,6 +346,69 @@ pub(crate) fn render(
                     .when(!compact && show_shortcut_hints, |this| {
                         this.child(kbd("⌘K", p))
                     }),
+            )
+        })
+        .child(
+            div()
+                .id("title-minimal")
+                .aria_label(if minimal_mode {
+                    "Disable minimalist mode"
+                } else {
+                    "Enable minimalist mode"
+                })
+                .size(px(26.))
+                .rounded(px(7.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .when(minimal_mode, |button| button.bg(p.muted))
+                .hover(move |style| style.bg(p.hover))
+                .tooltip(move |window, cx| {
+                    dunlin_ui::component::tooltip::Tooltip::new(if minimal_mode {
+                        "Show the navigation rail, account usage and agent status again"
+                    } else {
+                        "Minimalist mode: explorer only, without the navigation rail, account usage or agent status details"
+                    })
+                    .build(window, cx)
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.toggle_minimal_mode();
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(IconName::Minimize2)
+                        .size(px(13.5))
+                        .text_color(if minimal_mode { p.fg } else { p.muted_fg }),
+                ),
+        )
+        .when(minimal_mode, |bar| {
+            bar.child(
+                div()
+                    .id("title-settings")
+                    .aria_label("Open settings")
+                    .size(px(26.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .when(this.settings_open, |button| button.bg(p.muted))
+                    .hover(move |style| style.bg(p.hover))
+                    .tooltip(|window, cx| {
+                        dunlin_ui::component::tooltip::Tooltip::new("Open settings").build(window, cx)
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.settings_open = true;
+                        this.settings_tab = crate::app::SettingsTab::General;
+                        cx.notify();
+                    }))
+                    .child(
+                        Icon::new(IconName::Settings2)
+                            .size(px(13.5))
+                            .text_color(p.muted_fg),
+                    ),
             )
         })
         .child(

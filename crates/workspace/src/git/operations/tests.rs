@@ -290,6 +290,54 @@ fn worktrees_add_remove_and_prune_never_force_dirty_or_locked_directories() {
         .is_err()
     );
 }
+#[test]
+fn subtask_worktree_creates_one_named_branch_and_refuses_duplicates() {
+    let r = Repo::new();
+    let plan = preflight(
+        r.root(),
+        Action::SubtaskAdd {
+            name: "review-api".into(),
+            revision: "HEAD".into(),
+        },
+    )
+    .unwrap();
+    let path = plan.worktree_target.clone().unwrap();
+    assert!(execute(r.root(), &plan).unwrap().success);
+    let tree = overview::load(r.root()).unwrap();
+    let linked = tree
+        .worktrees
+        .iter()
+        .find(|tree| tree.path == path)
+        .unwrap();
+    assert_eq!(
+        linked.branch.as_deref(),
+        Some("refs/heads/dunlin/subtask/review-api")
+    );
+    assert!(!linked.detached);
+    assert!(Path::new(&path).join("file").is_file());
+    assert!(
+        preflight(
+            r.root(),
+            Action::SubtaskAdd {
+                name: "review-api".into(),
+                revision: "HEAD".into(),
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        preflight(
+            r.root(),
+            Action::SubtaskAdd {
+                name: "bad/name".into(),
+                revision: "HEAD".into(),
+            }
+        )
+        .is_err()
+    );
+    assert!(execute(r.root(), &plan).is_err());
+}
+
 #[cfg(unix)]
 #[test]
 fn hook_failure_is_reported_without_force_or_automatic_rollback() {

@@ -1,0 +1,103 @@
+{
+  "id": "spec-kit",
+  "name": "Spec-Driven Development (Spec Kit)",
+  "version": "0.1.0",
+  "api": 1,
+  "description": "Reads an existing GitHub Spec Kit .specify/ and specs/ workspace, exposes the constitution, spec, plan and tasks as a native phase cockpit, and offers the canonical /speckit-* prompts to the active harness. This pack is read-only; it never rewrites Spec Kit artifacts.",
+  "author": "Dunlin",
+  "license": "MIT",
+  "contributes": {
+    "workflows": [
+      {
+        "id": "sdd",
+        "name": "Spec-Driven Development",
+        "phases": [
+          "intent",
+          "constitution",
+          "specify",
+          "plan",
+          "tasks",
+          "implement",
+          "converge"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "id": "speckit-constitution",
+        "label": "Constitution",
+        "description": "Create or update the project constitution.",
+        "prompt": "/speckit-constitution "
+      },
+      {
+        "id": "speckit-specify",
+        "label": "Specify",
+        "description": "Create or update the feature specification.",
+        "prompt": "/speckit-specify "
+      },
+      {
+        "id": "speckit-clarify",
+        "label": "Clarify",
+        "description": "Resolve underspecified areas and encode answers in spec.md.",
+        "prompt": "/speckit-clarify "
+      },
+      {
+        "id": "speckit-plan",
+        "label": "Plan",
+        "description": "Create the technical implementation plan.",
+        "prompt": "/speckit-plan "
+      },
+      {
+        "id": "speckit-checklist",
+        "label": "Checklist",
+        "description": "Generate reviewer-owned requirements-quality checklists.",
+        "prompt": "/speckit-checklist "
+      },
+      {
+        "id": "speckit-tasks",
+        "label": "Tasks",
+        "description": "Generate the dependency-ordered task list.",
+        "prompt": "/speckit-tasks "
+      },
+      {
+        "id": "speckit-analyze",
+        "label": "Analyze",
+        "description": "Read-only consistency analysis across spec, plan and tasks.",
+        "prompt": "/speckit-analyze "
+      },
+      {
+        "id": "speckit-implement",
+        "label": "Implement",
+        "description": "Execute tasks in dependency order.",
+        "prompt": "/speckit-implement "
+      },
+      {
+        "id": "speckit-converge",
+        "label": "Converge",
+        "description": "Assess the implementation against the artifacts and append remaining work.",
+        "prompt": "/speckit-converge "
+      }
+    ],
+    "skills": [
+      "speckit-constitution",
+      "speckit-specify",
+      "speckit-clarify",
+      "speckit-plan",
+      "speckit-checklist",
+      "speckit-tasks",
+      "speckit-analyze",
+      "speckit-implement",
+      "speckit-converge"
+    ],
+    "views": ["spec-cockpit"],
+    "artifact_kinds": ["constitution", "spec", "plan", "tasks", "checklist"],
+    "mcp_servers": []
+  },
+  "permissions": {
+    "project_read": ["**"],
+    "project_write": [],
+    "agent_prompt": true,
+    "network": [],
+    "process": false
+  }
+}

@@ -43,13 +43,31 @@ network. The following are in scope:
 - cross-user access to projects, sessions or transcript snapshots;
 - command injection through harness commands, file paths or repository
   content;
+- bypassing the use-only credential broker's host/path/method/grant policy, or
+  leaking a credential value into the model context, harness environment, logs,
+  transcript or a response that is not redacted;
 - path traversal in file, search, diff or attachment endpoints;
 - malicious repository content that compromises the app.
 
 The following are known limitations, not vulnerabilities by themselves:
 
 - the relay runs all users under the credentials installed on the host;
+- a relay user with a project grant can open an unsandboxed interactive shell
+  in the granted project through the terminal endpoint; the project grant is
+  the capability boundary, not a sandbox;
 - the SQLite database is not encrypted at rest;
+- local harnesses run with the user's permissions; the use-only credential
+  broker keeps values out of the model and uses Keychain-held policy, but a
+  same-user process can delete its display row, race a hash-pinned recipe
+  between verification and execution, inspect a recipe child's environment, or
+  attack the app with a debugger; use a separate OS account or container for
+  hard isolation;
+- a CLI recipe necessarily gives the value to its child process environment,
+  and a permitted API host is trusted with the credential; redaction covers exact
+  and common encoded occurrences, not arbitrary transformations or header echo;
+- the optional relay credential vault stores values in the relay host's Keychain,
+  not the Mac's; any relay user with a grant to the project can use a key granted
+  to that project within policy, so protect the relay host account;
 - the macOS seatbelt profile is a best-effort privacy boundary, not a
   container; a harness may still read its own runtime state (for example
   OpenCode's session database) while it is running, so use a separate OS
@@ -63,6 +81,8 @@ The following are known limitations, not vulnerabilities by themselves:
 - Keep `sandbox = true` unless a harness needs broader filesystem access.
 - Use FileVault or an encrypted volume for the relay database.
 - Pair devices with short-lived codes and revoke devices you no longer use.
+- Keep quick credentials short-lived, grant them only to the project that needs
+  them, and use read-only methods unless a write is required.
 - Keep Dunlin, your harnesses and macOS up to date.
 
 ## Release security gates

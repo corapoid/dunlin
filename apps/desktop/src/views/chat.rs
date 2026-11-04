@@ -1725,7 +1725,6 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
         .appearance(false)
         .bordered(false)
         .h(px(92.));
-    let environment = chat_controls::environment(this, cx);
     let harness = chat_controls::harness(this, cx);
     let mode = chat_controls::mode(this, cx);
     let model = chat_controls::model(this, cx);
@@ -1753,7 +1752,6 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .bg(p.subtle)
                 .border_b_1()
                 .border_color(p.border)
-                .child(environment)
                 .when(this.git_history.cancel_check.is_some(), |bar| {
                     bar.child(
                         Button::new("composer-stop-check")
@@ -1763,7 +1761,6 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                             .on_click(cx.listener(|this, _, _, cx| this.cancel_check(cx))),
                     )
                 })
-                .child(div().w(px(1.)).h(px(14.)).bg(p.border))
                 .child(harness)
                 .children(chat_controls::provider_controls(this, cx))
                 .child(div().flex_1())

@@ -14,6 +14,7 @@ pub mod preview;
 pub mod repositories;
 pub mod run;
 pub mod search;
+pub mod subtask;
 pub mod task_review;
 pub mod transfer;
 pub mod tree;

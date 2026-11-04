@@ -4,6 +4,110 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.1.0-beta.8] — 2026-11-04
+
+### Added
+
+- Native spec workspace and governance: file-first intent, Spec Kit and agent-contract indexing for local and relay projects; Intent Inbox with age/acceptance metrics; ten-phase Spec Kit cockpit with Clarify, Checklist, Analyze and Converge gates; hash-bound approvals with observed HEAD and decision notes; per-project flow-back/flow-forward/living-spec mode; interactive requirement → task → worktree/evidence/session trace; task worktree merge gate with completion and GitHub CI/PR evidence; heuristic contract runtime audit, AGENTS.md policy lint and manual eval prompt; declarative plugin packs with per-project enablement and palette commands; global Settings → General switch that hides the entire surface without deleting files. See [docs/spec-workspace.md](docs/spec-workspace.md).
+
+- Use-only credential vault: short-lived API keys live in the macOS Keychain,
+  while the security policy (hosts, path prefix, methods, injection, TTL, project
+  grants and fixed CLI recipes) lives in a separate Keychain item so editing the
+  SQLite display cache cannot widen it. A per-session `Dunlin --mcp-vault` MCP
+  proxy exposes `secrets_list`, `secrets_request` and `secrets_run`; the app
+  performs HTTPS requests or hash-pinned CLI recipes and returns only redacted
+  results. The value never enters the model context, harness environment, argv,
+  project files or SQLite. Quick keys default to one hour (maximum 24 hours) and
+  are auto-approved only within their policy. A bottom-panel **Secrets** tab
+  creates keys for the current project; Settings → Secrets manages grants,
+  recipes, named HTTP operations, OAuth 2.0 refresh, AWS SigV4 injection and
+  audit metadata. Non-managed keys can require a native approval prompt for each
+  use, with a per-session allowance invalidated by policy edits. The relay can
+  run a separate vault on the relay host, with its own Keychain namespace,
+  `vault.db`, CLI and per-ACP-session MCP proxy. There is no reveal or export
+  path. See [docs/secrets.md](docs/secrets.md).
+- Security workspace with a pinned, MIT-licensed Cloudflare
+  `security-audit-skill` catalog entry, installation from the Security rail or
+  Settings → Skills, and a source-only Phase 1 audit prompt. Codex Security is
+  presented as an external plugin requiring a Codex/OpenAI harness; Dunlin does
+  not bundle or reimplement it.
+- `dunlin-audit` reads bounded Cloudflare findings/coverage, Codex Security
+  findings/coverage and SARIF 2.1.0 artifacts, validates structural invariants,
+  and projects runs into the native Security view with findings, evidence,
+  coverage, report text, validation errors and live refresh. Runs link back to
+  their audit conversation and can prepare a Phase 2 hunting prompt after valid
+  coverage exists. Native SARIF/JSON/CSV/Markdown exports, local cross-run triage
+  (open/accepted/false-positive/fixed/won't-fix), fingerprint occurrence counts,
+  fresh verifier sessions, an explicit reconnaissance→hunting→validation→reporting→verification
+  phase runner, optional Codex Security CLI scan/patch/verify-fix, a macOS
+  seatbelt runner for explicit local checks with network/write/credential/resource
+  limits, and a global Settings → Security switch that hides the workspace
+  without deleting skills or artifacts are included. Remote projects can start
+  an audit under `.dunlin/audits`, while bounded allowlisted artifacts are
+  synced through relay endpoints into a local read-only cache for the same
+  findings/coverage UI. Security deliberately supports only Cloudflare audit
+  artifacts and Codex Security results; arbitrary third-party scanner reports
+  are left untouched and reported as unsupported. Raw artifacts stay the source
+  of truth; an empty findings file is never presented as proof of security.
+- Multi-file skill bundles: bounded folder discovery/import, relative-path
+  validation, per-file hashes, atomic first install, owned-file updates,
+  obsolete-file cleanup and non-recursive uninstall that preserves user files.
+- Terminal mouse selection (drag, double-click word, triple-click line,
+  Shift-click extend, auto-scroll), `⌘A` full-scrollback selection,
+  selection-aware Copy, draggable horizontal and vertical splits with per-pane
+  PTY resize, and `⌘D`/`⌘⇧D` split shortcuts.
+- Shell integration for zsh/bash through private temp wrappers: OSC 133/633
+  prompt/command/exit blocks, OSC 7/1337 working directory, prompt gutter,
+  command/output copy actions and a Settings toggle. User dotfiles are sourced,
+  not modified.
+- OSC 8 terminal hyperlinks with a strict HTTP(S)/mailto allowlist, incremental
+  parsing across output chunks, and safe link handling for plain URLs.
+- Relay terminal transport over an authenticated WebSocket (`/v1/terminal`) with
+  binary PTY frames, resize/close/exit control frames, project-grant checks,
+  bounded frames and session limits. Remote projects use it instead of the old
+  local-only placeholder.
+- SSH v1 terminal transport through OpenSSH (`-tt`, ControlMaster, ssh-agent,
+  interactive known_hosts) with a validated `user@host` alias and optional
+  remote path.
+- Standalone chat spaces (`ProjectKind::ChatSpace`, SQLite v8): isolated
+  history and scratch workspaces, a separate **Chats** sidebar section,
+  and an explicitly confirmed **New Chat in Repository…** context. Existing
+  project sessions never change their cwd.
+- One worktree per agent subtask: `Action::SubtaskAdd` creates
+  `dunlin/subtask/<name>` plus an isolated worktree from an explicit commit,
+  with a durable registry, confirmation, open-as-project and explicit removal.
+  No automatic agent start, merge or push.
+- Billing attribution for main/subagent/internal/unknown work, per-source log
+  evidence for manual QA, a copyable QA report, and optional aggregate evidence
+  sync through the relay (`POST /v1/billing/evidence`; admin-only aggregate
+  read). Unknown attribution is never counted as main work or $0.
+
+### Changed
+
+- Move host selection out of the composer into a title-bar host button with a
+  live status dot. It lists the local host, paired relays and the existing SSH
+  terminal entry point in every view. Add a **+** new-session action beside the
+  last view tab, show a Settings shortcut beside minimalist mode, and remove the
+  title-bar session menu (remote takeover remains in the session context menu).
+  The chat harness picker now lists only installed adapters and a configured
+  Custom ACP command; the complete catalog remains in Settings → Harnesses.
+- Graph/Trace now use a linear tidy-tree layout without a depth cap, viewport
+  virtualization for graph cards/edges, an aggregated minimap, and a virtualized
+  trace waterfall. Selection is normalized after search/filter/collapse, scrolls
+  into view, and exposes ARIA tree state/active descendant. See
+  [`docs/graph-trace-virtualization.md`](docs/graph-trace-virtualization.md) for
+  the 10k fixtures and the remaining manual VoiceOver/keyboard matrix.
+
+### Removed
+
+- Third-party scanner adapters (Semgrep, Snyk, Trivy, Gitleaks and Bandit) and
+  the generic scanner-report importer. Existing run directories and artifacts
+  are left on disk and shown as unsupported instead of being deleted or
+  silently treated as findings. SARIF export remains available; SARIF import is
+  accepted only from Codex Security outputs.
+
 ## [0.1.0-beta.6] — 2026-11-03
 
 This is the first published build after `0.1.0-beta.3`; it rolls up the
@@ -656,10 +760,13 @@ surfaces are intentionally absent.
 - No terminal, computer use, automations, skills, artifacts or visual Markdown
   editor yet.
 - All relay users share the OpenCode credentials installed on the relay host.
+- The optional relay vault is per host; a user with a project grant can use the
+  keys granted to that project within their policy.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...HEAD
+[0.1.0-beta.8]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.8
 [0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3

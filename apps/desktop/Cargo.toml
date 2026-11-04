@@ -15,7 +15,11 @@ gpui-kit.workspace = true
 dunlin-ui.workspace = true
 dunlin-domain.workspace = true
 dunlin-agent.workspace = true
+dunlin-artifacts.workspace = true
+dunlin-audit.workspace = true
+dunlin-plugin.workspace = true
 dunlin-storage.workspace = true
+dunlin-vault.workspace = true
 dunlin-workspace.workspace = true
 dunlin-usage.workspace = true
 dunlin-terminal.workspace = true
@@ -25,6 +29,7 @@ objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
 base64 = "0.22"
 chrono = "0.4"
+libc = "0.2"
 ureq = { version = "2.12", features = ["json", "tls"] }
 url = "2"
 uuid.workspace = true
@@ -40,12 +45,16 @@ sha2 = "0.10"
 async-channel = "2.5"
 markdown = "1.0.0"
 unicode-segmentation = "1.13.3"
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt", "net", "time", "io-util", "sync"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"
+libc = "0.2"
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "CAShapeLayer", "CATransaction", "objc2-core-foundation", "objc2-core-graphics"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationSettings", "block2"] }
 block2 = "0.6"

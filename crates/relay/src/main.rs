@@ -11,6 +11,8 @@ mod api;
 mod auth;
 mod config;
 mod store;
+mod terminal;
+mod vault;
 
 use std::path::PathBuf;
 
@@ -20,6 +22,9 @@ use store::Store;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--mcp-vault") {
+        std::process::exit(dunlin_vault::mcp::run_stdio());
+    }
     if args.is_empty() || matches!(args[0].as_str(), "help" | "-h" | "--help") {
         print_help();
         return;
@@ -34,6 +39,7 @@ fn main() {
         "devices" => cmd_devices(&args[1..]),
         "revoke" => cmd_revoke(&args[1..]),
         "serve" => cmd_serve(&args[1..]),
+        "vault" => cmd_vault(&args[1..]),
         other => Err(format!("Unknown command: {other}")),
     };
 
@@ -58,6 +64,13 @@ fn print_help() {
            dunlin-relay devices USER\n\
            dunlin-relay revoke DEVICE_ID\n\
            dunlin-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD]\n\
+         \n\
+         Relay vault (HTTP keys; values stay in this host's Keychain):\n\
+           dunlin-relay vault add ALIAS --host HOST --project PROJECT [--ttl MINUTES] [--writes] [--header NAME] [--prefix PREFIX] [--db PATH]\n\
+           dunlin-relay vault list [--db PATH]\n\
+           dunlin-relay vault remove ALIAS [--db PATH]\n\
+           dunlin-relay vault grant ALIAS PROJECT [--db PATH]\n\
+           dunlin-relay vault revoke ALIAS PROJECT [--db PATH]\n\
          \n\
          Defaults:\n\
            db       ~/Library/Application Support/Dunlin/relay.db (macOS)\n\
@@ -255,6 +268,286 @@ fn cmd_revoke(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+fn cmd_vault(args: &[String]) -> Result<(), String> {
+    use dunlin_domain::vault::{HttpMethod, Secret, SecretPolicy, normalize_ttl, now_secs};
+    use dunlin_vault::store::{SecretStore, ServiceKeychainStore};
+
+    let db = flag(args, "--db")
+        .map(PathBuf::from)
+        .unwrap_or_else(config::default_db);
+    let relay_store = Store::open(&db).map_err(|error| error.to_string())?;
+    let vault_store = dunlin_storage::Store::open(vault::vault_database(&db))
+        .map_err(|error| format!("Could not open relay vault storage: {error}"))?;
+    let secrets = ServiceKeychainStore::relay();
+    let subcommand = args.first().map(String::as_str).unwrap_or("help");
+    match subcommand {
+        "add" => {
+            let alias = relay_slug(
+                args.get(1)
+                    .ok_or_else(|| "vault add needs an alias".to_string())?,
+            );
+            if vault_store
+                .secret_by_alias(&alias)
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
+                return Err(format!("vault alias {alias} already exists"));
+            }
+            let host = flag(args, "--host")
+                .ok_or_else(|| "vault add needs --host API_HOST".to_string())?;
+            let project_value = flag(args, "--project")
+                .ok_or_else(|| "vault add needs --project PROJECT".to_string())?;
+            let project = relay_store
+                .list_projects()
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .find(|project| project.id == project_value || project.name == project_value)
+                .ok_or_else(|| format!("relay project {project_value} was not found"))?;
+            let ttl = flag(args, "--ttl")
+                .map(|value| value.parse::<i64>())
+                .transpose()
+                .map_err(|_| "--ttl must be a number of minutes".to_string())?
+                .unwrap_or(60)
+                * 60;
+            let ttl = normalize_ttl(ttl)?;
+            let injection = vault_injection(args)?;
+            let mut methods = vec![HttpMethod::Get, HttpMethod::Head];
+            if has_flag(args, "--writes") {
+                methods.extend([
+                    HttpMethod::Post,
+                    HttpMethod::Put,
+                    HttpMethod::Patch,
+                    HttpMethod::Delete,
+                ]);
+            }
+            let now = now_secs();
+            let id = format!("dunlin/{}", uuid::Uuid::now_v7().simple());
+            let secret = Secret {
+                id: id.clone(),
+                namespace: "dunlin".into(),
+                alias: alias.clone(),
+                label: alias.clone(),
+                description: flag(args, "--description").unwrap_or_default(),
+                injection,
+                allowed_hosts: vec![host],
+                path_prefix: "/".into(),
+                allowed_methods: methods,
+                allowed_headers: vec!["Accept".into(), "Content-Type".into()],
+                auto_approve: true,
+                expires_at: Some(now + ttl),
+                created_at: now,
+                updated_at: now,
+                last_used_at: None,
+            };
+            let policy = secret.policy(vec![project.id.clone()], Vec::new(), Vec::new());
+            policy.validate()?;
+            let policy_json = serde_json::to_string(&policy).map_err(|error| error.to_string())?;
+            let value = read_vault_secret(args)?;
+            if value.trim().is_empty() {
+                return Err("the credential value is empty".into());
+            }
+            secrets
+                .set(&id, value.trim())
+                .map_err(|error| format!("Could not save the relay credential: {error}"))?;
+            if let Err(error) = secrets.set_policy(&id, &policy_json) {
+                let _ = secrets.delete(&id);
+                return Err(format!(
+                    "Could not save the relay credential policy: {error}"
+                ));
+            }
+            if let Err(error) = vault_store.upsert_secret(&secret) {
+                let _ = secrets.delete(&id);
+                let _ = secrets.delete_policy(&id);
+                return Err(format!("Could not save relay credential metadata: {error}"));
+            }
+            println!(
+                "Added {alias} for project {} · expires in {} minutes · hosts {}",
+                project.name,
+                ttl / 60,
+                secret.allowed_hosts.join(", ")
+            );
+            Ok(())
+        }
+        "list" => {
+            for secret in vault_store.secrets().map_err(|error| error.to_string())? {
+                let policy = secrets
+                    .get_policy(&secret.id)
+                    .ok()
+                    .and_then(|raw| serde_json::from_str::<SecretPolicy>(&raw).ok());
+                match policy {
+                    Some(policy) => println!(
+                        "{} · projects {} · hosts {} · expires {}",
+                        secret.alias,
+                        policy.project_ids.join(","),
+                        policy.allowed_hosts.join(","),
+                        policy
+                            .expires_at
+                            .map(|expires_at| (expires_at - now_secs()).max(0).to_string() + "s")
+                            .unwrap_or_else(|| "never".into())
+                    ),
+                    None => println!("{} · policy unavailable", secret.alias),
+                }
+            }
+            Ok(())
+        }
+        "remove" => {
+            let alias = relay_slug(
+                args.get(1)
+                    .ok_or_else(|| "vault remove needs an alias".to_string())?,
+            );
+            let secret = vault_store
+                .secret_by_alias(&alias)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("vault alias {alias} was not found"))?;
+            secrets
+                .delete(&secret.id)
+                .map_err(|error| format!("Could not remove the relay credential: {error}"))?;
+            let _ = secrets.delete_policy(&secret.id);
+            vault_store
+                .delete_secret(&secret.id)
+                .map_err(|error| error.to_string())?;
+            println!("Removed {alias}");
+            Ok(())
+        }
+        "grant" | "revoke" => {
+            let alias = relay_slug(
+                args.get(1)
+                    .ok_or_else(|| format!("vault {subcommand} needs an alias"))?,
+            );
+            let project_value = args
+                .get(2)
+                .ok_or_else(|| format!("vault {subcommand} needs a project"))?;
+            let project = relay_store
+                .list_projects()
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .find(|project| project.id == *project_value || project.name == *project_value)
+                .ok_or_else(|| format!("relay project {project_value} was not found"))?;
+            let secret = vault_store
+                .secret_by_alias(&alias)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("vault alias {alias} was not found"))?;
+            let mut policy: SecretPolicy = secrets
+                .get_policy(&secret.id)
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .ok_or_else(|| "relay credential policy is unavailable".to_string())?;
+            if subcommand == "grant" {
+                if !policy.project_ids.contains(&project.id) {
+                    policy.project_ids.push(project.id.clone());
+                }
+            } else {
+                policy.project_ids.retain(|id| id != &project.id);
+            }
+            policy.validate()?;
+            secrets
+                .set_policy(
+                    &secret.id,
+                    &serde_json::to_string(&policy).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| {
+                    format!("Could not update the relay credential policy: {error}")
+                })?;
+            println!("{} {alias} {}", subcommand, project.name);
+            Ok(())
+        }
+        "help" | "-h" | "--help" => {
+            println!(
+                "dunlin-relay vault add ALIAS --host HOST --project PROJECT [--ttl MINUTES] [--writes] [--header NAME] [--prefix PREFIX] [--value-file PATH]\n\
+                 dunlin-relay vault list\n\
+                 dunlin-relay vault remove ALIAS\n\
+                 dunlin-relay vault grant ALIAS PROJECT\n\
+                 dunlin-relay vault revoke ALIAS PROJECT"
+            );
+            Ok(())
+        }
+        other => Err(format!("Unknown vault command: {other}")),
+    }
+}
+
+fn vault_injection(args: &[String]) -> Result<dunlin_domain::vault::Injection, String> {
+    use dunlin_domain::vault::Injection;
+
+    let oauth_flags = ("--oauth-token-url", "--oauth-client-id");
+    let aws_flags = ("--aws-access-key-id", "--aws-region", "--aws-service");
+    let oauth_requested = has_flag(args, oauth_flags.0) || has_flag(args, oauth_flags.1);
+    let aws_requested =
+        has_flag(args, aws_flags.0) || has_flag(args, aws_flags.1) || has_flag(args, aws_flags.2);
+    if oauth_requested && aws_requested {
+        return Err("Choose either OAuth 2.0 or AWS SigV4 injection, not both".into());
+    }
+    if oauth_requested {
+        let token_url = flag(args, oauth_flags.0)
+            .ok_or_else(|| "OAuth 2.0 injection needs --oauth-token-url".to_string())?;
+        let client_id = flag(args, oauth_flags.1)
+            .ok_or_else(|| "OAuth 2.0 injection needs --oauth-client-id".to_string())?;
+        return Ok(Injection::OAuth2 {
+            token_url,
+            client_id,
+        });
+    }
+    if aws_requested {
+        let access_key_id = flag(args, aws_flags.0)
+            .ok_or_else(|| "AWS SigV4 injection needs --aws-access-key-id".to_string())?;
+        let region = flag(args, aws_flags.1)
+            .ok_or_else(|| "AWS SigV4 injection needs --aws-region".to_string())?;
+        let service = flag(args, aws_flags.2)
+            .ok_or_else(|| "AWS SigV4 injection needs --aws-service".to_string())?;
+        return Ok(Injection::AwsSigV4 {
+            access_key_id,
+            region,
+            service,
+        });
+    }
+    Ok(Injection::Header {
+        name: flag(args, "--header").unwrap_or_else(|| "Authorization".into()),
+        prefix: flag(args, "--prefix").unwrap_or_else(|| "Bearer ".into()),
+    })
+}
+
+fn relay_slug(value: &str) -> String {
+    let mut out = String::new();
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+        if out.len() >= 48 {
+            break;
+        }
+    }
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() { "key".into() } else { out }
+}
+
+fn read_vault_secret(args: &[String]) -> Result<String, String> {
+    use std::io::{Read, Write};
+    if let Some(path) = flag(args, "--value-file") {
+        let mut value = String::new();
+        std::fs::File::open(&path)
+            .map_err(|error| format!("Could not open --value-file: {error}"))?
+            .read_to_string(&mut value)
+            .map_err(|error| format!("Could not read --value-file: {error}"))?;
+        return Ok(value.lines().next().unwrap_or_default().to_string());
+    }
+    let echo_off = std::process::Command::new("stty")
+        .arg("-echo")
+        .status()
+        .is_ok();
+    eprint!("Credential value: ");
+    let _ = std::io::stdout().flush();
+    let mut value = String::new();
+    std::io::stdin()
+        .read_line(&mut value)
+        .map_err(|error| format!("Could not read the credential value: {error}"))?;
+    if echo_off {
+        let _ = std::process::Command::new("stty").arg("echo").status();
+        eprintln!();
+    }
+    Ok(value.trim_end_matches(['\r', '\n']).to_string())
+}
+
 fn cmd_serve(args: &[String]) -> Result<(), String> {
     let mut config = flag(args, "--config")
         .map(|path| Config::load(PathBuf::from(path)))
@@ -272,6 +565,13 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
     config.apply_env();
 
     let store = Store::open(&config.db).map_err(|error| error.to_string())?;
+    let relay_vault = match vault::RelayVault::start(&config.db) {
+        Ok(vault) => Some(vault),
+        Err(error) => {
+            eprintln!("[relay] vault disabled · {error}");
+            None
+        }
+    };
     if store
         .list_users()
         .map_err(|error| error.to_string())?
@@ -289,7 +589,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async move {
-        let state = AppState::new(store, config.clone());
+        let state = AppState::new_with_vault(store, config.clone(), relay_vault);
         let app = api::router(state);
         let listener = tokio::net::TcpListener::bind(&config.listen)
             .await
@@ -340,4 +640,120 @@ fn open_store_for(args: &[String]) -> Result<Store, String> {
 
 fn has_flag(args: &[String], name: &str) -> bool {
     args.iter().any(|arg| arg == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dunlin_domain::vault::Injection;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn vault_injection_reads_exactly_one_cli_mode() {
+        assert_eq!(
+            vault_injection(&args(&["add", "key", "--host", "api.example.com"])).unwrap(),
+            Injection::Header {
+                name: "Authorization".into(),
+                prefix: "Bearer ".into(),
+            }
+        );
+        assert_eq!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--header",
+                "X-Api-Key",
+                "--prefix",
+                "",
+            ]))
+            .unwrap(),
+            Injection::Header {
+                name: "X-Api-Key".into(),
+                prefix: String::new(),
+            }
+        );
+        assert_eq!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--oauth-token-url",
+                "https://auth.example.com/token",
+                "--oauth-client-id",
+                "client-1",
+            ]))
+            .unwrap(),
+            Injection::OAuth2 {
+                token_url: "https://auth.example.com/token".into(),
+                client_id: "client-1".into(),
+            }
+        );
+        assert_eq!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--aws-access-key-id",
+                "AKIAIOSFODNN7EXAMPLE",
+                "--aws-region",
+                "us-east-1",
+                "--aws-service",
+                "execute-api",
+            ]))
+            .unwrap(),
+            Injection::AwsSigV4 {
+                access_key_id: "AKIAIOSFODNN7EXAMPLE".into(),
+                region: "us-east-1".into(),
+                service: "execute-api".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn vault_injection_rejects_partial_or_mixed_modes() {
+        assert!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--oauth-token-url",
+                "https://auth.example.com/token",
+            ]))
+            .is_err()
+        );
+        assert!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--aws-access-key-id",
+                "AKIAIOSFODNN7EXAMPLE",
+            ]))
+            .is_err()
+        );
+        assert!(
+            vault_injection(&args(&[
+                "add",
+                "key",
+                "--oauth-token-url",
+                "https://auth.example.com/token",
+                "--oauth-client-id",
+                "client-1",
+                "--aws-access-key-id",
+                "AKIAIOSFODNN7EXAMPLE",
+                "--aws-region",
+                "us-east-1",
+                "--aws-service",
+                "execute-api",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn relay_slug_is_stable_and_safe() {
+        assert_eq!(relay_slug("GitHub Work Key!"), "github-work-key");
+        assert_eq!(relay_slug("---"), "key");
+        assert_eq!(relay_slug(""), "key");
+        assert!(relay_slug(&"A".repeat(200)).len() <= 48);
+    }
 }

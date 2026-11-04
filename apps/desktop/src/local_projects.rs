@@ -8,7 +8,7 @@ use std::{collections::HashSet, path::PathBuf};
 pub(crate) fn canonical_local_paths(projects: &[Project]) -> HashSet<PathBuf> {
     projects
         .iter()
-        .filter(|p| !p.is_remote())
+        .filter(|p| !p.is_remote() && !p.is_chat_space())
         .filter_map(|p| std::fs::canonicalize(&p.path).ok())
         .collect()
 }
@@ -30,17 +30,17 @@ impl DunlinApp {
             let _ = this.update(cx, |this, cx| {
                 this.local_import_running = false;
                 let mut existing = canonical_local_paths(&this.projects);
-                let was_empty = this.projects.is_empty(); let mut first = None; let mut added = 0; let mut duplicate = 0; let mut failures = discovery.warnings;
+                let was_empty = this.projects.iter().all(|p| p.is_chat_space()); let mut first = None; let mut added = 0; let mut duplicate = 0; let mut failures = discovery.warnings;
                 for candidate in discovery.projects {
                     if existing.contains(&candidate.path) {
                         duplicate += 1;
-                        if first.is_none() { first = this.projects.iter().position(|p| !p.is_remote() && std::fs::canonicalize(&p.path).ok().as_ref() == Some(&candidate.path)); }
+                        if first.is_none() { first = this.projects.iter().position(|p| !p.is_remote() && !p.is_chat_space() && std::fs::canonicalize(&p.path).ok().as_ref() == Some(&candidate.path)); }
                         continue;
                     }
                     let path = candidate.path.to_string_lossy().into_owned();
                     let name = candidate.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
                     let tones = [ProjectTone::Blue, ProjectTone::Green, ProjectTone::Violet, ProjectTone::Amber, ProjectTone::Rose, ProjectTone::Teal];
-                    let project = Project { id: format!("project-{}", uuid::Uuid::now_v7()), name, path, branch: candidate.branch, tone: tones[this.projects.len() % tones.len()], pinned: false, trusted: true, running_sessions: 0, remote: None, group_id: None, settings: Default::default() };
+                    let project = Project { id: format!("project-{}", uuid::Uuid::now_v7()), name, path, branch: candidate.branch, tone: tones[this.projects.len() % tones.len()], pinned: false, trusted: true, running_sessions: 0, kind: Default::default(), remote: None, group_id: None, settings: Default::default() };
                     if let Some(store) = &this.store && let Err(error) = store.upsert_project(&project) { failures.push(error.to_string()); continue; }
                     existing.insert(candidate.path);
                     this.repo_summaries.values.insert(project.id.clone(), crate::project_groups::RepoSummary { path: project.path.clone(), branch: project.branch.clone(), changes: None, activity: Default::default(), monorepo: candidate.monorepo, languages: None, size_bytes: None });
@@ -204,6 +204,7 @@ mod tests {
             pinned: true,
             trusted: false,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: Some("group".into()),
             settings: Default::default(),

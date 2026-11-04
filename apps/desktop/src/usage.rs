@@ -5,7 +5,7 @@ use dunlin_ui::Context;
 use serde_json::Value;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::{app::DunlinApp, providers};
+use crate::{app::DunlinApp, providers, remote};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Scope {
@@ -14,6 +14,13 @@ pub(crate) struct Scope {
     pub harness: String,
     pub provider: Option<String>,
     pub model: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BillingSync {
+    pub host: String,
+    pub ok: bool,
+    pub message: String,
 }
 
 #[derive(Default)]
@@ -286,6 +293,116 @@ impl DunlinApp {
         self.billing_budget_usd
             .filter(|value| value.is_finite() && *value > 0.)
             .map(f64::from)
+    }
+
+    /// Explicitly upload aggregate evidence to every paired relay. Raw logs and
+    /// prompts stay local; only counts, sources and warnings are sent.
+    pub(crate) fn sync_billing_evidence(&mut self, cx: &mut Context<Self>) {
+        if self.billing_syncing {
+            return;
+        }
+        let Some(summary) = self.billing.clone() else {
+            self.set_notice("Scan provider logs before syncing billing evidence", cx);
+            return;
+        };
+        let mut targets = Vec::new();
+        for host in self.remote_hosts.clone() {
+            match self.remote_token(&host.id) {
+                Ok(token) => targets.push((host.name, host.url, token)),
+                Err(error) => self.billing_sync.push(BillingSync {
+                    host: host.name,
+                    ok: false,
+                    message: error,
+                }),
+            }
+        }
+        if targets.is_empty() {
+            self.set_notice("Pair a relay before syncing billing evidence", cx);
+            return;
+        }
+        self.billing_syncing = true;
+        self.billing_sync.clear();
+        cx.spawn(async move |this, cx| {
+            let results = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut results = Vec::new();
+                    for (host, url, token) in targets {
+                        let evidence =
+                            dunlin_usage::billing::Evidence::new(host.clone(), summary.clone());
+                        let result = remote::sync_billing_evidence(&url, &token, &evidence);
+                        results.push(BillingSync {
+                            host,
+                            ok: result.is_ok(),
+                            message: result
+                                .err()
+                                .unwrap_or_else(|| "Aggregate evidence synced".into()),
+                        });
+                    }
+                    results
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.billing_syncing = false;
+                this.billing_sync = results;
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Administrators can read the relay's per-device aggregate evidence.
+    pub(crate) fn load_remote_billing_evidence(&mut self, cx: &mut Context<Self>) {
+        if self.remote_billing_loading {
+            return;
+        }
+        let mut targets = Vec::new();
+        for host in self.remote_hosts.clone() {
+            if host.user_role != "admin" {
+                continue;
+            }
+            match self.remote_token(&host.id) {
+                Ok(token) => targets.push((host.name, host.url, token)),
+                Err(error) => {
+                    self.remote_billing_error = Some(error);
+                }
+            }
+        }
+        if targets.is_empty() {
+            self.remote_billing_error = Some(
+                "Billing evidence aggregation requires a paired relay where this account is admin."
+                    .into(),
+            );
+            cx.notify();
+            return;
+        }
+        self.remote_billing_loading = true;
+        self.remote_billing_error = None;
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut rows = Vec::new();
+                    let mut errors = Vec::new();
+                    for (host, url, token) in targets {
+                        match remote::billing_evidence(&url, &token) {
+                            Ok(mut evidence) => rows.append(&mut evidence),
+                            Err(error) => errors.push(format!("{host}: {error}")),
+                        }
+                    }
+                    (rows, errors)
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.remote_billing_loading = false;
+                this.remote_billing = result.0;
+                this.remote_billing_error = (!result.1.is_empty()).then(|| result.1.join(" · "));
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     pub(crate) fn usage_target(&self) -> Scope {

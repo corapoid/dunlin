@@ -315,6 +315,7 @@ impl DunlinApp {
         }
         self.project_groups[index] = group;
         self.group_settings_draft = None;
+        self.sync_vault_read_only();
         self.set_notice("Group defaults saved · client permissions apply to following requests; harness/model to new conversations; environment at the next local connection. No agents restarted.", cx);
     }
 

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate};
+use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, McpServerConfig};
 use futures_util::future::{Either, select};
 
 fn config() -> HarnessConfig {
@@ -8,6 +8,55 @@ fn config() -> HarnessConfig {
         format!("\"{}\"", env!("CARGO_BIN_EXE_mock_acp_agent")),
         std::env::current_dir().unwrap(),
     )
+}
+
+#[test]
+fn session_new_carries_the_vault_mcp_server() {
+    let mut config = config();
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_REQUIRE_MCP".into(), "1".into());
+    config.mcp_servers.push(McpServerConfig::stdio(
+        "dunlin-secrets",
+        "/tmp/dunlin",
+        vec!["--mcp-vault".into()],
+        vec![("DUNLIN_VAULT_TOKEN".into(), "fixture-token".into())],
+    ));
+    let harness = AcpHarness::spawn(config);
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => break,
+            HarnessEvent::Error { message } | HarnessEvent::SessionLoadFailed { message, .. } => {
+                panic!("vault MCP server was not forwarded: {message}")
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn session_load_carries_the_vault_mcp_server() {
+    let mut config = config();
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_REQUIRE_MCP".into(), "1".into());
+    config.resume_session_id = Some("existing-session".into());
+    config.mcp_servers.push(McpServerConfig::stdio(
+        "dunlin-secrets",
+        "/tmp/dunlin",
+        vec!["--mcp-vault".into()],
+        vec![("DUNLIN_VAULT_TOKEN".into(), "fixture-token".into())],
+    ));
+    let harness = AcpHarness::spawn(config);
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionLoaded { .. } => break,
+            HarnessEvent::Error { message } | HarnessEvent::SessionLoadFailed { message, .. } => {
+                panic!("vault MCP server was not forwarded on load: {message}")
+            }
+            _ => {}
+        }
+    }
 }
 
 #[test]

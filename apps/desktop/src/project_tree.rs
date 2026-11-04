@@ -356,6 +356,7 @@ mod tests {
             tone: dunlin_domain::ProjectTone::Blue,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             settings: Default::default(),
         }

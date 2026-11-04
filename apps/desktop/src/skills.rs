@@ -2,6 +2,7 @@
 use crate::app::DunlinApp;
 use dunlin_ui::{
     component::input::{Editor, EditorState, Input, InputState},
+    prelude::FluentBuilder as _,
     *,
 };
 use serde::{Deserialize, Serialize};
@@ -15,9 +16,110 @@ use std::{
 use url::Url;
 
 pub(crate) const COMMIT_SKILL: &str = "conventional-commits";
+pub(crate) const SECURITY_AUDIT_SKILL: &str = "cloudflare-security-audit";
+pub(crate) const SPEC_KIT_SKILL: &str = "spec-driven-development";
 const MAX_SKILL_BYTES: usize = 64 * 1024;
+const MAX_SKILL_FILE_BYTES: usize = 256 * 1024;
+const MAX_SKILL_TOTAL_BYTES: usize = 2 * 1024 * 1024;
+const MAX_SKILL_FILES: usize = 128;
 pub(crate) const COMMIT_INSTRUCTIONS: &str =
     include_str!("../../../assets/skills/conventional-commits.md");
+const SPEC_KIT_INSTRUCTIONS: &str =
+    include_str!("../../../assets/skills/spec-driven-development.md");
+
+/// Pinned Cloudflare `security-audit-skill` bundle. Every companion file is
+/// installed together so relative references in `SKILL.md` keep working.
+/// Source: https://github.com/cloudflare/security-audit-skill
+/// Commit: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
+/// License: MIT (see the bundled LICENSE file).
+const SECURITY_AUDIT_FILES: &[(&str, &str)] = &[
+    (
+        "AI-AND-LLM.md",
+        include_str!("../../../assets/skills/security-audit/AI-AND-LLM.md"),
+    ),
+    (
+        "ATTACK-CLASSES.md",
+        include_str!("../../../assets/skills/security-audit/ATTACK-CLASSES.md"),
+    ),
+    (
+        "CLIENT-SIDE.md",
+        include_str!("../../../assets/skills/security-audit/CLIENT-SIDE.md"),
+    ),
+    (
+        "CLOUD-AND-DEPLOYMENT.md",
+        include_str!("../../../assets/skills/security-audit/CLOUD-AND-DEPLOYMENT.md"),
+    ),
+    (
+        "DATA-ISOLATION-AND-LIFECYCLE.md",
+        include_str!("../../../assets/skills/security-audit/DATA-ISOLATION-AND-LIFECYCLE.md"),
+    ),
+    (
+        "DESKTOP-MOBILE-AND-LOCAL-IPC.md",
+        include_str!("../../../assets/skills/security-audit/DESKTOP-MOBILE-AND-LOCAL-IPC.md"),
+    ),
+    (
+        "HUNTING.md",
+        include_str!("../../../assets/skills/security-audit/HUNTING.md"),
+    ),
+    (
+        "LICENSE",
+        include_str!("../../../assets/skills/security-audit/LICENSE"),
+    ),
+    (
+        "MEMORY-SAFETY-AND-BINARY.md",
+        include_str!("../../../assets/skills/security-audit/MEMORY-SAFETY-AND-BINARY.md"),
+    ),
+    (
+        "PROTOCOLS-RPC-AND-MESSAGING.md",
+        include_str!("../../../assets/skills/security-audit/PROTOCOLS-RPC-AND-MESSAGING.md"),
+    ),
+    (
+        "RECONNAISSANCE.md",
+        include_str!("../../../assets/skills/security-audit/RECONNAISSANCE.md"),
+    ),
+    (
+        "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md",
+        include_str!(
+            "../../../assets/skills/security-audit/RESOURCE-EXHAUSTION-AND-AVAILABILITY.md"
+        ),
+    ),
+    (
+        "SKILL.md",
+        include_str!("../../../assets/skills/security-audit/SKILL.md"),
+    ),
+    (
+        "SUPPLY-CHAIN-AND-RELEASE.md",
+        include_str!("../../../assets/skills/security-audit/SUPPLY-CHAIN-AND-RELEASE.md"),
+    ),
+    (
+        "VALIDATION-AND-REPORTING.md",
+        include_str!("../../../assets/skills/security-audit/VALIDATION-AND-REPORTING.md"),
+    ),
+    (
+        "WEB-PROTOCOL-AND-AUTH.md",
+        include_str!("../../../assets/skills/security-audit/WEB-PROTOCOL-AND-AUTH.md"),
+    ),
+    (
+        "report-schema.json",
+        include_str!("../../../assets/skills/security-audit/report-schema.json"),
+    ),
+    (
+        "validate-coverage-ledger.cjs",
+        include_str!("../../../assets/skills/security-audit/validate-coverage-ledger.cjs"),
+    ),
+    (
+        "validate-coverage-ledger.test.cjs",
+        include_str!("../../../assets/skills/security-audit/validate-coverage-ledger.test.cjs"),
+    ),
+    (
+        "validate-findings.cjs",
+        include_str!("../../../assets/skills/security-audit/validate-findings.cjs"),
+    ),
+    (
+        "validate-findings.test.cjs",
+        include_str!("../../../assets/skills/security-audit/validate-findings.test.cjs"),
+    ),
+];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Scope {
@@ -35,6 +137,14 @@ pub(crate) enum Target {
 }
 impl Target {
     pub const ALL: [Self; 3] = [Self::OpenCode, Self::Claude, Self::Codex];
+    pub(crate) fn from_harness(name: &str) -> Self {
+        match name {
+            "OpenCode" => Self::OpenCode,
+            "Claude Code" => Self::Claude,
+            "Codex" | "OpenAI Codex" => Self::Codex,
+            _ => Self::Other,
+        }
+    }
     pub fn label(self) -> &'static str {
         match self {
             Self::OpenCode => "OpenCode",
@@ -82,12 +192,28 @@ impl Target {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Installation {
     pub target: Target,
+    /// Path to the installed `SKILL.md`.
     pub path: String,
+    /// Installed `SKILL.md` contents. Kept for older records and for a quick
+    /// ownership check; companion files are recorded in `files`.
     pub contents: String,
+    #[serde(default)]
+    pub files: Vec<InstalledFile>,
     #[serde(default)]
     pub scope: Scope,
     #[serde(default)]
     pub project_id: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct InstalledFile {
+    pub path: String,
+    pub sha256: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct SkillFile {
+    /// Relative path below the skill directory, using `/` separators.
+    pub path: String,
+    pub contents: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Skill {
@@ -95,6 +221,8 @@ pub(crate) struct Skill {
     pub title: String,
     pub description: String,
     pub body: String,
+    #[serde(default)]
+    pub files: Vec<SkillFile>,
     #[serde(default)]
     pub origin: String,
     #[serde(default)]
@@ -138,14 +266,177 @@ impl Skill {
         }
         Ok(contents)
     }
-    pub(crate) fn content_hash(&self) -> String {
+
+    /// Complete portable bundle: `SKILL.md` first, then supporting files sorted
+    /// by their relative path. Every path and size is validated before write.
+    pub(crate) fn rendered_files(&self) -> Result<Vec<(String, String)>, String> {
+        let skill_md = self.rendered()?;
+        let mut files = vec![("SKILL.md".to_string(), skill_md)];
+        let mut seen = std::collections::HashSet::new();
+        seen.insert("SKILL.md".to_string());
+        let mut total = files[0].1.len();
+        for file in &self.files {
+            if !valid_relative_path(&file.path) {
+                return Err(format!("Unsafe supporting file path: {}", file.path));
+            }
+            if !seen.insert(file.path.clone()) {
+                return Err(format!("Duplicate supporting file: {}", file.path));
+            }
+            if file.contents.len() > MAX_SKILL_FILE_BYTES {
+                return Err(format!(
+                    "Supporting file {} is larger than 256 KiB",
+                    file.path
+                ));
+            }
+            total += file.contents.len();
+            files.push((file.path.clone(), file.contents.clone()));
+        }
+        if files.len() > MAX_SKILL_FILES {
+            return Err(format!(
+                "A skill bundle is limited to {MAX_SKILL_FILES} files"
+            ));
+        }
+        if total > MAX_SKILL_TOTAL_BYTES {
+            return Err("A skill bundle is limited to 2 MiB".into());
+        }
+        files[1..].sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(files)
+    }
+
+    pub(crate) fn bundle_size(&self) -> usize {
         self.rendered()
-            .map(|text| format!("{:x}", Sha256::digest(text.as_bytes())))
-            .unwrap_or_default()
+            .map(|contents| {
+                contents.len()
+                    + self
+                        .files
+                        .iter()
+                        .map(|file| file.contents.len())
+                        .sum::<usize>()
+            })
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn content_hash(&self) -> String {
+        let Ok(files) = self.rendered_files() else {
+            return String::new();
+        };
+        let mut hasher = Sha256::new();
+        for (path, contents) in files {
+            hasher.update(path.as_bytes());
+            hasher.update([0]);
+            hasher.update(contents.as_bytes());
+            hasher.update([0]);
+        }
+        format!("{:x}", hasher.finalize())
     }
 }
+fn valid_relative_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= 512
+        && !path.starts_with('/')
+        && !path.contains('\\')
+        && !path.contains('\0')
+        && path.split('/').count() <= 32
+        && path.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && !segment.ends_with([' ', '.'])
+                && !segment.contains(':')
+        })
+}
+fn file_hash(contents: &str) -> String {
+    format!("{:x}", Sha256::digest(contents.as_bytes()))
+}
+fn installation_files(installation: &Installation) -> Vec<InstalledFile> {
+    if installation.files.is_empty() {
+        vec![InstalledFile {
+            path: "SKILL.md".into(),
+            sha256: file_hash(&installation.contents),
+        }]
+    } else {
+        installation.files.clone()
+    }
+}
+fn installation_matches(skill: &Skill, installation: &Installation) -> bool {
+    let Ok(skill_md) = skill.rendered() else {
+        return false;
+    };
+    let installed = installation_files(installation);
+    installed.len() == skill.files.len() + 1
+        && installed
+            .iter()
+            .any(|file| file.path == "SKILL.md" && file.sha256 == file_hash(&skill_md))
+        && skill.files.iter().all(|file| {
+            installed.iter().any(|installed| {
+                installed.path == file.path && installed.sha256 == file_hash(&file.contents)
+            })
+        })
+}
 pub(crate) fn defaults() -> Vec<Skill> {
-    vec![Skill { id: COMMIT_SKILL.into(), title: "Conventional commits".into(), description: "Analyze repository changes and create focused Conventional Commits only when the user explicitly requests commits.".into(), body: COMMIT_INSTRUCTIONS.into(), origin: "Built-in".into(), source_hash: String::new(), installations: Vec::new() }]
+    vec![Skill { id: COMMIT_SKILL.into(), title: "Conventional commits".into(), description: "Analyze repository changes and create focused Conventional Commits only when the user explicitly requests commits.".into(), body: COMMIT_INSTRUCTIONS.into(), files: Vec::new(), origin: "Built-in".into(), source_hash: String::new(), installations: Vec::new() }]
+}
+pub(crate) struct CatalogEntry {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub origin: String,
+    pub file_count: usize,
+}
+pub(crate) fn catalog_metadata() -> Vec<CatalogEntry> {
+    [security_audit_cached(), spec_kit_cached()]
+        .into_iter()
+        .map(|skill| CatalogEntry {
+            id: skill.id.clone(),
+            title: skill.title.clone(),
+            description: skill.description.clone(),
+            origin: skill.origin.clone(),
+            file_count: skill.files.len() + 1,
+        })
+        .collect()
+}
+pub(crate) fn catalog_skill(id: &str) -> Option<Skill> {
+    match id {
+        SECURITY_AUDIT_SKILL => Some(security_audit_cached().clone()),
+        SPEC_KIT_SKILL => Some(spec_kit_cached().clone()),
+        _ => None,
+    }
+}
+fn spec_kit_cached() -> &'static Skill {
+    static CACHE: std::sync::OnceLock<Skill> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut skill = parse_skill_contents(SPEC_KIT_INSTRUCTIONS, SPEC_KIT_SKILL)
+            .expect("bundled Spec Kit skill is valid");
+        skill.title = "Spec-driven development".into();
+        skill.origin = "Dunlin · bundled instruction · MIT".into();
+        skill.source_hash = skill.content_hash();
+        skill
+    })
+}
+fn security_audit_cached() -> &'static Skill {
+    static CACHE: std::sync::OnceLock<Skill> = std::sync::OnceLock::new();
+    CACHE.get_or_init(security_audit_skill)
+}
+fn security_audit_skill() -> Skill {
+    let contents = SECURITY_AUDIT_FILES
+        .iter()
+        .find(|(path, _)| *path == "SKILL.md")
+        .map(|(_, contents)| *contents)
+        .unwrap_or_default();
+    let mut skill = parse_skill_contents(contents, SECURITY_AUDIT_SKILL)
+        .expect("bundled security-audit SKILL.md is valid");
+    skill.title = "Security audit".into();
+    skill.origin = "Cloudflare security-audit-skill · c1c8a8c · MIT".into();
+    skill.files = SECURITY_AUDIT_FILES
+        .iter()
+        .filter(|(path, _)| *path != "SKILL.md")
+        .map(|(path, contents)| SkillFile {
+            path: (*path).to_string(),
+            contents: (*contents).to_string(),
+        })
+        .collect();
+    skill.source_hash = skill.content_hash();
+    skill
 }
 
 fn frontmatter_value(front: &str, key: &str) -> Option<String> {
@@ -202,6 +493,7 @@ fn parse_skill_contents(contents: &str, fallback_id: &str) -> Result<Skill, Stri
         },
         description,
         body: body.trim().to_string(),
+        files: Vec::new(),
         origin: String::new(),
         source_hash: format!("{:x}", Sha256::digest(contents.as_bytes())),
         installations: Vec::new(),
@@ -218,8 +510,88 @@ fn skill_from_directory(directory: &Path) -> Result<Skill, String> {
         .unwrap_or("imported-skill");
     let fallback = fallback.strip_prefix("dunlin-").unwrap_or(fallback);
     let mut skill = parse_skill_contents(&contents, fallback)?;
+    skill.files = read_supporting_files(directory)?;
     skill.origin = directory.to_string_lossy().to_string();
+    skill.source_hash = skill.content_hash();
     Ok(skill)
+}
+
+/// Read a bounded, symlink-free tree of UTF-8 supporting files. The skill
+/// directory itself is canonicalized by [`discover`] before this runs.
+fn read_supporting_files(directory: &Path) -> Result<Vec<SkillFile>, String> {
+    let mut files = Vec::new();
+    let mut total = 0usize;
+    let mut entries_seen = 0usize;
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current).map_err(|e| e.to_string())? {
+            entries_seen += 1;
+            if entries_seen > 4096 {
+                return Err("Skill folder contains too many entries".into());
+            }
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.file_name().is_some_and(|name| {
+                matches!(
+                    name.to_str(),
+                    Some(".git")
+                        | Some(".svn")
+                        | Some(".hg")
+                        | Some("node_modules")
+                        | Some(".DS_Store")
+                )
+            }) {
+                continue;
+            }
+            let metadata = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                if pending.len() + files.len() < MAX_SKILL_FILES {
+                    pending.push(path);
+                }
+                continue;
+            }
+            if !metadata.is_file() {
+                continue;
+            }
+            if path.file_name().is_some_and(|name| name == "SKILL.md") {
+                continue;
+            }
+            if metadata.len() > MAX_SKILL_FILE_BYTES as u64 {
+                return Err(format!(
+                    "Supporting file {} is larger than 256 KiB",
+                    path.display()
+                ));
+            }
+            let relative = path
+                .strip_prefix(directory)
+                .map_err(|_| "Supporting file escaped the skill directory")?
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            if !valid_relative_path(&relative) {
+                return Err(format!("Unsafe supporting file path: {relative}"));
+            }
+            let contents = fs::read_to_string(&path)
+                .map_err(|_| format!("Supporting file {} is not UTF-8 text", relative))?;
+            total += contents.len();
+            if total > MAX_SKILL_TOTAL_BYTES {
+                return Err("A skill bundle is limited to 2 MiB".into());
+            }
+            if files.len() + 1 > MAX_SKILL_FILES {
+                return Err(format!(
+                    "A skill bundle is limited to {MAX_SKILL_FILES} files"
+                ));
+            }
+            files.push(SkillFile {
+                path: relative,
+                contents,
+            });
+        }
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
 }
 
 /// Read bounded SKILL.md files from one skill directory or a directory of
@@ -302,75 +674,247 @@ fn regular_file(path: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+/// Create a directory one component at a time, refusing symlinks and files.
+fn create_directory_chain(root: &Path, relative: &Path) -> Result<(), String> {
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err("Unsafe supporting file path".into());
+        };
+        current.push(name);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                let resolved = fs::canonicalize(&current).map_err(|e| e.to_string())?;
+                if resolved != current {
+                    return Err("Skill directory moved through a symlink".into());
+                }
+            }
+            Ok(_) => return Err("Refusing a symlink or non-directory in a skill path".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&current).map_err(|e| e.to_string())?;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
+fn existing_parents_are_directories(root: &Path, relative: &Path) -> Result<(), String> {
+    let mut current = root.to_path_buf();
+    let Some(parent) = relative.parent() else {
+        return Ok(());
+    };
+    for component in parent.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err("Unsafe supporting file path".into());
+        };
+        current.push(name);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                let resolved = fs::canonicalize(&current).map_err(|e| e.to_string())?;
+                if resolved != current {
+                    return Err("Skill directory moved through a symlink".into());
+                }
+            }
+            Ok(_) => return Err("Refusing a symlink or non-directory in a skill path".into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
+fn preflight_file(
+    path: &Path,
+    relative: &str,
+    recorded: &[InstalledFile],
+    owned: bool,
+    new_contents: &str,
+) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+            if !owned {
+                return Err("A skill already exists here and is not owned by Dunlin".into());
+            }
+            let existing = fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let hash = file_hash(&existing);
+            if hash == file_hash(new_contents)
+                || recorded
+                    .iter()
+                    .any(|file| file.path == relative && file.sha256 == hash)
+            {
+                return Ok(());
+            }
+            Err("Installed skill file was changed outside Dunlin; preserve or move it before updating"
+                .into())
+        }
+        Ok(_) => Err("Refusing a symlink or non-regular skill file".into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn write_bundle_file(root: &Path, relative: &str, contents: &str) -> Result<(), String> {
+    let relative = Path::new(relative);
+    let parent = relative.parent().unwrap_or(Path::new(""));
+    create_directory_chain(root, parent)?;
+    let path = root.join(relative);
+    let directory = path.parent().ok_or("Missing skill file directory")?;
+    let temporary = directory.join(format!(".dunlin-{}.tmp", uuid::Uuid::now_v7()));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| {
+        let mut file = options.open(&temporary).map_err(|e| e.to_string())?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        fs::rename(&temporary, &path).map_err(|e| e.to_string())
+    })();
+    let _ = fs::remove_file(&temporary);
+    result
+}
+
+fn cleanup_empty_directories(root: &Path, mut directory: &Path) {
+    while let Ok(relative) = directory.strip_prefix(root) {
+        if relative.as_os_str().is_empty() || fs::remove_dir(directory).is_err() {
+            break;
+        }
+        let Some(parent) = directory.parent() else {
+            break;
+        };
+        directory = parent;
+    }
+}
+
 pub(crate) fn install_at(
     base: &Path,
     skill: &Skill,
     target: Target,
 ) -> Result<Installation, String> {
-    let contents = skill.rendered()?;
+    let files = skill.rendered_files()?;
+    let main_contents = files
+        .iter()
+        .find(|(path, _)| path == "SKILL.md")
+        .map(|(_, contents)| contents.clone())
+        .ok_or("A skill bundle needs SKILL.md")?;
     fs::create_dir_all(base).map_err(|e| e.to_string())?;
     let base = fs::canonicalize(base).map_err(|e| e.to_string())?;
     let directory = base.join(format!("dunlin-{}", skill.id));
-    match fs::symlink_metadata(&directory) {
-        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
-            return Err("Refusing an existing skill-directory symlink or file".into());
-        }
-        Ok(_) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir(&directory).map_err(|e| e.to_string())?
-        }
-        Err(e) => return Err(e.to_string()),
-    }
     let path = directory.join("SKILL.md");
     let recorded = skill
         .installations
         .iter()
         .find(|i| Path::new(&i.path) == path);
-    let check = || -> Result<(), String> {
-        match fs::symlink_metadata(&path) {
-            Ok(_) => {
-                regular_file(&path)?;
-                let old =
-                    recorded.ok_or("A skill already exists here and is not owned by Dunlin")?;
-                if fs::read_to_string(&path).map_err(|e| e.to_string())? != old.contents {
-                    return Err("Installed skill was changed outside Dunlin; preserve or move it before updating".into());
+    let recorded_files = recorded.map(installation_files).unwrap_or_default();
+    match fs::symlink_metadata(&directory) {
+        Ok(metadata) if !metadata.is_dir() || metadata.file_type().is_symlink() => {
+            return Err("Refusing an existing skill-directory symlink or file".into());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+
+    // Verify every existing managed file before changing anything. Files that
+    // already match the new bundle are tolerated so an interrupted update can
+    // be completed safely.
+    for (relative, contents) in &files {
+        if directory.exists() {
+            existing_parents_are_directories(&directory, Path::new(relative))?;
+            preflight_file(
+                &directory.join(relative),
+                relative,
+                &recorded_files,
+                recorded.is_some(),
+                contents,
+            )?;
+        }
+    }
+    let expected = files
+        .iter()
+        .map(|(path, _)| path.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut obsolete = Vec::new();
+    for file in &recorded_files {
+        if !valid_relative_path(&file.path) {
+            return Err("Invalid managed skill path".into());
+        }
+        if expected.contains(file.path.as_str()) {
+            continue;
+        }
+        let obsolete_path = directory.join(&file.path);
+        match fs::symlink_metadata(&obsolete_path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                let contents = fs::read_to_string(&obsolete_path).map_err(|e| e.to_string())?;
+                if file_hash(&contents) != file.sha256 {
+                    return Err(
+                        "Installed skill file was changed outside Dunlin; preserve or move it before updating"
+                            .into(),
+                    );
                 }
+                obsolete.push(obsolete_path);
             }
+            Ok(_) => return Err("Refusing a symlink or non-regular skill file".into()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.to_string()),
         }
-        Ok(())
-    };
-    check()?;
-    let temporary = directory.join(format!(".dunlin-{}.tmp", uuid::Uuid::now_v7()));
-    let result = (|| {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+    }
+
+    if !directory.exists() {
+        let temporary = base.join(format!(".dunlin-{}.tmp-{}", skill.id, uuid::Uuid::now_v7()));
+        fs::create_dir(&temporary).map_err(|e| e.to_string())?;
+        let result = (|| {
+            for (relative, contents) in &files {
+                write_bundle_file(&temporary, relative, contents)?;
+            }
+            fs::rename(&temporary, &directory).map_err(|e| e.to_string())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(&temporary);
         }
-        let mut file = options.open(&temporary).map_err(|e| e.to_string())?;
-        file.write_all(contents.as_bytes())
-            .map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        check()?;
-        if recorded.is_none() {
-            // Hard-link publication is exclusive: even a concurrent new file
-            // cannot be overwritten on the first installation.
-            fs::hard_link(&temporary, &path).map_err(|e| e.to_string())?;
-        } else {
-            fs::rename(&temporary, &path).map_err(|e| e.to_string())?;
+        result?;
+    } else {
+        // Update companions first and SKILL.md last. A crash cannot make the
+        // skill's entry point claim a version whose companions are not present.
+        let mut ordered = files.clone();
+        ordered.sort_by_key(|(path, _)| usize::from(path == "SKILL.md"));
+        for (relative, contents) in &ordered {
+            write_bundle_file(&directory, relative, contents)?;
         }
-        Ok::<_, String>(())
-    })();
-    let _ = fs::remove_file(&temporary);
-    result?;
+        for obsolete_path in obsolete {
+            fs::remove_file(&obsolete_path).map_err(|e| e.to_string())?;
+            if let Some(parent) = obsolete_path.parent()
+                && parent != directory
+            {
+                cleanup_empty_directories(&directory, parent);
+            }
+        }
+    }
+
+    let installed_files = files
+        .iter()
+        .map(|(path, contents)| InstalledFile {
+            path: path.clone(),
+            sha256: file_hash(contents),
+        })
+        .collect::<Vec<_>>();
+    for file in &installed_files {
+        let installed =
+            fs::read_to_string(directory.join(&file.path)).map_err(|e| e.to_string())?;
+        if file_hash(&installed) != file.sha256 {
+            return Err("Installed skill verification failed".into());
+        }
+    }
     Ok(Installation {
         target,
         path: path.to_string_lossy().into(),
-        contents,
+        contents: main_contents,
+        files: installed_files,
         scope: Scope::Global,
         project_id: String::new(),
     })
@@ -415,16 +959,41 @@ pub(crate) fn uninstall(installation: &Installation, id: &str) -> Result<(), Str
         Err(e) => return Err(e.to_string()),
         Ok(_) => {}
     }
-    match fs::symlink_metadata(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(e.to_string()),
-        Ok(_) => {}
+    let files = installation_files(installation);
+    // Preflight the whole bundle before deleting anything.
+    let mut existing = Vec::new();
+    for file in &files {
+        if !valid_relative_path(&file.path) {
+            return Err("Invalid managed skill path".into());
+        }
+        let target = parent.join(&file.path);
+        existing_parents_are_directories(parent, Path::new(&file.path))?;
+        match fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                let contents = fs::read_to_string(&target).map_err(|e| e.to_string())?;
+                if file_hash(&contents) != file.sha256 {
+                    return Err(
+                        "Installed skill was modified outside Dunlin and will not be deleted"
+                            .into(),
+                    );
+                }
+                existing.push(target);
+            }
+            Ok(_) => {
+                return Err("Refusing a symlink or non-regular managed skill file".into());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
     }
-    regular_file(path)?;
-    if fs::read_to_string(path).map_err(|e| e.to_string())? != installation.contents {
-        return Err("Installed skill was modified outside Dunlin and will not be deleted".into());
+    for target in existing {
+        fs::remove_file(&target).map_err(|e| e.to_string())?;
+        if let Some(directory) = target.parent()
+            && directory != parent
+        {
+            cleanup_empty_directories(parent, directory);
+        }
     }
-    fs::remove_file(path).map_err(|e| e.to_string())?;
     let _ = fs::remove_dir(parent); // Non-recursive: keep any supporting/user files.
     Ok(())
 }
@@ -432,8 +1001,8 @@ pub(crate) fn uninstall(installation: &Installation, id: &str) -> Result<(), Str
 #[derive(Default)]
 pub(crate) struct Ui {
     draft: Option<Draft>,
-    busy: bool,
-    message: Option<String>,
+    pub(crate) busy: bool,
+    pub(crate) message: Option<String>,
 }
 struct Draft {
     id: String,
@@ -750,6 +1319,7 @@ impl DunlinApp {
             title: draft.title.read(cx).value().trim().to_string(),
             description: draft.description.read(cx).value().trim().to_string(),
             body: draft.body.read(cx).value().to_string(),
+            files: Vec::new(),
             origin: String::new(),
             source_hash: String::new(),
             installations: Vec::new(),
@@ -761,6 +1331,9 @@ impl DunlinApp {
         }
         if let Some(old) = self.skills.iter_mut().find(|s| s.id == skill.id) {
             skill.installations = old.installations.clone();
+            // The inline editor only edits SKILL.md. Supporting files stay in
+            // the library and in the installed bundle until explicitly removed.
+            skill.files = old.files.clone();
             skill.origin = if old.origin.is_empty() {
                 "Manual".into()
             } else {
@@ -795,7 +1368,7 @@ impl DunlinApp {
         self.install_skill_scoped(id, target, directory, Scope::Global, "", cx);
     }
 
-    fn install_skill_scoped(
+    pub(crate) fn install_skill_scoped(
         &mut self,
         id: &str,
         target: Target,
@@ -935,6 +1508,87 @@ impl DunlinApp {
         .detach();
         cx.notify();
     }
+
+    pub(crate) fn skill_in_library(&self, id: &str) -> bool {
+        self.skills.iter().any(|skill| skill.id == id)
+    }
+
+    pub(crate) fn skill_installed_for(&self, id: &str, target: Target, project_id: &str) -> bool {
+        self.skills.iter().any(|skill| {
+            skill.id == id
+                && skill.installations.iter().any(|installation| {
+                    installation.target == target
+                        && (installation.scope == Scope::Global
+                            || installation.project_id == project_id)
+                })
+        })
+    }
+
+    pub(crate) fn installed_skill_path(
+        &self,
+        id: &str,
+        target: Target,
+        project_id: &str,
+    ) -> Option<String> {
+        self.skills
+            .iter()
+            .find(|skill| skill.id == id)
+            .and_then(|skill| {
+                skill
+                    .installations
+                    .iter()
+                    .find(|installation| {
+                        installation.target == target
+                            && (installation.scope == Scope::Global
+                                || installation.project_id == project_id)
+                    })
+                    .map(|installation| installation.path.clone())
+            })
+    }
+
+    pub(crate) fn add_catalog_skill(&mut self, id: &str, cx: &mut Context<Self>) -> bool {
+        if self.skill_in_library(id) {
+            return true;
+        }
+        let Some(skill) = catalog_skill(id) else {
+            self.skills_ui.message = Some("Unknown catalog skill".into());
+            cx.notify();
+            return false;
+        };
+        if self.skills.len() >= 128 {
+            self.skills_ui.message = Some("The skill library is limited to 128 entries".into());
+            cx.notify();
+            return false;
+        }
+        let title = skill.title.clone();
+        self.skills.push(skill);
+        self.skills_ui.message = Some(format!(
+            "Added “{title}” to the library. Install it for a harness to make it discoverable."
+        ));
+        self.persist_settings(cx);
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn install_catalog_skill(
+        &mut self,
+        id: &str,
+        target: Target,
+        scope: Scope,
+        project_id: &str,
+        directory: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.add_catalog_skill(id, cx) {
+            return;
+        }
+        let project_id = if scope == Scope::Global {
+            ""
+        } else {
+            project_id
+        };
+        self.install_skill_scoped(id, target, directory, scope, project_id, cx);
+    }
 }
 
 fn action(id: String, label: impl Into<SharedString>, p: Palette) -> Stateful<Div> {
@@ -959,7 +1613,7 @@ fn action(id: String, label: impl Into<SharedString>, p: Palette) -> Stateful<Di
 pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let mut body = div().p(px(16.)).flex().flex_col().gap(px(12.))
-        .child(div().text_size(px(11.5)).text_color(p.muted_fg).child("One global instruction library on this Mac. Review instructions before installing: harnesses may execute tools they request. No credentials or harness settings are changed. Only unchanged Dunlin-managed files can be updated or removed."));
+        .child(div().text_size(px(11.5)).text_color(p.muted_fg).child("One global instruction library on this Mac. Skills may be single files or multi-file bundles; every supporting file is hash-checked and installed together. Review instructions before installing: harnesses may execute tools they request. No credentials or harness settings are changed. Only unchanged Dunlin-managed files can be updated or removed."));
     if let Some(message) = &this.skills_ui.message {
         body = body.child(
             div()
@@ -967,6 +1621,110 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .text_color(p.muted_fg)
                 .child(message.clone()),
         );
+    }
+    let available = if this.security_enabled {
+        catalog_metadata()
+            .into_iter()
+            .filter(|skill| !this.skill_in_library(&skill.id))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if !available.is_empty() {
+        body = body.child(
+            div()
+                .text_size(px(10.5))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.muted_fg)
+                .child("Available skills"),
+        );
+        for skill in available {
+            let id = skill.id.clone();
+            let add_id = id.clone();
+            let install_id = id.clone();
+            let target = Target::from_harness(&this.session_harness());
+            let title = skill.title.clone();
+            let description = skill.description.clone();
+            let origin = skill.origin.clone();
+            let files = skill.file_count;
+            body = body.child(
+                div()
+                    .p(px(12.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(p.border)
+                    .bg(p.card)
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(div().flex_1().font_weight(FontWeight::MEDIUM).child(title))
+                            .child(
+                                div()
+                                    .h(px(18.))
+                                    .px(px(6.))
+                                    .rounded(px(4.))
+                                    .bg(p.muted)
+                                    .flex()
+                                    .items_center()
+                                    .text_size(px(9.5))
+                                    .text_color(p.muted_fg)
+                                    .child("Recommended"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(p.muted_fg)
+                            .child(description),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(p.muted_fg)
+                            .child(format!(
+                                "{files} files · {origin} · installed as one bundle, including companion playbooks, schema and validators"
+                            )),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(6.))
+                            .child(
+                                action(format!("add-catalog:{add_id}"), "Add to library", p).on_click(
+                                    cx.listener(move |this, _, _, cx| {
+                                        let _ = this.add_catalog_skill(&add_id, cx);
+                                    }),
+                                ),
+                            )
+                            .when(target != Target::Other, |buttons| {
+                                buttons.child(
+                                    action(
+                                        format!("install-catalog:{install_id}:{target:?}"),
+                                        format!("Install for {}", target.label()),
+                                        p,
+                                    )
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        let project_id = this.project().id.clone();
+                                        this.install_catalog_skill(
+                                            &install_id,
+                                            target,
+                                            Scope::Global,
+                                            &project_id,
+                                            None,
+                                            cx,
+                                        );
+                                    })),
+                                )
+                            }),
+                    ),
+            );
+        }
     }
     if let Some(draft) = &this.skills_ui.draft {
         return body
@@ -1045,7 +1803,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .text_size(px(10.5))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(p.muted_fg)
-                    .child("GitHub skill"),
+                    .child("GitHub skill (SKILL.md only)"),
             )
             .child(
                 div()
@@ -1080,6 +1838,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     ),
             ),
     );
+    body = body.child(
+        div()
+            .text_size(px(10.5))
+            .text_color(p.muted_fg)
+            .child("GitHub links fetch only SKILL.md. To import a multi-file bundle, download the folder and use Import folder…; the catalog bundles are embedded and install all companion files."),
+    );
     if !this.skills.iter().any(|s| s.id == COMMIT_SKILL) {
         body = body.child(
             action(
@@ -1099,6 +1863,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     for skill in &this.skills {
         let id = skill.id.clone();
         let remove = id.clone();
+        let bundle_size = format!("{:.1} KiB", skill.bundle_size() as f32 / 1024.0);
         let mut card = div().p(px(12.)).rounded(px(8.)).bg(p.card).flex().flex_col().gap(px(8.))
             .child(div().flex().items_center().gap(px(6.)).child(div().flex_1().font_weight(FontWeight::MEDIUM).child(skill.title.clone()))
                 .child(action(format!("edit-skill:{id}"), "Edit", p).on_click(cx.listener(move |this, _, window, cx| this.edit_skill(Some(&id), window, cx))))
@@ -1108,7 +1873,17 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     let answer = this.overlay_backdrop.track_native(answer, cx);
                     cx.spawn(async move |this, cx| { if answer.await == Ok(1) { let _ = this.update(cx, |this, cx| this.remove_skill_installations(&id, None, true, cx)); } }).detach();
                 }))))
-            .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(skill.description.clone()));
+            .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(skill.description.clone()))
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .child(format!(
+                        "{} file(s) · {} · supporting files are installed together and are not editable here",
+                        skill.files.len() + 1,
+                        bundle_size
+                    )),
+            );
         let mut targets = div().flex().flex_wrap().gap(px(6.));
         for target in Target::ALL {
             let id = skill.id.clone();
@@ -1118,12 +1893,11 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .iter()
                 .filter(|i| i.target == target && i.scope == Scope::Global)
                 .collect::<Vec<_>>();
-            let current = skill.rendered().ok();
             let state = if installed.is_empty() {
                 "Install"
             } else if installed
                 .iter()
-                .all(|i| Some(&i.contents) == current.as_ref())
+                .all(|installation| installation_matches(skill, installation))
             {
                 "Installed"
             } else {
@@ -1288,7 +2062,10 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 
 #[cfg(test)]
 mod tests {
-    use super::{Scope, Target, defaults, discover, install_at, install_at_scoped, uninstall};
+    use super::{
+        InstalledFile, SECURITY_AUDIT_SKILL, SPEC_KIT_SKILL, Scope, SkillFile, Target,
+        catalog_skill, defaults, discover, install_at, install_at_scoped, uninstall,
+    };
     use std::{fs, path::PathBuf};
     struct Temp(PathBuf);
     impl Temp {
@@ -1302,6 +2079,14 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    #[test]
+    fn harness_names_map_to_the_correct_skill_target() {
+        assert_eq!(Target::from_harness("OpenCode"), Target::OpenCode);
+        assert_eq!(Target::from_harness("Claude Code"), Target::Claude);
+        assert_eq!(Target::from_harness("Codex"), Target::Codex);
+        assert_eq!(Target::from_harness("OpenAI Codex"), Target::Codex);
+        assert_eq!(Target::from_harness("Cursor"), Target::Other);
     }
     #[test]
     fn portable_frontmatter_is_bounded_and_description_cannot_inject_fields() {
@@ -1492,5 +2277,171 @@ mod tests {
         assert!(
             super::github_skill_urls("https://github.com/owner/repo/blob/main/README.md").is_err()
         );
+    }
+    #[test]
+    fn multi_file_bundles_install_update_and_preserve_ownership_checks() {
+        let temp = Temp::new();
+        let mut skill = defaults().remove(0);
+        skill.files = vec![
+            SkillFile {
+                path: "references/guide.md".into(),
+                contents: "original guide".into(),
+            },
+            SkillFile {
+                path: "scripts/check.sh".into(),
+                contents: "#!/bin/sh\necho ok\n".into(),
+            },
+        ];
+        let installed = install_at(&temp.0, &skill, Target::OpenCode).unwrap();
+        assert_eq!(installed.files.len(), 3);
+        let root = PathBuf::from(&installed.path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        assert_eq!(
+            fs::read_to_string(root.join("references/guide.md")).unwrap(),
+            "original guide"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("scripts/check.sh")).unwrap(),
+            "#!/bin/sh\necho ok\n"
+        );
+        skill.installations.push(installed.clone());
+        skill.files[0].contents = "updated guide".into();
+        let updated = install_at(&temp.0, &skill, Target::OpenCode).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("references/guide.md")).unwrap(),
+            "updated guide"
+        );
+        // An interrupted update that already wrote the new bytes is tolerated.
+        install_at(&temp.0, &skill, Target::OpenCode).unwrap();
+        skill.installations = vec![updated];
+        fs::write(root.join("scripts/check.sh"), "externally changed").unwrap();
+        assert!(install_at(&temp.0, &skill, Target::OpenCode).is_err());
+        assert!(uninstall(&skill.installations[0], &skill.id).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("scripts/check.sh")).unwrap(),
+            "externally changed"
+        );
+    }
+    #[test]
+    fn recorded_supporting_paths_cannot_escape_the_skill_directory() {
+        let temp = Temp::new();
+        let skill = defaults().remove(0);
+        let mut installation = install_at(&temp.0, &skill, Target::OpenCode).unwrap();
+        installation.files.push(InstalledFile {
+            path: "../escape".into(),
+            sha256: "0".repeat(64),
+        });
+        let mut tampered = skill.clone();
+        tampered.installations.push(installation.clone());
+        assert!(install_at(&temp.0, &tampered, Target::OpenCode).is_err());
+        assert!(uninstall(&installation, &skill.id).is_err());
+    }
+    #[test]
+    fn bundle_file_paths_are_bounded_and_cannot_escape_the_skill_directory() {
+        let mut skill = defaults().remove(0);
+        for path in ["../escape.md", "/absolute.md", "a/../../b.md", "a\\b.md"] {
+            skill.files = vec![SkillFile {
+                path: path.into(),
+                contents: "x".into(),
+            }];
+            assert!(skill.rendered_files().is_err(), "{path} must be rejected");
+        }
+        skill.files = vec![SkillFile {
+            path: "a.md".into(),
+            contents: "x".repeat(256 * 1024 + 1),
+        }];
+        assert!(skill.rendered_files().is_err());
+        skill.files = vec![SkillFile {
+            path: "a.md".into(),
+            contents: "x".into(),
+        }];
+        assert!(skill.rendered_files().is_ok());
+        assert_eq!(skill.rendered_files().unwrap().len(), 2);
+    }
+    #[test]
+    fn bundled_cloudflare_security_audit_installs_every_companion() {
+        let skill = catalog_skill(SECURITY_AUDIT_SKILL).unwrap();
+        assert_eq!(skill.id, SECURITY_AUDIT_SKILL);
+        assert!(skill.files.len() >= 20);
+        let temp = Temp::new();
+        let installed = install_at(&temp.0, &skill, Target::Codex).unwrap();
+        let installed_path = PathBuf::from(&installed.path);
+        let root = installed_path.parent().unwrap();
+        assert!(root.join("SKILL.md").is_file());
+        assert!(root.join("HUNTING.md").is_file());
+        assert!(root.join("validate-findings.cjs").is_file());
+        assert!(root.join("LICENSE").is_file());
+        assert!(installed.files.len() == skill.files.len() + 1);
+    }
+    #[test]
+    fn bundled_spec_kit_skill_is_reviewable_and_installable() {
+        let skill = catalog_skill(SPEC_KIT_SKILL).unwrap();
+        assert_eq!(skill.id, SPEC_KIT_SKILL);
+        assert!(skill.body.to_lowercase().contains("reviewer-owned"));
+        assert!(skill.body.contains("converge"));
+        let temp = Temp::new();
+        let installed = install_at(&temp.0, &skill, Target::Claude).unwrap();
+        assert!(PathBuf::from(&installed.path).is_file());
+    }
+
+    #[test]
+    fn catalog_update_adds_companions_to_an_older_single_file_install() {
+        let temp = Temp::new();
+        let mut catalog = catalog_skill(SECURITY_AUDIT_SKILL).unwrap();
+        let mut single_file = catalog.clone();
+        single_file.files.clear();
+        let installed = install_at(&temp.0, &single_file, Target::OpenCode).unwrap();
+        catalog.installations.push(installed);
+        let updated = install_at(&temp.0, &catalog, Target::OpenCode).unwrap();
+        assert_eq!(updated.files.len(), catalog.files.len() + 1);
+        let root = PathBuf::from(&updated.path).parent().unwrap().to_path_buf();
+        assert!(root.join("HUNTING.md").is_file());
+    }
+    #[test]
+    fn discovery_reads_supporting_files_but_never_symlinks() {
+        let temp = Temp::new();
+        let skill_dir = temp.0.join("security-audit");
+        fs::create_dir_all(skill_dir.join("references")).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: security-audit\ndescription: Audit\n---\n\nBody\n",
+        )
+        .unwrap();
+        fs::write(skill_dir.join("references/guide.md"), "guide").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            skill_dir.join("references/guide.md"),
+            skill_dir.join("references/link.md"),
+        )
+        .unwrap();
+        let found = discover(&skill_dir).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].files.len(), 1);
+        assert_eq!(found[0].files[0].path, "references/guide.md");
+    }
+    #[test]
+    fn removing_a_supporting_file_updates_the_owned_bundle_without_touching_user_files() {
+        let temp = Temp::new();
+        let mut skill = defaults().remove(0);
+        skill.files = vec![SkillFile {
+            path: "references/old.md".into(),
+            contents: "old".into(),
+        }];
+        let installed = install_at(&temp.0, &skill, Target::Claude).unwrap();
+        let root = PathBuf::from(&installed.path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        fs::write(root.join("keep.txt"), "user").unwrap();
+        skill.installations.push(installed);
+        skill.files.clear();
+        install_at(&temp.0, &skill, Target::Claude).unwrap();
+        assert!(!root.join("references/old.md").exists());
+        assert_eq!(fs::read_to_string(root.join("keep.txt")).unwrap(), "user");
+        uninstall(&skill.installations[0], &skill.id).unwrap();
+        assert!(!root.join("SKILL.md").exists());
+        assert!(root.join("keep.txt").exists());
     }
 }

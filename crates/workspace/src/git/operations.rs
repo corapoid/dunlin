@@ -38,6 +38,13 @@ pub enum Action {
         name: String,
         revision: String,
     },
+    /// One isolated branch/worktree per agent subtask. Unlike comparison trees
+    /// this creates a named local branch so a completed subtask can be reviewed
+    /// and merged explicitly; nothing is merged or pushed automatically.
+    SubtaskAdd {
+        name: String,
+        revision: String,
+    },
     WorktreeRemove {
         path: String,
     },
@@ -67,6 +74,7 @@ impl Action {
             Self::StashPop { .. } => "Pop stash (drop only after success)",
             Self::StashDrop { .. } => "Drop stash",
             Self::WorktreeAdd { .. } => "Add detached worktree",
+            Self::SubtaskAdd { .. } => "Add subtask worktree",
             Self::WorktreeRemove { .. } => "Remove clean worktree",
             Self::WorktreePrune => "Prune stale worktree metadata",
             Self::Merge { .. } => "Merge",
@@ -146,6 +154,24 @@ pub(crate) fn oid(value: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
 }
+/// Safe deterministic branch name for one subtask worktree.
+pub fn subtask_branch(name: &str) -> String {
+    format!("dunlin/subtask/{name}")
+}
+
+/// Shared validation for `WorktreeAdd` and `SubtaskAdd`.
+fn worktree_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.len() > 80
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    {
+        return Err("Use a simple worktree name (letters, digits, - or _)".into());
+    }
+    Ok(())
+}
+
 fn commit(root: &str, revision: &str) -> Result<String, String> {
     if revision.is_empty()
         || revision.len() > 512
@@ -583,6 +609,7 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
         action,
         Action::StashDrop { .. }
             | Action::WorktreeAdd { .. }
+            | Action::SubtaskAdd { .. }
             | Action::WorktreeRemove { .. }
             | Action::WorktreePrune
     ) {
@@ -612,24 +639,39 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
         Action::StashDrop { oid } => {
             selected_stash(&inventory, oid)?;
         }
-        Action::WorktreeAdd { name, revision } => {
-            if name.is_empty()
-                || name.len() > 80
-                || !name
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-            {
-                return Err("Use a simple worktree name (letters, digits, - or _)".into());
-            }
+        Action::WorktreeAdd { name, revision } | Action::SubtaskAdd { name, revision } => {
+            worktree_name(name)?;
             target = Some(commit(&root, revision)?);
             let base = Path::new(&common).join("dunlin-worktrees");
             if fs::symlink_metadata(&base).is_ok_and(|m| !m.is_dir() || m.file_type().is_symlink())
             {
                 return Err("Managed worktree directory is unsafe".into());
             }
-            let destination = base.join(name);
+            let directory = if matches!(action, Action::SubtaskAdd { .. }) {
+                format!("subtask-{name}")
+            } else {
+                name.clone()
+            };
+            let destination = base.join(directory);
             if fs::symlink_metadata(&destination).is_ok() {
                 return Err("Worktree destination already exists".into());
+            }
+            if matches!(action, Action::SubtaskAdd { .. }) {
+                let branch = subtask_branch(name);
+                if branch.len() > 200
+                    || read(
+                        &root,
+                        &[
+                            "show-ref",
+                            "--verify",
+                            "--quiet",
+                            &format!("refs/heads/{branch}"),
+                        ],
+                    )
+                    .is_ok()
+                {
+                    return Err("A subtask branch with this name already exists".into());
+                }
             }
             worktree_target = Some(destination.to_str().ok_or("Invalid worktree path")?.into());
         }
@@ -686,7 +728,7 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
         let (tree, _) = snapshot(path, &other)?;
         fingerprint = format!("{fingerprint}:{tree}");
     }
-    let warning=match action {Action::Abort{..}=>"Native abort may discard ALL staged/unstaged tracked edits made since this operation started, including unrelated edits and conflict resolutions. Back them up explicitly first. No automatic backup or stash is created.",Action::StashDrop{..}=>"Permanently removes the selected stash reference. There is no application Undo.",Action::WorktreeRemove{..}=>"Removes the selected clean worktree directory. Unsaved buffers in it must be closed first.",Action::Rebase{..}=>"Rewrites local commits. No fetch, auto-stash or force push is performed.",_=>"No force, reset, automatic stash, fetch or push is performed."}.to_string();
+    let warning=match action {Action::Abort{..}=>"Native abort may discard ALL staged/unstaged tracked edits made since this operation started, including unrelated edits and conflict resolutions. Back them up explicitly first. No automatic backup or stash is created.",Action::StashDrop{..}=>"Permanently removes the selected stash reference. There is no application Undo.",Action::WorktreeRemove{..}=>"Removes the selected clean worktree directory. Unsaved buffers in it must be closed first.",Action::SubtaskAdd{..}=>"Creates one local branch and one worktree from the selected commit. It never starts an agent, merges, pushes or deletes anything. The worktree is not a security sandbox.",Action::Rebase{..}=>"Rewrites local commits. No fetch, auto-stash or force push is performed.",_=>"No force, reset, automatic stash, fetch or push is performed."}.to_string();
     repository_root(path, Some(&root))?;
     Ok(Plan {
         root,
@@ -879,7 +921,7 @@ pub fn execute(path: &str, plan: &Plan) -> Result<Outcome, String> {
                 &selected_stash(&fresh.overview, oid)?.selector,
             ],
         )?,
-        Action::WorktreeAdd { .. } => {
+        Action::WorktreeAdd { .. } | Action::SubtaskAdd { .. } => {
             let destination = plan
                 .worktree_target
                 .as_deref()
@@ -890,10 +932,25 @@ pub fn execute(path: &str, plan: &Plan) -> Result<Outcome, String> {
                     .ok_or("Invalid worktree directory")?,
             )
             .map_err(|_| "Cannot create managed worktree directory")?;
-            run(
-                root,
-                &["worktree", "add", "--detach", "--", destination, target],
-            )?
+            if let Action::SubtaskAdd { name, .. } = &plan.action {
+                run(
+                    root,
+                    &[
+                        "worktree",
+                        "add",
+                        "-b",
+                        &subtask_branch(name),
+                        "--",
+                        destination,
+                        target,
+                    ],
+                )?
+            } else {
+                run(
+                    root,
+                    &["worktree", "add", "--detach", "--", destination, target],
+                )?
+            }
         }
         Action::WorktreeRemove { .. } => run(
             root,

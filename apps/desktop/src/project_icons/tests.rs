@@ -219,6 +219,7 @@ fn cached_icons_and_background_results_are_scoped_to_the_current_trusted_local_r
         pinned: false,
         trusted: true,
         running_sessions: 0,
+        kind: Default::default(),
         remote: None,
         group_id: None,
         settings: Default::default(),

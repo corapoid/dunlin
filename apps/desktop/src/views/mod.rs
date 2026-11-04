@@ -1,6 +1,7 @@
 pub(crate) mod chat;
 pub(crate) mod chat_controls;
 pub(crate) mod graph;
+pub(crate) mod host_control;
 pub(crate) mod palette;
 pub(crate) mod settings;
 pub(crate) mod sidebar;

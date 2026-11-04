@@ -32,6 +32,54 @@ pub enum CostSource {
     Unpriced,
 }
 
+/// How a provider log record relates to visible user work.
+///
+/// The default is deliberately `Unknown`: an unrecognized record is never
+/// silently attributed to the top-level conversation or priced as zero.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkKind {
+    Main,
+    Subagent,
+    /// Provider/harness bookkeeping such as compaction or synthetic messages.
+    Internal,
+    #[default]
+    Unknown,
+}
+
+impl WorkKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            WorkKind::Main => "Main conversation",
+            WorkKind::Subagent => "Subagents",
+            WorkKind::Internal => "Internal / synthetic",
+            WorkKind::Unknown => "Unknown attribution",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Attribution {
+    pub kind: WorkKind,
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub task: Option<String>,
+}
+
+impl Attribution {
+    fn new(kind: WorkKind) -> Self {
+        Self {
+            kind,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct BillingEvent {
     pub key: String,
@@ -49,6 +97,8 @@ pub struct BillingEvent {
     pub cache_write_tokens: u64,
     pub cost_usd: Option<f64>,
     pub cost_source: CostSource,
+    #[serde(default)]
+    pub attribution: Attribution,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -199,6 +249,52 @@ fn project_of(value: &serde_json::Value) -> Option<String> {
         .or_else(|| string(value.get("project")))
 }
 
+fn truthy(value: Option<&serde_json::Value>) -> bool {
+    value.is_some_and(|value| {
+        value.as_bool() == Some(true)
+            || value.as_u64().is_some_and(|number| number != 0)
+            || value
+                .as_str()
+                .is_some_and(|text| matches!(text, "true" | "1" | "yes"))
+    })
+}
+
+fn first_string(value: &serde_json::Value, paths: &[&str]) -> Option<String> {
+    paths.iter().find_map(|path| string(value.pointer(path)))
+}
+
+fn contains_word(value: Option<&serde_json::Value>, word: &str) -> bool {
+    match value {
+        Some(serde_json::Value::String(text)) => text.to_ascii_lowercase().contains(word),
+        Some(serde_json::Value::Object(map)) => map.iter().any(|(key, value)| {
+            key.to_ascii_lowercase().contains(word) || contains_word(Some(value), word)
+        }),
+        Some(serde_json::Value::Array(values)) => {
+            values.iter().any(|value| contains_word(Some(value), word))
+        }
+        _ => false,
+    }
+}
+
+fn claude_attribution(value: &serde_json::Value, model: &str) -> Attribution {
+    let mut attribution = Attribution::new(WorkKind::Unknown);
+    attribution.session = first_string(value, &["/sessionId", "/session_id"]);
+    attribution.parent = first_string(value, &["/parentSessionId", "/parent_session_id"]);
+    attribution.agent = first_string(value, &["/agentId", "/agent_id"]);
+    if attribution.session.is_some() {
+        attribution.kind = WorkKind::Main;
+    }
+    if truthy(value.get("isSidechain")) || attribution.agent.is_some() {
+        attribution.kind = WorkKind::Subagent;
+    } else if model == "<synthetic>"
+        || truthy(value.get("isCompactSummary"))
+        || truthy(value.get("isApiErrorMessage"))
+    {
+        attribution.kind = WorkKind::Internal;
+    }
+    attribution
+}
+
 fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
     if value.get("type").and_then(serde_json::Value::as_str) != Some("assistant") {
         return None;
@@ -236,6 +332,7 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
         cache_read_tokens,
         cache_write_tokens,
     );
+    let attribution = claude_attribution(value, &model);
     Some(BillingEvent {
         key: format!("claude:{key}"),
         at_ms,
@@ -254,6 +351,7 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
         } else {
             CostSource::Unpriced
         },
+        attribution,
     })
 }
 
@@ -262,6 +360,7 @@ struct CodexState {
     model: String,
     project: Option<String>,
     last_total: Option<(u64, u64, u64, u64)>,
+    attribution: Attribution,
 }
 
 fn codex_usage(info: &serde_json::Value, state: &mut CodexState) -> Option<(u64, u64, u64, u64)> {
@@ -308,6 +407,41 @@ fn codex_event(
         if let Some(project) = project_of(value) {
             state.project = Some(project);
         }
+        if kind == Some("session_meta") {
+            let session =
+                first_string(payload, &["/id", "/session_id", "/sessionId", "/thread_id"]);
+            let parent = first_string(
+                payload,
+                &[
+                    "/parent_thread_id",
+                    "/parent_id",
+                    "/parent_session_id",
+                    "/forked_from_id",
+                ],
+            );
+            let agent = first_string(payload, &["/agent", "/agent_id", "/subagent"]);
+            let subagent = parent.is_some()
+                || agent.is_some()
+                || contains_word(payload.get("source"), "subagent")
+                || contains_word(payload.get("originator"), "subagent");
+            let internal = contains_word(payload.get("source"), "internal")
+                || contains_word(payload.get("originator"), "internal");
+            state.attribution = Attribution {
+                kind: if subagent {
+                    WorkKind::Subagent
+                } else if internal {
+                    WorkKind::Internal
+                } else if session.is_some() {
+                    WorkKind::Main
+                } else {
+                    WorkKind::Unknown
+                },
+                session,
+                parent,
+                agent,
+                task: first_string(payload, &["/task", "/title"]),
+            };
+        }
         return None;
     }
     let payload = value.get("payload").unwrap_or(value);
@@ -333,6 +467,11 @@ fn codex_event(
         state.model.clone()
     };
     let cost = priced_cost(&model, input, output, cache_read, 0);
+    let attribution = if state.attribution.kind == WorkKind::Unknown {
+        Attribution::new(WorkKind::Unknown)
+    } else {
+        state.attribution.clone()
+    };
     Some(BillingEvent {
         key: format!("codex:{}:{line}", path.display()),
         at_ms,
@@ -351,6 +490,7 @@ fn codex_event(
         } else {
             CostSource::Unpriced
         },
+        attribution,
     })
 }
 
@@ -370,10 +510,23 @@ pub struct Checkpoint {
     pub last_scan_ms: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SourceFile {
+    pub path: String,
+    pub provider: String,
+    pub bytes: u64,
+    pub mtime_ms: u64,
+    pub offset: u64,
+    pub events: u64,
+    /// `scanned`, `cached`, `skipped` or `error`.
+    pub state: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ScanReport {
     pub events: Vec<BillingEvent>,
     pub checkpoint: Checkpoint,
+    pub sources: Vec<SourceFile>,
     pub warnings: Vec<String>,
     pub files: usize,
     pub bytes: u64,
@@ -425,6 +578,7 @@ fn files(root: &Path, extension: &str, out: &mut Vec<PathBuf>, depth: usize) {
 }
 
 fn scan_jsonl(
+    provider: &str,
     paths: Vec<PathBuf>,
     checkpoint: &mut Checkpoint,
     report: &mut ScanReport,
@@ -455,7 +609,18 @@ fn scan_jsonl(
         let previous = checkpoint.files.get(&key).cloned().unwrap_or_default();
         let size = metadata.len();
         let modified = mtime_ms(&metadata);
+        let mut source = SourceFile {
+            path: key.clone(),
+            provider: provider.into(),
+            bytes: size,
+            mtime_ms: modified,
+            offset: previous.offset,
+            events: 0,
+            state: "scanned".into(),
+        };
         if previous.size == size && previous.mtime_ms == modified {
+            source.state = "cached".into();
+            report.sources.push(source);
             continue;
         }
         let mut offset = if previous.offset <= size {
@@ -464,6 +629,9 @@ fn scan_jsonl(
             0
         };
         let Ok(mut file) = fs::File::open(&path) else {
+            source.state = "error".into();
+            report.sources.push(source);
+            report.warn(format!("Could not read {provider} log {key}"));
             continue;
         };
         if file.seek(SeekFrom::Start(offset)).is_err() {
@@ -503,8 +671,10 @@ fn scan_jsonl(
             }
             if checkpoint.seen.insert(event.key.clone()) && report.events.len() < MAX_EVENTS {
                 report.events.push(event);
+                source.events += 1;
             }
         }
+        source.offset = offset;
         checkpoint.files.insert(
             key,
             FileCheckpoint {
@@ -513,6 +683,7 @@ fn scan_jsonl(
                 mtime_ms: modified,
             },
         );
+        report.sources.push(source);
     }
 }
 
@@ -530,44 +701,67 @@ pub fn scan_claude(root: &Path) -> Vec<BillingEvent> {
 
 /// Bounded incremental Claude scan. Reuses complete-line offsets, never reads a
 /// partial final line and dedupes provider message ids across files.
-pub fn scan_claude_incremental(root: &Path, checkpoint: &mut Checkpoint) -> Vec<BillingEvent> {
+pub fn scan_claude_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport {
     let mut report = ScanReport::default();
     let paths = claude_paths(root);
-    scan_jsonl(paths, checkpoint, &mut report, |value, _, _, _| {
-        claude_event(value)
-    });
+    scan_jsonl(
+        "Claude Code",
+        paths,
+        checkpoint,
+        &mut report,
+        |value, _, _, _| claude_event(value),
+    );
     checkpoint.last_scan_ms = now_ms();
-    let mut events = report.events;
-    events.sort_by_key(|event| event.at_ms);
-    events
+    report.events.sort_by_key(|event| event.at_ms);
+    report
+}
+
+pub fn scan_claude_incremental(root: &Path, checkpoint: &mut Checkpoint) -> Vec<BillingEvent> {
+    scan_claude_report(root, checkpoint).events
 }
 
 /// Scan Codex rollout JSONL logs. `token_count` records are read as per-turn
 /// deltas when available; cumulative counters are differenced per file.
-pub fn scan_codex_incremental(root: &Path, checkpoint: &mut Checkpoint) -> Vec<BillingEvent> {
+pub fn scan_codex_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport {
     let mut report = ScanReport::default();
     let mut paths = Vec::new();
     files(root, "jsonl", &mut paths, 0);
     let mut state = CodexState::default();
     let mut current_file = PathBuf::new();
-    scan_jsonl(paths, checkpoint, &mut report, |value, path, line, _| {
-        if path != current_file {
-            state = CodexState::default();
-            current_file = path.to_path_buf();
-        }
-        codex_event(value, path, line, &mut state)
-    });
+    scan_jsonl(
+        "OpenAI Codex",
+        paths,
+        checkpoint,
+        &mut report,
+        |value, path, line, _| {
+            if path != current_file {
+                state = CodexState::default();
+                current_file = path.to_path_buf();
+            }
+            codex_event(value, path, line, &mut state)
+        },
+    );
     checkpoint.last_scan_ms = now_ms();
-    let mut events = report.events;
-    events.sort_by_key(|event| event.at_ms);
-    events
+    report.events.sort_by_key(|event| event.at_ms);
+    report
+}
+
+pub fn scan_codex_incremental(root: &Path, checkpoint: &mut Checkpoint) -> Vec<BillingEvent> {
+    scan_codex_report(root, checkpoint).events
 }
 
 pub fn scan_codex(root: &Path) -> Vec<BillingEvent> {
     scan_codex_incremental(root, &mut Checkpoint::default())
 }
 
-fn session_projects(connection: &Connection) -> BTreeMap<String, String> {
+#[derive(Clone, Debug, Default)]
+struct OpenCodeSession {
+    project: Option<String>,
+    parent: Option<String>,
+    title: Option<String>,
+}
+
+fn session_projects(connection: &Connection) -> BTreeMap<String, OpenCodeSession> {
     let mut result = BTreeMap::new();
     let Ok(mut statement) = connection.prepare("SELECT id, data FROM session") else {
         return result;
@@ -578,12 +772,17 @@ fn session_projects(connection: &Connection) -> BTreeMap<String, String> {
         return result;
     };
     for row in rows.flatten() {
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&row.1)
-            && let Some(path) = string(value.get("directory"))
-                .or_else(|| string(value.get("path")))
-                .or_else(|| string(value.pointer("/project/path")))
-        {
-            result.insert(row.0, path);
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&row.1) {
+            result.insert(
+                row.0,
+                OpenCodeSession {
+                    project: string(value.get("directory"))
+                        .or_else(|| string(value.get("path")))
+                        .or_else(|| string(value.pointer("/project/path"))),
+                    parent: first_string(&value, &["/parentID", "/parent_id", "/parentId"]),
+                    title: string(value.get("title")),
+                },
+            );
         }
     }
     result
@@ -593,7 +792,7 @@ fn opencode_event(
     id: &str,
     data: &serde_json::Value,
     at_fallback: u64,
-    projects: &BTreeMap<String, String>,
+    projects: &BTreeMap<String, OpenCodeSession>,
 ) -> Option<BillingEvent> {
     if data.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
         return None;
@@ -618,15 +817,29 @@ fn opencode_event(
     let at_ms = timestamp_value(data.pointer("/time/created"))
         .or_else(|| timestamp_value(data.get("created")))
         .unwrap_or(at_fallback);
+    let session = data
+        .get("sessionID")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let session_info = session.as_deref().and_then(|session| projects.get(session));
     let project = string(data.get("directory"))
         .or_else(|| string(data.get("path")))
-        .or_else(|| {
-            data.get("sessionID")
-                .and_then(serde_json::Value::as_str)
-                .and_then(|session| projects.get(session).cloned())
-        });
+        .or_else(|| session_info.and_then(|session| session.project.clone()));
     let recorded = float(data.get("cost"));
     let cost = recorded.or_else(|| priced_cost(&model, input, output, cache_read, cache_write));
+    let mut attribution = Attribution::new(if session.is_some() {
+        WorkKind::Main
+    } else {
+        WorkKind::Unknown
+    });
+    attribution.session = session;
+    if let Some(session_info) = session_info {
+        attribution.parent = session_info.parent.clone();
+        attribution.task = session_info.title.clone();
+        if session_info.parent.is_some() {
+            attribution.kind = WorkKind::Subagent;
+        }
+    }
     Some(BillingEvent {
         key: format!("opencode:{id}"),
         at_ms,
@@ -647,6 +860,7 @@ fn opencode_event(
         } else {
             CostSource::Unpriced
         },
+        attribution,
     })
 }
 
@@ -740,6 +954,20 @@ pub struct Totals {
     pub priced_cost_usd: f64,
     pub unpriced_events: u64,
     pub recorded_cost_events: u64,
+    #[serde(default)]
+    pub main_events: u64,
+    #[serde(default)]
+    pub subagent_events: u64,
+    #[serde(default)]
+    pub internal_events: u64,
+    #[serde(default)]
+    pub unknown_attribution_events: u64,
+    #[serde(default)]
+    pub subagent_cost_usd: f64,
+    #[serde(default)]
+    pub internal_cost_usd: f64,
+    #[serde(default)]
+    pub unknown_attribution_cost_usd: f64,
 }
 
 impl Totals {
@@ -750,9 +978,21 @@ impl Totals {
         self.reasoning_tokens += event.reasoning_tokens;
         self.cache_read_tokens += event.cache_read_tokens;
         self.cache_write_tokens += event.cache_write_tokens;
+        match event.attribution.kind {
+            WorkKind::Main => self.main_events += 1,
+            WorkKind::Subagent => self.subagent_events += 1,
+            WorkKind::Internal => self.internal_events += 1,
+            WorkKind::Unknown => self.unknown_attribution_events += 1,
+        }
         match event.cost_usd {
             Some(cost) => {
                 self.priced_cost_usd += cost;
+                match event.attribution.kind {
+                    WorkKind::Subagent => self.subagent_cost_usd += cost,
+                    WorkKind::Internal => self.internal_cost_usd += cost,
+                    WorkKind::Unknown => self.unknown_attribution_cost_usd += cost,
+                    WorkKind::Main => {}
+                }
                 if event.cost_source == CostSource::Recorded {
                     self.recorded_cost_events += 1;
                 }
@@ -826,7 +1066,13 @@ pub struct Summary {
     pub by_harness: Vec<Slice>,
     pub by_model: Vec<Slice>,
     pub by_project: Vec<Slice>,
+    #[serde(default)]
+    pub by_attribution: Vec<Slice>,
     pub by_day: Vec<Day>,
+    #[serde(default)]
+    pub sources: Vec<SourceFile>,
+    #[serde(default)]
+    pub last_scan_ms: u64,
     pub unpriced_models: Vec<String>,
     pub warnings: Vec<String>,
     pub files: usize,
@@ -861,6 +1107,7 @@ pub fn summarize(report: ScanReport) -> Summary {
     let mut by_harness = BTreeMap::new();
     let mut by_model = BTreeMap::new();
     let mut by_project = BTreeMap::new();
+    let mut by_attribution = BTreeMap::new();
     let mut by_day = BTreeMap::new();
     let mut unpriced = BTreeSet::new();
     for event in &report.events {
@@ -869,6 +1116,11 @@ pub fn summarize(report: ScanReport) -> Summary {
         push_slice(&mut by_harness, Some(&event.harness), event);
         push_slice(&mut by_model, Some(&event.model), event);
         push_slice(&mut by_project, event.project.as_deref(), event);
+        push_slice(
+            &mut by_attribution,
+            Some(event.attribution.kind.label()),
+            event,
+        );
         if event.cost_usd.is_none() {
             unpriced.insert(event.model.clone());
         }
@@ -894,7 +1146,10 @@ pub fn summarize(report: ScanReport) -> Summary {
         by_harness: slices(by_harness),
         by_model: slices(by_model),
         by_project: slices(by_project),
+        by_attribution: slices(by_attribution),
         by_day,
+        sources: report.sources,
+        last_scan_ms: report.checkpoint.last_scan_ms,
         unpriced_models: unpriced.into_iter().collect(),
         warnings: report.warnings,
         files: report.files,
@@ -938,6 +1193,15 @@ impl Summary {
                 ),
             });
         }
+        if self.totals.unknown_attribution_events > 0 {
+            alerts.push(Alert {
+                level: AlertLevel::Warning,
+                message: format!(
+                    "{} events have no reliable main/subagent attribution. They are reported separately and are not assumed to be main work.",
+                    self.totals.unknown_attribution_events
+                ),
+            });
+        }
         if self.truncated {
             alerts.push(Alert {
                 level: AlertLevel::Warning,
@@ -974,46 +1238,206 @@ impl Summary {
     }
 }
 
+impl Summary {
+    /// Copyable manual-QA evidence. It contains aggregate counts, file paths and
+    /// warnings only; never prompts, responses, environment values or secrets.
+    pub fn qa_report(&self) -> String {
+        let generated = chrono::DateTime::from_timestamp_millis(self.generated_ms as i64)
+            .map(|at| at.to_rfc3339())
+            .unwrap_or_else(|| "unknown".into());
+        let mut out = String::new();
+        out.push_str("# Billing evidence QA report\n");
+        out.push_str(&format!("Generated: {generated}\n"));
+        out.push_str(&format!(
+            "Totals: {} events, {} priced cost, {} unpriced, {} files, {} bytes, truncated={}\n",
+            self.totals.events,
+            self.totals.cost_label(),
+            self.totals.unpriced_events,
+            self.files,
+            self.bytes,
+            self.truncated
+        ));
+        out.push_str(&format!(
+            "Attribution: {} main, {} subagent, {} internal, {} unknown\n",
+            self.totals.main_events,
+            self.totals.subagent_events,
+            self.totals.internal_events,
+            self.totals.unknown_attribution_events
+        ));
+        out.push_str(&format!(
+            "Known attributed cost: subagents ${:.4}, internal ${:.4}, unknown ${:.4}\n",
+            self.totals.subagent_cost_usd,
+            self.totals.internal_cost_usd,
+            self.totals.unknown_attribution_cost_usd
+        ));
+        out.push_str("\n## Sources\n");
+        if self.sources.is_empty() {
+            out.push_str("No supported provider logs were found.\n");
+        }
+        for source in self.sources.iter().take(200) {
+            out.push_str(&format!(
+                "- {} · {} · {} bytes · offset {} · {} events · {}\n",
+                source.provider,
+                source.path,
+                source.bytes,
+                source.offset,
+                source.events,
+                source.state
+            ));
+        }
+        if self.sources.len() > 200 {
+            out.push_str(&format!(
+                "- … {} more sources omitted\n",
+                self.sources.len() - 200
+            ));
+        }
+        out.push_str("\n## Unpriced models\n");
+        if self.unpriced_models.is_empty() {
+            out.push_str("None.\n");
+        } else {
+            for model in &self.unpriced_models {
+                out.push_str(&format!("- {model}\n"));
+            }
+        }
+        out.push_str("\n## Warnings\n");
+        if self.warnings.is_empty() {
+            out.push_str("None.\n");
+        } else {
+            for warning in &self.warnings {
+                out.push_str(&format!("- {warning}\n"));
+            }
+        }
+        out
+    }
+}
+
+/// Bounded aggregate payload that a user may explicitly sync to a self-hosted
+/// relay. It never contains raw provider log lines or prompts.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Evidence {
+    pub version: u32,
+    pub device: String,
+    pub generated_ms: u64,
+    pub summary: Summary,
+}
+
+impl Evidence {
+    pub const VERSION: u32 = 1;
+
+    pub fn new(device: impl Into<String>, summary: Summary) -> Self {
+        Self {
+            version: Self::VERSION,
+            device: device.into(),
+            generated_ms: summary.generated_ms,
+            summary,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.version != Self::VERSION {
+            return Err("Unsupported billing evidence version".into());
+        }
+        if self.device.trim().is_empty()
+            || self.device.len() > 128
+            || self.device.chars().any(char::is_control)
+        {
+            return Err("Invalid billing evidence device name".into());
+        }
+        if self.summary.sources.len() > 4_000
+            || self.summary.by_day.len() > 400
+            || self.summary.by_attribution.len() > 16
+            || self.summary.by_provider.len() > 100
+            || self.summary.by_harness.len() > 100
+            || self.summary.by_model.len() > 500
+            || self.summary.by_project.len() > 500
+            || self.summary.warnings.len() > 64
+            || self.summary.unpriced_models.len() > 500
+        {
+            return Err("Billing evidence exceeds the relay limits".into());
+        }
+        if self.summary.totals.events > 1_000_000 || self.summary.files > 10_000 {
+            return Err("Billing evidence exceeds the event/file limits".into());
+        }
+        Ok(())
+    }
+}
+
 /// Scan every supported local source with the default bounds.
 pub fn scan_all() -> ScanReport {
     let mut report = ScanReport::default();
     let mut checkpoint = Checkpoint::default();
     if let Some(root) = default_claude_root() {
-        let mut claude = Checkpoint::default();
-        let events = scan_claude_incremental(&root, &mut claude);
-        checkpoint.files.extend(claude.files);
-        checkpoint.seen.extend(claude.seen);
-        report.events.extend(events);
+        let mut claude_checkpoint = Checkpoint::default();
+        let mut claude = scan_claude_report(&root, &mut claude_checkpoint);
+        checkpoint.files.extend(claude_checkpoint.files);
+        checkpoint.seen.extend(claude_checkpoint.seen);
+        report.events.append(&mut claude.events);
+        report.sources.append(&mut claude.sources);
+        report.warnings.append(&mut claude.warnings);
+        report.files += claude.files;
+        report.bytes = report.bytes.saturating_add(claude.bytes);
+        report.truncated |= claude.truncated;
     }
     if let Some(root) = default_codex_root() {
-        let mut codex = Checkpoint::default();
-        let events = scan_codex_incremental(&root, &mut codex);
-        checkpoint.files.extend(codex.files);
-        checkpoint.seen.extend(codex.seen);
-        report.events.extend(events);
+        let mut codex_checkpoint = Checkpoint::default();
+        let mut codex = scan_codex_report(&root, &mut codex_checkpoint);
+        checkpoint.files.extend(codex_checkpoint.files);
+        checkpoint.seen.extend(codex_checkpoint.seen);
+        report.events.append(&mut codex.events);
+        report.sources.append(&mut codex.sources);
+        report.warnings.append(&mut codex.warnings);
+        report.files += codex.files;
+        report.bytes = report.bytes.saturating_add(codex.bytes);
+        report.truncated |= codex.truncated;
     }
     if let Some(path) = default_opencode_db() {
+        let key = path.to_string_lossy().to_string();
+        let metadata = fs::metadata(&path).ok();
         match scan_opencode_db(&path) {
             Ok(events) => {
+                let mut counted = 0;
                 for event in events {
                     if checkpoint.seen.insert(event.key.clone()) {
                         report.events.push(event);
+                        counted += 1;
                     }
                 }
-                if let Ok(metadata) = fs::metadata(&path) {
+                if let Some(metadata) = metadata {
                     report.files += 1;
                     report.bytes = report.bytes.saturating_add(metadata.len());
                     checkpoint.files.insert(
-                        path.to_string_lossy().to_string(),
+                        key.clone(),
                         FileCheckpoint {
                             offset: 0,
                             size: metadata.len(),
                             mtime_ms: mtime_ms(&metadata),
                         },
                     );
+                    report.sources.push(SourceFile {
+                        path: key,
+                        provider: "OpenCode".into(),
+                        bytes: metadata.len(),
+                        mtime_ms: mtime_ms(&metadata),
+                        offset: 0,
+                        events: counted,
+                        state: "scanned".into(),
+                    });
                 }
             }
-            Err(error) => report.warn(format!("OpenCode billing: {error}")),
+            Err(error) => {
+                report.warn(format!("OpenCode billing: {error}"));
+                if let Some(metadata) = metadata {
+                    report.sources.push(SourceFile {
+                        path: key,
+                        provider: "OpenCode".into(),
+                        bytes: metadata.len(),
+                        mtime_ms: mtime_ms(&metadata),
+                        offset: 0,
+                        events: 0,
+                        state: "error".into(),
+                    });
+                }
+            }
         }
     }
     checkpoint.last_scan_ms = now_ms();
@@ -1153,6 +1577,140 @@ mod tests {
         assert_eq!(events[0].key, "claude:m2");
         assert!(scan_claude_incremental(&root, &mut checkpoint).is_empty());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sidechains_synthetic_messages_and_unknown_records_keep_explicit_attribution() {
+        let root = fixture("attribution-claude");
+        let mut file = fs::File::create(root.join("log.jsonl")).unwrap();
+        for value in [
+            serde_json::json!({
+                "type":"assistant","timestamp":"2026-11-02T10:00:00Z","sessionId":"main-1",
+                "message":{"id":"main","model":"claude-sonnet-4-5","usage":{"input_tokens":10}}
+            }),
+            serde_json::json!({
+                "type":"assistant","timestamp":"2026-11-02T10:01:00Z","sessionId":"main-1","isSidechain":true,
+                "message":{"id":"child","model":"claude-sonnet-4-5","usage":{"input_tokens":10}}
+            }),
+            serde_json::json!({
+                "type":"assistant","timestamp":"2026-11-02T10:02:00Z","sessionId":"main-1",
+                "message":{"id":"synthetic","model":"<synthetic>","usage":{"input_tokens":10}}
+            }),
+        ] {
+            writeln!(file, "{value}").unwrap();
+        }
+        let events = scan_claude(&root);
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].attribution.kind, WorkKind::Main);
+        assert_eq!(events[1].attribution.kind, WorkKind::Subagent);
+        assert_eq!(events[1].attribution.session.as_deref(), Some("main-1"));
+        assert_eq!(events[2].attribution.kind, WorkKind::Internal);
+        let summary = summarize(ScanReport {
+            events,
+            ..Default::default()
+        });
+        assert_eq!(summary.totals.main_events, 1);
+        assert_eq!(summary.totals.subagent_events, 1);
+        assert_eq!(summary.totals.internal_events, 1);
+        assert_eq!(summary.totals.unknown_attribution_events, 0);
+        assert!(
+            summary
+                .by_attribution
+                .iter()
+                .any(|slice| slice.label == "Subagents")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_subagent_session_meta_marks_child_events_and_qa_report_is_copyable() {
+        let root = fixture("attribution-codex");
+        fs::create_dir_all(root.join("2026/11/02")).unwrap();
+        let path = root.join("2026/11/02/rollout-child.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        for value in [
+            serde_json::json!({
+                "timestamp":"2026-11-02T10:00:00Z","type":"session_meta",
+                "payload":{"id":"child-1","parent_thread_id":"main-1","model":"gpt-5","cwd":"/code","source":{"subagent":"review"}}
+            }),
+            serde_json::json!({
+                "timestamp":"2026-11-02T10:01:00Z","type":"event_msg",
+                "payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":20}}}
+            }),
+        ] {
+            writeln!(file, "{value}").unwrap();
+        }
+        let events = scan_codex(&root);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].attribution.kind, WorkKind::Subagent);
+        assert_eq!(events[0].attribution.parent.as_deref(), Some("main-1"));
+        let summary = summarize(ScanReport {
+            events,
+            sources: vec![SourceFile {
+                path: path.to_string_lossy().into(),
+                provider: "OpenAI Codex".into(),
+                bytes: 10,
+                mtime_ms: 0,
+                offset: 10,
+                events: 1,
+                state: "scanned".into(),
+            }],
+            ..Default::default()
+        });
+        let report = summary.qa_report();
+        assert!(report.contains("subagent"));
+        assert!(report.contains("rollout-child.jsonl"));
+        let evidence = Evidence::new("test-device", summary);
+        evidence.validate().unwrap();
+        let json = serde_json::to_string(&evidence).unwrap();
+        assert!(!json.contains("prompt"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opencode_child_sessions_are_attributed_to_their_parent() {
+        let root = fixture("attribution-opencode");
+        let path = root.join("opencode.db");
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE session (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+                     CREATE TABLE message (id TEXT PRIMARY KEY, data TEXT NOT NULL, time_created INTEGER);
+                     INSERT INTO session VALUES ('parent', '{\"directory\":\"/repo\",\"title\":\"Main\"}');
+                     INSERT INTO session VALUES ('child', '{\"directory\":\"/repo\",\"title\":\"Review\",\"parentID\":\"parent\"}');
+                     INSERT INTO message VALUES ('a1', '{\"role\":\"assistant\",\"sessionID\":\"child\",\"providerID\":\"anthropic\",\"modelID\":\"claude-sonnet-4-5\",\"tokens\":{\"input\":10,\"output\":2},\"cost\":0.1}', 0);",
+                )
+                .unwrap();
+        }
+        let events = scan_opencode_db(&path).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].attribution.kind, WorkKind::Subagent);
+        assert_eq!(events[0].attribution.parent.as_deref(), Some("parent"));
+        assert_eq!(events[0].attribution.task.as_deref(), Some("Review"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn old_summary_and_event_json_default_to_unknown_attribution_not_main() {
+        let old_event: BillingEvent = serde_json::from_value(serde_json::json!({
+            "key":"old","at_ms":1,"provider":"Claude Code","harness":"Claude Code",
+            "model":"claude-sonnet-4-5","input_tokens":1,"output_tokens":2,
+            "cache_read_tokens":0,"cache_write_tokens":0,"cost_usd":0.1,"cost_source":"priced"
+        }))
+        .unwrap();
+        assert_eq!(old_event.attribution.kind, WorkKind::Unknown);
+        let old_summary: Summary = serde_json::from_value(serde_json::json!({
+            "generated_ms":1,
+            "totals":{"events":0,"input_tokens":0,"output_tokens":0,"reasoning_tokens":0,
+                "cache_read_tokens":0,"cache_write_tokens":0,"priced_cost_usd":0.0,
+                "unpriced_events":0,"recorded_cost_events":0},
+            "by_provider":[],"by_harness":[],"by_model":[],"by_project":[],"by_day":[],
+            "unpriced_models":[],"warnings":[],"files":0,"bytes":0,"truncated":false
+        }))
+        .unwrap();
+        assert!(old_summary.by_attribution.is_empty());
+        assert_eq!(old_summary.totals.unknown_attribution_events, 0);
     }
 
     #[test]

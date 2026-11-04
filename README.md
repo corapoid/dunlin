@@ -25,7 +25,7 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac.
 
-**0.1.0-beta.6** · macOS 15+ · Apple Silicon · local + self-hosted relay
+**0.1.0-beta.8** · macOS 15+ · Apple Silicon · local + self-hosted relay
 
 ## What you won't find combined anywhere else
 
@@ -40,12 +40,20 @@ history stay on your Mac.
 - **Your history comes with you.** Import Claude Code, Codex and OpenCode
   sessions locally, including per-turn tokens and file-diff counts, with no
   cloud upload.
+- **Use-only credentials.** Short-lived API keys stay in the macOS Keychain;
+  agents can request an allowlisted HTTPS call, a named policy operation or a
+  fixed CLI recipe, but never receive the value. Auto-approved only within the
+  key's host/method/grant scope, with optional per-use approval and a separate
+  relay-side vault.
 - **A native Git workbench.** Graph/history, stash, worktrees, merge/rebase/
   cherry-pick, inline blame, GitHub CI/PR and AI-assisted Conventional Commits.
 - **Visual Markdown that is still a real editor.** Editable blocks, tables,
   code fences, raw mode, undo and save — no embedded browser or Monaco.
 - **A self-hosted relay.** Pairing codes, Keychain tokens, session takeover,
   transcript snapshots and a macOS seatbelt around remote harnesses.
+- **A terminal that goes the distance.** Local PTY, relay and SSH transports,
+  draggable splits, mouse selection, OSC 8 links and zsh/bash shell integration
+  with command/output actions.
 - **Two-step onboarding and a macOS permission center.** No account, no telemetry,
   no bundled model, and no pretending that TCC permissions were granted.
 

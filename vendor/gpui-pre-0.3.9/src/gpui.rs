@@ -114,7 +114,8 @@ pub use geometry::*;
 pub use gestures::*;
 pub use global::*;
 pub use gpui_macros::{
-    AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action, test,
+    AppContext, IntoElement, Render, VisualContext, bench, property_test, register_action,
+    test as gpui_test,
 };
 pub use spring::*;
 
