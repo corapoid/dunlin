@@ -264,6 +264,8 @@ pub(crate) struct HarnessState {
     generation: u64,
     pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
+    /// Per-harness use-only credential session. It stays alive while parked.
+    pub vault_session: Option<crate::vault::SessionHandle>,
 }
 
 impl Default for HarnessState {
@@ -293,12 +295,16 @@ impl Default for HarnessState {
             generation: 0,
             started_tools: HashMap::new(),
             restarts: 0,
+            vault_session: None,
         }
     }
 }
 
 impl HarnessState {
     pub(crate) fn pause_for_budget(&mut self, reason: &str) {
+        if let Some(session) = &self.vault_session {
+            session.set_allowed(false);
+        }
         for item in &mut self.transcript {
             if let ChatItem::Permission {
                 request_id,
@@ -325,6 +331,12 @@ impl HarnessState {
             "Task budget paused this session: {reason}. Queued prompts were retained."
         ));
     }
+    pub(crate) fn bind_vault_session(&self, session_id: &str) {
+        if let Some(session) = &self.vault_session {
+            session.set_session_id(session_id);
+        }
+    }
+
     fn finish_turn_timing(&mut self, at_ms: u64) {
         if let Some((index, start)) = self.active_turn.take()
             && let Some(ChatItem::User {
@@ -490,6 +502,7 @@ impl DunlinApp {
                 )
                 .with_additional_directories(self.session_additional_directories()),
                 Some(host.name),
+                None,
                 cx,
             );
             return;
@@ -565,13 +578,15 @@ impl DunlinApp {
             .default_model(&self.session_harness())
             .map(str::to_owned);
         config.resume_session_id = self.session().acp_session_id.clone();
-        self.start_harness(config, None, cx);
+        let vault_session = self.attach_vault(&mut config, &project, self.vault_read_only());
+        self.start_harness(config, None, vault_session, cx);
     }
 
     fn start_harness(
         &mut self,
         config: HarnessConfig,
         remote_name: Option<String>,
+        vault_session: Option<crate::vault::SessionHandle>,
         cx: &mut Context<Self>,
     ) {
         self.harness.generation = next_generation();
@@ -580,6 +595,10 @@ impl DunlinApp {
         if let Some(previous) = self.harness.harness.take() {
             previous.shutdown();
         }
+        if let Some(previous) = self.harness.vault_session.take() {
+            previous.revoke();
+        }
+        self.harness.vault_session = vault_session;
 
         let description = config.description();
         logging::info(&format!(
@@ -627,6 +646,9 @@ impl DunlinApp {
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
         }
+        if let Some(session) = self.harness.vault_session.take() {
+            session.revoke();
+        }
         self.harness.status = HarnessStatus::Offline;
         self.harness.missing_command = None;
         self.harness.connected_harness = None;
@@ -646,6 +668,9 @@ impl DunlinApp {
         self.interrupt_live_turn(cx);
         if let Some(harness) = self.harness.harness.take() {
             harness.shutdown();
+        }
+        if let Some(session) = self.harness.vault_session.take() {
+            session.revoke();
         }
         self.harness.status = HarnessStatus::Offline;
         self.harness.session_id = None;
@@ -707,6 +732,9 @@ impl DunlinApp {
             .insert(self.project().id.clone(), id.clone());
         if self.harness.harness.is_none() && !self.harness.running && !self.harness.status.is_busy()
         {
+            if let Some(session) = self.harness.vault_session.take() {
+                session.revoke();
+            }
             self.harness = Default::default();
             return;
         }
@@ -719,19 +747,26 @@ impl DunlinApp {
     }
 
     pub(crate) fn restore_runtime(&mut self, id: &str) -> bool {
-        let Some(runtime) = self.parked_runtimes.remove(id) else {
+        let Some(mut runtime) = self.parked_runtimes.remove(id) else {
             return false;
         };
         if runtime.project != self.project().id || runtime.root != self.project().path {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         }
         self.harness = runtime.state;
+        self.sync_vault_read_only();
         true
     }
 
     pub(crate) fn stop_parked_runtime(&mut self, id: &str) {
         if let Some(mut runtime) = self.parked_runtimes.remove(id) {
             runtime.state.finish_turn_timing(now_ms());
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             if let Some(adapter) = &runtime.state.harness {
                 if runtime.state.running {
                     adapter.cancel();
@@ -788,6 +823,9 @@ impl DunlinApp {
             }
         }
         for runtime in self.parked_runtimes.values() {
+            if let Some(session) = &runtime.state.vault_session {
+                session.revoke();
+            }
             if let Some(adapter) = &runtime.state.harness {
                 if runtime.state.running {
                     adapter.cancel();
@@ -855,9 +893,15 @@ impl DunlinApp {
             .iter()
             .position(|p| p.id == runtime.project && p.path == runtime.root && p.trusted)
         else {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         };
         let Some(session) = self.all_sessions.iter().find(|s| s.id == id).cloned() else {
+            if let Some(session) = runtime.state.vault_session.take() {
+                session.revoke();
+            }
             return false;
         };
         // A synchronous scope only: no UI rendering or async continuation can
@@ -895,11 +939,13 @@ impl DunlinApp {
                 self.harness.token_baseline = Some(Default::default());
                 self.harness.local_session_loading = false;
                 self.harness.session_id = Some(session_id.clone());
+                self.harness.bind_vault_session(&session_id);
                 self.update_active_session(|s| s.acp_session_id = Some(session_id));
             }
             HarnessEvent::SessionLoaded { session_id } if self.is_current_session(&session_id) => {
                 self.harness.reported_cost = None;
                 self.harness.local_session_loading = false;
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.harness.token_baseline = None;
             }
@@ -978,6 +1024,9 @@ impl DunlinApp {
                 self.clear_unbudgeted_queue_after_error();
                 self.finish_streaming();
                 self.harness.harness = None;
+                if let Some(session) = self.harness.vault_session.take() {
+                    session.revoke();
+                }
                 self.harness.session_id = None;
                 self.harness.status = HarnessStatus::Exited(reason);
                 self.update_active_session(|s| s.status = SessionStatus::Failed);
@@ -1594,6 +1643,7 @@ impl DunlinApp {
                         session.acp_session_id = Some(session_id.clone());
                     });
                 }
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.refresh_mcp(cx);
                 self.persist_settings(cx);
@@ -1609,6 +1659,7 @@ impl DunlinApp {
                 // Work may have happened on another client since our last snapshot.
                 self.harness.token_baseline = None;
                 self.harness.local_session_loading = false;
+                self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.refresh_mcp(cx);
                 if self.provider_catalog.providers.is_empty()
@@ -1811,6 +1862,9 @@ impl DunlinApp {
                 self.harness.mode_changing = false;
                 self.harness.local_session_loading = false;
                 self.harness.harness = None;
+                if let Some(session) = self.harness.vault_session.take() {
+                    session.revoke();
+                }
                 self.harness.session_id = None;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;

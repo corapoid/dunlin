@@ -76,6 +76,11 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let tab = this.settings_tab;
+    if tab != SettingsTab::Secrets {
+        this.vault.ui.draft = None;
+        this.vault.ui.recipe_draft = None;
+        this.vault.ui.operation_draft = None;
+    }
     let (width, height) = settings_size(
         f32::from(window.viewport_size().width),
         f32::from(window.viewport_size().height),
@@ -116,6 +121,9 @@ pub(crate) fn render(
                             SettingsTab::Chat => chat_settings(this, cx),
                             SettingsTab::Harnesses => harnesses(this, cx),
                             SettingsTab::Skills => crate::skills::render(this, cx),
+                            SettingsTab::Secrets => {
+                                crate::vault::settings::render(this, window, cx)
+                            }
                             SettingsTab::Permissions => permissions(this, cx),
                             SettingsTab::Remote => remote_settings(this, cx),
                             SettingsTab::Editor => editor(this, cx),
@@ -201,6 +209,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             &[
                 SettingsTab::Harnesses,
                 SettingsTab::Skills,
+                SettingsTab::Secrets,
                 SettingsTab::Permissions,
             ],
         ),
@@ -313,6 +322,10 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         SettingsTab::Skills => (
             "Skills",
             "Create reusable instructions and install them globally for your harnesses.",
+        ),
+        SettingsTab::Secrets => (
+            "Secrets",
+            "Use-only credentials in the macOS Keychain. Agents can use them but never read them.",
         ),
         SettingsTab::Remote => (
             "Remote",

@@ -131,7 +131,11 @@ impl DunlinApp {
             );
         }
         next.tasks.push(budget);
-        self.persist_task_budgets(next)
+        self.persist_task_budgets(next)?;
+        if let Some(session) = &self.harness.vault_session {
+            session.set_allowed(true);
+        }
+        Ok(())
     }
     pub(crate) fn observe_task_cost(&mut self, cost: Option<f64>, opaque_child: bool) {
         let now = crate::harness::now_ms();

@@ -40,6 +40,7 @@ pub(crate) enum SettingsTab {
     Chat,
     Harnesses,
     Skills,
+    Secrets,
     Permissions,
     Remote,
     Editor,
@@ -55,6 +56,7 @@ impl SettingsTab {
             SettingsTab::Chat => "Chat",
             SettingsTab::Harnesses => "Harnesses",
             SettingsTab::Skills => "Skills",
+            SettingsTab::Secrets => "Secrets",
             SettingsTab::Permissions => "Permissions",
             SettingsTab::Remote => "Remote",
             SettingsTab::Editor => "Editor",
@@ -70,6 +72,7 @@ impl SettingsTab {
             SettingsTab::Chat => IconName::MessageSquare,
             SettingsTab::Harnesses => IconName::Bot,
             SettingsTab::Skills => IconName::BookOpen,
+            SettingsTab::Secrets => IconName::KeyRound,
             SettingsTab::Permissions => IconName::ShieldCheck,
             SettingsTab::Remote => IconName::Cloud,
             SettingsTab::Editor => IconName::Code,
@@ -100,6 +103,7 @@ pub(crate) enum BottomPanel {
     Hidden,
     Terminal,
     Run,
+    Secrets,
 }
 
 /// Everything Dunlin remembers between launches. Stored as one JSON value in
@@ -147,6 +151,8 @@ pub(crate) struct StoredSettings {
     pub account_usage_collapsed: bool,
     pub dashboard_settings: crate::dashboard::Settings,
     pub skills: Vec<crate::skills::Skill>,
+    #[serde(default = "default_vault_enabled")]
+    pub vault_enabled: bool,
     pub last_ai_target: Option<crate::ai_commit::LastTarget>,
     pub billing_budget_usd: Option<f32>,
     pub billing_alerts: bool,
@@ -167,6 +173,10 @@ pub(crate) struct StoredSettings {
 
 pub(crate) fn default_bottom_panel_height() -> f32 {
     300.
+}
+
+pub(crate) fn default_vault_enabled() -> bool {
+    true
 }
 
 pub(crate) fn default_bottom_panel_width() -> f32 {
@@ -216,6 +226,7 @@ impl Default for StoredSettings {
             account_usage_collapsed: false,
             dashboard_settings: Default::default(),
             skills: crate::skills::defaults(),
+            vault_enabled: true,
             last_ai_target: None,
             billing_budget_usd: None,
             billing_alerts: true,
@@ -485,6 +496,7 @@ pub(crate) struct DunlinApp {
     pub skills: Vec<crate::skills::Skill>,
     pub skills_ui: crate::skills::Ui,
     pub skills_import_url: Entity<InputState>,
+    pub vault: crate::vault::State,
     pub last_ai_target: Option<crate::ai_commit::LastTarget>,
     pub ai_commit: crate::ai_commit::State,
     pub billing: Option<dunlin_usage::billing::Summary>,
@@ -699,6 +711,7 @@ impl DunlinApp {
             // failed read.
             store = None;
         }
+        let vault_start = stored.vault_enabled && store.is_some();
         let (project_groups, projects, mut all_sessions) = snapshot.unwrap_or_default();
         let fallback_project = Project {
             id: "none".into(),
@@ -1013,6 +1026,7 @@ impl DunlinApp {
             skills: stored.skills.clone(),
             skills_ui: Default::default(),
             skills_import_url,
+            vault: crate::vault::State::start(vault_start),
             last_ai_target: stored.last_ai_target.clone(),
             ai_commit: Default::default(),
             billing: None,
@@ -1194,6 +1208,8 @@ impl DunlinApp {
 
         let first_session = app.session().id.clone();
         app.load_transcript(&first_session);
+        app.refresh_vault(cx);
+        app.spawn_vault_approvals(window, cx);
 
         let mut restored_project = false;
         // Restore the selection before starting a process. Otherwise a process
@@ -2575,6 +2591,7 @@ impl DunlinApp {
         }
         self.store_project_settings(index);
         self.persist_settings(cx);
+        self.sync_vault_read_only();
         self.notice = Some("Project permission mode updated".into());
         cx.notify();
     }
@@ -2586,6 +2603,7 @@ impl DunlinApp {
         }
         self.store_project_settings(index);
         self.persist_settings(cx);
+        self.sync_vault_read_only();
         self.notice = Some("Project overrides cleared".into());
         cx.notify();
     }
@@ -2632,6 +2650,7 @@ impl DunlinApp {
         }
         self.project_group_editor = None;
         self.persist_settings(cx);
+        self.sync_vault_read_only();
         self.notice = Some(format!(
             "Moved {} to {} · inherited defaults and client approvals updated",
             project.name,
@@ -4641,6 +4660,7 @@ impl DunlinApp {
             account_usage_collapsed: self.account_usage_collapsed,
             dashboard_settings: self.dashboard_settings.clone(),
             skills: self.skills.clone(),
+            vault_enabled: self.vault.requested_enabled,
             last_ai_target: self.last_ai_target.clone(),
             billing_budget_usd: self.billing_budget_usd,
             billing_alerts: self.billing_alerts,
@@ -5306,6 +5326,16 @@ impl DunlinApp {
 
 impl Render for DunlinApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Do not retain a pasted credential in a hidden form or panel.
+        if !self.settings_open {
+            self.vault.ui.draft = None;
+            self.vault.ui.recipe_draft = None;
+            self.vault.ui.operation_draft = None;
+        }
+        if self.settings_open || self.bottom_panel != BottomPanel::Secrets {
+            self.vault.ui.panel.value = None;
+        }
+        self.sync_vault_read_only();
         self.prepare_markdown_visual(window, cx);
         self.git_history.prune(&self.projects, &self.remote_hosts);
         let tabs = &self.workbench.tabs;

@@ -16,6 +16,7 @@ dunlin-ui.workspace = true
 dunlin-domain.workspace = true
 dunlin-agent.workspace = true
 dunlin-storage.workspace = true
+dunlin-vault.workspace = true
 dunlin-workspace.workspace = true
 dunlin-usage.workspace = true
 dunlin-terminal.workspace = true
@@ -25,6 +26,7 @@ objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
 base64 = "0.22"
 chrono = "0.4"
+libc = "0.2"
 ureq = { version = "2.12", features = ["json", "tls"] }
 url = "2"
 uuid.workspace = true

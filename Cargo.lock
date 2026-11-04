@@ -1559,9 +1559,11 @@ dependencies = [
  "dunlin-terminal",
  "dunlin-ui",
  "dunlin-usage",
+ "dunlin-vault",
  "dunlin-workspace",
  "gpui-kit",
  "image",
+ "libc",
  "markdown",
  "notify",
  "objc2 0.6.5",
@@ -1701,6 +1703,7 @@ dependencies = [
  "url",
  "zeroize",
 ]
+
 [[package]]
 name = "dunlin-workspace"
 version = "0.1.0-beta.6"

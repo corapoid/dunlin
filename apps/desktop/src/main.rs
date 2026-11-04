@@ -48,6 +48,7 @@ mod skills;
 mod task_budgets;
 mod terminal;
 mod usage;
+mod vault;
 mod views;
 mod watch;
 mod window_state;
@@ -58,6 +59,43 @@ use dunlin_ui::component::TitleBar;
 use dunlin_ui::*;
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--mcp-vault") {
+        std::process::exit(dunlin_vault::mcp::run_stdio());
+    }
+    if std::env::args().nth(1).as_deref() == Some("--vault-keychain-smoke") {
+        use dunlin_vault::store::{KeychainStore, SecretStore};
+        let id = format!("smoke-{}", uuid::Uuid::now_v7().simple());
+        let value = "dunlin-vault-smoke-value";
+        let policy = r#"{"smoke":true}"#;
+        let result = (|| -> Result<(), String> {
+            KeychainStore.set(&id, value)?;
+            let read = KeychainStore.get(&id)?;
+            if read.as_str() != value {
+                return Err("value round-trip mismatch".into());
+            }
+            KeychainStore.set_policy(&id, policy)?;
+            let read = KeychainStore.get_policy(&id)?;
+            if read.as_str() != policy {
+                return Err("policy round-trip mismatch".into());
+            }
+            KeychainStore.delete(&id)?;
+            KeychainStore.delete_policy(&id)?;
+            if KeychainStore.get(&id).is_ok() {
+                return Err("value was not deleted".into());
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                println!("vault keychain smoke passed");
+                std::process::exit(0);
+            }
+            Err(error) => {
+                eprintln!("vault keychain smoke failed: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--markdown-smoke") {
         markdown_editor::smoke::run();

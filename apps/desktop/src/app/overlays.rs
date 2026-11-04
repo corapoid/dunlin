@@ -654,6 +654,7 @@ impl DunlinApp {
                 self.terminal.focus.focus(window, cx);
             }
             BottomPanel::Run => self.ensure_run_detection(cx),
+            BottomPanel::Secrets => self.refresh_vault(cx),
             BottomPanel::Hidden => {}
         }
         self.persist_settings(cx);
@@ -719,6 +720,7 @@ impl DunlinApp {
         for (panel, label) in [
             (BottomPanel::Terminal, "Terminal"),
             (BottomPanel::Run, "Run"),
+            (BottomPanel::Secrets, "Secrets"),
         ] {
             let active = self.bottom_panel == panel;
             header = header.child(
@@ -741,10 +743,11 @@ impl DunlinApp {
                         }
                     }))
                     .child(
-                        Icon::new(if panel == BottomPanel::Terminal {
-                            IconName::Terminal
-                        } else {
-                            IconName::SquareTerminal
+                        Icon::new(match panel {
+                            BottomPanel::Terminal => IconName::Terminal,
+                            BottomPanel::Run => IconName::SquareTerminal,
+                            BottomPanel::Secrets => IconName::KeyRound,
+                            BottomPanel::Hidden => IconName::Terminal,
                         })
                         .size(px(11.))
                         .text_color(if active {
@@ -821,6 +824,7 @@ impl DunlinApp {
         let body = match self.bottom_panel {
             BottomPanel::Terminal => crate::terminal::render(self, window, cx),
             BottomPanel::Run => crate::run::render(self, window, cx),
+            BottomPanel::Secrets => crate::vault::panel::render(self, window, cx),
             BottomPanel::Hidden => div().into_any_element(),
         };
         let dock = self.terminal_dock;
@@ -3033,6 +3037,37 @@ impl DunlinApp {
                             .text_size(px(10.5))
                             .text_color(if active { p.fg } else { p.muted_fg })
                             .child("Run"),
+                    )
+            })
+            .child({
+                let active = self.bottom_panel == crate::app::BottomPanel::Secrets;
+                div()
+                    .id("statusbar-secrets")
+                    .aria_label("Toggle Secrets panel")
+                    .h(px(20.))
+                    .px(px(6.))
+                    .rounded(px(4.))
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .cursor_pointer()
+                    .when(active, |this| {
+                        this.bg(p.card).border_1().border_color(p.border)
+                    })
+                    .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.toggle_bottom_panel(crate::app::BottomPanel::Secrets, window, cx)
+                    }))
+                    .child(icon(
+                        IconName::KeyRound,
+                        10.5,
+                        if active { p.fg } else { p.muted_fg },
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(if active { p.fg } else { p.muted_fg })
+                            .child("Secrets"),
                     )
             })
             .child(div().w(px(1.)).h(px(12.)).bg(p.border))
