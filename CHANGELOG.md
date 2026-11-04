@@ -4,6 +4,22 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+- Use-only credential vault: short-lived API keys live in the macOS Keychain,
+  while the security policy (hosts, path prefix, methods, injection, TTL, project
+  grants and fixed CLI recipes) lives in a separate Keychain item so editing the
+  SQLite display cache cannot widen it. A per-session `Dunlin --mcp-vault` MCP
+  proxy exposes `secrets_list`, `secrets_request` and `secrets_run`; the app
+  performs HTTPS requests or hash-pinned CLI recipes and returns only redacted
+  results. The value never enters the model context, harness environment, argv,
+  project files or SQLite. Quick keys default to one hour (maximum 24 hours) and
+  are auto-approved only within their policy. A bottom-panel **Secrets** tab
+  creates keys for the current project; Settings → Secrets manages grants,
+  recipes, named HTTP operations, OAuth 2.0 refresh, AWS SigV4 injection and
+  audit metadata. Non-managed keys can require a native approval prompt for each
+  use, with a per-session allowance invalidated by policy edits. The relay can
+  run a separate vault on the relay host, with its own Keychain namespace,
+  `vault.db`, CLI and per-ACP-session MCP proxy. There is no reveal or export
+  path. See [docs/secrets.md](docs/secrets.md).
 ## [0.1.0-beta.6] — 2026-11-03
 
 This is the first published build after `0.1.0-beta.3`; it rolls up the
@@ -656,6 +672,8 @@ surfaces are intentionally absent.
 - No terminal, computer use, automations, skills, artifacts or visual Markdown
   editor yet.
 - All relay users share the OpenCode credentials installed on the relay host.
+- The optional relay vault is per host; a user with a project grant can use the
+  keys granted to that project within their policy.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 

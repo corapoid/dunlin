@@ -40,6 +40,11 @@ history stay on your Mac.
 - **Your history comes with you.** Import Claude Code, Codex and OpenCode
   sessions locally, including per-turn tokens and file-diff counts, with no
   cloud upload.
+- **Use-only credentials.** Short-lived API keys stay in the macOS Keychain;
+  agents can request an allowlisted HTTPS call, a named policy operation or a
+  fixed CLI recipe, but never receive the value. Auto-approved only within the
+  key's host/method/grant scope, with optional per-use approval and a separate
+  relay-side vault.
 - **A native Git workbench.** Graph/history, stash, worktrees, merge/rebase/
   cherry-pick, inline blame, GitHub CI/PR and AI-assisted Conventional Commits.
 - **Visual Markdown that is still a real editor.** Editable blocks, tables,

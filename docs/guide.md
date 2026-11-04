@@ -388,6 +388,39 @@ metadata/status only, never a test prompt. Remote projects and custom ACP auth
 contracts currently retain manual commits. Histories/settings are preserved;
 pending AI commit requests are not resumed after restarting Dunlin.
 
+### Secrets
+
+**Settings → Secrets** stores temporary API credentials in the macOS Keychain and
+lets an agent use them without receiving the value. The **Secrets** tab in the
+bottom panel is the quick path: name, paste, host, TTL and optional write methods.
+Every key is short-lived (default 1 hour, maximum 24 hours) and inert until it is
+granted to a project. Managed quick keys are auto-approved only for their exact
+host/path/method/operation scope. Enable **require approval** to prompt for each
+use with **Deny**, **Allow once** and **Allow for this session**; editing the key
+invalidates existing session allowances. Read-only mode allows GET/HEAD only and
+refuses CLI recipes.
+
+The harness gets an MCP tool surface: `secrets_list` discovers aliases, scopes and
+named operations, `secrets_request` performs an HTTPS request with the credential
+injected by the app, and `secrets_run` runs a fixed, hash-pinned CLI recipe. A
+named operation fixes the method, host and path template and exposes only
+declared path parameters, so the model cannot choose another endpoint. Injection
+can be a header, Basic auth, query parameter, OAuth 2.0 refresh or AWS SigV4; the
+OAuth exchange and AWS signing happen inside the broker, and both the stored
+value and exchanged token are redacted from results. If you enable the
+broker after a harness is already connected, restart that harness (Settings →
+Secrets or the bottom panel offers the action) so its next `session/new`/load
+can receive the MCP server. Dunlin executes the
+request or command itself; the value never enters the model context, the harness
+environment, argv, project files or SQLite. The security policy is stored in the
+Keychain, so editing the local display database cannot widen it. There is no
+reveal, export or clipboard action for a stored value. Provider sign-in for the
+model itself is separate.
+
+Local harnesses still run with the user's permissions; this is a use-only
+capability, not a sandbox. See [use-only credentials](secrets.md) for the policy,
+threat model and limitations.
+
 ### Remote relay
 
 - Self-hosted `dunlin-relay` with accounts, devices and project grants.
@@ -760,6 +793,26 @@ hard isolation.
 
 The relay database is not encrypted at rest. Set `store_transcripts = false` to
 keep only metadata, and use FileVault or an encrypted volume on the relay host.
+
+The relay can also own a use-only credential vault on the relay host. It uses
+separate Keychain services (`dev.dunlin.relay-secrets`,
+`dev.dunlin.relay-secret-policies`) and `vault.db`, so it never shares items with
+the desktop app. Manage it with the relay CLI:
+
+```sh
+dunlin-relay vault add github-work --host api.github.com --project dunlin --ttl 60
+dunlin-relay vault list
+dunlin-relay vault grant github-work dunlin
+dunlin-relay vault revoke github-work dunlin
+dunlin-relay vault remove github-work
+```
+
+Add `--writes` for write methods, `--header`/`--prefix` for a custom header,
+`--oauth-token-url`/`--oauth-client-id` for OAuth 2.0 refresh, or
+`--aws-access-key-id`/`--aws-region`/`--aws-service` for AWS SigV4. `serve`
+injects the relay MCP proxy into ACP sessions and revokes it when the connection
+or lingering turn ends. The relay vault is per host: any relay user with a grant
+to the project can use the key within policy.
 
 ## What is not in 0.1
 
