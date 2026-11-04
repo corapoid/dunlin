@@ -854,10 +854,12 @@ mod tests {
         assert!(validate_input(&policy, &undeclared).is_err());
     }
 
+    type SeenRequest = Option<(String, String, Option<Vec<u8>>)>;
+
     struct FakeExecutor {
         status: u16,
         body: &'static str,
-        seen: std::sync::Mutex<Option<(String, String, Option<Vec<u8>>)>>,
+        seen: std::sync::Mutex<SeenRequest>,
     }
 
     impl HttpExecutor for FakeExecutor {

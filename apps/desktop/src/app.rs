@@ -484,7 +484,7 @@ pub(crate) enum Command {
     Context,
     Review,
     CopyTrace,
-    PackCommand(usize),
+    Pack(usize),
     SwitchProject(usize),
     CloseInspector,
 }
@@ -2148,7 +2148,7 @@ impl DunlinApp {
 
         for (index, entry) in self.pack_command_entries().into_iter().enumerate() {
             items.push(CommandItem {
-                command: Command::PackCommand(index),
+                command: Command::Pack(index),
                 label: format!("{} · {}", entry.pack_name, entry.label),
                 hint: Some("pack".into()),
                 icon: IconName::Puzzle,
@@ -2399,7 +2399,7 @@ impl DunlinApp {
                     self.set_notice("Copied trace JSON", cx);
                 }
             }
-            Command::PackCommand(index) => {
+            Command::Pack(index) => {
                 let entry = self.pack_command_entries().into_iter().nth(index);
                 if let Some(entry) = entry {
                     self.run_pack_command(&entry.pack_id, &entry.command_id, window, cx);

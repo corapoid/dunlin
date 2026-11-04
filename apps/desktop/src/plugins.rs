@@ -362,12 +362,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 .small()
                                 .label("Open plugins folder")
                                 .on_click(cx.listener(|_, _, _, cx| {
-                                    if let Some(directory) = State::directory() {
-                                        if std::fs::create_dir_all(&directory).is_ok() {
-                                            let _ = std::process::Command::new("open")
-                                                .arg(&directory)
-                                                .spawn();
-                                        }
+                                    if let Some(directory) = State::directory()
+                                        && std::fs::create_dir_all(&directory).is_ok()
+                                    {
+                                        let _ = std::process::Command::new("open")
+                                            .arg(&directory)
+                                            .spawn();
                                     }
                                     cx.notify();
                                 })),

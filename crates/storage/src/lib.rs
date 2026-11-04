@@ -748,6 +748,7 @@ impl Store {
     /// Record one explicit approve/reject decision for a project-relative path.
     /// A later decision for the same path replaces the earlier row; callers
     /// compare `revision` with the current file hash to detect stale approvals.
+    #[allow(clippy::too_many_arguments)]
     pub fn set_artifact_approval(
         &self,
         project_id: &str,

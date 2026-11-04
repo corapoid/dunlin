@@ -887,10 +887,10 @@ fn build_artifact(
 
 /// Parse `.specify/feature.json` or the plain `.specify/feature` fallback.
 pub fn parse_active_feature(text: &str) -> Option<String> {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
-        if let Some(feature) = find_feature(&value) {
-            return Some(feature);
-        }
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text)
+        && let Some(feature) = find_feature(&value)
+    {
+        return Some(feature);
     }
     let plain = text.trim().trim_start_matches("./").trim_end_matches('/');
     (plain.contains('/') && !plain.contains("://") && !plain.contains('\n'))

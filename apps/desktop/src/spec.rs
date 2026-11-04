@@ -92,8 +92,8 @@ fn today() -> String {
 }
 
 fn selected_path(snapshot: &Snapshot) -> Option<String> {
-    if let Some(active) = &snapshot.active_feature {
-        if let Some(artifact) = snapshot
+    if let Some(active) = &snapshot.active_feature
+        && let Some(artifact) = snapshot
             .artifacts
             .iter()
             .find(|artifact| artifact.path.starts_with(active))
@@ -103,9 +103,8 @@ fn selected_path(snapshot: &Snapshot) -> Option<String> {
                     .iter()
                     .find(|artifact| artifact.path.contains(active))
             })
-        {
-            return Some(artifact.path.clone());
-        }
+    {
+        return Some(artifact.path.clone());
     }
     for kind in [
         Kind::Intent,
@@ -1821,10 +1820,10 @@ fn trace_panel(
                     .on_click(cx.listener({
                         let id = requirement.id.clone();
                         move |this, _, _, cx| {
-                            if let Some(view) = this.spec.view.as_mut() {
-                                if !view.expanded_requirements.remove(&id) {
-                                    view.expanded_requirements.insert(id.clone());
-                                }
+                            if let Some(view) = this.spec.view.as_mut()
+                                && !view.expanded_requirements.remove(&id)
+                            {
+                                view.expanded_requirements.insert(id.clone());
                             }
                             cx.notify();
                         }
@@ -1906,10 +1905,10 @@ fn trace_panel(
                             .on_click(cx.listener({
                                 let id = task.id.clone();
                                 move |this, _, _, cx| {
-                                    if let Some(view) = this.spec.view.as_mut() {
-                                        if !view.expanded_tasks.remove(&id) {
-                                            view.expanded_tasks.insert(id.clone());
-                                        }
+                                    if let Some(view) = this.spec.view.as_mut()
+                                        && !view.expanded_tasks.remove(&id)
+                                    {
+                                        view.expanded_tasks.insert(id.clone());
                                     }
                                     cx.notify();
                                 }
@@ -3115,7 +3114,7 @@ mod tests {
             commit: String::new(),
             approved_at: 0,
         };
-        let (label, status, _) = effective(artifact, &[approval.clone()]);
+        let (label, status, _) = effective(artifact, std::slice::from_ref(&approval));
         assert!(label.contains("approved locally"));
         assert_eq!(status, Status::Accepted);
         let mut stale = approval;

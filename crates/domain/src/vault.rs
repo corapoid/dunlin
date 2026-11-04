@@ -188,6 +188,7 @@ fn default_policy_version() -> u32 {
 }
 
 impl SecretPolicy {
+    #[allow(clippy::collapsible_match)]
     pub fn validate(&self) -> Result<(), String> {
         if self.version != default_policy_version() {
             return Err("Unsupported credential policy version".into());

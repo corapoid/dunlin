@@ -297,11 +297,7 @@ fn handle_connection(
         record: record.clone(),
         sessions: sessions.clone(),
     };
-    loop {
-        let request = match read_frame::<WireRequest>(&mut stream) {
-            Ok(Some(request)) => request,
-            Ok(None) | Err(_) => break,
-        };
+    while let Ok(Some(request)) = read_frame::<WireRequest>(&mut stream) {
         let response = match request {
             WireRequest::Hello { .. } => WireResponse::Error {
                 message: "The relay credential connection is already initialized".into(),
