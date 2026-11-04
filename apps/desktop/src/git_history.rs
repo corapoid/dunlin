@@ -14,6 +14,7 @@ use dunlin_ui::{
     *,
 };
 use dunlin_workspace::git::history::{self, Commit};
+use std::path::Path;
 
 mod budgets;
 mod checks;
@@ -27,6 +28,7 @@ mod overview;
 mod review;
 #[cfg(debug_assertions)]
 pub(crate) mod smoke;
+mod subtasks;
 #[cfg(debug_assertions)]
 mod workbench_smoke;
 
@@ -56,6 +58,9 @@ impl State {
             }
             if v.budgets.visible {
                 return "Task budgets";
+            }
+            if v.subtasks.visible {
+                return "Subtask worktrees";
             }
             if v.compare.visible {
                 return "Compare solutions";
@@ -118,6 +123,7 @@ pub(crate) struct View {
     review: review::State,
     checks: checks::State,
     budgets: budgets::State,
+    subtasks: subtasks::State,
     compare: compare::State,
     impact: impact::State,
 }
@@ -129,6 +135,7 @@ impl View {
         self.review.visible = false;
         self.checks.visible = false;
         self.budgets.visible = false;
+        self.subtasks.visible = false;
         self.compare.visible = false;
     }
 }
@@ -217,6 +224,14 @@ fn layout(commits: &[Commit]) -> Vec<LaneRow> {
 }
 
 impl DunlinApp {
+    pub(crate) fn selected_github_evidence(&self) -> Vec<(String, String, String)> {
+        self.git_history
+            .view
+            .as_ref()
+            .map(|view| view.github.attachable_evidence())
+            .unwrap_or_default()
+    }
+
     pub(crate) fn open_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.projects.is_empty() {
             self.file_notice("Open a project first", cx);
@@ -226,6 +241,16 @@ impl DunlinApp {
         self.git_history.prune(&self.projects, &self.remote_hosts);
         if !project.trusted {
             self.file_notice("Trust the project before reading Git history", cx);
+            return;
+        }
+        if project.is_chat_space()
+            && !project.is_remote()
+            && !Path::new(&project.path).join(".git").exists()
+        {
+            self.file_notice(
+                "This scratch chat has no Git repository. Use New Chat in Repository… for an explicit repository context.",
+                cx,
+            );
             return;
         }
         if self.git_history.running && !self.git_history.is_open_for(&project) {
@@ -240,12 +265,12 @@ impl DunlinApp {
         self.project_runtime_draft = None;
         self.group_settings_draft = None;
         self.context_menu = None;
-        self.session_menu_open = false;
         self.project_menu_open = false;
         self.settings_open = false;
         self.command_open = false;
         self.stash_editor_tab();
         self.workbench.show_file = false;
+        self.spec.active = false;
         self.section = dunlin_domain::SidebarSection::SourceControl;
         if self.git_history.is_open_for(&project) {
             self.git_history.active = true;
@@ -298,6 +323,7 @@ impl DunlinApp {
             review: review::State::new(window, cx),
             checks: checks::State::new(window, cx),
             budgets: budgets::State::new(window, cx),
+            subtasks: subtasks::State::new(window, cx),
             compare: compare::State::new(window, cx),
             impact: impact::State::new(window, cx),
         });
@@ -855,6 +881,14 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         .git_history
         .view
         .as_ref()
+        .is_some_and(|v| v.subtasks.visible)
+    {
+        return subtasks::render(this, cx);
+    }
+    if this
+        .git_history
+        .view
+        .as_ref()
         .is_some_and(|v| v.budgets.visible)
     {
         return budgets::render(this, cx);
@@ -1099,6 +1133,7 @@ mod tests {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: None,
             settings: Default::default(),

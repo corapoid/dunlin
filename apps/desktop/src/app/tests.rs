@@ -163,12 +163,14 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     assert!(!settings.chat_timestamps);
     assert!(!settings.chat_duration);
     assert!(settings.chat_logo);
+    assert!(!settings.minimal_mode);
     let mut changed = settings;
     changed.final_answer_only = true;
     changed.stream_responses = false;
     changed.chat_timestamps = true;
     changed.chat_duration = true;
     changed.chat_logo = false;
+    changed.minimal_mode = true;
     changed.ui_font_family = "Helvetica Neue".into();
     changed.code_font_family = "Menlo".into();
     changed.code_font_size = 17.0;
@@ -179,6 +181,7 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     assert!(restored.chat_timestamps);
     assert!(restored.chat_duration);
     assert!(!restored.chat_logo);
+    assert!(restored.minimal_mode);
     assert_eq!(restored.ui_font_family, "Helvetica Neue");
     assert_eq!(restored.code_font_family, "Menlo");
     assert_eq!(restored.code_font_size, 17.0);

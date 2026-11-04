@@ -98,74 +98,6 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Render a conversation as Markdown for the clipboard.
-pub(crate) fn transcript_markdown(items: &[ChatItem]) -> String {
-    let mut out = String::new();
-    for item in items {
-        match item {
-            ChatItem::User { text, .. } => {
-                out.push_str("## You\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::AgentText { text, .. } => {
-                out.push_str("## Agent\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::Thought { text, .. } => {
-                out.push_str("### Reasoning\n\n");
-                out.push_str(text);
-                out.push_str("\n\n");
-            }
-            ChatItem::Tool {
-                view, duration_ms, ..
-            } => {
-                out.push_str(&format!(
-                    "- **{}** · {} · {} ms\n",
-                    view.title,
-                    view.status.label(),
-                    duration_ms
-                ));
-            }
-            ChatItem::Plan { items, .. } => {
-                out.push_str("### Plan\n\n");
-                for step in items {
-                    let mark = match step.status {
-                        PlanStatus::Pending => "[ ]",
-                        PlanStatus::InProgress => "[~]",
-                        PlanStatus::Completed => "[x]",
-                    };
-                    out.push_str(&format!("{} {}\n", mark, step.content));
-                }
-                out.push('\n');
-            }
-            ChatItem::Permission {
-                title, resolved, ..
-            } => {
-                out.push_str(&format!(
-                    "- **Permission** · {} · {}\n",
-                    title,
-                    resolved.as_deref().unwrap_or("pending")
-                ));
-            }
-            ChatItem::Error { message, .. } => {
-                out.push_str(&format!("> **Error:** {message}\n\n"));
-            }
-            ChatItem::Child {
-                title, id, items, ..
-            } => {
-                out.push_str(&format!(
-                    "### Subagent · {}\n\n{}\n\n",
-                    title.as_deref().unwrap_or(id),
-                    transcript_markdown(items)
-                ));
-            }
-        }
-    }
-    out.trim_end().to_string()
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HarnessStatus {
     Offline,
@@ -1393,7 +1325,6 @@ impl DunlinApp {
                     self.connect_harness(cx);
                 }
             }
-            self.session_menu_open = false;
             self.refresh_mcp(cx);
             self.refresh_providers(cx);
             self.resume_visible_queue(cx);
@@ -1409,7 +1340,6 @@ impl DunlinApp {
             self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
-        self.session_menu_open = false;
         self.interrupt_live_turn(cx);
         self.stash_transcript();
         self.selected_session = index;
@@ -2629,6 +2559,26 @@ pub(crate) fn command_available(command: &str) -> bool {
     crate::harness_discovery::resolved_command(command).is_some()
 }
 
+/// The placeholder shipped with fresh settings is not a user configuration.
+pub(crate) fn custom_harness_configured(command: &str) -> bool {
+    let command = command.trim();
+    !command.is_empty() && command != "your-agent --acp"
+}
+
+/// Harnesses the user can pick in the composer. The complete catalog stays in
+/// Settings; here we only advertise installed adapters and a configured Custom
+/// ACP command. An uninstalled adapter must not reappear in the short picker.
+pub(crate) fn configured_harness_names(custom: &str) -> Vec<String> {
+    let mut names = crate::harness_discovery::catalog_names()
+        .filter(|name| command_available(&harness_command(name, "")))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if custom_harness_configured(custom) {
+        names.push("Custom ACP".into());
+    }
+    names
+}
+
 pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
     match status {
         PlanStatus::Pending => "queued",
@@ -2640,8 +2590,8 @@ pub(crate) fn plan_status_label(status: PlanStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatItem, HarnessState, HarnessStatus, command_available, harness_command, session_summary,
-        session_title, should_restart, transcript_markdown,
+        ChatItem, HarnessState, HarnessStatus, command_available, configured_harness_names,
+        custom_harness_configured, harness_command, session_summary, session_title, should_restart,
     };
 
     #[test]
@@ -2883,6 +2833,17 @@ mod tests {
     }
 
     #[test]
+    fn only_installed_and_configured_harnesses_enter_the_short_picker() {
+        assert!(custom_harness_configured("  /tmp/my-agent --acp  "));
+        assert!(!custom_harness_configured("   "));
+        assert!(!custom_harness_configured("your-agent --acp"));
+        let custom = configured_harness_names("  /tmp/my-agent --acp  ");
+        assert!(custom.iter().any(|name| name == "Custom ACP"));
+        let none = configured_harness_names("");
+        assert!(!none.iter().any(|name| name == "Custom ACP"));
+    }
+
+    #[test]
     fn detects_executables_on_path() {
         assert!(command_available("sh"));
         assert!(command_available("\"/bin/sh\" -c true"));
@@ -2905,39 +2866,6 @@ mod tests {
         assert!(matches!(&items[0], ChatItem::User { at_ms: 0, .. }));
         assert!(matches!(&items[1], ChatItem::AgentText { at_ms: 0, .. }));
         assert!(matches!(&items[2], ChatItem::Tool { at_ms: 0, .. }));
-    }
-
-    #[test]
-    fn transcripts_export_as_markdown() {
-        let items = vec![
-            ChatItem::User {
-                text: "Fix it".into(),
-                timing: None,
-                at_ms: 1,
-            },
-            ChatItem::AgentText {
-                text: "Done".into(),
-                streaming: false,
-                message_id: None,
-                at_ms: 2,
-            },
-            ChatItem::Plan {
-                items: vec![dunlin_agent::PlanItem {
-                    content: "Read files".into(),
-                    status: dunlin_agent::PlanStatus::Completed,
-                }],
-                at_ms: 3,
-            },
-            ChatItem::Error {
-                message: "boom".into(),
-                at_ms: 4,
-            },
-        ];
-        let markdown = transcript_markdown(&items);
-        assert!(markdown.contains("## You\n\nFix it"));
-        assert!(markdown.contains("## Agent\n\nDone"));
-        assert!(markdown.contains("[x] Read files"));
-        assert!(markdown.contains("**Error:** boom"));
     }
 
     #[test]

@@ -47,16 +47,18 @@ pub enum SidebarSection {
     Files,
     Search,
     SourceControl,
+    Security,
     Sessions,
 }
 
 impl SidebarSection {
-    pub const ALL: [SidebarSection; 6] = [
+    pub const ALL: [SidebarSection; 7] = [
         SidebarSection::Dashboard,
         SidebarSection::Projects,
         SidebarSection::Files,
         SidebarSection::Search,
         SidebarSection::SourceControl,
+        SidebarSection::Security,
         SidebarSection::Sessions,
     ];
 
@@ -67,6 +69,7 @@ impl SidebarSection {
             SidebarSection::Files => "Explorer",
             SidebarSection::Search => "Search",
             SidebarSection::SourceControl => "Source Control",
+            SidebarSection::Security => "Security",
             SidebarSection::Sessions => "Sessions",
         }
     }
@@ -89,6 +92,17 @@ pub struct RemoteProject {
     pub path: String,
 }
 
+/// A project is normally a repository/folder. A chat space is a standalone
+/// conversation workspace with its own history; it is never rendered as a
+/// synthetic repository project in the sidebar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectKind {
+    #[default]
+    Repo,
+    ChatSpace,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Project {
     pub id: Id,
@@ -99,6 +113,8 @@ pub struct Project {
     pub pinned: bool,
     pub trusted: bool,
     pub running_sessions: usize,
+    #[serde(default)]
+    pub kind: ProjectKind,
     #[serde(default)]
     pub remote: Option<RemoteProject>,
     #[serde(default)]
@@ -184,6 +200,10 @@ impl Project {
 
     pub fn is_remote(&self) -> bool {
         self.remote.is_some()
+    }
+
+    pub fn is_chat_space(&self) -> bool {
+        self.kind == ProjectKind::ChatSpace
     }
 }
 

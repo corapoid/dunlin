@@ -8,6 +8,7 @@ use tower::ServiceExt;
 
 mod history;
 mod operations;
+mod terminal;
 mod workbench;
 
 struct Fixture {
@@ -388,6 +389,61 @@ async fn provider_usage_is_admin_only() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+#[tokio::test]
+async fn billing_evidence_is_device_scoped_and_admin_only_to_aggregate() {
+    let f = Fixture::new();
+    let summary = dunlin_usage::billing::Summary {
+        generated_ms: 1,
+        totals: dunlin_usage::billing::Totals {
+            events: 2,
+            subagent_events: 1,
+            ..Default::default()
+        },
+        by_attribution: vec![dunlin_usage::billing::Slice {
+            label: "Subagents".into(),
+            totals: dunlin_usage::billing::Totals {
+                events: 1,
+                ..Default::default()
+            },
+        }],
+        ..Default::default()
+    };
+    let evidence = dunlin_usage::billing::Evidence::new("test-device", summary);
+    assert_eq!(
+        f.post("/v1/billing/evidence", Some(&f.token), json!(evidence))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.get_json("/v1/billing/evidence", Some(&f.token)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (admin, admin_token) = {
+        let store = f.state.store.lock().unwrap();
+        let admin = store.create_user("billing-admin", "admin").unwrap();
+        store.grant(&f.project, &admin.id).unwrap();
+        let (_, token) = store.create_device(&admin.id, "admin-test").unwrap();
+        (admin, token)
+    };
+    assert_eq!(admin.name, "billing-admin");
+    let (status, value) = f.get_json("/v1/billing/evidence", Some(&admin_token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(value[0]["device_name"], "test");
+    assert_eq!(
+        value[0]["evidence"]["summary"]["totals"]["subagent_events"],
+        1
+    );
+    let mut invalid = evidence;
+    invalid.device.clear();
+    assert_eq!(
+        f.post("/v1/billing/evidence", Some(&f.token), json!(invalid))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn attachment_upload_rejects_a_symlinked_namespace() {
@@ -478,4 +534,83 @@ async fn relay_checks_record_real_exit_status_for_granted_users() {
         .0,
         StatusCode::OK
     );
+}
+
+#[test]
+fn audit_artifact_names_are_allowlisted_and_bounded() {
+    assert!(super::safe_audit_run("run-0190"));
+    assert!(!super::safe_audit_run("../run"));
+    assert!(!super::safe_audit_run("run/one"));
+    assert!(super::safe_audit_file("findings.json"));
+    assert!(super::safe_audit_file("verification-src-auth.json"));
+    assert!(!super::safe_audit_file("../findings.json"));
+    assert!(!super::safe_audit_file("secret.txt"));
+    assert!(!super::safe_audit_file("exports/../../secret"));
+}
+
+#[tokio::test]
+async fn audit_artifacts_are_scoped_to_the_granted_project() {
+    let fixture = Fixture::new();
+    let run = fixture.root.join(".dunlin/audits/run-1");
+    fs::create_dir_all(&run).unwrap();
+    fs::write(run.join("findings.json"), "[]").unwrap();
+    fs::write(run.join("secret.txt"), "no").unwrap();
+
+    let (status, body) = fixture
+        .get_json(
+            &format!("/v1/audits?project={}", fixture.project),
+            Some(&fixture.token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["id"], "run-1");
+    assert!(
+        body[0]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file == "findings.json")
+    );
+    assert!(
+        !body[0]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file == "secret.txt")
+    );
+
+    let (status, body) = fixture
+        .get_json(
+            &format!(
+                "/v1/audits/file?project={}&run=run-1&name=findings.json",
+                fixture.project
+            ),
+            Some(&fixture.token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["contents"], "[]");
+
+    let (status, _) = fixture
+        .get_json(&format!("/v1/audits?project={}", fixture.project), None)
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = fixture
+        .get_json(
+            &format!("/v1/audits?project={}", fixture.project),
+            Some(&fixture.ungranted_token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = fixture
+        .get_json(
+            &format!(
+                "/v1/audits/file?project={}&run=run-1&name=secret.txt",
+                fixture.project
+            ),
+            Some(&fixture.token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

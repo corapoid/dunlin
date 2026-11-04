@@ -23,16 +23,27 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let body = match this.section {
+    // Minimalist mode exposes only the file explorer; other sections and the
+    // account-usage footer stay out of the way until the mode is turned off.
+    let section = if this.minimal_mode {
+        SidebarSection::Files
+    } else {
+        this.section
+    };
+    let body = match section {
         SidebarSection::Dashboard => projects_body(this, cx),
         SidebarSection::Projects => projects_body(this, cx),
         SidebarSection::Files => files_body(this, cx),
         SidebarSection::Search => search_body(this, cx),
         SidebarSection::SourceControl => source_control_body(this, cx),
+        SidebarSection::Security if this.security_enabled => {
+            crate::security::sidebar_body(this, cx)
+        }
+        SidebarSection::Security => projects_body(this, cx),
         SidebarSection::Sessions => sessions_body(this, cx),
     };
-    let header = section_header(this, cx);
-    let footer = usage_footer(this, cx);
+    let header = section_header(this, section, cx);
+    let footer = (!this.minimal_mode).then(|| usage_footer(this, cx));
     let menu = this.project_menu_open.then(|| project_menu(this, cx));
 
     let width =
@@ -42,12 +53,12 @@ pub(crate) fn render(
         .flex_1()
         .min_h(px(0.))
         .overflow_y_scroll()
-        .when(this.section == SidebarSection::Files, |view| {
+        .when(section == SidebarSection::Files, |view| {
             crate::explorer::drop_target(view, this.project().path.clone(), cx)
         })
         .child(body);
     let scroll = if matches!(
-        this.section,
+        section,
         SidebarSection::Projects | SidebarSection::Dashboard
     ) {
         projects_context(scroll, None, this.project_groups.clone(), cx)
@@ -67,7 +78,7 @@ pub(crate) fn render(
         .child(project_switcher(this, cx))
         .child(header)
         .child(scroll)
-        .child(footer)
+        .children(footer)
         .child(crate::sidebar_layout::handle(this, cx));
 
     if let Some(menu) = menu {
@@ -163,18 +174,29 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .into_any_element()
 }
 
-fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn section_header(
+    this: &DunlinApp,
+    section: SidebarSection,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
     let p = palette(cx);
-    let (title, count) = match this.section {
-        SidebarSection::Dashboard => ("Projects", Some(this.projects.len())),
-        SidebarSection::Projects => ("Projects", Some(this.projects.len())),
+    let (title, count) = match section {
+        SidebarSection::Dashboard => (
+            "Projects",
+            Some(this.projects.iter().filter(|p| !p.is_chat_space()).count()),
+        ),
+        SidebarSection::Projects => (
+            "Projects",
+            Some(this.projects.iter().filter(|p| !p.is_chat_space()).count()),
+        ),
         SidebarSection::Files => ("Explorer", None),
         SidebarSection::Search => ("Search", Some(this.search_hits.len())),
         SidebarSection::SourceControl => ("Source control", Some(this.git.changes.len())),
+        SidebarSection::Security => ("Security", None),
         SidebarSection::Sessions => ("Sessions", Some(this.visible_session_count())),
     };
 
-    let right: AnyElement = match this.section {
+    let right: AnyElement = match section {
         SidebarSection::Files => div()
             .id("explorer-actions")
             .flex()
@@ -338,7 +360,7 @@ fn section_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .child(div().flex_1())
         .child(right);
     if matches!(
-        this.section,
+        section,
         SidebarSection::Projects | SidebarSection::Dashboard
     ) {
         projects_context(header, None, this.project_groups.clone(), cx)
@@ -362,6 +384,29 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .iter()
         .map(|(id, summary)| (id.clone(), summary.activity.modified_ms))
         .collect();
+    let chat_spaces: Vec<usize> = this
+        .projects
+        .iter()
+        .enumerate()
+        .filter(|(_, project)| project.is_chat_space())
+        .map(|(index, _)| index)
+        .collect();
+    if !chat_spaces.is_empty() {
+        list = list.child(
+            div()
+                .px(px(9.))
+                .pt(px(4.))
+                .pb(px(2.))
+                .text_size(px(9.5))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child("CHATS · SCRATCH WORKSPACES"),
+        );
+        for index in chat_spaces {
+            list = list.child(chat_space_row(this, index, cx, &p));
+        }
+        list = list.child(div().h(px(1.)).my(px(6.)).bg(p.border));
+    }
     list = list.child(project_view_controls(this, cx, &p));
     if this.project_view == crate::project_tree::View::Tree {
         for (index, depth) in crate::project_tree::visible_groups(
@@ -376,7 +421,7 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .projects
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| p.group_id.as_deref() == Some(&group.id))
+                .filter(|(_, p)| !p.is_chat_space() && p.group_id.as_deref() == Some(&group.id))
                 .map(|(i, _)| i)
                 .collect();
             crate::project_tree::sort_projects(
@@ -390,9 +435,10 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .projects
                 .iter()
                 .filter(|p| {
-                    p.group_id
-                        .as_ref()
-                        .is_some_and(|id| descendants.contains(id))
+                    !p.is_chat_space()
+                        && p.group_id
+                            .as_ref()
+                            .is_some_and(|id| descendants.contains(id))
                 })
                 .count();
             let collapsed = this.collapsed_project_groups.contains(&group.id);
@@ -414,10 +460,11 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .iter()
         .enumerate()
         .filter(|(_, p)| {
-            this.project_view == crate::project_tree::View::List
-                || p.group_id
-                    .as_ref()
-                    .is_none_or(|id| !groups.iter().any(|g| &g.id == id))
+            !p.is_chat_space()
+                && (this.project_view == crate::project_tree::View::List
+                    || p.group_id
+                        .as_ref()
+                        .is_none_or(|id| !groups.iter().any(|g| &g.id == id)))
         })
         .map(|(i, _)| i)
         .collect();
@@ -750,6 +797,86 @@ fn group_header(
                 ),
         ));
     projects_context(header, Some(menu_id), groups.to_vec(), cx).into_any_element()
+}
+
+fn chat_space_row(
+    this: &DunlinApp,
+    index: usize,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
+    let Some(project) = this.projects.get(index) else {
+        return div().into_any_element();
+    };
+    let active = index == this.selected_project;
+    let repo_context = project
+        .settings
+        .environment
+        .get("DUNLIN_CHAT_CONTEXT")
+        .cloned()
+        .unwrap_or_else(|| {
+            if project.path.starts_with('/') && !project.path.contains("/chat-spaces/") {
+                project.path.clone()
+            } else {
+                String::new()
+            }
+        });
+    let sessions = this
+        .all_sessions
+        .iter()
+        .filter(|session| session.project_id == project.id)
+        .count();
+    div()
+        .id(("chat-space-row", index))
+        .h(px(36.))
+        .px(px(8.))
+        .rounded(px(7.))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .cursor_pointer()
+        .when(active, |row| {
+            row.bg(p.card).border_1().border_color(p.border)
+        })
+        .when(!active, |row| row.hover(move |style| style.bg(p.hover)))
+        .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+        .child(
+            Icon::new(if repo_context.is_empty() {
+                IconName::MessageSquare
+            } else {
+                IconName::FolderOpen
+            })
+            .size(px(13.))
+            .text_color(p.muted_fg),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(p.fg)
+                        .truncate()
+                        .child(project.name.clone()),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .truncate()
+                        .child(if repo_context.is_empty() {
+                            format!("scratch · {sessions} conversations")
+                        } else {
+                            repo_context
+                        }),
+                ),
+        )
+        .into_any_element()
 }
 
 fn project_row(

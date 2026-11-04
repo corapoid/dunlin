@@ -90,6 +90,12 @@ pub(crate) struct RemoteProjectInfo {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteAuditRun {
+    pub id: String,
+    pub files: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub(crate) struct RemoteGithubPlan {
     pub id: String,
     pub summary: String,
@@ -291,6 +297,58 @@ pub(crate) fn sessions(
     response.into_json().map_err(|error| error.to_string())
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct RemoteBillingEvidence {
+    pub user_id: String,
+    pub user_name: String,
+    pub device_id: String,
+    pub device_name: String,
+    pub updated_at: i64,
+    pub evidence: dunlin_usage::billing::Evidence,
+}
+
+pub(crate) fn sync_billing_evidence(
+    url: &str,
+    token: &str,
+    evidence: &dunlin_usage::billing::Evidence,
+) -> Result<(), String> {
+    validate_relay_url(url)?;
+    evidence.validate()?;
+    http_agent()
+        .post(&format!(
+            "{}/v1/billing/evidence",
+            url.trim_end_matches('/')
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .send_json(evidence)
+        .map(|_| ())
+        .map_err(http_error)
+}
+
+pub(crate) fn billing_evidence(
+    url: &str,
+    token: &str,
+) -> Result<Vec<RemoteBillingEvidence>, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!(
+            "{}/v1/billing/evidence",
+            url.trim_end_matches('/')
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .call()
+        .map_err(http_error)?;
+    let rows: Vec<RemoteBillingEvidence> =
+        response.into_json().map_err(|error| error.to_string())?;
+    for row in &rows {
+        row.evidence.validate()?;
+    }
+    Ok(rows)
+}
+
 pub(crate) fn usage(url: &str, token: &str) -> Result<Vec<ProviderUsage>, String> {
     validate_relay_url(url)?;
     let response = http_agent()
@@ -427,6 +485,22 @@ impl RemoteWorkspace {
         self.get(&format!(
             "/v1/fs/tree?project={}",
             encode(&self.project.project_id)
+        ))
+    }
+
+    pub fn audit_runs(&self) -> Result<Vec<RemoteAuditRun>, String> {
+        self.get(&format!(
+            "/v1/audits?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
+
+    pub fn audit_file(&self, run: &str, name: &str) -> Result<FileContents, String> {
+        self.get(&format!(
+            "/v1/audits/file?project={}&run={}&name={}",
+            encode(&self.project.project_id),
+            encode(run),
+            encode(name)
         ))
     }
 
@@ -961,6 +1035,23 @@ impl WorkspaceBackend {
         }
     }
 
+    pub fn audit_runs(&self) -> Result<Vec<RemoteAuditRun>, String> {
+        match self {
+            WorkspaceBackend::Local { .. } => Err("audit artifacts are local-only here".into()),
+            WorkspaceBackend::Remote(remote) => remote.audit_runs(),
+        }
+    }
+
+    pub fn audit_file(&self, run: &str, name: &str) -> Result<FileContents, String> {
+        match self {
+            WorkspaceBackend::Local { root } => {
+                let relative = format!(".dunlin/audits/{run}/{name}");
+                workspace_fs::read_file(root, &relative)
+            }
+            WorkspaceBackend::Remote(remote) => remote.audit_file(run, name),
+        }
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, String> {
         match self {
             WorkspaceBackend::Local { root } => Ok(search::search_project(root, query, limit)),
@@ -1177,7 +1268,7 @@ fn http_error(error: ureq::Error) -> String {
     }
 }
 
-fn encode(value: &str) -> String {
+pub(crate) fn encode(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/') {

@@ -10,7 +10,7 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.6`; see [CHANGELOG.md](../CHANGELOG.md).
+release. Source builds are now `0.1.0-beta.7`; see [CHANGELOG.md](../CHANGELOG.md).
 Website download links are advanced only after release assets are verified.
 
 ## Why Dunlin
@@ -64,6 +64,12 @@ Website download links are advanced only after release assets are verified.
 - Message actions: copy, retry and edit. Agent responses can be copied as
   Markdown.
 - Session history with persisted transcripts and interruption recovery.
+- **New Standalone Chat** creates an isolated scratch workspace (or, with
+  **New Chat in Repository…** / **New Chat in &lt;repo&gt;**, a separate chat
+  space bound to an explicitly confirmed folder). Chats live in their own
+  sidebar section, never as fake repository projects, and existing project
+  sessions never change cwd.
+  Details: [standalone chat](standalone-chat-worktree-usage.md).
 - Immediate project/session navigation while ACP context and models load. Local
   agents keep their own runtime while another project is visible (up to eight
   connected adapters; idle adapters can be evicted). Pending follow-ups pause at
@@ -122,6 +128,12 @@ Website download links are advanced only after release assets are verified.
    and explicit confirmation, locally or through an updated relay. Buffers are
    preserved; no automatic stash, force or rollback is added.
    Details and pending GUI QA: [repository state](git-repository-state.md).
+- **Subtask Worktrees** (command palette) creates one isolated branch
+  `dunlin/subtask/<name>` and worktree from an explicit commit. Each creation and
+  removal is a separate confirmed Git plan; the durable registry survives
+  restart and can reopen the worktree as a project. It never starts an agent,
+  merges, pushes or acts as a sandbox.
+  [Scope and limits](standalone-chat-worktree-usage.md).
 - **Blame** in a source editor header shows unchanged-line author/commit details
   on hover and opens the commit in history. Unsaved/modified lines get no author.
   HEAD/file/backend caching and relay support are bounded and opt-in.
@@ -153,15 +165,17 @@ Website download links are advanced only after release assets are verified.
   [Supported scope and limitations](markdown-editor.md).
 - **Terminal** (`⌘J`) and **Run** (`⌘⇧J`) share one hideable dock that can be
   dragged to the bottom, left or right edge and resized by dragging its inner
-  edge. Terminal opens independent local PTY tabs with ANSI/RGB rendering,
-  a 5,000-line scrollback, resize, copy/paste, PageUp/PageDown and basic shell
-  keys. Closing a tab kills its process; sessions are never resumed after restart.
-  Remote projects show an explicit no-PTY state and never fall back to a local
-  shell. **Run** statically detects Node/Cargo/Make/Just/Python/Go/Deno/
-  Composer/Ruby/Elixir/Gradle/Maven and script commands, shows exact argv/cwd/env
-  names, asks for confirmation and runs once in a terminal tab with exit status,
-  bounded local history and rerun. No manifest code is evaluated.
-  [Terminal and Run bounds](terminal-and-run.md).
+  edge. Terminal opens independent PTY tabs (local, relay or SSH v1) with
+  ANSI/RGB rendering, a 5,000-line scrollback, resize, mouse selection
+  (word/line/Shift), draggable splits, search, OSC 8 links, shell integration
+  (OSC 133/633/7/1337) and copy/paste. Closing a tab kills its process; sessions
+  are never resumed after restart. Remote projects use the relay PTY and never
+  fall back to a local shell; the SSH button uses OpenSSH config/agent and
+  prompts for known hosts. **Run** statically detects Node/Cargo/Make/Just/
+  Python/Go/Deno/Composer/Ruby/Elixir/Gradle/Maven and script commands, shows
+  exact argv/cwd/env names, asks for confirmation and runs once in a terminal tab
+  with exit status, bounded local history and rerun. No manifest code is
+  evaluated. [Terminal and Run bounds](terminal-and-run.md).
 - **Project settings → Project icon → Choose image…** embeds a bounded PNG/JPEG/
   SVG/ICO as a small normalized PNG; moving the source file does not break it.
   **Automatic** restores repository-icon discovery. The Home heading follows the
@@ -421,6 +435,106 @@ Local harnesses still run with the user's permissions; this is a use-only
 capability, not a sandbox. See [use-only credentials](secrets.md) for the policy,
 threat model and limitations.
 
+### Security workspace
+
+The **Security** rail section is an installation and launch surface, not a
+built-in scanner. It offers the pinned, MIT-licensed Cloudflare
+`security-audit-skill` bundle as a recommended catalog entry. The bundle is
+embedded in Dunlin with its companion playbooks, JSON schema, validators and
+license; installing it copies every file together into the selected harness's
+global or project skill directory. The same catalog entry is available in
+**Settings → Skills**, and both surfaces offer installation when the skill is
+missing.
+
+Skills now support multi-file bundles. Folder import reads bounded, UTF-8
+regular files below the selected skill directory (never symlinks), preserves
+relative paths and hashes every file. Updates require all Dunlin-managed files
+to remain unchanged; uninstall removes only verified managed files and leaves
+supporting user files and the directory in place. GitHub-link import still
+fetches only `SKILL.md`; use folder import for multi-file bundles.
+
+**Start audit in chat** creates a dedicated conversation with the installed
+skill path and a source-only Phase 1 prompt. It does not execute target code or
+run the scanner itself. Artifacts go to
+`~/Library/Application Support/Dunlin/audits/<project>/run-<id>/` and the
+harness's normal permission prompts still apply.
+
+The Security view also reads completed or in-progress run directories. It
+supports Cloudflare `findings.json` and `coverage-ledger.json`, Codex Security
+`findings.json` and `coverage.json`, and SARIF 2.1.0 exports. It validates
+bounded structure, repository-relative paths, verdict branches, duplicate
+fingerprints and coverage IDs, then shows findings, evidence, coverage, report
+text and structural errors. Raw artifacts remain authoritative. An empty
+findings file, a missing coverage file or a valid parse is never presented as
+proof that a repository is secure; `confirmed` is limited to Cloudflare records
+whose workflow supplies the required evidence, while Codex and SARIF results are
+labelled `Reported`. Runs refresh while an audit is still active. A run linked to a Dunlin
+conversation can reopen that chat; once coverage exists, **Continue to hunting**
+prepares a Phase 2 prompt but does not send it automatically. **Export SARIF**
+writes `dunlin-results.sarif` beside the run artifacts without changing the
+saved findings. When the same fingerprint appears in more than one loaded run,
+the finding detail reports the occurrence count but never merges evidence
+automatically.
+
+Finding detail also keeps a local triage state: open, accepted, false positive,
+fixed or won't fix. Triage is keyed by source and fingerprint, is stored in
+Dunlin settings, and never edits the audit artifact. A triage decision does not
+change a verdict or severity. The detail view can start a fresh verifier session;
+the verifier is instructed to try to disprove the candidate and writes a bounded
+`verification-*.json` record back into the run directory. Dunlin displays the
+newest decision but never applies it to the original finding automatically.
+
+The run header advances an explicit phase sequence: reconnaissance, hunting,
+validation, reporting, verification and complete. Each **Continue** action
+prepares the next phase prompt in the linked audit conversation and records the
+phase in `dunlin-run.json`; it does not send the prompt automatically.
+
+**Codex Security CLI.** When `codex-security` or `cs` is on the absolute PATH,
+the Codex card can start an explicit `scan` into
+`<run>/codex-results`. The external CLI owns authentication, provider policy,
+network access and its sandbox; Dunlin only starts the argv after confirmation
+and reads saved artifacts back. Codex findings expose `Patch with Codex` and
+`Verify fix with Codex`; patching requires a clean working tree, a separate
+confirmation and never creates a commit or push. `npx` and repository-local
+binaries are never invoked implicitly.
+
+**Exports.** A run can export SARIF, normalized JSON, CSV and Markdown beside its
+artifacts as `dunlin-results.sarif`, `dunlin-findings.json`,
+`dunlin-findings.csv` and `dunlin-report.md`. Exports do not rewrite the
+canonical findings or reports.
+
+**Sandboxed local check.** The Security view can run one explicit JSON argv in a
+macOS seatbelt profile with network denied, writes restricted to a private
+scratch directory, common credential reads denied, and bounded wall-clock, CPU,
+file-size and process limits. This is a native local check runner; it is not a
+container and it does not sandbox the ACP harness.
+
+**Scanner report adapters.** The Security view imports saved Semgrep, Snyk,
+Trivy, Gitleaks and Bandit JSON reports into a new run. Imported results are
+`Reported`, never `Confirmed`; Gitleaks matches are redacted from the UI and
+exported descriptions. The import is a file read and parse, never a scanner
+execution.
+
+**Remote projects.** Remote audits use `.dunlin/audits/<run-id>/` on the relay
+host. The relay exposes only bounded, allowlisted audit artifacts for the
+granted project (`/v1/audits` and `/v1/audits/file`); the client keeps a local
+read-only cache so the same parser and findings UI work. Starting a remote audit
+creates the remote directory, writes `dunlin-run.json`, and prepares the Phase 1
+prompt in a relay ACP session. Keep `.dunlin/` out of Git history. Remote phase
+prompts are prepared in the linked session; remote verifier writes and remote
+Codex CLI execution remain separate limitations.
+
+**Settings → Security** has a global **Enable Security workspace** switch. When
+disabled, Dunlin hides the Security rail item, command-palette entry, audit
+views and the Cloudflare audit catalog recommendations. It does not uninstall
+skills, delete run artifacts, revoke permissions, or change Codex Security;
+re-enable the switch to inspect the same local files again.
+
+**Codex Security** is deliberately external. Dunlin does not bundle or
+reimplement its scanner, CLI, patches or verification. The Security surface only
+links to the Codex Security documentation and harness settings and explains that
+the plugin requires a Codex/OpenAI harness.
+
 ### Remote relay
 
 - Self-hosted `dunlin-relay` with accounts, devices and project grants.
@@ -435,6 +549,9 @@ threat model and limitations.
 - Safe branch switching requires the updated relay's `/v1/git/branch-context`
   and `/v1/git/switch-safe` endpoints and the existing project grant. Older relays
   show an update error; Dunlin never silently falls back to legacy checkout.
+- Optional aggregate billing evidence sync: members may `POST
+  /v1/billing/evidence` (bounded, no raw logs/prompts); only relay administrators
+  may read the per-device aggregate. Upload is always an explicit Usage action.
 - macOS seatbelt sandbox for the harness, denying other projects and common
   credential stores.
 
@@ -536,15 +653,18 @@ own CLI does not install its separate ACP adapter. Startup failures are not
 automatically retried. Consecutive historical errors are grouped visually without
 deleting their saved entries.
 
-The chat composer has inline dropdowns for **environment**, **harness**,
-**agent mode / tool permissions** and **model**. New conversations start with a
-centered composer. **Enter** sends a message; **Shift+Enter** inserts a new line
-(`⌘Enter` also sends). Agent modes (for example Plan or Build) come from the harness,
-not from hard-coded prompts; unsupported modes are not offered. Changing the
-local harness starts a new conversation and preserves the old one. Environments
-are this Mac and paired relays; choosing another environment opens a project
-there rather than relocating a running conversation. A repository-context picker
-for project-independent chat is planned under Standalone chat in the roadmap.
+The title-bar host button shows the current host and a connection-status dot.
+Its menu selects **Local host**, a paired **remote relay**, or the existing
+**SSH** terminal entry; choosing another host opens a project there rather than
+relocating a running conversation. The chat composer keeps inline dropdowns for
+**harness**, **agent mode / tool permissions** and **model**. New conversations
+start with a centered composer. **Enter** sends a message; **Shift+Enter** inserts
+a new line (`⌘Enter` also sends). Agent modes (for example Plan or Build) come
+from the harness, not from hard-coded prompts; unsupported modes are not offered.
+Changing the local harness starts a new conversation and preserves the old one.
+The harness picker lists installed adapters and a configured Custom ACP command;
+Settings → Harnesses owns the full catalog. A repository-context picker for
+project-independent chat is planned under Standalone chat in the roadmap.
 
 ### OpenCode accounts, Free and Go
 
@@ -600,9 +720,10 @@ On remote projects, authentication and provider configuration belong on the
 relay; Dunlin never uses this Mac's account catalog for those conversations.
 
 Chat keeps each kind of information in one place: the conversation header owns
-its title, status, project, branch and message count; the composer owns environment,
-harness, provider, mode and model selection; the status bar owns connection state,
-cost and context usage. Assistant message headers show the speaker rather than
+its title, status, project, branch and message count; the title bar owns host,
+environment and new-session actions; the composer owns harness, provider, mode
+and model selection; the status bar owns connection state, cost and context
+usage. Assistant message headers show the speaker rather than
 repeating the current global model/harness for every historical response. Model
 labels omit the selected provider's prefix without changing model IDs. Reasoning
 can be toggled from the conversation header; starter suggestions only appear for
@@ -651,15 +772,30 @@ stream by the UI; no artificial typing delay is added. Permission gates and
 errors remain visible.
 The setting persists across launches and does not remove recorded history.
 Graph defaults to agents and actual delegated sessions only. Click an agent to
-show/hide its tools; plans and tool calls never masquerade as agents. Search keeps
+show/hide its tools; plans and tool calls never masquerade as agents. A linear
+tidy-tree auto-layout handles arbitrarily deep subagent chains, packs
+variable-width siblings and never overlaps cards when zoomed. Search keeps
 matching nodes and their ancestor path visible. **Save SVG** exports the currently
-disclosed tree through a native save dialog, including offscreen nodes. A compact
-minimap and zoom controls provide orientation; `⌘+`, `⌘−` and `⌘0` work without
-moving keyboard focus away from chat. Trace defaults to user requests, with
-per-request disclosure, **Requests** to collapse details, **Expand all**, search,
-sticky axis labels and row-density zoom. Kind filters retain parent requests so
-matching events remain navigable. **Reduce motion** in Design disables decorative
-entrance/pulse animation without hiding status.
+disclosed tree through a native save dialog, including offscreen nodes. The
+viewport creates elements only for visible cards/edges; the minimap aggregates
+10k+ nodes into a bounded status grid. **Fit** scales and centres the current
+graph. A compact minimap and zoom controls provide orientation; `⌘+`, `⌘−` and
+`⌘0` work without moving keyboard focus away from chat. Trace defaults to user
+requests, with per-request disclosure, **Requests** to collapse details,
+**Expand all**, search, sticky axis labels and row-density zoom. Rows are
+virtualized, so a 10k-row run asks the renderer only for the visible slice. Kind
+filters retain parent requests so matching events remain navigable. **Reduce
+motion** in Design disables decorative entrance/pulse animation without hiding
+status.
+
+Graph and Trace are keyboard trees. Tab focuses the active tree; Up/Down,
+Home/End and PageUp/PageDown move selection and scroll it into view, Left
+collapses or moves to the parent, Right expands or enters the first child,
+Enter/Space toggles disclosure and Escape clears selection. Search, filters and
+collapse normalize the selection instead of leaving focus on a hidden row.
+Screen readers get tree-item roles, labels, descriptions, level/sibling
+positions, selected/expanded state and the active descendant. Full VoiceOver,
+both-theme and narrow-window acceptance remains a manual R11 item.
 Tool nodes are grouped under their owning subagent when origin metadata is available. OpenCode's child-session metadata
 and message IDs are retained so interleaved child/reasoning chunks do not split
 or pollute the root reply. Assistant answers render as Markdown, including
@@ -690,13 +826,20 @@ usage remain **—**, not zero or an estimate.
 **Settings → Usage** also contains local billing evidence. A bounded, read-only
 scan reads Claude Code JSONL, Codex rollout JSONL and OpenCode's SQLite message
 store, dedupes provider message ids and checkpoints complete JSONL lines. It
-reports global totals plus per-provider, per-harness, per-model, per-project and
-daily slices. Unknown models remain **unpriced**; the visible total is a lower
-bound, never a fabricated zero. Optional monthly alert budgets ($50/$100/$250)
-warn at 80% and alert at 100% of known priced spend. Scanner limits are 2,000
-files, 32 MiB total and 1 MiB per line; no log contents are uploaded. Importing
+reports global totals plus per-provider, per-harness, per-model, per-project,
+per-work-attribution and daily slices. Attribution is explicit:
+**Main conversation**, **Subagents**, **Internal / synthetic** and
+**Unknown attribution**; unknown is never assumed to be main work or $0.
+Unknown models remain **unpriced**; the visible total is a lower bound, never a
+fabricated zero. Optional monthly alert budgets ($50/$100/$250) warn at 80% and
+alert at 100% of known priced spend. Scanner limits are 2,000 files, 32 MiB total
+and 1 MiB per line. **Copy QA report** exports aggregate evidence, source
+files/offsets/states, unpriced models and warnings — never prompts or log
+contents. **Sync evidence** explicitly uploads the aggregate to paired relays;
+relay administrators can read per-device evidence, members cannot. Importing
 harness sessions refreshes the dashboard totals and starts a billing scan
 automatically; the dashboard no longer duplicates the billing evidence card.
+Scope and manual QA: [standalone chat, worktrees and billing](standalone-chat-worktree-usage.md).
 
 Times/duration are optional; unknown legacy timestamps and durations are not
 invented. Newly recorded turn duration starts when the prompt is dispatched and
@@ -771,7 +914,7 @@ instead of inventing percentages.
 Remote projects support the full macOS surface: explorer, editor with save,
 search, source control, diffs, chat, permissions, graph and trace. A session can
 be opened on one device at a time; if another device is active, use **Take over
-session** in the session menu or the **Take over** button on iOS. Composer
+session** in the session context menu or the **Take over** button on iOS. Composer
 attachments are uploaded to `.dunlin/attachments` on the relay and kept out of
 `git status` through `.git/info/exclude`.
 
@@ -817,7 +960,8 @@ to the project can use the key within policy.
 ## What is not in 0.1
 
 - iOS build and sync (the SwiftUI client is a scaffold).
-- Remote or SSH-backed terminal sessions; the terminal dock is local-only.
+- Full SSH host management: the SSH terminal v1 uses OpenSSH config/agent, but
+  Keychain UI, relay bootstrap and loopback tunnels are not implemented.
 - Computer use.
 - Automations and artifacts.
 - Parallel worktrees and multi-agent orchestration.

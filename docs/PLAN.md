@@ -49,6 +49,8 @@ crates/usage        subscription probes + dokładne skanery providerów
 crates/terminal     PTY, VT, scrollback
 crates/skills       discovery, walidacja, materializacja
 crates/artifacts    model, storage, podgląd
+crates/audit        Cloudflare/Codex/SARIF findings, coverage, bounded validation
+crates/vault        use-only credentials, Keychain policy, HTTP/CLI broker, MCP proxy
 crates/automation   scheduler, runy, precheck
 crates/ssh          OpenSSH ControlMaster, bootstrap relay
 crates/mcp          lokalny serwer narzędzi dla harnessów

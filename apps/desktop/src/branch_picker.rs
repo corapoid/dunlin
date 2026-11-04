@@ -236,7 +236,6 @@ impl DunlinApp {
         self.command_open = false;
         self.settings_open = false;
         self.project_menu_open = false;
-        self.session_menu_open = false;
         filter.update(cx, |state, cx| state.focus(window, cx));
         cx.spawn(async move |this, cx| {
             let result = cx

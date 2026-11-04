@@ -459,6 +459,9 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
         let Some(project) = this.projects.iter().find(|project| project.id == id) else {
             continue;
         };
+        if project.is_chat_space() {
+            continue;
+        }
         let summary = this
             .repo_summaries
             .values
@@ -893,6 +896,7 @@ mod tests {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: None,
             settings: Default::default(),

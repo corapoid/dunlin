@@ -63,11 +63,22 @@ The app bundle includes their complete generated acknowledgements in
 `Contents/Resources/Syntax-Notices.md`; `Dunlin --syntax-notices` prints the same
 version-matched text without launching the UI or connecting a harness.
 
+## Bundled skills
+
+| Component | Copyright | License |
+| --- | --- | --- |
+| Cloudflare `security-audit-skill` (pinned commit `c1c8a8c`) | Copyright 2025-2026 Cloudflare, Inc. | MIT |
+
+The complete skill bundle is embedded under `assets/skills/security-audit`,
+including its MIT license, companion playbooks, JSON schema and validators.
+Dunlin installs these files as text; it does not execute the bundled scripts.
+
 ## Runtime components
 
 Dunlin launches external ACP harnesses such as OpenCode, Claude Code and
 Codex. Those programs are not bundled with Dunlin, are installed by the user,
-and are governed by their own licenses and terms.
+and are governed by their own licenses and terms. Codex Security is an external
+plugin and is not bundled or reimplemented by Dunlin.
 
 The macOS application uses Apple system frameworks under the SDK license that
 ships with Xcode.

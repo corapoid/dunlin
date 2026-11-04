@@ -16,7 +16,8 @@ impl DunlinApp {
             .border_r_1()
             .border_color(p.border);
 
-        let items = [
+        let security_attention = !self.skill_in_library(crate::skills::SECURITY_AUDIT_SKILL);
+        let mut items = vec![
             (
                 SidebarSection::Dashboard,
                 IconName::ChartNoAxesColumn,
@@ -32,13 +33,21 @@ impl DunlinApp {
             (SidebarSection::Files, IconName::Files, 0, false),
             (SidebarSection::Search, IconName::Search, 0, false),
             (SidebarSection::SourceControl, IconName::GitBranch, 4, true),
-            (
-                SidebarSection::Sessions,
-                IconName::Clock3,
-                self.sessions.len(),
-                false,
-            ),
         ];
+        if self.security_enabled {
+            items.push((
+                SidebarSection::Security,
+                IconName::ShieldCheck,
+                1,
+                security_attention,
+            ));
+        }
+        items.push((
+            SidebarSection::Sessions,
+            IconName::Clock3,
+            self.sessions.len(),
+            false,
+        ));
 
         for (section, icon_name, count, has_badge) in items {
             let active = self.section == section && !self.settings_open;
@@ -179,7 +188,6 @@ impl DunlinApp {
             .unwrap_or_else(|| session.id.clone());
         let session_for_load = session_id.clone();
         let expected_project = self.project().id.clone();
-        self.session_menu_open = false;
         self.notice = Some("Taking over the remote session…".into());
         cx.spawn(async move |this, cx| {
             let result = cx
@@ -208,142 +216,24 @@ impl DunlinApp {
         .detach();
     }
 
-    fn session_menu(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = palette(cx);
-
-        fn item(
-            id: &'static str,
-            icon_name: IconName,
-            label: &'static str,
-            hint: Option<&'static str>,
-            danger: bool,
-            cx: &mut Context<DunlinApp>,
-            action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
-        ) -> AnyElement {
-            let p = palette(cx);
-            div()
-                .id(id)
-                .h(px(30.))
-                .px(px(7.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(7.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(if danger { p.red_soft } else { p.hover }))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    action(this, window, cx);
-                }))
-                .child(icon(
-                    icon_name,
-                    12.5,
-                    if danger { p.red } else { p.muted_fg },
-                ))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(12.0))
-                        .text_color(if danger { p.red } else { p.fg })
-                        .child(label),
-                )
-                .children(hint.map(|hint| {
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg.opacity(0.7))
-                        .child(hint)
-                }))
-                .into_any_element()
+    /// Right-click takeover keeps the removed session menu's remote recovery
+    /// path without restoring the title-bar menu.
+    pub(crate) fn takeover_session_at(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(session) = self.sessions.get(index) else {
+            return;
+        };
+        if !session.origin.is_remote() {
+            self.set_notice("Only remote sessions can be taken over", cx);
+            return;
         }
-
-        let takeover = self.session().origin.is_remote().then(|| {
-            item(
-                "session-menu-takeover",
-                IconName::Cloud,
-                "Take over session",
-                None,
-                false,
-                cx,
-                |this, _, cx| {
-                    this.session_menu_open = false;
-                    this.takeover_current_session(cx);
-                },
-            )
-        });
-
-        div()
-            .id("session-menu-overlay")
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.session_menu_open = false;
-                cx.notify();
-            }))
-            .child(
-                div()
-                    .id("session-menu")
-                    .child(crate::effects::rounded_probe(&self.overlay_backdrop, 10.))
-                    .absolute()
-                    .top(px(42.))
-                    .right(px(14.))
-                    .w(px(190.))
-                    .p(px(5.))
-                    .rounded(px(10.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(item(
-                        "session-menu-new",
-                        IconName::Plus,
-                        "New session",
-                        self.show_shortcut_hints.then_some("⌘N"),
-                        false,
-                        cx,
-                        |this, _, cx| {
-                            this.session_menu_open = false;
-                            this.new_session(cx);
-                        },
-                    ))
-                    .child(item(
-                        "session-menu-copy",
-                        IconName::Copy,
-                        "Copy transcript",
-                        Some("MD"),
-                        false,
-                        cx,
-                        |this, _, cx| {
-                            this.session_menu_open = false;
-                            if this.harness.transcript.is_empty() {
-                                this.set_notice("Nothing to copy yet", cx);
-                                return;
-                            }
-                            let markdown = harness::transcript_markdown(&this.harness.transcript);
-                            cx.write_to_clipboard(ClipboardItem::new_string(markdown));
-                            this.set_notice("Copied the transcript as Markdown", cx);
-                        },
-                    ))
-                    .children(takeover)
-                    .child(div().h(px(1.)).my(px(3.)).bg(p.border))
-                    .child(item(
-                        "session-menu-delete",
-                        IconName::Trash,
-                        "Delete session…",
-                        None,
-                        true,
-                        cx,
-                        |this, _, cx| {
-                            this.session_menu_open = false;
-                            this.request_delete_session(this.selected_session, cx);
-                        },
-                    )),
-            )
-            .into_any_element()
+        if index != self.selected_session {
+            self.interrupt_live_turn(cx);
+            self.stash_transcript();
+            self.selected_session = index;
+            let id = self.session().id.clone();
+            self.load_transcript(&id);
+        }
+        self.takeover_current_session(cx);
     }
 
     fn onboarding(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -645,8 +535,7 @@ impl DunlinApp {
         match panel {
             BottomPanel::Terminal => {
                 if self.terminal.tabs.is_empty()
-                    && !self.project().is_remote()
-                    && self.project().trusted
+                    && (self.project().is_remote() || self.project().trusted)
                     && let Err(error) = self.open_terminal_tab(cx)
                 {
                     self.terminal.error = Some(error);
@@ -921,11 +810,16 @@ impl DunlinApp {
         if self.section == SidebarSection::Dashboard {
             return crate::dashboard::render(self, cx);
         }
+        if self.section == SidebarSection::Security && self.security_enabled {
+            return crate::security::render(self, window, cx);
+        }
         if self.projects.is_empty() {
             return self.onboarding(cx);
         }
         let tabs = self.render_workbench_tabs(cx);
-        let content = if self.git_history.is_active_for(self.project()) {
+        let content = if self.spec_tools_enabled && self.spec.is_active_for(self.project()) {
+            crate::spec::render(self, cx)
+        } else if self.git_history.is_active_for(self.project()) {
             crate::git_history::render(self, cx)
         } else if self.workbench.show_file
             && let Some(inspector) = &self.inspector
@@ -2183,44 +2077,53 @@ impl DunlinApp {
                         return div().into_any_element();
                     };
                     let title = session.title.clone();
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(1.))
-                        .child(
-                            div()
-                                .px(px(8.))
-                                .pt(px(3.))
-                                .pb(px(4.))
-                                .text_size(px(10.0))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg)
-                                .truncate()
-                                .child(title.to_uppercase()),
-                        )
-                        .child(item("ctx-session-open", "Open session", p.fg).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.context_menu = None;
-                                this.select_session(index, cx);
-                            }),
-                        ))
-                        .child(
-                            item("ctx-session-new", "New session", p.fg).on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.context_menu = None;
-                                    this.new_session(cx);
-                                },
-                            )),
-                        )
-                        .child(div().h(px(1.)).my(px(2.)).bg(p.border))
-                        .child(
-                            item("ctx-session-delete", "Delete session…", p.red).on_click(
+                    let remote = session.origin.is_remote();
+                    let mut menu =
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(1.))
+                            .child(
+                                div()
+                                    .px(px(8.))
+                                    .pt(px(3.))
+                                    .pb(px(4.))
+                                    .text_size(px(10.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .truncate()
+                                    .child(title.to_uppercase()),
+                            )
+                            .child(item("ctx-session-open", "Open session", p.fg).on_click(
                                 cx.listener(move |this, _, _, cx| {
                                     this.context_menu = None;
-                                    this.request_delete_session(index, cx);
+                                    this.select_session(index, cx);
+                                }),
+                            ))
+                            .child(item("ctx-session-new", "New session", p.fg).on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.new_session(cx);
+                                }),
+                            ));
+                    if remote {
+                        menu = menu.child(
+                            item("ctx-session-takeover", "Take over session", p.fg).on_click(
+                                cx.listener(move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    this.takeover_session_at(index, cx);
                                 }),
                             ),
-                        )
+                        );
+                    }
+                    menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
+                        item("ctx-session-delete", "Delete session…", p.red).on_click(cx.listener(
+                            move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.request_delete_session(index, cx);
+                            },
+                        )),
+                    )
                 }
             };
 
@@ -2909,6 +2812,7 @@ impl DunlinApp {
         };
         let change_count = self.git.changes.len();
         let chat = self.view == MainView::Chat;
+        let minimal = self.minimal_mode;
         div()
             .h(px(crate::branch_picker::STATUS_BAR_HEIGHT))
             .flex_shrink_0()
@@ -2946,34 +2850,37 @@ impl DunlinApp {
                 )
                 .child(div().w(px(1.)).h(px(12.)).bg(p.border))
             })
-            .child({
-                let (harness_color, _) = crate::views::chat::harness_tone(&p, &self.harness.status);
-                div()
-                    .id("statusbar-harness")
-                    .flex()
-                    .flex_shrink_0()
-                    .items_center()
-                    .gap(px(5.))
-                    .child(dot(harness_color, 5.0))
-                    .child(match self.harness.status {
-                        harness::HarnessStatus::Ready { .. } => "Ready",
-                        harness::HarnessStatus::Starting => "Connecting…",
-                        harness::HarnessStatus::Failed(_) => "Connection failed",
-                        harness::HarnessStatus::Exited(_) => "Disconnected",
-                        harness::HarnessStatus::Offline => "Offline",
-                    })
-                    // Notices may contain multiline provider errors. Keep them
-                    // available on demand, never painted into the fixed footer.
-                    .when_some(
-                        self.notice.clone().or_else(|| self.harness.status.detail()),
-                        |view, notice| {
-                            view.tooltip(move |window, cx| {
-                                Tooltip::new(notice.clone())
-                                    .max_w(px(480.))
-                                    .build(window, cx)
-                            })
-                        },
-                    )
+            .when(!minimal, |view| {
+                view.child({
+                    let (harness_color, _) =
+                        crate::views::chat::harness_tone(&p, &self.harness.status);
+                    div()
+                        .id("statusbar-harness")
+                        .flex()
+                        .flex_shrink_0()
+                        .items_center()
+                        .gap(px(5.))
+                        .child(dot(harness_color, 5.0))
+                        .child(match self.harness.status {
+                            harness::HarnessStatus::Ready { .. } => "Ready",
+                            harness::HarnessStatus::Starting => "Connecting…",
+                            harness::HarnessStatus::Failed(_) => "Connection failed",
+                            harness::HarnessStatus::Exited(_) => "Disconnected",
+                            harness::HarnessStatus::Offline => "Offline",
+                        })
+                        // Notices may contain multiline provider errors. Keep them
+                        // available on demand, never painted into the fixed footer.
+                        .when_some(
+                            self.notice.clone().or_else(|| self.harness.status.detail()),
+                            |view, notice| {
+                                view.tooltip(move |window, cx| {
+                                    Tooltip::new(notice.clone())
+                                        .max_w(px(480.))
+                                        .build(window, cx)
+                                })
+                            },
+                        )
+                })
             })
             .child(div().flex_1())
             .child({
@@ -3070,21 +2977,23 @@ impl DunlinApp {
                             .child("Secrets"),
                     )
             })
-            .child(div().w(px(1.)).h(px(12.)).bg(p.border))
-            .child(
-                div()
-                    .font_family(dunlin_ui::theme::code_font())
-                    .child(format!("${:.2}", session.cost_usd)),
-            )
-            .child(div().w(px(1.)).h(px(12.)).bg(p.border))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(9.))
-                    .child(dot(p.violet, 5.0))
-                    .child(context_status_label(self.harness.usage, session.tokens)),
-            )
+            .when(!minimal, |view| {
+                view.child(div().w(px(1.)).h(px(12.)).bg(p.border))
+                    .child(
+                        div()
+                            .font_family(dunlin_ui::theme::code_font())
+                            .child(format!("${:.2}", session.cost_usd)),
+                    )
+                    .child(div().w(px(1.)).h(px(12.)).bg(p.border))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(9.))
+                            .child(dot(p.violet, 5.0))
+                            .child(context_status_label(self.harness.usage, session.tokens)),
+                    )
+            })
             .into_any_element()
     }
 
@@ -3095,7 +3004,6 @@ impl DunlinApp {
             || self.diff_view.is_some()
             || self.remote_picker.is_some()
             || self.new_file_prompt
-            || self.session_menu_open
             || self.pending_editor.is_some()
             || self.editor_conflict.is_some()
             || self.group_prompt.is_some()
@@ -3146,7 +3054,6 @@ impl DunlinApp {
             .as_ref()
             .map(|_| self.remote_picker_modal(cx));
         let new_file = self.new_file_prompt.then(|| self.new_file_modal(cx));
-        let session = self.session_menu_open.then(|| self.session_menu(cx));
         let editor = self.pending_editor.as_ref().map(|_| self.editor_prompt(cx));
         let conflict = self
             .editor_conflict
@@ -3177,7 +3084,6 @@ impl DunlinApp {
             .absolute()
             .inset_0()
             .size_full()
-            .children(session)
             .children(settings)
             .children(palette)
             .children(confirm)
@@ -3241,6 +3147,9 @@ impl DunlinApp {
             )
             .on_action(
                 cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
+                    if this.minimal_mode {
+                        return;
+                    }
                     this.sidebar_collapsed = !this.sidebar_collapsed;
                     this.persist_settings(cx);
                     cx.notify();

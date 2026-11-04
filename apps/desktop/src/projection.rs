@@ -6,6 +6,8 @@
 //! deterministic, and persisted transcripts produce the same shapes after a
 //! restart.
 
+use std::collections::HashMap;
+
 use dunlin_agent::PlanStatus;
 use dunlin_domain::{
     AgentKind, AgentNode, AgentStatus, Project, SessionStatus, SessionSummary, SpanKind,
@@ -19,7 +21,9 @@ const ROOT_WIDTH: f32 = 270.0;
 const CHILD_WIDTH: f32 = 240.0;
 const CHILD_GAP: f32 = 24.0;
 const CHILD_Y: f32 = 224.0;
+const VERTICAL_GAP: f32 = 42.0;
 const NODE_HEIGHT: f32 = 128.0;
+const NODE_Y: f32 = 16.0;
 
 /// Build the orchestrator tree for the current transcript.
 pub(crate) fn nodes(
@@ -81,63 +85,186 @@ pub(crate) fn nodes(
     nodes
 }
 
+/// Lay out a visible agent forest with a deterministic tidy-tree pass.
+///
+/// The old algorithm rescanned the whole slice for every parent and stopped at
+/// eight levels. This version indexes parents once, breaks stray cycles, and
+/// handles arbitrary depth without recursion, so streaming very deep subagent
+/// chains or expanding thousands of tools stays linear. Widths are packed by
+/// subtree in input order; a parent wider than its children stays centred over
+/// them instead of forcing a wider lane.
 pub(crate) fn layout_children(nodes: &mut Vec<AgentNode>, mut children: Vec<AgentNode>) {
     if children.is_empty() {
+        nodes[0].x = (CANVAS_WIDTH - nodes[0].width) / 2.;
+        nodes[0].y = NODE_Y;
         return;
     }
-    fn width(index: usize, rows: &[AgentNode], depth: usize) -> f32 {
-        if depth >= 8 {
-            return CHILD_WIDTH;
-        }
-        let children: Vec<_> = rows
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| n.parent.as_deref() == Some(rows[index].id.as_str()))
-            .map(|(i, _)| i)
-            .collect();
-        let span = children
-            .iter()
-            .map(|i| width(*i, rows, depth + 1))
-            .sum::<f32>()
-            + children.len().saturating_sub(1) as f32 * CHILD_GAP;
-        span.max(CHILD_WIDTH)
-    }
-    fn place(index: usize, x: f32, depth: usize, rows: &mut [AgentNode]) {
-        if depth >= 8 {
-            return;
-        }
-        let span = width(index, rows, depth);
-        rows[index].x = x + (span - CHILD_WIDTH) / 2.;
-        rows[index].y = CHILD_Y + depth as f32 * 170.;
-        let children: Vec<_> = rows
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| n.parent.as_deref() == Some(rows[index].id.as_str()))
-            .map(|(i, _)| i)
-            .collect();
-        let mut left = x;
-        for child in children {
-            let span = width(child, rows, depth + 1);
-            place(child, left, depth + 1, rows);
-            left += span + CHILD_GAP;
-        }
-    }
-    let roots: Vec<_> = children
+
+    let index: HashMap<_, _> = children
         .iter()
         .enumerate()
-        .filter(|(_, n)| n.parent.as_deref() == Some("root"))
-        .map(|(i, _)| i)
+        .map(|(index, node)| (node.id.clone(), index))
         .collect();
-    let total = roots.iter().map(|i| width(*i, &children, 0)).sum::<f32>()
-        + roots.len().saturating_sub(1) as f32 * CHILD_GAP;
-    let mut left = ((CANVAS_WIDTH - total) / 2.).max(20.);
-    nodes[0].x = left + (total - ROOT_WIDTH) / 2.;
-    for index in roots {
-        let span = width(index, &children, 0);
-        place(index, left, 0, &mut children);
-        left += span + CHILD_GAP;
+
+    // Never let a projection bug make the layout loop: a missing parent, a
+    // self-reference or a detached cycle becomes another root of the forest.
+    for node in &mut children {
+        let valid = node.parent.as_deref().is_some_and(|parent| {
+            parent == "root" || (parent != node.id && index.contains_key(parent))
+        });
+        if !valid {
+            node.parent = Some("root".into());
+        }
     }
+    break_cycles(&mut children, &index);
+    for node in &mut children {
+        if node.parent.is_none() {
+            node.parent = Some("root".into());
+        }
+    }
+
+    let mut kids: Vec<Vec<usize>> = vec![Vec::new(); children.len()];
+    for (child, node) in children.iter().enumerate() {
+        if let Some(parent) = node.parent.as_deref().and_then(|parent| index.get(parent)) {
+            // Parent normalization above already rejected self-references.
+            kids[*parent].push(child);
+        }
+    }
+    let mut roots: Vec<usize> = (0..children.len())
+        .filter(|index| children[*index].parent.as_deref() == Some("root"))
+        .collect();
+    if roots.is_empty() {
+        // A defensive fallback for malformed data: every node becomes a root
+        // rather than disappearing from the graph.
+        for (index, node) in children.iter_mut().enumerate() {
+            node.parent = Some("root".into());
+            roots.push(index);
+        }
+    }
+
+    let mut order = Vec::with_capacity(children.len());
+    let mut seen = vec![false; children.len()];
+    let mut stack: Vec<(usize, bool)> = roots.iter().rev().map(|index| (*index, false)).collect();
+    while let Some((index, expanded)) = stack.pop() {
+        if expanded {
+            order.push(index);
+            continue;
+        }
+        if seen[index] {
+            continue;
+        }
+        seen[index] = true;
+        stack.push((index, true));
+        for child in kids[index].iter().rev() {
+            if !seen[*child] {
+                stack.push((*child, false));
+            }
+        }
+    }
+    if order.len() != children.len() {
+        // Only reachable if the input was mutated between indexing passes.
+        // Keep the remaining nodes visible as roots.
+        for index in 0..children.len() {
+            if !seen[index] {
+                children[index].parent = Some("root".into());
+                roots.push(index);
+                order.push(index);
+            }
+        }
+    }
+
+    let row_width = |indices: &[usize], widths: &[f32]| {
+        indices.iter().map(|index| widths[*index]).sum::<f32>()
+            + indices.len().saturating_sub(1) as f32 * CHILD_GAP
+    };
+
+    let mut subtree = vec![0.0; children.len()];
+    for &index in &order {
+        subtree[index] = row_width(&kids[index], &subtree).max(children[index].width);
+    }
+
+    let mut depths = vec![0usize; children.len()];
+    let mut stack: Vec<(usize, usize)> = roots.iter().map(|index| (*index, 0)).collect();
+    let mut max_depth = 0;
+    while let Some((index, depth)) = stack.pop() {
+        depths[index] = depth;
+        max_depth = max_depth.max(depth);
+        for child in &kids[index] {
+            stack.push((*child, depth + 1));
+        }
+    }
+    let mut level_height = vec![0.0f32; max_depth + 1];
+    for (index, node) in children.iter().enumerate() {
+        level_height[depths[index]] = level_height[depths[index]].max(node.height);
+    }
+    let mut level_y = vec![CHILD_Y; max_depth + 1];
+    for depth in 1..=max_depth {
+        level_y[depth] = level_y[depth - 1] + level_height[depth - 1] + VERTICAL_GAP;
+    }
+
+    let total = row_width(&roots, &subtree);
+    let left = ((CANVAS_WIDTH - total) / 2.0).max(20.0);
+    nodes[0].x = left + (total - nodes[0].width) / 2.0;
+    nodes[0].y = NODE_Y;
+
+    let mut stack: Vec<(usize, f32, usize)> = Vec::new();
+    let mut cursor = left;
+    for root in &roots {
+        stack.push((*root, cursor, 0));
+        cursor += subtree[*root] + CHILD_GAP;
+    }
+    while let Some((index, box_left, depth)) = stack.pop() {
+        let node = &mut children[index];
+        node.x = box_left + (subtree[index] - node.width) / 2.0;
+        node.y = level_y[depth];
+
+        let children_width = row_width(&kids[index], &subtree);
+        let mut child_left = box_left + (subtree[index] - children_width) / 2.0;
+        let mut boxes = Vec::with_capacity(kids[index].len());
+        for child in &kids[index] {
+            boxes.push((*child, child_left, depth + 1));
+            child_left += subtree[*child] + CHILD_GAP;
+        }
+        for entry in boxes.into_iter().rev() {
+            stack.push(entry);
+        }
+    }
+
     nodes.extend(children);
+}
+
+/// Break parent cycles in linear time. Exactly one incoming edge per cycle is
+/// detached; the caller later promotes the detached node to a forest root.
+fn break_cycles(children: &mut [AgentNode], index: &HashMap<String, usize>) {
+    let mut state = vec![0u8; children.len()]; // 0 = new, 1 = on path, 2 = done
+    for start in 0..children.len() {
+        if state[start] != 0 {
+            continue;
+        }
+        let mut path: Vec<usize> = Vec::new();
+        let mut current = Some(start);
+        while let Some(node) = current {
+            if state[node] == 2 {
+                break;
+            }
+            if state[node] == 1 {
+                if let Some(last) = path.last() {
+                    children[*last].parent = None;
+                }
+                break;
+            }
+            state[node] = 1;
+            path.push(node);
+            current = children[node]
+                .parent
+                .as_deref()
+                .and_then(|parent| index.get(parent).copied())
+                .filter(|parent| *parent != node);
+        }
+        for node in path {
+            state[node] = 2;
+        }
+    }
 }
 
 /// The wrapper identifies actual child sessions; a websearch/tool is not an agent.
@@ -723,6 +850,7 @@ mod tests {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: None,
             settings: Default::default(),
@@ -904,8 +1032,10 @@ mod tests {
             }
         }
         let all = nodes(&transcript, &project(), &session());
-        let projected =
-            crate::activity::graph_nodes(&all, &all.iter().map(|node| node.id.clone()).collect());
+        let projected = crate::activity::graph_nodes(
+            all.clone(),
+            &all.iter().map(|node| node.id.clone()).collect(),
+        );
         assert_eq!(
             projected
                 .iter()

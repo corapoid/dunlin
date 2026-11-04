@@ -25,6 +25,32 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
+/// A deliberate human decision bound to the exact bytes of one artifact.
+/// Files remain canonical; this row is local evidence, not a replacement.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactApproval {
+    pub project_id: String,
+    pub path: String,
+    pub revision: String,
+    pub status: String,
+    pub actor: String,
+    pub note: String,
+    /// HEAD commit observed at decision time; empty when Git was unavailable.
+    #[serde(default)]
+    pub commit: String,
+    pub approved_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TaskEvidence {
+    pub project_id: String,
+    pub task_id: String,
+    pub kind: String,
+    pub reference: String,
+    pub summary: String,
+    pub created_at: i64,
+}
+
 pub struct Store {
     connection: Connection,
 }
@@ -66,6 +92,7 @@ impl Store {
             std::fs::create_dir_all(parent)?;
         }
         let connection = Connection::open(path)?;
+        connection.busy_timeout(std::time::Duration::from_secs(2))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "synchronous", "NORMAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
@@ -194,6 +221,21 @@ impl Store {
             transaction.execute_batch("ALTER TABLE project_groups ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'; PRAGMA user_version = 7;")?;
             transaction.commit()?;
         }
+        if version < 8 {
+            let transaction = self.connection.unchecked_transaction()?;
+            let has_kind: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'kind'",
+                [],
+                |row| row.get(0),
+            )?;
+            if has_kind == 0 {
+                transaction.execute_batch(
+                    "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo';",
+                )?;
+            }
+            transaction.execute_batch("PRAGMA user_version = 8;")?;
+            transaction.commit()?;
+        }
         if version < 9 {
             let transaction = self.connection.unchecked_transaction()?;
             transaction.execute_batch(
@@ -262,6 +304,88 @@ impl Store {
             )?;
             transaction.commit()?;
         }
+        if version < 10 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS artifact_approvals (
+                    project_id  TEXT NOT NULL,
+                    path        TEXT NOT NULL,
+                    revision    TEXT NOT NULL,
+                    status      TEXT NOT NULL,
+                    actor       TEXT NOT NULL,
+                    note        TEXT NOT NULL DEFAULT '',
+                    approved_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                    PRIMARY KEY (project_id, path)
+                );
+                CREATE INDEX IF NOT EXISTS artifact_approvals_project_idx
+                    ON artifact_approvals(project_id, approved_at DESC);
+
+                PRAGMA user_version = 10;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
+        if version < 11 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS artifact_index (
+                    project_id TEXT NOT NULL,
+                    path       TEXT NOT NULL,
+                    kind       TEXT NOT NULL,
+                    status     TEXT NOT NULL,
+                    title      TEXT NOT NULL,
+                    revision   TEXT NOT NULL,
+                    modified_ms INTEGER NOT NULL,
+                    payload    TEXT NOT NULL,
+                    indexed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                    PRIMARY KEY (project_id, path)
+                );
+                CREATE INDEX IF NOT EXISTS artifact_index_project_idx
+                    ON artifact_index(project_id, kind);
+
+                PRAGMA user_version = 11;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
+        if version < 12 {
+            let transaction = self.connection.unchecked_transaction()?;
+            let has_commit: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('artifact_approvals') WHERE name = 'head_commit'",
+                [],
+                |row| row.get(0),
+            )?;
+            if has_commit == 0 {
+                transaction.execute_batch(
+                    "ALTER TABLE artifact_approvals ADD COLUMN head_commit TEXT NOT NULL DEFAULT '';",
+                )?;
+            }
+            transaction.execute_batch("PRAGMA user_version = 12;")?;
+            transaction.commit()?;
+        }
+        if version < 13 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS task_evidence (
+                    project_id TEXT NOT NULL,
+                    task_id    TEXT NOT NULL,
+                    kind       TEXT NOT NULL,
+                    reference  TEXT NOT NULL,
+                    summary    TEXT NOT NULL DEFAULT '',
+                    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+                    PRIMARY KEY (project_id, task_id, kind, reference)
+                );
+                CREATE INDEX IF NOT EXISTS task_evidence_project_idx
+                    ON task_evidence(project_id, task_id, created_at DESC);
+
+                PRAGMA user_version = 13;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -273,10 +397,11 @@ impl Store {
             .map(serde_json::to_string)
             .transpose()?;
         let settings = serde_json::to_string(&project.settings)?;
+        let kind = serde_json::to_string(&project.kind)?;
         self.connection.execute(
             r#"
-            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote, group_id, settings)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            INSERT INTO projects (id, name, path, branch, tone, pinned, trusted, remote, group_id, settings, kind)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 path = excluded.path,
@@ -286,7 +411,8 @@ impl Store {
                 trusted = excluded.trusted,
                 remote = excluded.remote,
                 group_id = excluded.group_id,
-                settings = excluded.settings
+                settings = excluded.settings,
+                kind = excluded.kind
             "#,
             params![
                 project.id,
@@ -299,6 +425,7 @@ impl Store {
                 remote,
                 project.group_id,
                 settings,
+                kind,
             ],
         )?;
         Ok(())
@@ -306,12 +433,13 @@ impl Store {
 
     pub fn projects(&self) -> Result<Vec<Project>> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name, path, branch, tone, pinned, trusted, remote, group_id, settings FROM projects ORDER BY created_at",
+            "SELECT id, name, path, branch, tone, pinned, trusted, remote, group_id, settings, kind FROM projects ORDER BY created_at",
         )?;
         let rows = statement.query_map([], |row| {
             let tone: String = row.get(4)?;
             let remote: Option<String> = row.get(7)?;
             let settings: Option<String> = row.get(9)?;
+            let kind: String = row.get(10)?;
             Ok(Project {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -321,6 +449,7 @@ impl Store {
                 pinned: row.get::<_, i64>(5)? != 0,
                 trusted: row.get::<_, i64>(6)? != 0,
                 running_sessions: 0,
+                kind: serde_json::from_str(&kind).unwrap_or_default(),
                 remote: remote
                     .as_deref()
                     .and_then(|value| serde_json::from_str(value).ok()),
@@ -598,8 +727,222 @@ impl Store {
 
     /// Remove a project. Sessions and transcripts cascade with foreign keys.
     pub fn delete_project(&self, project_id: &str) -> Result<()> {
-        self.connection
-            .execute("DELETE FROM projects WHERE id = ?1", [project_id])?;
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "DELETE FROM artifact_approvals WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM artifact_index WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM task_evidence WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute("DELETE FROM projects WHERE id = ?1", [project_id])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Record one explicit approve/reject decision for a project-relative path.
+    /// A later decision for the same path replaces the earlier row; callers
+    /// compare `revision` with the current file hash to detect stale approvals.
+    pub fn set_artifact_approval(
+        &self,
+        project_id: &str,
+        path: &str,
+        revision: &str,
+        status: &str,
+        actor: &str,
+        note: &str,
+        commit: &str,
+    ) -> Result<()> {
+        if project_id.is_empty()
+            || path.is_empty()
+            || revision.is_empty()
+            || !matches!(status, "accepted" | "rejected")
+        {
+            return Err(StoreError::InvalidGroup("Invalid artifact approval".into()));
+        }
+        self.connection.execute(
+            r#"
+            INSERT INTO artifact_approvals
+                (project_id, path, revision, status, actor, note, head_commit, approved_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
+            ON CONFLICT(project_id, path) DO UPDATE SET
+                revision = excluded.revision,
+                status = excluded.status,
+                actor = excluded.actor,
+                note = excluded.note,
+                head_commit = excluded.head_commit,
+                approved_at = excluded.approved_at
+            "#,
+            params![project_id, path, revision, status, actor, note, commit],
+        )?;
+        Ok(())
+    }
+
+    pub fn artifact_approvals(&self, project_id: &str) -> Result<Vec<ArtifactApproval>> {
+        let mut statement = self.connection.prepare(
+            "SELECT project_id, path, revision, status, actor, note, head_commit, approved_at \
+             FROM artifact_approvals WHERE project_id = ?1 ORDER BY approved_at DESC, path",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            Ok(ArtifactApproval {
+                project_id: row.get(0)?,
+                path: row.get(1)?,
+                revision: row.get(2)?,
+                status: row.get(3)?,
+                actor: row.get(4)?,
+                note: row.get(5)?,
+                commit: row.get(6)?,
+                approved_at: row.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn clear_artifact_approval(&self, project_id: &str, path: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM artifact_approvals WHERE project_id = ?1 AND path = ?2",
+            params![project_id, path],
+        )?;
+        Ok(())
+    }
+
+    /// Replace the derived artifact index for one project. Files remain the
+    /// source of truth; this table is a rebuildable cache for metrics, audits
+    /// and fast lookups, never an authority for approval or content.
+    pub fn replace_artifact_index(
+        &self,
+        project_id: &str,
+        artifacts: &[dunlin_artifacts::Artifact],
+    ) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "DELETE FROM artifact_index WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM task_evidence WHERE project_id = ?1",
+            [project_id],
+        )?;
+        for artifact in artifacts {
+            let kind = serde_json::to_string(&artifact.kind)?;
+            let status = serde_json::to_string(&artifact.status)?;
+            let payload = serde_json::to_string(artifact)?;
+            transaction.execute(
+                r#"
+                INSERT INTO artifact_index
+                    (project_id, path, kind, status, title, revision, modified_ms, payload, indexed_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, unixepoch())
+                ON CONFLICT(project_id, path) DO UPDATE SET
+                    kind = excluded.kind,
+                    status = excluded.status,
+                    title = excluded.title,
+                    revision = excluded.revision,
+                    modified_ms = excluded.modified_ms,
+                    payload = excluded.payload,
+                    indexed_at = excluded.indexed_at
+                "#,
+                params![
+                    project_id,
+                    artifact.path,
+                    kind,
+                    status,
+                    artifact.title,
+                    artifact.revision,
+                    artifact.modified_ms,
+                    payload,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn artifact_index(&self, project_id: &str) -> Result<Vec<dunlin_artifacts::Artifact>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT payload FROM artifact_index WHERE project_id = ?1 ORDER BY path")?;
+        let rows = statement.query_map([project_id], |row| row.get::<_, String>(0))?;
+        let mut artifacts = Vec::new();
+        for payload in rows {
+            let payload = payload?;
+            match serde_json::from_str(&payload) {
+                Ok(artifact) => artifacts.push(artifact),
+                Err(error) => {
+                    return Err(StoreError::Json(error));
+                }
+            }
+        }
+        Ok(artifacts)
+    }
+
+    pub fn clear_artifact_index(&self, project_id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM artifact_index WHERE project_id = ?1",
+            [project_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_task_evidence(
+        &self,
+        project_id: &str,
+        task_id: &str,
+        kind: &str,
+        reference: &str,
+        summary: &str,
+    ) -> Result<()> {
+        if project_id.is_empty()
+            || task_id.is_empty()
+            || kind.is_empty()
+            || reference.is_empty()
+            || task_id.len() > 64
+            || kind.len() > 32
+            || reference.len() > 512
+            || summary.len() > 2048
+        {
+            return Err(StoreError::InvalidGroup("Invalid task evidence".into()));
+        }
+        self.connection.execute(
+            r#"
+            INSERT INTO task_evidence (project_id, task_id, kind, reference, summary, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())
+            ON CONFLICT(project_id, task_id, kind, reference) DO UPDATE SET
+                summary = excluded.summary,
+                created_at = excluded.created_at
+            "#,
+            params![project_id, task_id, kind, reference, summary],
+        )?;
+        Ok(())
+    }
+
+    pub fn task_evidence(&self, project_id: &str) -> Result<Vec<TaskEvidence>> {
+        let mut statement = self.connection.prepare(
+            "SELECT project_id, task_id, kind, reference, summary, created_at \
+             FROM task_evidence WHERE project_id = ?1 ORDER BY task_id, created_at DESC",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            Ok(TaskEvidence {
+                project_id: row.get(0)?,
+                task_id: row.get(1)?,
+                kind: row.get(2)?,
+                reference: row.get(3)?,
+                summary: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn clear_task_evidence(&self, project_id: &str, task_id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM task_evidence WHERE project_id = ?1 AND task_id = ?2",
+            params![project_id, task_id],
+        )?;
         Ok(())
     }
 
@@ -1013,7 +1356,9 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dunlin_domain::{PermissionMode, ProjectTone, RemoteProject, SessionOrigin, SessionStatus};
+    use dunlin_domain::{
+        PermissionMode, ProjectKind, ProjectTone, RemoteProject, SessionOrigin, SessionStatus,
+    };
 
     fn project() -> Project {
         Project {
@@ -1025,6 +1370,7 @@ mod tests {
             pinned: true,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: None,
             settings: Default::default(),
@@ -1179,6 +1525,151 @@ mod tests {
     }
 
     #[test]
+    fn artifact_approvals_are_hash_bound_and_replaceable() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store
+            .set_artifact_approval(
+                "dunlin",
+                "intent/a.md",
+                "rev-1",
+                "accepted",
+                "reviewer",
+                "ok",
+                "abc",
+            )
+            .unwrap();
+        let rows = store.artifact_approvals("dunlin").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].revision, "rev-1");
+        assert_eq!(rows[0].status, "accepted");
+        store
+            .set_artifact_approval(
+                "dunlin",
+                "intent/a.md",
+                "rev-2",
+                "rejected",
+                "reviewer",
+                "changed",
+                "def",
+            )
+            .unwrap();
+        let rows = store.artifact_approvals("dunlin").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].revision, "rev-2");
+        assert_eq!(rows[0].status, "rejected");
+        assert_eq!(rows[0].commit, "def");
+        assert!(
+            store
+                .set_artifact_approval(
+                    "dunlin",
+                    "intent/a.md",
+                    "rev-3",
+                    "approved",
+                    "reviewer",
+                    "",
+                    ""
+                )
+                .is_err()
+        );
+        store
+            .clear_artifact_approval("dunlin", "intent/a.md")
+            .unwrap();
+        assert!(store.artifact_approvals("dunlin").unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_a_project_also_removes_its_artifact_approvals() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store
+            .set_artifact_approval(
+                "dunlin",
+                "intent/a.md",
+                "rev-1",
+                "accepted",
+                "reviewer",
+                "",
+                "",
+            )
+            .unwrap();
+        store.delete_project("dunlin").unwrap();
+        assert!(store.artifact_approvals("dunlin").unwrap().is_empty());
+    }
+
+    fn indexed_artifact(path: &str) -> dunlin_artifacts::Artifact {
+        dunlin_artifacts::Artifact {
+            id: path.into(),
+            kind: dunlin_artifacts::Kind::Spec,
+            status: dunlin_artifacts::Status::Draft,
+            title: "Spec".into(),
+            path: path.into(),
+            absolute: None,
+            revision: "rev-1".into(),
+            bytes: 10,
+            modified_ms: 1,
+            author: None,
+            open_questions: Vec::new(),
+            requirements: Vec::new(),
+            tasks: Vec::new(),
+            frontmatter: Default::default(),
+            frontmatter_raw: String::new(),
+            body: "# Spec
+"
+            .into(),
+        }
+    }
+
+    #[test]
+    fn artifact_index_is_replaceable_and_deleted_with_the_project() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store
+            .replace_artifact_index(
+                "dunlin",
+                &[
+                    indexed_artifact("specs/001/spec.md"),
+                    indexed_artifact("specs/001/plan.md"),
+                ],
+            )
+            .unwrap();
+        assert_eq!(store.artifact_index("dunlin").unwrap().len(), 2);
+        store
+            .replace_artifact_index("dunlin", &[indexed_artifact("specs/002/spec.md")])
+            .unwrap();
+        let rows = store.artifact_index("dunlin").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, "specs/002/spec.md");
+        store.delete_project("dunlin").unwrap();
+        assert!(store.artifact_index("dunlin").unwrap().is_empty());
+    }
+
+    #[test]
+    fn task_evidence_is_upserted_cleared_and_deleted_with_the_project() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        store
+            .set_task_evidence("dunlin", "T001", "commit", "abc123", "worktree branch")
+            .unwrap();
+        store
+            .set_task_evidence("dunlin", "T001", "commit", "abc123", "updated summary")
+            .unwrap();
+        store
+            .set_task_evidence("dunlin", "T001", "worktree", "dunlin/subtask/t001", "")
+            .unwrap();
+        let rows = store.task_evidence("dunlin").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|row| row.summary == "updated summary"));
+        store.clear_task_evidence("dunlin", "T001").unwrap();
+        assert!(store.task_evidence("dunlin").unwrap().is_empty());
+        store
+            .set_task_evidence("dunlin", "T002", "commit", "def456", "")
+            .unwrap();
+        store.delete_project("dunlin").unwrap();
+        assert!(store.task_evidence("dunlin").unwrap().is_empty());
+    }
+
+    #[test]
     fn read_only_database_reports_failed_session_and_transcript_writes() {
         let store = Store::open_in_memory().unwrap();
         store.upsert_project(&project()).unwrap();
@@ -1195,6 +1686,71 @@ mod tests {
         );
         assert!(store.delete_project(&project().id).is_err());
         assert_eq!(store.projects().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn chat_spaces_roundtrip_with_isolated_history_and_old_projects_stay_repos() {
+        let store = Store::open_in_memory().unwrap();
+        let mut repo = project();
+        store.upsert_project(&repo).unwrap();
+        let chat = Project {
+            id: "chat-1".into(),
+            name: "Chat".into(),
+            path: "/tmp/dunlin-chat".into(),
+            branch: None,
+            tone: ProjectTone::Teal,
+            pinned: false,
+            trusted: true,
+            running_sessions: 0,
+            kind: ProjectKind::ChatSpace,
+            remote: None,
+            group_id: None,
+            settings: Default::default(),
+        };
+        store.upsert_project(&chat).unwrap();
+        let mut chat_session = session();
+        chat_session.id = "chat-session".into();
+        chat_session.project_id = chat.id.clone();
+        store.upsert_session(&chat_session).unwrap();
+        store
+            .save_transcript("chat-session", &vec!["scratch history"])
+            .unwrap();
+        let projects = store.projects().unwrap();
+        assert_eq!(
+            projects
+                .iter()
+                .find(|project| project.id == "chat-1")
+                .unwrap()
+                .kind,
+            ProjectKind::ChatSpace
+        );
+        assert_eq!(
+            projects
+                .iter()
+                .find(|project| project.id == repo.id)
+                .unwrap()
+                .kind,
+            ProjectKind::Repo
+        );
+        assert_eq!(
+            store.sessions(Some("chat-1")).unwrap().first().unwrap().id,
+            "chat-session"
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>("chat-session")
+                .unwrap()
+                .unwrap(),
+            vec!["scratch history"]
+        );
+        repo.settings.harness = Some("OpenCode".into());
+        store.upsert_project(&repo).unwrap();
+        assert!(
+            store
+                .load_transcript::<Vec<String>>(&session().id)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1308,7 +1864,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            9
+            13
         );
     }
 
@@ -1804,7 +2360,7 @@ mod tests {
     #[test]
     fn reports_schema_version_and_quick_check_for_release_qa() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 13);
         assert_eq!(store.quick_check().unwrap(), "ok");
     }
 
@@ -1915,5 +2471,4 @@ mod tests {
         // Audit history is intentionally retained after secret deletion.
         assert_eq!(store.secret_audit(None, 10).unwrap().len(), 1);
     }
-
 }

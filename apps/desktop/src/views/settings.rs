@@ -52,6 +52,25 @@ mod design_tests {
         }
     }
     #[test]
+    fn security_workspace_is_enabled_for_old_settings_and_roundtrips_when_disabled() {
+        let mut settings: crate::app::StoredSettings = serde_json::from_str("{}").unwrap();
+        assert!(settings.security_enabled);
+        settings.security_enabled = false;
+        settings.security_triage = vec![crate::security::TriageRecord {
+            source: "Cloudflare security-audit".into(),
+            fingerprint: "fp-1".into(),
+            status: crate::security::TriageStatus::Accepted,
+        }];
+        let saved: crate::app::StoredSettings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!saved.security_enabled);
+        assert_eq!(saved.security_triage.len(), 1);
+        assert_eq!(
+            saved.security_triage[0].status,
+            crate::security::TriageStatus::Accepted
+        );
+    }
+    #[test]
     fn sidebar_branch_preference_migrates_and_roundtrips_without_resetting_other_design_choices() {
         let mut settings: crate::app::StoredSettings = serde_json::from_str(
             r#"{"dark":false,"editor_minimap":false,"sidebar_width":410,"chat_logo":false}"#,
@@ -121,9 +140,11 @@ pub(crate) fn render(
                             SettingsTab::Chat => chat_settings(this, cx),
                             SettingsTab::Harnesses => harnesses(this, cx),
                             SettingsTab::Skills => crate::skills::render(this, cx),
+                            SettingsTab::Security => security(this, cx),
                             SettingsTab::Secrets => {
                                 crate::vault::settings::render(this, window, cx)
                             }
+                            SettingsTab::Extensions => crate::plugins::render(this, cx),
                             SettingsTab::Permissions => permissions(this, cx),
                             SettingsTab::Remote => remote_settings(this, cx),
                             SettingsTab::Editor => editor(this, cx),
@@ -209,7 +230,9 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             &[
                 SettingsTab::Harnesses,
                 SettingsTab::Skills,
+                SettingsTab::Security,
                 SettingsTab::Secrets,
+                SettingsTab::Extensions,
                 SettingsTab::Permissions,
             ],
         ),
@@ -299,6 +322,66 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .into_any_element()
 }
 
+fn security(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    let enabled = this.security_enabled;
+    let body = div()
+        .px(px(24.))
+        .py(px(20.))
+        .flex()
+        .flex_col()
+        .gap(px(18.))
+        .child(section_label("Security workspace", &p))
+        .child(
+            settings_card(&p)
+                .child(setting_row(
+                    "Enable Security workspace",
+                    "Show the Security rail section, command palette entry and audit views. Disabling only hides Dunlin's workspace; it does not uninstall skills, delete audit artifacts, grant permissions, or change Codex Security.",
+                    toggle_switch(
+                        "security-enabled",
+                        enabled,
+                        |this| {
+                            this.security_enabled = !this.security_enabled;
+                            if this.security_enabled {
+                                this.security.checked_project = None;
+                            } else if this.section == dunlin_domain::SidebarSection::Security {
+                                this.section = dunlin_domain::SidebarSection::Projects;
+                            }
+                        },
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                ))
+                .child(divider(&p))
+                .child(setting_row(
+                    "Audit skill and artifacts",
+                    "The Cloudflare Security Audit bundle and any codex-security/SARIF artifacts remain on disk. Re-enable the workspace to inspect them again.",
+                    div()
+                        .text_size(px(11.))
+                        .text_color(if enabled { p.green } else { p.muted_fg })
+                        .child(if enabled { "Visible" } else { "Hidden" })
+                        .into_any_element(),
+                    &p,
+                )),
+        )
+        .child(section_label("Boundaries", &p))
+        .child(
+            settings_card(&p).child(setting_row(
+                "Not a sandbox or scanner",
+                "Dunlin reads and validates audit artifacts; it does not execute target code, run Codex Security, or turn an empty findings file into a security claim.",
+                div()
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .max_w(px(230.))
+                    .child("Local-only workspace")
+                    .into_any_element(),
+                &p,
+            )),
+        );
+    body.into_any_element()
+}
+
 fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let (title, subtitle) = match this.settings_tab {
@@ -323,9 +406,17 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
             "Skills",
             "Create reusable instructions and install them globally for your harnesses.",
         ),
+        SettingsTab::Security => (
+            "Security",
+            "Audit skills, external scan artifacts and the global Security workspace switch.",
+        ),
         SettingsTab::Secrets => (
             "Secrets",
             "Use-only credentials in the macOS Keychain. Agents can use them but never read them.",
+        ),
+        SettingsTab::Extensions => (
+            "Extensions",
+            "Declarative methodology packs. No pack code runs inside Dunlin.",
         ),
         SettingsTab::Remote => (
             "Remote",
@@ -562,6 +653,19 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
                     &p,
                 ))
                 .child(divider(&p))
+                .child(setting_row(
+                    "Spec & intent tools",
+                    "Show the Spec workspace, Intent Inbox, agent contract and related pack commands. Existing files remain untouched when disabled.",
+                    toggle_switch(
+                        "spec-tools",
+                        this.spec_tools_enabled,
+                        toggle_spec_tools,
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                ))
+                .child(divider(&p))
                 .child(notification_permission_row(this, cx, &p))
                 .child(divider(&p))
                 .child(setting_row(
@@ -695,6 +799,19 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                                 "reduce-motion",
                                 this.reduce_motion,
                                 |this| this.reduce_motion = !this.reduce_motion,
+                                cx,
+                                &p,
+                            ),
+                            &p,
+                        ))
+                        .child(divider(&p))
+                        .child(setting_row(
+                            "Minimalist mode",
+                            "Show only the file explorer. The navigation rail, account usage footer and agent/cost details in the status bar are hidden.",
+                            toggle_switch(
+                                "minimal-mode",
+                                this.minimal_mode,
+                                |this| this.toggle_minimal_mode(),
                                 cx,
                                 &p,
                             ),
@@ -1219,7 +1336,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("ACP agents run locally over stdio. Install a harness, then import its existing sessions. Nothing is installed or authorized automatically."),
+                .child("ACP agents run locally over stdio. Install a harness, then import its existing sessions. Nothing is installed or authorized automatically. The chat picker shows only installed adapters and a configured Custom ACP command; the full catalog stays here."),
         )
         .child(list)
         .child(
@@ -1674,6 +1791,22 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     &p,
                 )),
         )
+        .child(section_label("Terminal", &p))
+        .child(
+            settings_card(&p)
+                .child(setting_row(
+                    "Shell integration",
+                    "Sources your zsh/bash rc through a private wrapper that emits OSC 133/OSC 7 prompt and directory markers. Disable if a custom prompt misbehaves.",
+                    toggle_switch(
+                        "shell-integration",
+                        this.shell_integration,
+                        |this| this.shell_integration = !this.shell_integration,
+                        cx,
+                        &p,
+                    ),
+                    &p,
+                )),
+        )
         .child(section_label("Preview", &p))
         .child(
             settings_card(&p)
@@ -1896,6 +2029,63 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
                             this.refresh_billing(cx);
                         }
                     })),
+                )
+                .when_some(this.billing.clone(), |row, summary| {
+                    row.child(
+                        settings_button("billing-qa-report", "Copy QA report", false, p).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                    summary.qa_report(),
+                                ));
+                                this.set_notice("Copied billing evidence QA report", cx);
+                            }),
+                        ),
+                    )
+                })
+                .when(!this.remote_hosts.is_empty(), |row| {
+                    row.child(
+                        settings_button(
+                            "billing-sync",
+                            if this.billing_syncing {
+                                "Syncing…"
+                            } else {
+                                "Sync evidence"
+                            },
+                            false,
+                            p,
+                        )
+                        .when(this.billing_syncing, |this| this.opacity(0.5))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.billing_syncing {
+                                this.sync_billing_evidence(cx);
+                            }
+                        })),
+                    )
+                })
+                .when(
+                    this.remote_hosts
+                        .iter()
+                        .any(|host| host.user_role == "admin"),
+                    |row| {
+                        row.child(
+                            settings_button(
+                                "billing-relay-evidence",
+                                if this.remote_billing_loading {
+                                    "Loading relay…"
+                                } else {
+                                    "Relay evidence"
+                                },
+                                false,
+                                p,
+                            )
+                            .when(this.remote_billing_loading, |this| this.opacity(0.5))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if !this.remote_billing_loading {
+                                    this.load_remote_billing_evidence(cx);
+                                }
+                            })),
+                        )
+                    },
                 ),
         )
         .child(
@@ -1903,7 +2093,7 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
                 .text_size(px(10.5))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("Read-only, bounded scan of local Claude Code, Codex and OpenCode logs. Deduped; unknown models stay unpriced and are never counted as $0."),
+                .child("Read-only, bounded scan of local Claude Code, Codex and OpenCode logs. Deduped; unknown models stay unpriced and are never counted as $0. Main/subagent/internal attribution is explicit; unknown is never assumed to be main work. Relay sync sends aggregate evidence only, never raw logs or prompts."),
         );
     if let Some(error) = &this.billing_error {
         body = body.child(div().text_color(p.red).child(error.clone()));
@@ -2034,6 +2224,31 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
                     if unpriced { p.amber } else { p.green },
                     p,
                 ),
+                usage_metric(
+                    "Subagents",
+                    totals.subagent_events.to_string(),
+                    &format!(
+                        "≥ ${:.4} known · {} internal",
+                        totals.subagent_cost_usd, totals.internal_events
+                    ),
+                    p.fg,
+                    p,
+                ),
+                usage_metric(
+                    "Unknown attribution",
+                    totals.unknown_attribution_events.to_string(),
+                    if totals.unknown_attribution_events > 0 {
+                        "never assumed main work"
+                    } else {
+                        "all records attributed"
+                    },
+                    if totals.unknown_attribution_events > 0 {
+                        p.amber
+                    } else {
+                        p.green
+                    },
+                    p,
+                ),
             ]),
         );
     let mut budget_row = div().flex().items_center().gap(px(5.));
@@ -2157,13 +2372,237 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
             .flex_wrap()
             .items_start()
             .gap(px(10.))
+            .child(billing_slices(
+                "By work attribution",
+                &summary.by_attribution,
+                p,
+            ))
             .child(billing_slices("By harness", &summary.by_harness, p))
             .child(billing_slices("By provider", &summary.by_provider, p))
             .child(billing_slices("By model", &summary.by_model, p))
             .child(billing_slices("By project", &summary.by_project, p)),
     );
+    body = body.child(billing_sources(&summary.sources, p));
     body = body.child(billing_days(&summary.by_day, p));
+    if !this.billing_sync.is_empty() {
+        body = body.child(billing_sync_results(&this.billing_sync, p));
+    }
+    if let Some(error) = &this.remote_billing_error {
+        body = body.child(
+            div()
+                .rounded(px(7.))
+                .border_1()
+                .border_color(p.amber.opacity(0.25))
+                .bg(p.card)
+                .px(px(10.))
+                .py(px(7.))
+                .text_size(px(10.5))
+                .text_color(p.amber)
+                .child(error.clone()),
+        );
+    }
+    if !this.remote_billing.is_empty() {
+        body = body.child(billing_remote_evidence(&this.remote_billing, p));
+    }
     body.into_any_element()
+}
+
+fn billing_sources(sources: &[dunlin_usage::billing::SourceFile], p: &Palette) -> AnyElement {
+    let mut card = div()
+        .w_full()
+        .rounded(px(10.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .overflow_hidden()
+        .child(
+            div()
+                .px(px(9.))
+                .py(px(6.))
+                .border_b_1()
+                .border_color(p.border)
+                .bg(p.subtle)
+                .text_size(px(10.))
+                .font_family(dunlin_ui::theme::code_font())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.muted_fg)
+                .child("Log evidence · manual QA"),
+        );
+    if sources.is_empty() {
+        card = card.child(
+            div()
+                .p(px(8.))
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .child("No supported provider logs found in the default locations."),
+        );
+    }
+    for source in sources.iter().take(12) {
+        let color = if source.state == "error" {
+            p.red
+        } else if source.state == "cached" {
+            p.muted_fg
+        } else {
+            p.fg
+        };
+        card = card.child(
+            div()
+                .px(px(9.))
+                .py(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .w(px(82.))
+                        .text_size(px(9.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(source.provider.clone()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .truncate()
+                        .text_size(px(10.))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(color)
+                        .child(source.path.clone()),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(format!(
+                            "{} · {} ev · {} B",
+                            source.state, source.events, source.bytes
+                        )),
+                ),
+        );
+    }
+    if sources.len() > 12 {
+        card = card.child(
+            div()
+                .px(px(9.))
+                .py(px(4.))
+                .text_size(px(9.5))
+                .text_color(p.muted_fg)
+                .child(format!(
+                    "… {} more sources in the QA report",
+                    sources.len() - 12
+                )),
+        );
+    }
+    card.into_any_element()
+}
+
+fn billing_sync_results(results: &[crate::usage::BillingSync], p: &Palette) -> AnyElement {
+    let mut card = div()
+        .w_full()
+        .rounded(px(10.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .overflow_hidden()
+        .child(
+            div()
+                .px(px(9.))
+                .py(px(6.))
+                .border_b_1()
+                .border_color(p.border)
+                .bg(p.subtle)
+                .text_size(px(10.))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child("Relay sync · aggregate evidence only"),
+        );
+    for result in results {
+        card = card.child(
+            div()
+                .px(px(9.))
+                .py(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .w(px(120.))
+                        .truncate()
+                        .text_size(px(10.))
+                        .text_color(p.fg)
+                        .child(result.host.clone()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(10.))
+                        .text_color(if result.ok { p.green } else { p.red })
+                        .child(result.message.clone()),
+                ),
+        );
+    }
+    card.into_any_element()
+}
+
+fn billing_remote_evidence(
+    rows: &[crate::remote::RemoteBillingEvidence],
+    p: &Palette,
+) -> AnyElement {
+    let mut card = div()
+        .w_full()
+        .rounded(px(10.))
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .overflow_hidden()
+        .child(
+            div()
+                .px(px(9.))
+                .py(px(6.))
+                .border_b_1()
+                .border_color(p.border)
+                .bg(p.subtle)
+                .text_size(px(10.))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child("Relay evidence · administrator view"),
+        );
+    for row in rows {
+        let totals = &row.evidence.summary.totals;
+        card = card.child(
+            div()
+                .px(px(9.))
+                .py(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .w(px(180.))
+                        .truncate()
+                        .text_size(px(10.))
+                        .text_color(p.fg)
+                        .child(format!("{} · {}", row.user_name, row.device_name)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(9.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(format!(
+                            "{} ev · {} subagent · {} unknown · {}",
+                            totals.events,
+                            totals.subagent_events,
+                            totals.unknown_attribution_events,
+                            totals.cost_label()
+                        )),
+                ),
+        );
+    }
+    card.into_any_element()
 }
 
 fn usage_metric(label: &str, value: String, note: &str, color: Hsla, p: &Palette) -> AnyElement {
@@ -3161,6 +3600,14 @@ fn setting_row(title: &str, description: &str, control: AnyElement, p: &Palette)
 
 fn divider(p: &Palette) -> AnyElement {
     div().mx(px(14.)).h(px(1.)).bg(p.border).into_any_element()
+}
+
+fn toggle_spec_tools(this: &mut DunlinApp) {
+    this.spec_tools_enabled = !this.spec_tools_enabled;
+    if !this.spec_tools_enabled {
+        this.spec.active = false;
+        this.spec.view = None;
+    }
 }
 
 fn toggle_switch(

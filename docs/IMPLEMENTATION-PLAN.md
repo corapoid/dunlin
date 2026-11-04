@@ -12,7 +12,7 @@ Rust AST mają implementacje v1 z testami. Pełny billing, compiler/LSP/non-Rust
 impact, ręczna akceptacja oraz pełna wirtualizacja grafów pozostają otwarte; nie oznaczać
 całego rozszerzenia jako ukończonego. Aktualna macierz jest w [ROADMAP.md](ROADMAP.md).
 
-Stan źródeł: `0.1.0-beta.6` + dalszy zakres, **542 testów OK / 0 pominiętych**; build, Clippy
+Stan źródeł: `0.1.0-beta.6` + dalszy zakres, **592 testów OK / 0 pominiętych**; build, Clippy
 `-D warnings`, fmt i izolowane regresje przeszły. Cztery opcjonalne testy
 integracyjne `#[ignore]` zostały usunięte. `app.rs` jest podzielony na
 `app/overlays.rs` (UI i overlaye), `app/helpers.rs` (funkcje pomocnicze) i
@@ -119,6 +119,10 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
   Trace: sticky axis i wirtualizacja wierszy/spans. Eksport niezależny od viewportu.
 - Odbiór: fixture 10k elementów, ograniczona praca renderowania, brak utraty focusu
   i stabilny layout podczas streamingu, testy transformacji i hit testingu.
+  Zrealizowane: tidy-tree bez limitu głębokości, wirtualizacja viewportu grafu i
+  minimapy, wirtualne wiersze trace, drzewo ARIA/aktywny potomek i fokus ze
+  scrollowaniem; automatyczne fixtures i macierz manualna opisuje
+  [graph-trace-virtualization.md](graph-trace-virtualization.md).
 
 ### 6. Design i dostępność (M, ciągłe przez wszystkie etapy)
 
@@ -136,17 +140,21 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
   Nie obiecywać automatycznego nadania TCC; nie odczytywać chronionych danych
   wyłącznie w celu sprawdzenia uprawnienia.
 
-### 8. Terminal i Run (L/XL) — lokalny v1 wdrożony
+### 8. Terminal i Run (L/XL) — lokalny, relay i SSH v1 wdrożone
 
 - Wybrano `portable-pty` + `vt100` (bez webowego libghostty). Lokalny PTY, tabs,
   5 000-liniowy scrollback, resize/SIGWINCH, copy/paste, ANSI/RGB i podstawowe
-  klawisze są wdrożone. Pozostają search z podświetleniem, zaznaczanie myszą,
-  linki, splity, shell integration oraz transport relay/SSH.
+  klawisze są wdrożone. Wdrożono też search z podświetleniem, zaznaczanie myszą
+  (słowo/linia/Shift), splity z przeciąganym dividerem, shell integration
+  (OSC 133/633/7/1337 przez prywatny wrapper zsh/bash), bezpieczne OSC 8 oraz
+  transport relay (uwierzytelniony WebSocket + PTY na hoście) i SSH v1
+  (OpenSSH PTY, ControlMaster, jawny target/ścieżka).
 - Run: statyczne wykrywanie manifestów bez ewaluacji; preview argv/cwd/env,
   potwierdzenie, PTY, exit/sygnał, historia 50 i rerun są wdrożone.
 - Szczegóły i granice: [terminal-and-run.md](terminal-and-run.md).
 - Odbiór ręczny: Unicode/IME/bidi, paste wielowierszowy, SIGINT, duży output,
-  zamykanie procesów i rzeczywisty host relay/SSH.
+  mouse drag w splitach, zamykanie procesów, rzeczywisty host relay/SSH,
+  nietypowe prompty i a11y.
 
 ### 9. Markdown i standalone chat (M → XL)
 
@@ -162,19 +170,23 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
   właściwości linków/obrazów i jawne, ograniczone zasoby projektu local/relay.
   Automatyczny smoke przeszedł w ciemnym i jasnym/wąskim oknie; ręczna QA,
   IME/bidi, złożone przypadki graniczne i rzeczywisty sparowany relay oczekują.
-- ChatSpace: niezależne ID/storage/drafty i scratch cwd, bez sztucznego projektu
-  w sidebarze. Opcjonalny kontekst repo z pickerem i zgodą, wpis zmiany w historii;
-  istniejące sesje projektowe nigdy nie zmieniają po cichu cwd.
+- **ChatSpace v1, zaimplementowane; ręczna QA oczekuje:** niezależne ID/storage
+  i scratch cwd (`ProjectKind::ChatSpace`, migracja v8), osobna historia bez
+  sztucznego projektu w drzewie Projects, jawny wybór `New Chat in Repository…`
+  z potwierdzeniem. Kontekst repo tworzy nową przestrzeń; istniejące sesje
+  projektowe nigdy nie zmieniają po cichu cwd. [Zakres i granice](standalone-chat-worktree-usage.md).
 - Odbiór: migracje/izolacja historii, dirty source przy zmianie widoku,
   cofnięcie dostępu i wznowienie czatu bez repo.
 
-### 10. SSH (XL) — po terminalowym kontrakcie transportu
+### 10. SSH (XL) — transport terminala v1 wdrożony; bootstrap relay pozostaje
 
-- Hosty z konfiguracji OpenSSH, ControlMaster, klucze w Keychain/ssh-agent,
-  jawna akceptacja known_hosts i blokada zmienionego host key.
-- Potwierdzany bootstrap kompatybilnego relay, tunel ograniczony do loopback,
-  zdalne projekty/terminal, reconnect i cleanup procesów. Bez wysyłania lokalnego
-  env/tokenów do hosta. Odbiór: offline, MFA, zły klucz i przerwany bootstrap.
+- Terminal SSH v1 używa OpenSSH: hosty/aliasy z configu, `ControlMaster`,
+  klucze przez ssh-agent, interaktywna akceptacja known_hosts, `-tt`,
+  `ConnectTimeout` i prywatny `ControlPath`. Target i ścieżka są walidowane,
+  projektowe env/tokeny nie są wysyłane.
+- Pozostają: pełne zarządzanie hostami i kluczami w Keychain, potwierdzany
+  bootstrap relay, tunel ograniczony do loopback, reconnect i cleanup procesów
+  po stronie hosta. Odbiór: offline, MFA, zły klucz i przerwany bootstrap.
 
 ### 11. Computer use (XL) — po centrum uprawnień
 
@@ -188,10 +200,18 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 
 - Najpierw trwały message bus/inbox z autoryzacją, dedupe i idempotencją.
   Potem coordinator, DAG i retry/cancel, worktree per zadanie (zależność: Git 2c).
+- **Worktree per subtask v1, zaimplementowane; ręczna QA oczekuje:** jawna akcja
+  `SubtaskAdd` tworzy branch `dunlin/subtask/<name>` i worktree z wybranego
+  commita; trwały rejestr przeżywa restart; brak auto-startu agenta, merge i push.
+  [Zakres](standalone-chat-worktree-usage.md).
 - Handoff → review → human gate → merge; konflikty kierowane do człowieka,
   pełny audit, recovery po restarcie i task board w grafie.
 - Model per rola i budżety wymagają wiarygodnego usage/cennika: unknown/unpriced
   nie oznacza zera. Limity kosztu/współbieżności obowiązują także retry i subtaski.
+- **Usage attribution v1, zaimplementowane; ręczna QA logów oczekuje:** jawne
+  `Main/Subagent/Internal/Unknown`, przekrój w Usage, kopiowalny raport QA źródeł
+  i opcjonalny sync agregatów przez relay (member zapisuje, admin czyta).
+  [Zakres](standalone-chat-worktree-usage.md).
 - Odbiór: bezcykliczność, duplikaty wiadomości, crash recovery, cofnięcie trust,
   konflikt merge i brak samoczynnego przekroczenia zatwierdzonego budżetu.
 
@@ -215,3 +235,8 @@ zależności/polityk ani ręcznej QA: [stan odbioru](release-acceptance.md).
 5. Wybrać następny pionowy zakres (FTS5, billing usage lub skills), a przed
    terminalem wykonać spike VT. Standalone chat, scheduler i M6 są osobnymi etapami;
    istniejące checks i porównanie A/B nie oznaczają ich ukończenia.
+6. Nowy zakres v1 — standalone chat/scratch, worktree per subtask, attribution
+   usage i sync billing evidence — jest w kodzie i testach automatycznych.
+   Wykonać ręczną QA opisaną w
+   [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md);
+   nie oznaczać pełnego M6 ani pełnego rozliczenia providera jako ukończonych.

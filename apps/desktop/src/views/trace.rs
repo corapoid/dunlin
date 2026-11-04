@@ -2,6 +2,7 @@
 //! details. Designed for long agent runs where the interesting work is nested
 //! three levels deep.
 
+use std::rc::Rc;
 use std::time::Duration;
 
 use dunlin_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
@@ -72,7 +73,7 @@ pub(crate) fn render(
             cx,
         );
     }
-    let spans = crate::activity::filter_spans(&all_spans, &this.activity_query);
+    let spans = crate::activity::filter_spans(all_spans, &this.activity_query);
     if spans.is_empty() {
         return super::empty_activity(
             "No trace matches",
@@ -81,7 +82,7 @@ pub(crate) fn render(
             cx,
         );
     }
-    let timeline = Timeline::new(&spans);
+    let timeline = Rc::new(Timeline::new(&spans));
     let total_ms = timeline.total_ms;
     let tokens = spans.first().and_then(|span| span.tokens);
     let total_duration = format_ms(total_ms as u64);
@@ -89,8 +90,11 @@ pub(crate) fn render(
     let selected = this.selected_span.clone();
     let zoom = this.activity.trace_zoom.clamp(0.6, 1.8);
     let row_h = trace_row_height(zoom);
-    let filtered = crate::activity::trace_rows(&spans, &this.activity.spans_expanded, filter);
+    let rows = crate::activity::trace_row_indices(&spans, &this.activity.spans_expanded, filter);
+    let row_count = rows.len();
+    let positions = Rc::new(crate::activity::trace_a11y_positions(&spans, &rows));
     let total_cost: f64 = spans.iter().map(|span| span.cost_usd).sum();
+    let spans = Rc::new(spans);
     let running = spans
         .iter()
         .filter(|span| span.status == SpanStatus::Running)
@@ -168,15 +172,18 @@ pub(crate) fn render(
                 )),
         )
         .child(
-            div()
-                .w(px(150.))
-                .child(Input::new(&this.activity_search).small()),
+            div().w(px(150.)).child(
+                Input::new(&this.activity_search)
+                    .small()
+                    .aria_label("Search trace waterfall"),
+            ),
         )
         .child(
             Button::new("trace-zoom-out")
                 .ghost()
                 .small()
                 .label("−")
+                .accessibility_label("Decrease trace row density")
                 .disabled(zoom <= 0.6)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.trace_zoom = (this.activity.trace_zoom - 0.1).clamp(0.6, 1.8);
@@ -197,6 +204,7 @@ pub(crate) fn render(
                 .ghost()
                 .small()
                 .label("+")
+                .accessibility_label("Increase trace row density")
                 .disabled(zoom >= 1.8)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.trace_zoom = (this.activity.trace_zoom + 0.1).clamp(0.6, 1.8);
@@ -212,6 +220,9 @@ pub(crate) fn render(
         toolbar = toolbar.child(
             div()
                 .id(format!("trace-filter:{}", chip.label()))
+                .role(Role::Button)
+                .aria_label(format!("Show {} trace spans", chip.label()))
+                .aria_selected(active)
                 .h(px(22.))
                 .px(px(6.))
                 .rounded(px(5.))
@@ -229,8 +240,7 @@ pub(crate) fn render(
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.trace_filter = chip;
-                    this.selected_span = None;
-                    cx.notify();
+                    this.activity_normalize_selection(cx);
                 }))
                 .child(
                     div()
@@ -258,6 +268,8 @@ pub(crate) fn render(
         .child(
             div()
                 .id("trace-collapse-requests")
+                .role(Role::Button)
+                .aria_label("Collapse request details")
                 .h(px(23.))
                 .px(px(7.))
                 .rounded(px(5.))
@@ -270,8 +282,7 @@ pub(crate) fn render(
                 .cursor_pointer()
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.spans_expanded.clear();
-                    this.selected_span = None;
-                    cx.notify();
+                    this.activity_normalize_selection(cx);
                 }))
                 .child(
                     Icon::new(IconName::FoldVertical)
@@ -288,6 +299,8 @@ pub(crate) fn render(
         .child(
             div()
                 .id("trace-expand-all")
+                .role(Role::Button)
+                .aria_label("Expand all trace details")
                 .h(px(23.))
                 .px(px(5.))
                 .rounded(px(5.))
@@ -342,7 +355,7 @@ pub(crate) fn render(
                         .text_size(px(10.5))
                         .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.65))
-                        .child(format!("{} shown", filtered.len())),
+                        .child(format!("{} shown", rows.len())),
                 ),
         )
         .child(
@@ -372,23 +385,46 @@ pub(crate) fn render(
                 })),
         );
 
-    let mut rows = div().flex().flex_col();
-    for span in &filtered {
-        let children = spans
-            .iter()
-            .any(|candidate| candidate.parent.as_ref() == Some(&span.id));
-        let expanded = span.id == "root" || this.activity.spans_expanded.contains(&span.id);
-        rows = rows.child(span_row(
-            span,
-            selected.as_deref(),
-            (children, expanded),
-            row_h,
-            &timeline,
-            this.reduce_motion,
-            &p,
-            cx,
-        ));
-    }
+    let row_spans = spans.clone();
+    let row_timeline = timeline.clone();
+    let row_positions = positions.clone();
+    let trace_scroll = this.activity.trace_scroll.clone();
+    let trace_focus = this.activity_focus.clone();
+    let list = uniform_list(
+        "trace-rows",
+        row_count,
+        cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+            let mut items = Vec::with_capacity(range.len());
+            for position in range {
+                let index = rows[position];
+                let span = &row_spans[index];
+                let children = row_spans
+                    .iter()
+                    .any(|candidate| candidate.parent.as_ref() == Some(&span.id));
+                let expanded = span.id == "root" || this.activity.spans_expanded.contains(&span.id);
+                let (sibling_position, siblings) = row_positions
+                    .get(&index)
+                    .copied()
+                    .unwrap_or((position + 1, row_count));
+                items.push(span_row(
+                    span,
+                    sibling_position,
+                    siblings,
+                    this.selected_span.as_deref(),
+                    (children, expanded),
+                    row_h,
+                    row_timeline.as_ref(),
+                    this.reduce_motion,
+                    &p,
+                    cx,
+                ));
+            }
+            items
+        }),
+    )
+    .track_scroll(&trace_scroll)
+    .flex_1()
+    .min_h(px(0.));
 
     let timeline = div()
         .flex()
@@ -400,16 +436,24 @@ pub(crate) fn render(
         .child(
             div()
                 .id("trace-rows")
+                .role(Role::Tree)
+                .aria_label("Trace waterfall")
+                .aria_description(format!("{row_count} rows in waterfall order."))
+                .aria_keyshortcuts("Up Down Left Right Enter Space Home End Escape")
+                .track_focus(&trace_focus)
+                .tab_stop(true)
+                .flex()
+                .flex_col()
                 .flex_1()
                 .min_h(px(0.))
-                .overflow_y_scroll()
-                .child(rows),
+                .min_w(px(0.))
+                .child(list),
         );
 
     let detail = selected
         .as_ref()
         .and_then(|id| spans.iter().find(|span| &span.id == id))
-        .map(|span| span_detail(span, &spans, this.reduce_motion, cx, &p));
+        .map(|span| span_detail(span, spans.as_slice(), this.reduce_motion, cx, &p));
 
     let mut body = div()
         .flex()
@@ -463,6 +507,8 @@ fn span_bar_geometry(start_ms: u64, duration_ms: u64, total_ms: f32) -> (f32, f3
 #[allow(clippy::too_many_arguments)]
 fn span_row(
     span: &TraceSpan,
+    position: usize,
+    total: usize,
     selected: Option<&str>,
     disclosure: (bool, bool),
     row_h: f32,
@@ -475,6 +521,8 @@ fn span_row(
     let id = span.id.clone();
     let toggle_id = span.id.clone();
     let color = span_color(p, span.kind);
+    let label = crate::activity::span_label(span);
+    let description = crate::activity::span_description(span);
     let (status_color, _status_soft) = status_palette(p, span.status);
     let mapped_start = timeline.compact(span.start_ms);
     let mapped_end = timeline.compact(span.end_ms());
@@ -516,8 +564,17 @@ fn span_row(
             move |this, t| this.w(relative(bar_width * t)),
         );
 
-    let row = div()
+    let mut row = div()
         .id(format!("span-row:{}", span.id))
+        .role(Role::TreeItem)
+        .accessibility_id(format!("span-row:{}", span.id))
+        .aria_label(label)
+        .aria_description(description)
+        .aria_selected(active)
+        .when(active, |this| this.aria_active_descendant())
+        .aria_level(span.depth as usize + 1)
+        .aria_position_in_set(position + 1)
+        .aria_size_of_set(total)
         .h(px(row_h))
         .flex_shrink_0()
         .flex()
@@ -527,14 +584,20 @@ fn span_row(
         .when(active, |this| this.bg(p.accent))
         .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
         .cursor_pointer()
-        .on_click(cx.listener(move |this, _, _, cx| {
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.activity_focus.focus(window, cx);
             this.selected_span = if this.selected_span.as_deref() == Some(id.as_str()) {
                 None
             } else {
                 Some(id.clone())
             };
+            this.selected_node = None;
             cx.notify();
-        }))
+        }));
+    if disclosure.0 {
+        row = row.aria_expanded(disclosure.1);
+    }
+    let row = row
         .child(
             div()
                 .w(px(LABEL_WIDTH))
@@ -552,13 +615,16 @@ fn span_row(
                         .flex_shrink_0()
                         .when(disclosure.0 && span.id != "root", |view| {
                             view.cursor_pointer()
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                                .role(Role::Button)
+                                .aria_label("Expand or collapse trace span")
+                                .aria_expanded(disclosure.1)
+                                .on_click(cx.listener(move |this, _, window, cx| {
                                     cx.stop_propagation();
+                                    this.activity_focus.focus(window, cx);
                                     if !this.activity.spans_expanded.remove(&toggle_id) {
                                         this.activity.spans_expanded.insert(toggle_id.clone());
                                     }
-                                    this.selected_span = None;
-                                    cx.notify();
+                                    this.activity_normalize_selection(cx);
                                 }))
                                 .child(
                                     Icon::new(if disclosure.1 {
@@ -787,6 +853,8 @@ fn span_detail(
                 .child(
                     div()
                         .id("close-span-detail")
+                        .role(Role::Button)
+                        .aria_label("Close span detail")
                         .size(px(19.))
                         .rounded(px(4.))
                         .flex()
@@ -859,6 +927,8 @@ fn span_detail(
                 .child(
                     div()
                         .id("trace-parent")
+                        .role(Role::Button)
+                        .aria_label(format!("Select parent span {}", parent.name))
                         .h(px(26.))
                         .px(px(6.))
                         .rounded(px(5.))
@@ -913,6 +983,8 @@ fn span_detail(
             child_list = child_list.child(
                 div()
                     .id(format!("trace-child:{}", child.id))
+                    .role(Role::Button)
+                    .aria_label(format!("Select child span {}", child.name))
                     .h(px(23.))
                     .px(px(5.))
                     .rounded(px(4.))
@@ -958,6 +1030,8 @@ fn span_detail(
             .child(
                 div()
                     .id("span-open-chat")
+                    .role(Role::Button)
+                    .aria_label("Open this span in chat")
                     .h(px(23.))
                     .px(px(7.))
                     .rounded(px(5.))
@@ -985,6 +1059,8 @@ fn span_detail(
             .child(
                 div()
                     .id("span-copy-json")
+                    .role(Role::Button)
+                    .aria_label("Copy span JSON")
                     .h(px(23.))
                     .px(px(7.))
                     .rounded(px(5.))

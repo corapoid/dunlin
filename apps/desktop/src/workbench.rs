@@ -239,6 +239,7 @@ impl DunlinApp {
         self.workbench.active = Some(id.into());
         self.workbench.show_file = true;
         self.git_history.active = false;
+        self.spec.active = false;
         self.autosave_generation = self.autosave_generation.wrapping_add(1);
         let wrap = self.word_wrap;
         self.editor.update(cx, |state, cx| {
@@ -256,6 +257,7 @@ impl DunlinApp {
     pub(crate) fn show_chat_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stash_editor_tab();
         self.workbench.show_file = false;
+        self.spec.active = false;
         self.set_view(dunlin_domain::MainView::Chat, cx);
         self.composer
             .update(cx, |state, cx| state.focus(window, cx));
@@ -710,7 +712,8 @@ impl DunlinApp {
                     .cursor_pointer()
                     .when(
                         !self.workbench.show_file
-                            && !self.git_history.is_active_for(self.project()),
+                            && !self.git_history.is_active_for(self.project())
+                            && !self.spec.is_active_for(self.project()),
                         |v| v.bg(p.card).border_b_2().border_color(p.blue),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx)))
@@ -725,6 +728,7 @@ impl DunlinApp {
             let id = tab.id.clone();
             let close = id.clone();
             let active = !self.git_history.is_active_for(self.project())
+                && !self.spec.is_active_for(self.project())
                 && self.workbench.show_file
                 && self.workbench.active.as_deref() == Some(&id);
             let dirty = if self.workbench.active.as_deref() == Some(&id) {
@@ -787,6 +791,40 @@ impl DunlinApp {
                                 cx.stop_propagation();
                                 let active = this.git_history.is_active_for(this.project());
                                 this.close_git_history(cx);
+                                if active {
+                                    this.focus_handle.focus(window, cx);
+                                }
+                            }))
+                            .child(Icon::new(IconName::X).size(px(11.))),
+                    ),
+            );
+        }
+        if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
+            row = row.child(
+                div()
+                    .id("spec-workspace-tab")
+                    .h_full()
+                    .px(px(12.))
+                    .flex()
+                    .items_center()
+                    .gap(px(7.))
+                    .cursor_pointer()
+                    .aria_label("Spec workspace tab")
+                    .when(self.spec.is_active_for(self.project()), |tab| {
+                        tab.bg(p.card).border_b_2().border_color(p.blue)
+                    })
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.open_spec_workspace(window, cx)),
+                    )
+                    .child("Spec")
+                    .child(
+                        div()
+                            .id("close-spec-workspace-tab")
+                            .size(px(17.))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                cx.stop_propagation();
+                                let active = this.spec.is_active_for(this.project());
+                                this.close_spec_workspace(cx);
                                 if active {
                                     this.focus_handle.focus(window, cx);
                                 }

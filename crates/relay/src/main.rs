@@ -11,6 +11,7 @@ mod api;
 mod auth;
 mod config;
 mod store;
+mod terminal;
 mod vault;
 
 use std::path::PathBuf;
@@ -640,6 +641,7 @@ fn open_store_for(args: &[String]) -> Result<Store, String> {
 fn has_flag(args: &[String], name: &str) -> bool {
     args.iter().any(|arg| arg == name)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

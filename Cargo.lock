@@ -1547,20 +1547,24 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "dunlin"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
  "block2 0.6.2",
  "chrono",
  "dunlin-agent",
+ "dunlin-artifacts",
+ "dunlin-audit",
  "dunlin-domain",
+ "dunlin-plugin",
  "dunlin-storage",
  "dunlin-terminal",
  "dunlin-ui",
  "dunlin-usage",
  "dunlin-vault",
  "dunlin-workspace",
+ "futures-util",
  "gpui-kit",
  "image",
  "libc",
@@ -1581,6 +1585,8 @@ dependencies = [
  "sha2 0.10.9",
  "similar",
  "tempfile",
+ "tokio",
+ "tokio-tungstenite",
  "two-face",
  "unicode-segmentation",
  "ureq",
@@ -1590,7 +1596,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-agent"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "agent-client-protocol",
  "async-channel",
@@ -1607,8 +1613,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunlin-artifacts"
+version = "0.1.0-beta.7"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
+name = "dunlin-audit"
+version = "0.1.0-beta.7"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "dunlin-domain"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -1616,13 +1643,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunlin-plugin"
+version = "0.1.0-beta.7"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "dunlin-relay"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "axum",
  "base64 0.22.1",
  "dunlin-domain",
  "dunlin-storage",
+ "dunlin-terminal",
  "dunlin-usage",
  "dunlin-vault",
  "dunlin-workspace",
@@ -1635,6 +1673,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-tungstenite",
  "toml 0.8.23",
  "tower",
  "uuid",
@@ -1642,8 +1681,9 @@ dependencies = [
 
 [[package]]
 name = "dunlin-storage"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
+ "dunlin-artifacts",
  "dunlin-domain",
  "rusqlite",
  "serde",
@@ -1653,7 +1693,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-terminal"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "async-channel",
  "portable-pty",
@@ -1663,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-ui"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "gpui-kit",
  "sha2 0.10.9",
@@ -1673,7 +1713,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-usage"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "chrono",
  "dunlin-domain",
@@ -1685,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-vault"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1708,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-workspace"
-version = "0.1.0-beta.6"
+version = "0.1.0-beta.7"
 dependencies = [
  "base64 0.22.1",
  "libc",

@@ -13,8 +13,6 @@ use crate::harness::{command_available, harness_command};
 
 #[derive(Clone)]
 enum Action {
-    Local,
-    Remote(String),
     Settings(SettingsTab),
     Harness(String),
     Mode(String),
@@ -105,22 +103,6 @@ fn item(
                         cx,
                     );
                 }
-                Action::Local => {
-                    if this.project().is_remote() {
-                        this.open_folder(cx);
-                    }
-                }
-                Action::Remote(id) => {
-                    if this
-                        .project()
-                        .remote
-                        .as_ref()
-                        .map(|project| &project.host_id)
-                        != Some(id)
-                    {
-                        this.open_remote_picker_for(id, cx);
-                    }
-                }
                 Action::Harness(name) => this.select_chat_harness(name, cx),
                 Action::Mode(id) => this.select_mode(id, cx),
                 Action::Permission(mode) => {
@@ -186,76 +168,6 @@ fn compact_item(
     })
 }
 
-pub(crate) fn environment(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let remote = this.project().remote.as_ref();
-    let label = remote
-        .and_then(|project| this.remote_host(&project.host_id))
-        .map(|host| host.name)
-        .unwrap_or_else(|| {
-            if remote.is_some() {
-                "Remote relay".into()
-            } else {
-                "This Computer".into()
-            }
-        });
-    let app = cx.entity().downgrade();
-    trigger(
-        "composer-environment",
-        label,
-        if remote.is_some() {
-            IconName::Cloud
-        } else {
-            IconName::Monitor
-        },
-    )
-    .tooltip("Choose an environment; existing conversations stay in their project")
-    .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
-        let Some(entity) = app.upgrade() else {
-            return menu;
-        };
-        let this = entity.read(cx);
-        let busy = this.chat_controls_busy();
-        let active_host = this
-            .project()
-            .remote
-            .as_ref()
-            .map(|project| &project.host_id);
-        menu = menu.label("Environment").item(item(
-            &app,
-            ("This Computer".into(), "Local projects on this Mac".into()),
-            IconName::Monitor,
-            active_host.is_none(),
-            busy,
-            Action::Local,
-        ));
-        for host in &this.remote_hosts {
-            menu = menu.item(item(
-                &app,
-                (host.name.clone(), host.url.clone()),
-                IconName::Cloud,
-                active_host == Some(&host.id),
-                busy,
-                Action::Remote(host.id.clone()),
-            ));
-        }
-        menu.separator()
-            .label("Changing environments opens a project there")
-            .item(item(
-                &app,
-                (
-                    "Manage remote environments…".into(),
-                    "Pair or remove a self-hosted relay".into(),
-                ),
-                IconName::Settings2,
-                false,
-                false,
-                Action::Settings(SettingsTab::Remote),
-            ))
-    })
-    .on_open_change(track_menu(cx))
-    .into_any_element()
-}
-
 pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let label = if this.project().is_remote() {
         match &this.harness.status {
@@ -287,15 +199,17 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 ));
             }
             menu = menu.label("Switching harness starts a new conversation");
-            for name in
-                crate::harness_discovery::catalog_names().chain(std::iter::once("Custom ACP"))
-            {
-                let command = harness_command(name, &this.custom_harness_command);
+            let configured = crate::harness::configured_harness_names(&this.custom_harness_command);
+            if configured.is_empty() {
+                menu = menu.label("No harness is installed or configured");
+            }
+            for name in configured {
+                let command = harness_command(&name, &this.custom_harness_command);
                 let available = command_available(&command);
                 menu = menu.item(item(
                     &app,
                     (
-                        name.into(),
+                        name.clone(),
                         if available {
                             command
                         } else {
@@ -305,7 +219,7 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                     IconName::Bot,
                     this.session_harness() == name,
                     this.chat_controls_busy() || !available,
-                    Action::Harness(name.into()),
+                    Action::Harness(name),
                 ));
             }
             menu.separator().item(item(

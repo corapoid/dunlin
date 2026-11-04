@@ -275,6 +275,7 @@ mod tests {
             pinned: false,
             trusted: true,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: group.map(str::to_owned),
             settings: ProjectSettings::default(),

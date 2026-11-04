@@ -359,6 +359,7 @@ mod tests {
             pinned: false,
             trusted: false,
             running_sessions: 0,
+            kind: Default::default(),
             remote: None,
             group_id: None,
             settings: Default::default(),

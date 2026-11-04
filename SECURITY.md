@@ -52,6 +52,9 @@ network. The following are in scope:
 The following are known limitations, not vulnerabilities by themselves:
 
 - the relay runs all users under the credentials installed on the host;
+- a relay user with a project grant can open an unsandboxed interactive shell
+  in the granted project through the terminal endpoint; the project grant is
+  the capability boundary, not a sandbox;
 - the SQLite database is not encrypted at rest;
 - local harnesses run with the user's permissions; the use-only credential
   broker keeps values out of the model and uses Keychain-held policy, but a

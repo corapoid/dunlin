@@ -17,6 +17,7 @@ actions!(
         SaveAll,
         Home,
         Projects,
+        Security,
         ToggleSidebar,
         Commands,
         GitHistory,
@@ -54,6 +55,7 @@ pub(crate) fn install(cx: &mut App) {
         Menu::new("View").items([
             MenuItem::action("Home", Home),
             MenuItem::action("Projects", Projects),
+            MenuItem::action("Security", Security),
             MenuItem::action("Toggle Sidebar", ToggleSidebar),
             MenuItem::separator(),
             MenuItem::action("Command Palette…", Commands),

@@ -23,8 +23,8 @@ Bieżący hardening nie jest częścią beta.3: migracja pięciu obsolete pakiet
 bez wyjątków oraz audyt zatwierdzonych reguł solo przechodzą. 491 testów Rust
 i 25 Python zaliczone; zielone PR/main CI/Security, podpisany merge `f61251f`
 bez bypassu i zweryfikowane atestacje obu binariów.
-**Bieżąca walidacja working tree po PR #9 i zakresie beta.6:
-542 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
+**Bieżąca walidacja working tree po PR #9, zakresie beta.6 i nowym v1:
+592 testów OK / 0 pominiętych**, build, fmt i Clippy `-D warnings` przechodzą.
 README jest krótkim landing page'em, a pełny opis przeniesiono do
 [`guide.md`](guide.md); lokalny baseline wydajności jest w
 [`performance.md`](performance.md).
@@ -75,6 +75,10 @@ i bez błędu; admin nadal pobiera limity. CI odrzuca `todo!()`/
    Remote usage jest admin-only po stronie relay: klient pokazuje `Admin-only`
    dla roli `member` bez wysyłania żądania i bez toastu błędu, a administrator
    nadal pobiera limity. To świadomy stan uprawnień, nie błąd połączenia.
+   Attribution v1 (`Main/Subagent/Internal/Unknown`), źródła do ręcznej QA,
+   kopiowalny raport i opcjonalny sync agregatów przez relay są wdrożone;
+   pozostają ręczna QA prawdziwych logów, pełne rozliczenie providera i
+   ewentualne dalsze adaptery. [Zakres](standalone-chat-worktree-usage.md).
 6. **Onboarding i uprawnienia**: dwustopniowy kreator harness → projekt ma
    teraz opcjonalną kartę powiadomień (Allow/Open Settings), centrum statusów
    Notifications/Accessibility/Screen Recording/Automation/FDA, linki do System
@@ -103,11 +107,26 @@ i bez błędu; admin nadal pobiera limity. CI odrzuca `todo!()`/
 9. **Skills**: discovery istniejących bibliotek, import z folderu, instalacja
    per projekt i audyt hash/pochodzenia są wdrożone. Globalna biblioteka,
    edycja/walidacja i bezpieczna instalacja/usuwanie własnych kopii do rootów
-   harnessów również działają; pozostaje ręczna QA UI.
+   harnessów również działają. Dodano paczki wieloplikowe (współdzielone pliki,
+   hash per plik, aktualizacje i usuwanie tylko własnych niezmienionych kopii)
+   oraz katalog Cloudflare Security Audit w Settings → Skills i sekcji Security;
+   Codex Security pozostaje zewnętrznym pluginem wymagającym harnessu Codex.
+   `dunlin-audit` czyta i waliduje artefakty Cloudflare/Codex/SARIF, pokazuje
+   findings, coverage, raport i eksport SARIF w Security, a Settings → Security
+   pozwala globalnie ukryć workspace bez usuwania plików. Triage lokalny,
+   licznik wystąpień fingerprintu, eksport SARIF/JSON/CSV/Markdown, świeży
+   verifier, fazy runu, opcjonalny Codex CLI scan/patch/verify-fix, lokalny
+   sandbox seatbelt dla jawnych checks oraz zdalny start i odczyt artefaktów
+   audytu przez relay oraz adaptery Semgrep/Snyk/Trivy/Gitleaks/Bandit są
+   wdrożone. Pozostaje ręczna QA UI, zdalne uruchamianie Codex CLI na hoście
+   relay i kolejne formaty skanerów.
 10. **Agent graph / Trace**: pan/zoom, minimapa, wyszukiwanie z zachowaniem
-    przodków, skróty `⌘+`/`⌘−`/`⌘0`, sticky axis i zoom gęstości wierszy są
-    wdrożone. Pozostają zaawansowany auto-layout, pełna wirtualizacja 10k+
-    elementów i ręczna QA fokusu/a11y.
+    przodków, skróty `⌘+`/`⌘−`/`⌘0`, sticky axis, zoom gęstości wierszy,
+    tidy-tree bez limitu głębokości, wirtualizacja viewportu grafu/minimapy,
+    wirtualne wiersze trace, drzewo ARIA i fokus ze scrollowaniem do wyboru są
+    wdrożone. Automatyczne fixtures 10k+ i macierz manualna opisuje
+    [graph-trace-virtualization.md](graph-trace-virtualization.md); pozostaje
+    ręczna QA VoiceOver/klawiatury w obu motywach i wąskim oknie.
 
 ## Dalszy backlog — nowe podsystemy i już rozpoczęte rozszerzenia
 
@@ -117,13 +136,16 @@ i koordynator nie wynikają automatycznie z istniejących checks/search plików/
 
 11. **Terminal**: lokalne PTY (`portable-pty`) + VT (`vt100`), taby, bounded
     scrollback, resize, copy/paste, podstawowe klawisze, wyszukiwanie widocznego
-    buforu z podświetleniem i klikalne linki HTTP(S)/mailto są wdrożone.
-    Pozostają: zaznaczanie myszą, splity, shell integration, pełne OSC 8 oraz
-    transport relay/SSH. Szczegóły: [terminal i Run](terminal-and-run.md).
+    buforu z podświetleniem, klikalne linki HTTP(S)/mailto/OSC 8, zaznaczanie
+    myszą (słowo/linia/Shift), splity z przeciąganym dividerem oraz shell
+    integration OSC 133/633/7/1337 są wdrożone. Transport relay przez
+    uwierzytelniony WebSocket i SSH v1 przez OpenSSH również działają. Pozostają
+    ręczna QA GUI/IME/bidi/splitów oraz pełny bootstrap/tunele SSH i Keychain.
+    Szczegóły: [terminal i Run](terminal-and-run.md).
 12. **Run**: statyczne wykrywanie package.json/Cargo/Make/just/pyproject/go/
     deno/composer/Rakefile/mix/gradle/maven oraz scripts/*; preview argv/cwd/env,
     potwierdzenie, PTY, exit code/sygnał, historia i rerun są wdrożone. Pozostają
-    ręczna QA i kolejne formaty manifestów.
+    ręczna QA, kolejne formaty manifestów i zdalny Run na relayu.
 13. **Artefakty**: model/storage/panel, jawne „zapisz jako artefakt”, preview/source
     dla Markdown/HTML/CSV/obrazów/diffów; później share, wygasanie i revoke.
 14. **Markdown**: domyślny Visual, stałe pola edycji bez zmiany typografii przy focus,
@@ -135,20 +157,27 @@ i koordynator nie wynikają automatycznie z istniejących checks/search plików/
     również wdrożone. Smoke przeszedł w ciemnym i jasnym/wąskim oknie.
     Pozostają ręczna QA GUI/IME/bidi, rzeczywisty sparowany relay i złożone
     przypadki graniczne; [dokładny zakres i ograniczenia](markdown-editor.md).
-15. **Standalone chat**: ChatSpace/scratch workspace, izolowane historie/drafty,
-    picker Chat/repo oraz jawnie zatwierdzany kontekst repozytorium.
+15. **Standalone chat**: ChatSpace/scratch workspace, izolowane historie,
+    jawny picker Chat/repo i zatwierdzany kontekst repozytorium są wdrożone jako
+    v1. Pozostają ręczna QA GUI, zmiana kontekstu bez tworzenia nowej przestrzeni
+    oraz ewentualny wspólny picker ostatnich repozytoriów.
+    [Zakres](standalone-chat-worktree-usage.md).
 16. **Automatyzacje**: cron/RRULE, precheck, worktree, runy/historia/usage/limity,
     LaunchAgent i scheduler relay, praca przy zamkniętej aplikacji.
-17. **SSH**: ControlMaster, Keychain, known_hosts, bootstrap i tunel relay,
-    projekty oraz terminal zdalny. Obecny relay nie oznacza gotowego SSH.
+17. **SSH**: terminal SSH v1 (OpenSSH PTY, `ControlMaster`, ssh-agent,
+    known_hosts, jawny target/ścieżka) jest wdrożony. Pozostają Keychain,
+    bootstrap relay, tunel loopback, reconnect i cleanup procesów; obecny relay
+    nie oznacza pełnego SSH.
 18. **Computer use**: osobny Swift/AppKit helper, TCC, AX/ScreenCaptureKit/CGEvent,
     allowlist, zatwierdzenia człowieka, globalny stop i audit trail.
 19. **iOS — rozpoczęty, nieodebrany**: źródła SwiftUI/ACP i konfiguracja projektu
     istnieją; build Xcode i działanie na urządzeniu/relay nie są potwierdzone.
     Pozostają również sync grup/usage/artefaktów i powiadomienia.
 20. **Orkiestracja multi-agent**: trwały message bus/inbox, coordinator i DAG zadań,
-    worktree per subtask, handoff/review/merge, routing modeli, budżety per rola,
-     living spec/task board i human gates.
+    handoff/review/merge, routing modeli, budżety per rola, living spec/task board
+    i human gates. Worktree per subtask ma wdrożony v1: jawny branch i worktree z
+    commita plus trwały rejestr, bez auto-startu agenta/merge/push.
+    [Zakres](standalone-chat-worktree-usage.md).
      Osobne porównanie A/B już tworzy dwa worktree z jednego commita, uruchamia
      identyczny zatwierdzony prompt ze wspólnym budżetem i zapisuje preferencję
      bez merge. Nie zastępuje koordynatora/handoffów.

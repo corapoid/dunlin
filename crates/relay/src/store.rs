@@ -65,6 +65,16 @@ pub struct SessionOwner {
     pub title: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct BillingEvidenceRow {
+    pub user_id: String,
+    pub user_name: String,
+    pub device_id: String,
+    pub device_name: String,
+    pub payload: String,
+    pub updated_at: i64,
+}
+
 pub struct Store {
     connection: Connection,
 }
@@ -182,7 +192,71 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 4 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS billing_evidence (
+                    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    device_id   TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                    payload     TEXT NOT NULL,
+                    updated_at  INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, device_id)
+                );
+
+                PRAGMA user_version = 4;
+                "#,
+            )?;
+        }
         Ok(())
+    }
+
+    /// Bounded aggregate billing evidence. Raw provider logs and prompts are
+    /// never accepted or stored here.
+    pub fn save_billing_evidence(
+        &self,
+        user_id: &str,
+        device_id: &str,
+        payload: &str,
+    ) -> Result<()> {
+        if payload.len() > 2 * 1024 * 1024 {
+            return Err(StoreError::Limit(
+                "Billing evidence exceeds the 2 MiB relay limit".into(),
+            ));
+        }
+        self.connection.execute(
+            r#"
+            INSERT INTO billing_evidence (user_id, device_id, payload, updated_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(user_id, device_id) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = excluded.updated_at
+            "#,
+            params![user_id, device_id, payload, now_secs()],
+        )?;
+        Ok(())
+    }
+
+    pub fn billing_evidence(&self, user_id: Option<&str>) -> Result<Vec<BillingEvidenceRow>> {
+        let sql = "SELECT e.user_id, u.name, e.device_id, d.name, e.payload, e.updated_at \
+                   FROM billing_evidence e \
+                   JOIN users u ON u.id = e.user_id \
+                   JOIN devices d ON d.id = e.device_id";
+        let mut statement = self.connection.prepare(sql)?;
+        let map = |row: &rusqlite::Row<'_>| {
+            Ok(BillingEvidenceRow {
+                user_id: row.get(0)?,
+                user_name: row.get(1)?,
+                device_id: row.get(2)?,
+                device_name: row.get(3)?,
+                payload: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        };
+        let rows = match user_id {
+            Some(user_id) => statement.query_map([user_id], map)?,
+            None => statement.query_map([], map)?,
+        };
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn create_user(&self, name: &str, role: &str) -> Result<User> {
