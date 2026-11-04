@@ -97,13 +97,18 @@
       "version": "0.3.9",
       "upstream_repository": "https://github.com/zed-industries/zed",
       "registry_archive_sha256": "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0",
-      "tree_sha256": "5921d641f053dfe815fb586c55fe1a16f595dc83bc9de02674ff2809ce4e2d79",
+      "tree_sha256": "c3b6978fc4d931df12a207cbf2ee4d7dddb966db2d8c17a1d3b144dd00698a39",
       "files": 159,
       "changes": [
         {
           "path": "Cargo.toml",
           "upstream_sha256": "43ac0a636d1283313dbb48810ff32c0f6b55737824a886bd9fad37735ec0c56c",
           "patched_sha256": "136dd115a9b8a6eeda8db785a62e39befadb359a4b3b76beb8a39d6e9a5e6310"
+        },
+        {
+          "path": "src/gpui.rs",
+          "upstream_sha256": "2f060a8bdbf87be91f434ac8290f44bd26bab08be0f2ead38a5aa6d2f664c440",
+          "patched_sha256": "4929675406039f20c4aabdf8f6395e95dad51ee60746fb5a8607e4370f24ad29"
         },
         {
           "path": "src/svg_renderer.rs",

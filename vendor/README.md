@@ -15,7 +15,7 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 | --- | --- |
 | gpui-base 0.8.0 | `instant` → existing maintained `web-time`; same clock/duration API; opt-out `scrollable` flag so embedded visual editors forward wheel input to the document |
 | gpui-component 0.8.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49 |
-| gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser |
+| gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser; re-export the test attribute as `gpui_test` so it cannot shadow the built-in `#[test]` |
 | metal 0.33.0 / pulp 0.22.3 / rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |
 | rav1e 0.8.1 C API | Fail-closed null-context/frame/buffer guards, checked nullable test views and bounded rate-control decoding; five isolated C API tests pass (this feature is not enabled in Dunlin) |
 | cosmic-text 0.19.0 | fontdb 0.24, preventing the non-macOS graph from retaining old ttf-parser |
