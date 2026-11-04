@@ -9,7 +9,7 @@
 
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, InitializeRequest,
-    InitializeResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
+    InitializeResponse, LoadSessionRequest, LoadSessionResponse, McpServer, NewSessionRequest,
     NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority,
     PlanEntryStatus, PromptRequest, PromptResponse, RequestPermissionOutcome,
     RequestPermissionRequest, SessionConfigOption, SessionConfigOptionCategory,
@@ -22,6 +22,27 @@ use agent_client_protocol::{Agent, Result, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn assert_vault_mcp(servers: &[McpServer]) {
+    if std::env::var_os("DUNLIN_MOCK_REQUIRE_MCP").is_none() {
+        return;
+    }
+    let found = servers.iter().any(|server| match server {
+        McpServer::Stdio(server) => {
+            server.name == "dunlin-secrets"
+                && server.args.iter().any(|arg| arg == "--mcp-vault")
+                && server
+                    .env
+                    .iter()
+                    .any(|env| env.name == "DUNLIN_VAULT_TOKEN")
+        }
+        _ => false,
+    });
+    assert!(
+        found,
+        "vault MCP server was not passed to session/new or session/load"
+    );
+}
 
 fn config_options(current: &str, mode: &str) -> Vec<SessionConfigOption> {
     let mut options = vec![
@@ -91,11 +112,12 @@ fn main() -> Result<()> {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async |_request: NewSessionRequest,
+                async |request: NewSessionRequest,
                        responder,
                        _connection: agent_client_protocol::ConnectionTo<
                     agent_client_protocol::Client,
                 >| {
+                    assert_vault_mcp(&request.mcp_servers);
                     let id = format!(
                         "mock-{}-{}",
                         std::process::id(),
@@ -111,6 +133,7 @@ fn main() -> Result<()> {
                        connection: agent_client_protocol::ConnectionTo<
                     agent_client_protocol::Client,
                 >| {
+                    assert_vault_mcp(&request.mcp_servers);
                     if request.session_id.to_string() == "missing-session" {
                         return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Session not found"));
                     }

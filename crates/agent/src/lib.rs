@@ -24,11 +24,11 @@ use models::{session_models, session_modes};
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    AvailableCommandsUpdate, CancelNotification, ContentBlock, Error as AcpError,
-    InitializeRequest, LoadSessionRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, ToolCall, ToolCallContent,
-    ToolCallStatus, ToolCallUpdate, UsageUpdate,
+    AvailableCommandsUpdate, CancelNotification, ContentBlock, EnvVariable, Error as AcpError,
+    InitializeRequest, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest,
+    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
+    ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, UsageUpdate,
 };
 use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult, UntypedMessage,
@@ -58,8 +58,34 @@ pub enum HarnessTransport {
     },
 }
 
+/// One additional MCP server passed to a session over ACP. Stdio is mandatory
+/// for ACP agents, so this is the compatibility baseline.
+#[derive(Clone)]
+pub struct McpServerConfig {
+    pub name: String,
+    pub command: PathBuf,
+    pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
+}
+
+impl McpServerConfig {
+    pub fn stdio(
+        name: impl Into<String>,
+        command: impl Into<PathBuf>,
+        args: Vec<String>,
+        env: Vec<(String, String)>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            command: command.into(),
+            args,
+            env,
+        }
+    }
+}
+
 /// Everything needed to start one ACP agent process or remote connection.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HarnessConfig {
     pub transport: HarnessTransport,
     /// Session working directory. Must be absolute. For remote sessions this is
@@ -77,6 +103,8 @@ pub struct HarnessConfig {
     /// pass roots per command; this keeps the first automatic session scoped
     /// when a group conversation was already attached.
     pub additional_directories: Vec<PathBuf>,
+    /// Per-session MCP servers. The vault proxy is attached here.
+    pub mcp_servers: Vec<McpServerConfig>,
 }
 
 impl HarnessConfig {
@@ -91,6 +119,7 @@ impl HarnessConfig {
             process_env: HashMap::new(),
             default_model: None,
             additional_directories: Vec::new(),
+            mcp_servers: Vec::new(),
         }
     }
 
@@ -123,11 +152,17 @@ impl HarnessConfig {
             process_env: HashMap::new(),
             default_model: None,
             additional_directories: Vec::new(),
+            mcp_servers: Vec::new(),
         }
     }
 
     pub fn with_additional_directories(mut self, roots: Vec<PathBuf>) -> Self {
         self.additional_directories = roots;
+        self
+    }
+
+    pub fn with_mcp_server(mut self, server: McpServerConfig) -> Self {
+        self.mcp_servers.push(server);
         self
     }
 
@@ -668,7 +703,7 @@ async fn run(
                 if !config.is_remote() {
                     if let Some(session_id) = config.resume_session_id.as_ref() {
                         if init.agent_capabilities.load_session {
-                            match open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), Some(session_id.clone()), None).await {
+                            match open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), mcp_server_wire(&config.mcp_servers), Some(session_id.clone()), None).await {
                                 Ok(id) => active_session = Some(id.into()),
                                 Err(message) => {
                                     let _ = foreground_events.send(HarnessEvent::SessionLoadFailed { session_id: session_id.clone(), message: message.to_string() }).await;
@@ -681,7 +716,7 @@ async fn run(
                             }).await;
                         }
                     } else {
-                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), None, config.default_model.as_deref()).await?.into());
+                        active_session = Some(open_session(&connection, &foreground_events, config.cwd.clone(), config.additional_directories.clone(), mcp_server_wire(&config.mcp_servers), None, config.default_model.as_deref()).await?.into());
                     }
                 }
 
@@ -747,7 +782,7 @@ async fn run(
                         }
                         HarnessCommand::NewSession { cwd, additional_directories, default_model } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, additional_directories, None, default_model.as_deref()).await {
+                            match open_session(&connection, &foreground_events, cwd, additional_directories, mcp_server_wire(&config.mcp_servers), None, default_model.as_deref()).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -762,7 +797,7 @@ async fn run(
                         }
                         HarnessCommand::LoadSession { session_id, cwd, additional_directories } => {
                             active_session = None;
-                            match open_session(&connection, &foreground_events, cwd, additional_directories, Some(session_id.clone()), None).await {
+                            match open_session(&connection, &foreground_events, cwd, additional_directories, mcp_server_wire(&config.mcp_servers), Some(session_id.clone()), None).await {
                                 Ok(id) => {
                                     active_session = Some(id.into());
                                 }
@@ -875,11 +910,31 @@ async fn run(
     Ok(())
 }
 
+fn mcp_server_wire(configs: &[McpServerConfig]) -> Vec<McpServer> {
+    configs
+        .iter()
+        .map(|server| {
+            McpServer::Stdio(
+                McpServerStdio::new(server.name.clone(), server.command.clone())
+                    .args(server.args.clone())
+                    .env(
+                        server
+                            .env
+                            .iter()
+                            .map(|(name, value)| EnvVariable::new(name.clone(), value.clone()))
+                            .collect(),
+                    ),
+            )
+        })
+        .collect()
+}
+
 async fn open_session(
     connection: &ConnectionTo<Agent>,
     events: &Sender<HarnessEvent>,
     cwd: PathBuf,
     additional_directories: Vec<PathBuf>,
+    mcp_servers: Vec<McpServer>,
     existing: Option<String>,
     default_model: Option<&str>,
 ) -> AcpResult<String> {
@@ -888,12 +943,16 @@ async fn open_session(
     let request = if let Some(id) = existing.as_ref() {
         UntypedMessage::new(
             "session/load",
-            LoadSessionRequest::new(id.clone(), cwd).additional_directories(additional_directories),
+            LoadSessionRequest::new(id.clone(), cwd)
+                .additional_directories(additional_directories)
+                .mcp_servers(mcp_servers),
         )?
     } else {
         UntypedMessage::new(
             "session/new",
-            NewSessionRequest::new(cwd).additional_directories(additional_directories),
+            NewSessionRequest::new(cwd)
+                .additional_directories(additional_directories)
+                .mcp_servers(mcp_servers),
         )?
     };
     let response = connection.send_request(request).block_task().await?;
@@ -1633,6 +1692,28 @@ mod tests {
         assert_eq!(detail, "first line\nsecond line");
         assert_eq!((additions, deletions), (0, 0));
         assert!(diff.is_none());
+    }
+
+    #[test]
+    fn mcp_servers_are_sent_as_stdio_without_leaking_into_the_harness_env() {
+        let wire = mcp_server_wire(&[McpServerConfig::stdio(
+            "dunlin-secrets",
+            "/Applications/Dunlin.app/Contents/MacOS/Dunlin",
+            vec!["--mcp-vault".into()],
+            vec![
+                ("DUNLIN_VAULT_SOCKET".into(), "/tmp/vault.sock".into()),
+                ("DUNLIN_VAULT_TOKEN".into(), "token".into()),
+            ],
+        )]);
+        let value = serde_json::to_value(&wire).unwrap();
+        assert_eq!(value[0]["name"], "dunlin-secrets");
+        assert_eq!(
+            value[0]["command"],
+            "/Applications/Dunlin.app/Contents/MacOS/Dunlin"
+        );
+        assert_eq!(value[0]["args"][0], "--mcp-vault");
+        assert_eq!(value[0]["env"][0]["name"], "DUNLIN_VAULT_SOCKET");
+        assert_eq!(value[0]["env"][1]["value"], "token");
     }
 
     #[test]
