@@ -19,7 +19,7 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc};
 
 use crate::api::{AppState, Lease};
 use crate::store::{Device, Project, SessionOwner, User};
-use dunlin_domain::{ProjectSettings, validate_project_environment};
+use dunlin_domain::{PermissionMode, ProjectSettings, validate_project_environment};
 
 const SESSION_NOT_FOUND: i64 = -32001;
 const SESSION_BUSY: i64 = -32002;
@@ -152,6 +152,8 @@ pub async fn bridge(
             .iter()
             .map(|project| project.id.clone())
             .collect(),
+        vault_read_only: project_settings.permission_mode == Some(PermissionMode::ReadOnly),
+        vault_sessions: Vec::new(),
     };
     let mut ticker = tokio::time::interval(Duration::from_secs(30));
     let mut last_activity = Instant::now();
@@ -335,6 +337,9 @@ pub async fn bridge(
         return;
     }
 
+    for session in &tracker.vault_sessions {
+        session.revoke();
+    }
     let _ = child.kill().await;
     eprintln!("[relay] acp disconnected · {connection_id}");
     if let Ok(mut leases) = state.leases.lock() {
@@ -423,6 +428,9 @@ async fn linger_turn(
             }
         }
     }
+    for session in &tracker.vault_sessions {
+        session.revoke();
+    }
     let _ = child.kill().await;
     if let Ok(mut leases) = state.leases.lock() {
         leases.retain(|_, lease| lease.connection_id != connection_id);
@@ -437,6 +445,8 @@ struct Tracker {
     /// session may request a subset, never an arbitrary host path.
     allowed_roots: Vec<String>,
     allowed_project_ids: Vec<String>,
+    vault_read_only: bool,
+    vault_sessions: Vec<crate::vault::VaultSession>,
 }
 
 enum Pending {
@@ -484,6 +494,7 @@ impl Tracker {
         value: &Value,
     ) -> Result<Option<String>, Value> {
         let id = value.get("id").cloned().unwrap_or(Value::Null);
+        let mut forwarded = value.clone();
         if !still_authorized(state, user, device, project) || !self.roots_authorized(state, user) {
             return Err(error_response(
                 id,
@@ -518,6 +529,7 @@ impl Tracker {
                 check_session_scope(value, &self.allowed_roots).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
+                self.inject_vault(&mut forwarded, state, project, &id)?;
                 if is_request {
                     self.pending.insert(id_key(&id), Pending::New);
                 }
@@ -535,6 +547,7 @@ impl Tracker {
                 })?;
                 check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
+                self.inject_vault(&mut forwarded, state, project, &id)?;
                 if is_request {
                     self.pending
                         .insert(id_key(&id), Pending::Load { session_id });
@@ -552,6 +565,7 @@ impl Tracker {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
                 let owner = check_owner(state, user, project, &source_id, &id)?;
+                self.inject_vault(&mut forwarded, state, project, &id)?;
                 if is_request {
                     self.pending.insert(
                         id_key(&id),
@@ -604,9 +618,59 @@ impl Tracker {
         };
 
         match result {
-            Ok(()) => Ok(Some(value.to_string())),
+            Ok(()) => Ok(Some(forwarded.to_string())),
             Err(error) => Err(error),
         }
+    }
+
+    fn inject_vault(
+        &mut self,
+        value: &mut Value,
+        state: &AppState,
+        project: &Project,
+        id: &Value,
+    ) -> Result<(), Value> {
+        let Some(vault) = &state.vault else {
+            return Ok(());
+        };
+        let session = vault.new_session(
+            project.id.clone(),
+            project.path.clone(),
+            self.vault_read_only,
+        );
+        let executable = std::env::current_exe().map_err(|error| {
+            error_response(
+                id.clone(),
+                INVALID_PARAMS,
+                &format!("Could not locate the relay vault proxy: {error}"),
+                None,
+            )
+        })?;
+        let server = json!({
+            "name": "dunlin-relay-secrets",
+            "command": executable,
+            "args": ["--mcp-vault"],
+            "env": [
+                {"name": "DUNLIN_VAULT_SOCKET", "value": vault.socket_path().to_string_lossy()},
+                {"name": "DUNLIN_VAULT_TOKEN", "value": session.token}
+            ]
+        });
+        let params = value
+            .get_mut("params")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| {
+                error_response(id.clone(), INVALID_PARAMS, "Missing session params", None)
+            })?;
+        let servers = params
+            .entry("mcpServers")
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(array) = servers.as_array_mut() {
+            array.push(server);
+        } else {
+            *servers = Value::Array(vec![server]);
+        }
+        self.vault_sessions.push(session);
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1179,12 +1243,66 @@ fn escape_sandbox_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_session_scope, command_parts, prompt_title, sandbox_profile, still_authorized,
+        Tracker, check_session_scope, command_parts, prompt_title, sandbox_profile,
+        still_authorized,
     };
     use crate::api::AppState;
     use crate::config::Config;
-    use crate::store::Store;
+    use crate::store::{Project, Store};
     use serde_json::json;
+
+    #[test]
+    fn relay_vault_is_injected_as_a_stdio_mcp_server() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = temp.path().join("relay.db");
+        let vault = crate::vault::RelayVault::start(&db).unwrap();
+        let state = AppState::new_with_vault(
+            Store::open_in_memory().unwrap(),
+            Config::default(),
+            Some(vault),
+        );
+        let project = Project {
+            id: "project-1".into(),
+            name: "Acme".into(),
+            path: temp.path().to_string_lossy().to_string(),
+        };
+        let mut tracker = Tracker {
+            pending: Default::default(),
+            allowed_roots: Vec::new(),
+            allowed_project_ids: Vec::new(),
+            vault_read_only: false,
+            vault_sessions: Vec::new(),
+        };
+        let mut value = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": project.path, "mcpServers": []}
+        });
+        tracker
+            .inject_vault(&mut value, &state, &project, &json!(1))
+            .unwrap();
+        let server = &value.pointer("/params/mcpServers").unwrap()[0];
+        assert_eq!(server["name"], "dunlin-relay-secrets");
+        assert!(
+            server["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| arg == "--mcp-vault")
+        );
+        assert!(
+            server["env"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|env| env["name"] == "DUNLIN_VAULT_TOKEN")
+        );
+        assert_eq!(tracker.vault_sessions.len(), 1);
+        for session in &tracker.vault_sessions {
+            session.revoke();
+        }
+    }
 
     #[test]
     fn revoked_devices_and_project_grants_fail_reauthorization() {

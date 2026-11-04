@@ -35,6 +35,7 @@ pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
 pub struct AppState {
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
+    pub(crate) vault: Option<Arc<crate::vault::RelayVault>>,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
     history_reads: Arc<tokio::sync::Semaphore>,
@@ -78,10 +79,20 @@ pub struct Lease {
 }
 
 impl AppState {
+    #[allow(dead_code)]
     pub fn new(store: Store, config: Config) -> Self {
+        Self::new_with_vault(store, config, None)
+    }
+
+    pub(crate) fn new_with_vault(
+        store: Store,
+        config: Config,
+        vault: Option<Arc<crate::vault::RelayVault>>,
+    ) -> Self {
         Self {
             store: Arc::new(Mutex::new(store)),
             config: Arc::new(config),
+            vault,
             leases: Arc::new(Mutex::new(HashMap::new())),
             usage_cache: Arc::new(Mutex::new(None)),
             history_reads: Arc::new(tokio::sync::Semaphore::new(4)),
