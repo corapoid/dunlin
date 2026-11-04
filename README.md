@@ -25,7 +25,7 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac.
 
-**0.1.0-beta.7** · macOS 15+ · Apple Silicon · local + self-hosted relay
+**0.1.0-beta.8** · macOS 15+ · Apple Silicon · local + self-hosted relay
 
 ## What you won't find combined anywhere else
 

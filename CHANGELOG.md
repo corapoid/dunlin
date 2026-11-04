@@ -6,7 +6,7 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0-beta.7] — 2026-11-04
+## [0.1.0-beta.8] — 2026-11-04
 
 ### Added
 
@@ -47,10 +47,10 @@ All notable changes to Dunlin are documented here. The format follows
   without deleting skills or artifacts are included. Remote projects can start
   an audit under `.dunlin/audits`, while bounded allowlisted artifacts are
   synced through relay endpoints into a local read-only cache for the same
-  findings/coverage UI. Scanner report adapters import Semgrep, Snyk, Trivy,
-  Gitleaks and Bandit JSON as report-only findings; secrets are never copied
-  from Gitleaks matches. Raw artifacts stay the source of truth; an empty
-  findings file is never presented as proof of security.
+  findings/coverage UI. Security deliberately supports only Cloudflare audit
+  artifacts and Codex Security results; arbitrary third-party scanner reports
+  are left untouched and reported as unsupported. Raw artifacts stay the source
+  of truth; an empty findings file is never presented as proof of security.
 - Multi-file skill bundles: bounded folder discovery/import, relative-path
   validation, per-file hashes, atomic first install, owned-file updates,
   obsolete-file cleanup and non-recursive uninstall that preserves user files.
@@ -99,6 +99,14 @@ All notable changes to Dunlin are documented here. The format follows
   into view, and exposes ARIA tree state/active descendant. See
   [`docs/graph-trace-virtualization.md`](docs/graph-trace-virtualization.md) for
   the 10k fixtures and the remaining manual VoiceOver/keyboard matrix.
+
+### Removed
+
+- Third-party scanner adapters (Semgrep, Snyk, Trivy, Gitleaks and Bandit) and
+  the generic scanner-report importer. Existing run directories and artifacts
+  are left on disk and shown as unsupported instead of being deleted or
+  silently treated as findings. SARIF export remains available; SARIF import is
+  accepted only from Codex Security outputs.
 
 ## [0.1.0-beta.6] — 2026-11-03
 
@@ -757,8 +765,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.7...HEAD
-[0.1.0-beta.7]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.7
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...HEAD
+[0.1.0-beta.8]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.8
 [0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.3
