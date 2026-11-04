@@ -46,7 +46,7 @@ public/             Favicon, brand icon, OG image, robots.txt, licenses
 
 - Site metadata, GitHub links, release version and download URLs live in
   `src/lib/site.ts`.
-- Download links are pinned to verified published `v0.1.0-beta.6` artifacts.
+- Download links are pinned to verified published `v0.1.0-beta.8` artifacts.
   Advance the single version constant only after checking publication, asset
   digests and bundle identity; a pushed tag alone is not sufficient.
 - The canonical domain is a placeholder (`https://dunlin.sh`). Override it with

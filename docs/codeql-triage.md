@@ -63,6 +63,17 @@ single-file diff scope, no injected side-effect and parent-path rejection.
 The command-injection alert itself is **false positive**; literal pathspec
 handling is additional input-scope hardening, not evidence of shell execution.
 
+### #37–#38 — public credential aliases in `vault list`
+
+The flow reads `Secret` records from SQLite. That table holds id, namespace,
+public alias, label, description, policy and timestamps only; the credential
+value lives exclusively in the macOS Keychain and `Store::secrets` never
+returns it. `Secret.alias` is explicitly the public display alias, while
+`project_ids` and `allowed_hosts` are policy metadata. The `vault list` CLI
+prints that non-secret inventory so an operator can choose an alias; it does not
+print a token, password, header or request body. Both exact alerts are
+classified **false positive** and dismissed in the alert audit trail.
+
 No RustSec advisory exceptions, CodeQL query suppressions, blanket dismissals or
 vendor Rust exclusions are used. Each false-positive classification records this
 specific proof in GitHub's alert audit trail. All actual findings must disappear
