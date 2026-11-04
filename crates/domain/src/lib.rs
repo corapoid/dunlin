@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 mod project_settings;
 pub mod task_budget;
+pub mod vault;
 pub use project_settings::{
     GroupSettings, ResolvedSettings, SettingSource, SettingValue, parse_project_environment,
     resolve_group_settings, resolve_project_settings, validate_project_environment,

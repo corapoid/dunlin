@@ -1,0 +1,274 @@
+//! Fixed CLI recipes. The command template is user-owned; the agent only fills
+//! declared parameters and never gets the credential value.
+
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecipeInput {
+    pub secret: String,
+    pub recipe: String,
+    #[serde(default)]
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecipeOutput {
+    pub exit_code: Option<i32>,
+    pub signal: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub truncated: bool,
+    pub timed_out: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct RecipePlan {
+    pub program: String,
+    pub args: Vec<String>,
+    pub env_var: String,
+    pub secret: Zeroizing<String>,
+    pub cwd: PathBuf,
+    pub timeout: Duration,
+    pub program_hash: Option<String>,
+}
+
+pub trait RecipeExecutor: Send + Sync {
+    fn execute(&self, plan: &RecipePlan) -> Result<RecipeOutput, String>;
+}
+
+pub struct CommandExecutor;
+
+impl RecipeExecutor for CommandExecutor {
+    fn execute(&self, plan: &RecipePlan) -> Result<RecipeOutput, String> {
+        let program = std::fs::canonicalize(&plan.program)
+            .map_err(|_| "The recipe program does not exist".to_string())?;
+        let metadata = std::fs::metadata(&program)
+            .map_err(|_| "The recipe program is not readable".to_string())?;
+        if !metadata.is_file() {
+            return Err("The recipe program is not a regular file".into());
+        }
+        let cwd = std::fs::canonicalize(&plan.cwd)
+            .map_err(|_| "The project folder is unavailable".to_string())?;
+        if program.starts_with(&cwd) {
+            return Err(
+                "Recipe programs inside the agent's project are refused; use a fixed binary outside the project"
+                    .into(),
+            );
+        }
+        if let Some(expected) = &plan.program_hash {
+            let actual = program_hash(&program)?;
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Err(
+                    "The recipe program changed; review it and update the pinned hash".into(),
+                );
+            }
+        }
+        let mut command = Command::new(&program);
+        command
+            .args(&plan.args)
+            .current_dir(&cwd)
+            .env_clear()
+            .env("PATH", safe_path())
+            .env("LANG", "C.UTF-8")
+            .env("LC_ALL", "C.UTF-8")
+            .env("TERM", "dumb")
+            .env("NO_COLOR", "1")
+            .env(plan.env_var.as_str(), plan.secret.as_str())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Ok(home) = std::env::var("HOME") {
+            command.env("HOME", home);
+        }
+        if let Ok(tmp) = std::env::var("TMPDIR") {
+            command.env("TMPDIR", tmp);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("Could not start the recipe program: {error}"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Could not capture recipe output".to_string())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "Could not capture recipe output".to_string())?;
+        let out_reader =
+            std::thread::spawn(move || read_capped(stdout, crate::http::MAX_RESPONSE_BODY));
+        let err_reader =
+            std::thread::spawn(move || read_capped(stderr, crate::http::MAX_RESPONSE_BODY));
+        let done = Arc::new(AtomicBool::new(false));
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let watchdog = spawn_watchdog(&mut child, plan.timeout, done.clone(), timed_out.clone());
+        let status = child.wait();
+        done.store(true, Ordering::Relaxed);
+        let _ = watchdog.join();
+        let (stdout, stdout_truncated) =
+            out_reader.join().unwrap_or_else(|_| (String::new(), true));
+        let (stderr, stderr_truncated) =
+            err_reader.join().unwrap_or_else(|_| (String::new(), true));
+        let status = status.map_err(|error| format!("Could not wait for the recipe: {error}"))?;
+        #[cfg(unix)]
+        let signal = {
+            use std::os::unix::process::ExitStatusExt;
+            status.signal()
+        };
+        #[cfg(not(unix))]
+        let signal = None;
+        Ok(RecipeOutput {
+            exit_code: status.code(),
+            signal,
+            stdout,
+            stderr,
+            truncated: stdout_truncated || stderr_truncated,
+            timed_out: timed_out.load(Ordering::Relaxed),
+        })
+    }
+}
+
+fn safe_path() -> String {
+    "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".into()
+}
+
+pub fn program_hash(path: &Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path)
+        .map_err(|_| "Could not read the recipe program for hash verification".to_string())?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|_| "Could not read the recipe program".to_string())?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn spawn_watchdog(
+    child: &mut Child,
+    timeout: Duration,
+    done: Arc<AtomicBool>,
+    timed_out: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    let pid = child.id();
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if done.load(Ordering::Relaxed) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if !done.load(Ordering::Relaxed) {
+            timed_out.store(true, Ordering::Relaxed);
+            #[cfg(unix)]
+            unsafe {
+                // The child was spawned as its own process group.
+                libc::kill(-(pid as i32), libc::SIGKILL);
+            }
+        }
+    })
+}
+
+fn read_capped(mut reader: impl Read, cap: usize) -> (String, bool) {
+    let mut stored = Vec::new();
+    let mut truncated = false;
+    let mut buffer = [0u8; 16 * 1024];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                if stored.len() < cap {
+                    let remaining = cap - stored.len();
+                    let keep = remaining.min(read);
+                    stored.extend_from_slice(&buffer[..keep]);
+                    if keep < read {
+                        truncated = true;
+                    }
+                } else {
+                    truncated = true;
+                }
+            }
+            Err(_) => {
+                truncated = true;
+                break;
+            }
+        }
+    }
+    (String::from_utf8_lossy(&stored).to_string(), truncated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plan(program: &str) -> RecipePlan {
+        RecipePlan {
+            program: program.into(),
+            args: Vec::new(),
+            env_var: "DUNLIN_SECRET".into(),
+            secret: Zeroizing::new("tok_value-123".into()),
+            cwd: std::env::temp_dir(),
+            timeout: Duration::from_secs(5),
+            program_hash: None,
+        }
+    }
+
+    #[test]
+    fn refuses_programs_inside_the_project_and_supports_hashes() {
+        let temp = tempfile::tempdir().unwrap();
+        let script = temp.path().join("script.sh");
+        std::fs::write(&script, "#!/bin/sh\necho hello\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut plan = plan(script.to_str().unwrap());
+        plan.cwd = temp.path().to_path_buf();
+        assert!(CommandExecutor.execute(&plan).is_err());
+        let cwd = tempfile::tempdir().unwrap();
+        plan.cwd = cwd.path().to_path_buf();
+        plan.program_hash = Some(program_hash(&script).unwrap());
+        assert!(CommandExecutor.execute(&plan).is_ok());
+        std::fs::write(&script, "#!/bin/sh\necho changed\n").unwrap();
+        assert!(CommandExecutor.execute(&plan).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn captures_output_exit_status_and_timeout() {
+        let mut plan = plan("/usr/bin/printenv");
+        plan.args = vec!["DUNLIN_SECRET".into()];
+        let output = CommandExecutor.execute(&plan).unwrap();
+        assert_eq!(output.exit_code, Some(0));
+        assert!(output.stdout.contains("tok_value-123"));
+        plan.program = "/usr/bin/false".into();
+        plan.args = Vec::new();
+        let output = CommandExecutor.execute(&plan).unwrap();
+        assert_eq!(output.exit_code, Some(1));
+        plan.program = "/bin/sleep".into();
+        plan.args = vec!["2".into()];
+        plan.timeout = Duration::from_millis(100);
+        let output = CommandExecutor.execute(&plan).unwrap();
+        assert!(output.timed_out);
+    }
+}

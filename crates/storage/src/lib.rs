@@ -194,6 +194,74 @@ impl Store {
             transaction.execute_batch("ALTER TABLE project_groups ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'; PRAGMA user_version = 7;")?;
             transaction.commit()?;
         }
+        if version < 9 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS secrets (
+                    id              TEXT PRIMARY KEY,
+                    namespace       TEXT NOT NULL,
+                    alias           TEXT NOT NULL UNIQUE,
+                    label           TEXT NOT NULL,
+                    description     TEXT NOT NULL DEFAULT '',
+                    injection       TEXT NOT NULL,
+                    allowed_hosts   TEXT NOT NULL DEFAULT '[]',
+                    path_prefix     TEXT NOT NULL DEFAULT '/',
+                    allowed_methods TEXT NOT NULL DEFAULT '["GET","HEAD"]',
+                    allowed_headers TEXT NOT NULL DEFAULT '[]',
+                    auto_approve    INTEGER NOT NULL DEFAULT 1,
+                    expires_at      INTEGER,
+                    created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+                    updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
+                    last_used_at    INTEGER
+                );
+
+                CREATE TABLE IF NOT EXISTS secret_grants (
+                    secret_id   TEXT NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,
+                    project_id  TEXT NOT NULL,
+                    policy      TEXT NOT NULL DEFAULT 'auto',
+                    created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+                    PRIMARY KEY (secret_id, project_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS secret_recipes (
+                    id           TEXT PRIMARY KEY,
+                    secret_id    TEXT NOT NULL REFERENCES secrets(id) ON DELETE CASCADE,
+                    name         TEXT NOT NULL,
+                    description  TEXT NOT NULL DEFAULT '',
+                    program      TEXT NOT NULL,
+                    args         TEXT NOT NULL DEFAULT '[]',
+                    env_var      TEXT NOT NULL DEFAULT 'DUNLIN_SECRET',
+                    parameters   TEXT NOT NULL DEFAULT '[]',
+                    timeout_secs INTEGER NOT NULL DEFAULT 30,
+                    program_hash TEXT,
+                    created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+                    UNIQUE (secret_id, name)
+                );
+
+                CREATE TABLE IF NOT EXISTS secret_audit (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    secret_id   TEXT,
+                    alias       TEXT NOT NULL,
+                    project_id  TEXT,
+                    session_id  TEXT,
+                    operation   TEXT NOT NULL,
+                    detail      TEXT NOT NULL,
+                    decision    TEXT NOT NULL,
+                    status      INTEGER,
+                    error       TEXT,
+                    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+                CREATE INDEX IF NOT EXISTS secret_audit_secret_idx
+                    ON secret_audit(secret_id, created_at DESC);
+                CREATE INDEX IF NOT EXISTS secret_audit_created_idx
+                    ON secret_audit(created_at DESC);
+
+                PRAGMA user_version = 9;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -535,6 +603,383 @@ impl Store {
         Ok(())
     }
 
+    fn secret_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<dunlin_domain::vault::Secret> {
+        fn parse<T: DeserializeOwned>(value: &str, column: usize) -> rusqlite::Result<T> {
+            serde_json::from_str(value).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    column,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })
+        }
+        Ok(dunlin_domain::vault::Secret {
+            id: row.get(0)?,
+            namespace: row.get(1)?,
+            alias: row.get(2)?,
+            label: row.get(3)?,
+            description: row.get(4)?,
+            injection: parse(&row.get::<_, String>(5)?, 5)?,
+            allowed_hosts: parse(&row.get::<_, String>(6)?, 6)?,
+            path_prefix: row.get(7)?,
+            allowed_methods: parse(&row.get::<_, String>(8)?, 8)?,
+            allowed_headers: parse(&row.get::<_, String>(9)?, 9)?,
+            auto_approve: row.get::<_, i64>(10)? != 0,
+            expires_at: row.get(11)?,
+            created_at: row.get(12)?,
+            updated_at: row.get(13)?,
+            last_used_at: row.get(14)?,
+        })
+    }
+
+    fn recipe_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<dunlin_domain::vault::Recipe> {
+        fn parse<T: DeserializeOwned>(value: &str, column: usize) -> rusqlite::Result<T> {
+            serde_json::from_str(value).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    column,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })
+        }
+        Ok(dunlin_domain::vault::Recipe {
+            id: row.get(0)?,
+            secret_id: row.get(1)?,
+            name: row.get(2)?,
+            description: row.get(3)?,
+            program: row.get(4)?,
+            args: parse(&row.get::<_, String>(5)?, 5)?,
+            env_var: row.get(6)?,
+            parameters: parse(&row.get::<_, String>(7)?, 7)?,
+            timeout_secs: row.get::<_, i64>(8)? as u64,
+            program_hash: row.get(9)?,
+            created_at: row.get(10)?,
+        })
+    }
+
+    fn audit_from_row(
+        row: &rusqlite::Row<'_>,
+    ) -> rusqlite::Result<dunlin_domain::vault::SecretAudit> {
+        Ok(dunlin_domain::vault::SecretAudit {
+            id: row.get(0)?,
+            secret_id: row.get(1)?,
+            alias: row.get(2)?,
+            project_id: row.get(3)?,
+            session_id: row.get(4)?,
+            operation: row.get(5)?,
+            detail: row.get(6)?,
+            decision: row.get(7)?,
+            status: row.get(8)?,
+            error: row.get(9)?,
+            created_at: row.get(10)?,
+        })
+    }
+
+    pub fn upsert_secret(&self, secret: &dunlin_domain::vault::Secret) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO secrets (
+                id, namespace, alias, label, description, injection, allowed_hosts,
+                path_prefix, allowed_methods, allowed_headers, auto_approve, expires_at,
+                created_at, updated_at, last_used_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            ON CONFLICT(id) DO UPDATE SET
+                namespace = excluded.namespace,
+                alias = excluded.alias,
+                label = excluded.label,
+                description = excluded.description,
+                injection = excluded.injection,
+                allowed_hosts = excluded.allowed_hosts,
+                path_prefix = excluded.path_prefix,
+                allowed_methods = excluded.allowed_methods,
+                allowed_headers = excluded.allowed_headers,
+                auto_approve = excluded.auto_approve,
+                expires_at = excluded.expires_at,
+                updated_at = excluded.updated_at,
+                last_used_at = excluded.last_used_at
+            "#,
+            params![
+                secret.id,
+                secret.namespace,
+                secret.alias,
+                secret.label,
+                secret.description,
+                serde_json::to_string(&secret.injection)?,
+                serde_json::to_string(&secret.allowed_hosts)?,
+                secret.path_prefix,
+                serde_json::to_string(&secret.allowed_methods)?,
+                serde_json::to_string(&secret.allowed_headers)?,
+                secret.auto_approve as i64,
+                secret.expires_at,
+                secret.created_at,
+                secret.updated_at,
+                secret.last_used_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_secret(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM secrets WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn secrets(&self) -> Result<Vec<dunlin_domain::vault::Secret>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, namespace, alias, label, description, injection, allowed_hosts, \
+             path_prefix, allowed_methods, allowed_headers, auto_approve, expires_at, \
+             created_at, updated_at, last_used_at FROM secrets ORDER BY created_at, alias",
+        )?;
+        let rows = statement.query_map([], Self::secret_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn secret_by_id(&self, id: &str) -> Result<Option<dunlin_domain::vault::Secret>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, namespace, alias, label, description, injection, allowed_hosts, \
+                 path_prefix, allowed_methods, allowed_headers, auto_approve, expires_at, \
+                 created_at, updated_at, last_used_at FROM secrets WHERE id = ?1",
+                [id],
+                Self::secret_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn secret_by_alias(&self, alias: &str) -> Result<Option<dunlin_domain::vault::Secret>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, namespace, alias, label, description, injection, allowed_hosts, \
+                 path_prefix, allowed_methods, allowed_headers, auto_approve, expires_at, \
+                 created_at, updated_at, last_used_at FROM secrets WHERE alias = ?1",
+                [alias],
+                Self::secret_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn secrets_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<dunlin_domain::vault::Secret>> {
+        let mut statement = self.connection.prepare(
+            "SELECT s.id, s.namespace, s.alias, s.label, s.description, s.injection, \
+             s.allowed_hosts, s.path_prefix, s.allowed_methods, s.allowed_headers, \
+             s.auto_approve, s.expires_at, s.created_at, s.updated_at, s.last_used_at \
+             FROM secrets s JOIN secret_grants g ON g.secret_id = s.id \
+             WHERE g.project_id = ?1 AND g.policy != 'deny' ORDER BY s.created_at, s.alias",
+        )?;
+        let rows = statement.query_map([project_id], Self::secret_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn set_secret_grant(&self, grant: &dunlin_domain::vault::SecretGrant) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO secret_grants (secret_id, project_id, policy, created_at)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(secret_id, project_id) DO UPDATE SET
+                policy = excluded.policy,
+                created_at = excluded.created_at
+            "#,
+            params![
+                grant.secret_id,
+                grant.project_id,
+                grant.policy.as_str(),
+                grant.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_secret_grant(&self, secret_id: &str, project_id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM secret_grants WHERE secret_id = ?1 AND project_id = ?2",
+            params![secret_id, project_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn secret_grant(
+        &self,
+        secret_id: &str,
+        project_id: &str,
+    ) -> Result<Option<dunlin_domain::vault::SecretGrant>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT secret_id, project_id, policy, created_at FROM secret_grants \
+                 WHERE secret_id = ?1 AND project_id = ?2",
+                params![secret_id, project_id],
+                |row| {
+                    let policy: String = row.get(2)?;
+                    Ok(dunlin_domain::vault::SecretGrant {
+                        secret_id: row.get(0)?,
+                        project_id: row.get(1)?,
+                        policy: dunlin_domain::vault::GrantPolicy::parse(&policy),
+                        created_at: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn secret_grants(&self, secret_id: &str) -> Result<Vec<dunlin_domain::vault::SecretGrant>> {
+        let mut statement = self.connection.prepare(
+            "SELECT secret_id, project_id, policy, created_at FROM secret_grants \
+             WHERE secret_id = ?1 ORDER BY project_id",
+        )?;
+        let rows = statement.query_map([secret_id], |row| {
+            let policy: String = row.get(2)?;
+            Ok(dunlin_domain::vault::SecretGrant {
+                secret_id: row.get(0)?,
+                project_id: row.get(1)?,
+                policy: dunlin_domain::vault::GrantPolicy::parse(&policy),
+                created_at: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_recipe(&self, recipe: &dunlin_domain::vault::Recipe) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO secret_recipes (
+                id, secret_id, name, description, program, args, env_var, parameters,
+                timeout_secs, program_hash, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                description = excluded.description,
+                program = excluded.program,
+                args = excluded.args,
+                env_var = excluded.env_var,
+                parameters = excluded.parameters,
+                timeout_secs = excluded.timeout_secs,
+                program_hash = excluded.program_hash
+            "#,
+            params![
+                recipe.id,
+                recipe.secret_id,
+                recipe.name,
+                recipe.description,
+                recipe.program,
+                serde_json::to_string(&recipe.args)?,
+                recipe.env_var,
+                serde_json::to_string(&recipe.parameters)?,
+                recipe.timeout_secs as i64,
+                recipe.program_hash,
+                recipe.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_recipe(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM secret_recipes WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn recipes_for_secret(&self, secret_id: &str) -> Result<Vec<dunlin_domain::vault::Recipe>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, secret_id, name, description, program, args, env_var, parameters, timeout_secs, \
+             program_hash, created_at FROM secret_recipes WHERE secret_id = ?1 ORDER BY name",
+        )?;
+        let rows = statement.query_map([secret_id], Self::recipe_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn recipe_by_name(
+        &self,
+        secret_id: &str,
+        name: &str,
+    ) -> Result<Option<dunlin_domain::vault::Recipe>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, secret_id, name, description, program, args, env_var, parameters, timeout_secs, \
+                 program_hash, created_at FROM secret_recipes WHERE secret_id = ?1 AND name = ?2",
+                params![secret_id, name],
+                Self::recipe_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn record_secret_audit(&self, audit: &dunlin_domain::vault::SecretAudit) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO secret_audit (
+                secret_id, alias, project_id, session_id, operation, detail,
+                decision, status, error, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+            params![
+                audit.secret_id,
+                audit.alias,
+                audit.project_id,
+                audit.session_id,
+                audit.operation,
+                audit.detail,
+                audit.decision,
+                audit.status,
+                audit.error,
+                audit.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn secret_audit(
+        &self,
+        secret_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<dunlin_domain::vault::SecretAudit>> {
+        let limit = limit.clamp(1, 200) as i64;
+        match secret_id {
+            Some(secret_id) => {
+                let mut statement = self.connection.prepare(
+                    "SELECT id, secret_id, alias, project_id, session_id, operation, detail, \
+                     decision, status, error, created_at FROM secret_audit \
+                     WHERE secret_id = ?1 ORDER BY created_at DESC, id DESC LIMIT ?2",
+                )?;
+                let rows = statement.query_map(params![secret_id, limit], Self::audit_from_row)?;
+                Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+            }
+            None => {
+                let mut statement = self.connection.prepare(
+                    "SELECT id, secret_id, alias, project_id, session_id, operation, detail, \
+                     decision, status, error, created_at FROM secret_audit \
+                     ORDER BY created_at DESC, id DESC LIMIT ?1",
+                )?;
+                let rows = statement.query_map([limit], Self::audit_from_row)?;
+                Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+            }
+        }
+    }
+
+    pub fn expired_secrets(&self, now: i64) -> Result<Vec<dunlin_domain::vault::Secret>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, namespace, alias, label, description, injection, allowed_hosts, \
+             path_prefix, allowed_methods, allowed_headers, auto_approve, expires_at, \
+             created_at, updated_at, last_used_at FROM secrets \
+             WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+        )?;
+        let rows = statement.query_map([now], Self::secret_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn touch_secret(&self, id: &str, now: i64) -> Result<()> {
+        self.connection.execute(
+            "UPDATE secrets SET last_used_at = ?2, updated_at = updated_at WHERE id = ?1",
+            params![id, now],
+        )?;
+        Ok(())
+    }
+
     /// Store an application setting as JSON under a stable key.
     pub fn save_setting<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let value = serde_json::to_string(value)?;
@@ -863,7 +1308,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            7
+            9
         );
     }
 
@@ -1359,7 +1804,116 @@ mod tests {
     #[test]
     fn reports_schema_version_and_quick_check_for_release_qa() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), 7);
+        assert_eq!(store.schema_version().unwrap(), 9);
         assert_eq!(store.quick_check().unwrap(), "ok");
     }
+
+    #[test]
+    fn vault_metadata_grants_recipes_and_audit_round_trip_without_values() {
+        use dunlin_domain::vault::{
+            GrantPolicy, HttpMethod, Injection, Recipe, RecipeParameter, Secret, SecretAudit,
+            SecretGrant,
+        };
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        let secret = Secret {
+            id: "dunlin/one".into(),
+            namespace: "dunlin".into(),
+            alias: "github-work".into(),
+            label: "GitHub (work)".into(),
+            description: "Use for api.github.com".into(),
+            injection: Injection::Header {
+                name: "Authorization".into(),
+                prefix: "Bearer ".into(),
+            },
+            allowed_hosts: vec!["api.github.com".into()],
+            path_prefix: "/".into(),
+            allowed_methods: vec![HttpMethod::Get, HttpMethod::Post],
+            allowed_headers: vec!["Accept".into()],
+            auto_approve: true,
+            expires_at: Some(1_900_000_000),
+            created_at: 1,
+            updated_at: 2,
+            last_used_at: None,
+        };
+        store.upsert_secret(&secret).unwrap();
+        assert_eq!(
+            store.secret_by_alias("github-work").unwrap(),
+            Some(secret.clone())
+        );
+        assert_eq!(store.secrets().unwrap().len(), 1);
+
+        store
+            .set_secret_grant(&SecretGrant {
+                secret_id: secret.id.clone(),
+                project_id: "dunlin".into(),
+                policy: GrantPolicy::Auto,
+                created_at: 3,
+            })
+            .unwrap();
+        assert_eq!(
+            store.secrets_for_project("dunlin").unwrap(),
+            vec![secret.clone()]
+        );
+        assert_eq!(
+            store
+                .secret_grant(&secret.id, "dunlin")
+                .unwrap()
+                .unwrap()
+                .policy,
+            GrantPolicy::Auto
+        );
+
+        let recipe = Recipe {
+            id: "recipe-1".into(),
+            secret_id: secret.id.clone(),
+            name: "gh-api".into(),
+            description: "Call the GitHub API".into(),
+            program: "/opt/homebrew/bin/gh".into(),
+            args: vec!["api".into(), "{path}".into()],
+            env_var: "GH_TOKEN".into(),
+            parameters: vec![RecipeParameter {
+                name: "path".into(),
+                required: true,
+                max_len: 200,
+                allow_leading_dash: false,
+            }],
+            timeout_secs: 30,
+            program_hash: None,
+            created_at: 4,
+        };
+        store.upsert_recipe(&recipe).unwrap();
+        assert_eq!(
+            store.recipe_by_name(&secret.id, "gh-api").unwrap(),
+            Some(recipe.clone())
+        );
+
+        store
+            .record_secret_audit(&SecretAudit {
+                id: 0,
+                secret_id: Some(secret.id.clone()),
+                alias: secret.alias.clone(),
+                project_id: Some("dunlin".into()),
+                session_id: Some("ses-1".into()),
+                operation: "http".into(),
+                detail: "GET api.github.com/repos".into(),
+                decision: "auto".into(),
+                status: Some(200),
+                error: None,
+                created_at: 5,
+            })
+            .unwrap();
+        let audit = store.secret_audit(Some(&secret.id), 10).unwrap();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].status, Some(200));
+        assert!(!serde_json::to_string(&audit).unwrap().contains("value"));
+
+        store.delete_secret(&secret.id).unwrap();
+        assert!(store.secrets().unwrap().is_empty());
+        assert!(store.recipes_for_secret(&secret.id).unwrap().is_empty());
+        assert!(store.secret_grants(&secret.id).unwrap().is_empty());
+        // Audit history is intentionally retained after secret deletion.
+        assert_eq!(store.secret_audit(None, 10).unwrap().len(), 1);
+    }
+
 }

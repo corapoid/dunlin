@@ -29,6 +29,7 @@ dunlin-ui = { path = "crates/ui" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
 dunlin-storage = { path = "crates/storage" }
+dunlin-vault = { path = "crates/vault" }
 dunlin-workspace = { path = "crates/workspace" }
 dunlin-usage = { path = "crates/usage" }
 dunlin-terminal = { path = "crates/terminal" }

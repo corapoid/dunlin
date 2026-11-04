@@ -1680,6 +1680,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunlin-vault"
+version = "0.1.0-beta.6"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dunlin-domain",
+ "dunlin-storage",
+ "hmac",
+ "libc",
+ "percent-encoding",
+ "rand 0.9.5",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.21",
+ "ureq",
+ "url",
+ "zeroize",
+]
+[[package]]
 name = "dunlin-workspace"
 version = "0.1.0-beta.6"
 dependencies = [

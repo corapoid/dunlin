@@ -51,6 +51,7 @@ Geist is created by Vercel in collaboration with basement.studio. See
 | notify-rust, rand, sha2, toml, futures-util, async-channel, async-io, ttf-parser | MIT OR Apache-2.0 |
 | ureq | MIT OR Apache-2.0 |
 | security-framework | MIT OR Apache-2.0 |
+| zeroize, percent-encoding | MIT OR Apache-2.0 |
 | url | MIT OR Apache-2.0 |
 
 The exact dependency graph and resolved versions are recorded in
