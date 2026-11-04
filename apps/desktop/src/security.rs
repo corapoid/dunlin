@@ -69,7 +69,6 @@ pub(crate) struct State {
     pub error: Option<String>,
     pub triage: Vec<TriageRecord>,
     pub codex_scanning: bool,
-    pub importing: bool,
     pub check_running: bool,
     pub check_result: Option<String>,
     pub(crate) refresh_scheduled: bool,
@@ -1830,50 +1829,6 @@ fn run_sandboxed_check(this: &mut DunlinApp, window: &mut Window, cx: &mut Conte
     cx.notify();
 }
 
-fn import_scanner_file(this: &mut DunlinApp, path: PathBuf, cx: &mut Context<DunlinApp>) {
-    if this.security.importing {
-        return;
-    }
-    let project = this.project().clone();
-    if project.is_remote() || !project.trusted {
-        this.set_notice("Scanner report import requires a trusted local project", cx);
-        return;
-    }
-    let Some(data_dir) = crate::app::data_dir() else {
-        this.set_notice("Local storage is unavailable", cx);
-        return;
-    };
-    this.security.importing = true;
-    let project_id = project.id.clone();
-    cx.spawn(async move |this, cx| {
-        let result = cx
-            .background_executor()
-            .spawn(
-                async move { dunlin_audit::import_scanner_report(&data_dir, &project_id, &path) },
-            )
-            .await;
-        let _ = this.update(cx, |this, cx| {
-            this.security.importing = false;
-            match result {
-                Ok(created) => {
-                    this.notice = Some(format!(
-                        "Imported scanner report · {}",
-                        created.dir.display()
-                    ));
-                    this.security.checked_project = None;
-                    this.ensure_security_runs(cx);
-                }
-                Err(error) => {
-                    this.set_notice(format!("Could not import scanner report: {error}"), cx)
-                }
-            }
-            cx.notify();
-        });
-    })
-    .detach();
-    cx.notify();
-}
-
 fn run_codex_scan(
     this: &mut DunlinApp,
     cli: dunlin_audit::CodexCli,
@@ -1992,6 +1947,7 @@ fn run_codex_scan(
     cx.notify();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_codex_finding_command(
     this: &mut DunlinApp,
     cli: dunlin_audit::CodexCli,
@@ -2431,40 +2387,7 @@ pub(crate) fn render(
                         })),
                     )
                 })
-                .child(
-                    action(
-                        "security-import-scanner",
-                        if this.security.importing {
-                            "Importing…"
-                        } else {
-                            "Import scanner report…"
-                        },
-                        p,
-                    )
-                    .when(this.security.importing, |button| button.opacity(0.5))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let selected = cx.prompt_for_paths(PathPromptOptions {
-                            files: true,
-                            directories: false,
-                            multiple: false,
-                            prompt: Some(
-                                "Choose a Semgrep, Snyk, Trivy, Gitleaks or Bandit JSON report"
-                                    .into(),
-                            ),
-                        });
-                        let selected = this.overlay_backdrop.track_native(selected, cx);
-                        cx.spawn(async move |this, cx| {
-                            if let Ok(Ok(Some(paths))) = selected.await
-                                && let Some(path) = paths.into_iter().next()
-                            {
-                                let _ = this.update(cx, |this, cx| {
-                                    import_scanner_file(this, path, cx)
-                                });
-                            }
-                        })
-                        .detach();
-                    })),
-                ),
+                ,
         )
         .child(
             div()

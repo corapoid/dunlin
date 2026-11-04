@@ -117,9 +117,9 @@ i bez błędu; admin nadal pobiera limity. CI odrzuca `todo!()`/
    licznik wystąpień fingerprintu, eksport SARIF/JSON/CSV/Markdown, świeży
    verifier, fazy runu, opcjonalny Codex CLI scan/patch/verify-fix, lokalny
    sandbox seatbelt dla jawnych checks oraz zdalny start i odczyt artefaktów
-   audytu przez relay oraz adaptery Semgrep/Snyk/Trivy/Gitleaks/Bandit są
-   wdrożone. Pozostaje ręczna QA UI, zdalne uruchamianie Codex CLI na hoście
-   relay i kolejne formaty skanerów.
+   audytu przez relay są wdrożone. Security obsługuje wyłącznie artefakty
+   Cloudflare i Codex Security; raporty innych skanerów są jawnie nieobsługiwane.
+   Pozostaje ręczna QA UI i zdalne uruchamianie Codex CLI na hoście relay.
 10. **Agent graph / Trace**: pan/zoom, minimapa, wyszukiwanie z zachowaniem
     przodków, skróty `⌘+`/`⌘−`/`⌘0`, sticky axis, zoom gęstości wierszy,
     tidy-tree bez limitu głębokości, wirtualizacja viewportu grafu/minimapy,

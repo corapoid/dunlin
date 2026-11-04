@@ -13,11 +13,6 @@ pub enum AuditEngine {
     Cloudflare,
     Codex,
     Sarif,
-    Semgrep,
-    Snyk,
-    Trivy,
-    Gitleaks,
-    Bandit,
 }
 
 impl AuditEngine {
@@ -27,11 +22,6 @@ impl AuditEngine {
             Self::Cloudflare => "Cloudflare security-audit",
             Self::Codex => "Codex Security",
             Self::Sarif => "SARIF",
-            Self::Semgrep => "Semgrep",
-            Self::Snyk => "Snyk",
-            Self::Trivy => "Trivy",
-            Self::Gitleaks => "Gitleaks",
-            Self::Bandit => "Bandit",
         }
     }
 }

@@ -10,7 +10,7 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.7`; see [CHANGELOG.md](../CHANGELOG.md).
+release. Source builds are now `0.1.0-beta.8`; see [CHANGELOG.md](../CHANGELOG.md).
 Website download links are advanced only after release assets are verified.
 
 ## Why Dunlin
@@ -461,7 +461,8 @@ harness's normal permission prompts still apply.
 
 The Security view also reads completed or in-progress run directories. It
 supports Cloudflare `findings.json` and `coverage-ledger.json`, Codex Security
-`findings.json` and `coverage.json`, and SARIF 2.1.0 exports. It validates
+`findings.json` and `coverage.json`, and SARIF 2.1.0 exports produced by Codex
+Security. It validates
 bounded structure, repository-relative paths, verdict branches, duplicate
 fingerprints and coverage IDs, then shows findings, evidence, coverage, report
 text and structural errors. Raw artifacts remain authoritative. An empty
@@ -509,11 +510,10 @@ scratch directory, common credential reads denied, and bounded wall-clock, CPU,
 file-size and process limits. This is a native local check runner; it is not a
 container and it does not sandbox the ACP harness.
 
-**Scanner report adapters.** The Security view imports saved Semgrep, Snyk,
-Trivy, Gitleaks and Bandit JSON reports into a new run. Imported results are
-`Reported`, never `Confirmed`; Gitleaks matches are redacted from the UI and
-exported descriptions. The import is a file read and parse, never a scanner
-execution.
+Dunlin intentionally does not import arbitrary third-party scanner reports.
+Only Cloudflare audit artifacts and Codex Security results are supported; files
+from other scanners are left untouched and shown as unsupported rather than
+silently treated as findings.
 
 **Remote projects.** Remote audits use `.dunlin/audits/<run-id>/` on the relay
 host. The relay exposes only bounded, allowlisted audit artifacts for the

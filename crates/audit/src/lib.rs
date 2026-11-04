@@ -5,7 +5,6 @@
 //! normalizes them for the native Security workspace, and independently checks
 //! structural invariants before calling an artifact validated.
 
-pub mod adapters;
 pub mod cloudflare;
 pub mod codex;
 pub mod codex_cli;
@@ -16,11 +15,10 @@ pub mod sandbox;
 pub mod sarif;
 pub mod util;
 
-pub use adapters::{AdapterKind, detect as detect_adapter, parse as parse_adapter};
 pub use codex_cli::{CliOutput, CodexCli, discover as discover_codex_cli};
 pub use discover::{
-    CreatedRun, attach_run_session, create_run, discover_run, discover_runs, import_scanner_report,
-    run_root, set_run_phase, valid_source_path,
+    CreatedRun, attach_run_session, create_run, discover_run, discover_runs, run_root,
+    set_run_phase, valid_source_path,
 };
 pub use export::{export_csv, export_json, export_markdown, write_export as write_export_file};
 pub use model::{
@@ -218,7 +216,7 @@ mod tests {
         let value = json!({
             "version": "2.1.0",
             "runs": [{
-                "tool": {"driver": {"name": "Semgrep", "rules": [{"id": "rule-1", "shortDescription": {"text": "Rule one"}}]}},
+                "tool": {"driver": {"name": "Codex Security", "rules": [{"id": "rule-1", "shortDescription": {"text": "Rule one"}}]}},
                 "results": [{
                     "ruleId": "rule-1",
                     "level": "warning",
@@ -314,37 +312,6 @@ mod tests {
             VerificationDecision::Verified
         );
         assert!(snapshot.has_artifacts());
-    }
-
-    #[test]
-    fn imported_scanner_reports_are_discovered_without_a_shell() {
-        let temp = tempfile::tempdir().unwrap();
-        let report = temp.path().join("semgrep.json");
-        std::fs::write(
-            &report,
-            json!({
-                "results": [{
-                    "check_id": "rules.auth",
-                    "path": "src/auth.ts",
-                    "start": {"line": 9},
-                    "end": {"line": 9},
-                    "extra": {
-                        "message": "Missing authorization check",
-                        "severity": "ERROR",
-                        "metadata": {"cwe": ["CWE-862"]}
-                    }
-                }]
-            })
-            .to_string(),
-        )
-        .unwrap();
-        let created = import_scanner_report(temp.path(), "project", &report).unwrap();
-        let snapshot = discover_run(&created.dir);
-        assert!(snapshot.errors.is_empty(), "{:?}", snapshot.errors);
-        assert_eq!(snapshot.findings.len(), 1);
-        assert_eq!(snapshot.findings[0].source, AuditEngine::Semgrep);
-        assert_eq!(snapshot.findings[0].severity, Some(Severity::High));
-        assert_eq!(snapshot.run.engine, AuditEngine::Semgrep);
     }
 
     #[test]

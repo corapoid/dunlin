@@ -96,57 +96,6 @@ pub fn set_run_phase(dir: &Path, phase: &str) -> Result<(), String> {
     write_run_value(dir, &value)
 }
 
-pub fn import_scanner_report(
-    data_dir: &Path,
-    project_id: &str,
-    source: &Path,
-) -> Result<CreatedRun, String> {
-    let text = crate::util::read_text(source)?;
-    let value: Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-    let kind = crate::adapters::detect(&value)
-        .ok_or_else(|| "Unsupported scanner report format".to_string())?;
-    let parsed = crate::adapters::parse(&value)
-        .ok_or_else(|| "Unsupported scanner report format".to_string())?;
-    if parsed.value.is_empty() && !parsed.errors.is_empty() {
-        return Err(parsed.errors.join("; "));
-    }
-    let created = create_run(data_dir, project_id)?;
-    let report = created.dir.join("scanner-report.json");
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&report).map_err(|error| error.to_string())?;
-    use std::io::Write;
-    file.write_all(text.as_bytes())
-        .map_err(|error| error.to_string())?;
-    file.sync_all().map_err(|error| error.to_string())?;
-    let stub_path = created.dir.join("dunlin-run.json");
-    let mut stub = read_json(&stub_path)?;
-    if let Some(object) = stub.as_object_mut() {
-        object.insert(
-            "engine".into(),
-            Value::String(
-                match kind {
-                    crate::adapters::AdapterKind::Semgrep => "semgrep",
-                    crate::adapters::AdapterKind::Snyk => "snyk",
-                    crate::adapters::AdapterKind::Trivy => "trivy",
-                    crate::adapters::AdapterKind::Gitleaks => "gitleaks",
-                    crate::adapters::AdapterKind::Bandit => "bandit",
-                }
-                .into(),
-            ),
-        );
-        object.insert("status".into(), Value::String("incomplete".into()));
-        object.insert("phase".into(), Value::String("reporting".into()));
-    }
-    write_run_value(&created.dir, &stub)?;
-    Ok(created)
-}
-
 pub fn create_run(data_dir: &Path, project_id: &str) -> Result<CreatedRun, String> {
     let root = run_root(data_dir, project_id);
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
@@ -206,11 +155,6 @@ fn merge_dunlin_run(snapshot: &mut AuditSnapshot, value: &Value) {
             "cloudflare" => AuditEngine::Cloudflare,
             "codex" => AuditEngine::Codex,
             "sarif" => AuditEngine::Sarif,
-            "semgrep" => AuditEngine::Semgrep,
-            "snyk" => AuditEngine::Snyk,
-            "trivy" => AuditEngine::Trivy,
-            "gitleaks" => AuditEngine::Gitleaks,
-            "bandit" => AuditEngine::Bandit,
             _ => snapshot.run.engine,
         };
     }
@@ -394,49 +338,6 @@ fn read_verifications(
     latest.into_values().collect()
 }
 
-fn read_scanner_reports(
-    artifacts: &Path,
-    errors: &mut Vec<String>,
-    warnings: &mut Vec<String>,
-) -> Option<(AuditEngine, Vec<crate::model::Finding>)> {
-    let mut findings = Vec::new();
-    let mut engine = AuditEngine::Unknown;
-    for name in [
-        "scanner-report.json",
-        "semgrep.json",
-        "snyk.json",
-        "trivy.json",
-        "gitleaks.json",
-        "bandit.json",
-    ] {
-        let path = artifacts.join(name);
-        if !path.exists() {
-            continue;
-        }
-        match read_json(&path) {
-            Ok(value) => match crate::adapters::parse(&value) {
-                Some(parsed) => {
-                    findings.extend(parsed.value);
-                    errors.extend(parsed.errors);
-                    warnings.extend(parsed.warnings);
-                    if engine == AuditEngine::Unknown
-                        && let Some(finding) = findings.first()
-                    {
-                        engine = finding.source;
-                    }
-                }
-                None => warnings.push(format!("{name}: unknown scanner report format")),
-            },
-            Err(error) => errors.push(format!("{name}: {error}")),
-        }
-    }
-    if findings.is_empty() {
-        None
-    } else {
-        Some((engine, findings))
-    }
-}
-
 fn apply_engine(snapshot: &mut AuditSnapshot, engine: AuditEngine) {
     if engine != AuditEngine::Unknown {
         snapshot.run.engine = engine;
@@ -511,29 +412,48 @@ pub fn discover_run(dir: &Path) -> AuditSnapshot {
             }
             Err(error) => snapshot.errors.push(format!("findings.json: {error}")),
         }
-    } else if let Some((engine, findings)) =
-        read_scanner_reports(&artifacts, &mut snapshot.errors, &mut snapshot.warnings)
-    {
-        snapshot.findings = findings;
-        apply_engine(&mut snapshot, engine);
-    } else if let Some(report) =
-        read_optional_text(&artifacts, "exports/results.sarif", &mut snapshot.warnings)
-            .or_else(|| read_optional_text(&artifacts, "results.sarif", &mut snapshot.warnings))
-    {
-        if let Ok(value) = serde_json::from_str::<Value>(&report) {
-            let parsed = sarif::parse(&value);
-            snapshot.findings = parsed.value;
-            snapshot.errors.extend(parsed.errors);
-            snapshot.warnings.extend(parsed.warnings);
-            apply_engine(&mut snapshot, AuditEngine::Sarif);
-            snapshot.files.push("results.sarif".into());
-        } else {
-            snapshot.errors.push("results.sarif: invalid JSON".into());
+    } else {
+        let codex_output = artifacts.as_path() != dir || snapshot.run.engine == AuditEngine::Codex;
+        let sarif = read_optional_text(&artifacts, "exports/results.sarif", &mut snapshot.warnings)
+            .or_else(|| read_optional_text(&artifacts, "results.sarif", &mut snapshot.warnings));
+        if let Some(report) = sarif {
+            if codex_output {
+                if let Ok(value) = serde_json::from_str::<Value>(&report) {
+                    let parsed = sarif::parse(&value);
+                    snapshot.findings = parsed.value;
+                    snapshot.errors.extend(parsed.errors);
+                    snapshot.warnings.extend(parsed.warnings);
+                    apply_engine(&mut snapshot, AuditEngine::Sarif);
+                    snapshot.files.push("results.sarif".into());
+                } else {
+                    snapshot.errors.push("results.sarif: invalid JSON".into());
+                }
+            } else {
+                snapshot.warnings.push(
+                    "SARIF import is limited to Codex Security outputs; this report was ignored"
+                        .into(),
+                );
+            }
+        } else if [
+            "scanner-report.json",
+            "semgrep.json",
+            "snyk.json",
+            "trivy.json",
+            "gitleaks.json",
+            "bandit.json",
+        ]
+        .iter()
+        .any(|name| artifacts.join(name).exists())
+        {
+            snapshot.warnings.push(
+                "Unsupported external scanner report ignored; only Cloudflare and Codex Security artifacts are supported"
+                    .into(),
+            );
+        } else if snapshot.run.status != RunStatus::Started {
+            snapshot
+                .warnings
+                .push("No findings.json or Codex SARIF export found yet".into());
         }
-    } else if snapshot.run.status != RunStatus::Started {
-        snapshot
-            .warnings
-            .push("No findings.json or SARIF export found yet".into());
     }
 
     let cloudflare_coverage = artifacts.join("coverage-ledger.json");
