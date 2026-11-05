@@ -86,7 +86,7 @@ unavailable, and the rest of the relay keeps running.
   the next request.
 - Managed keys (`managed: true` in the Keychain policy) are auto-approved only
   within their host/path/method/grant/operation scope. Keys without that marker,
-  or with `auto_approve: false`, open a native approval prompt with **Deny**,
+  or with `auto_approve: false`, open a themed in-app approval prompt with **Deny**,
   **Allow once** and **Allow for this session**. The session allowance is keyed
   by session, alias and policy revision, so editing the key, its hosts, methods,
   operations or grants invalidates existing allowances.

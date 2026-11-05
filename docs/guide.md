@@ -55,6 +55,24 @@ Website download links are advanced only after release assets are verified.
 
 ## Features
 
+### Back and forward
+
+Use the title-bar arrows, **View → Back / Forward**, or **⌘[ / ⌘]** to revisit
+views, sidebar sections, projects, sessions, open file tabs and settings tabs.
+New navigation after going back replaces the forward branch. Removed projects,
+sessions and closed file tabs are skipped. History keeps the last 100 destinations
+for the current app run; it does not undo edits or discard unsaved buffers.
+Save or close the current file before navigating to another project.
+
+### Settings reset and floating lists
+
+Floating lists share the host menu's neutral popover style, without dimming the
+workspace. **Settings → Advanced → About → Reset…** restores defaults and removes
+local project/group/history/harness records and Dunlin-owned credentials after an
+explicit warning with **No / Yes, reset Dunlin**. Close other Dunlin instances first.
+Repository files and installed agents are never deleted. The app closes after
+success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-factory-reset.md).
+
 ### Chat and harnesses
 
 - Streaming assistant output, reasoning, plans, tool calls and usage updates.
@@ -99,6 +117,23 @@ Website download links are advanced only after release assets are verified.
 
 ### Workspace
 
+- **+** beside conversation tabs (or `⌘N`) opens a separate session tab. Tabs use
+  session titles, updated from the first prompt. Switching preserves each draft,
+  scroll position, transcript and running agent. Closing a tab hides it only;
+  reopen it from session history. An agent awaiting approval stays paused until
+  you return to its tab. Tabs/drafts are in-memory; history remains persisted.
+- Response headers use the harness and dispatch-time model, for example
+  **Claude Code: Opus 5.5 (31.5s)** when turn duration is enabled. Old messages
+  without recorded model metadata say **Model not recorded**, not today's model.
+  Response logos identify the harness (bundled Claude, Codex, OpenCode, Copilot,
+  Gemini and Hermes marks); other/custom harnesses use initials.
+- **Settings → Design → Application → System** follows native appearance changes.
+  Light/Dark remain explicit overrides. Drag the Settings header to reposition
+  the panel; it stays inside the viewport. Compact density also tightens project,
+  session and Explorer rows. QA details have a **Close** action like ACP logs.
+- The top-bar Search shortcut and minimalist mode were removed. The command
+  palette remains available with `⌘K`; source files use their existing tabs
+  instead of duplicate filename/editor headers.
 - File explorer with a debounced watcher and missing-folder recovery.
 - **Settings → Harnesses → Import sessions…** scans the standard Claude Code and
   Codex session folders and reads OpenCode's local `opencode.db` read-only, then
@@ -134,22 +169,24 @@ Website download links are advanced only after release assets are verified.
   restart and can reopen the worktree as a project. It never starts an agent,
   merges, pushes or acts as a sandbox.
   [Scope and limits](standalone-chat-worktree-usage.md).
-- **Blame** in a source editor header shows unchanged-line author/commit details
+- **Inline blame** in the Explorer toolbar (also Settings → Editor) is remembered
+  across files and app restarts. Subtle inline text shows unchanged-line author/commit details
   on hover and opens the commit in history. Unsaved/modified lines get no author.
   HEAD/file/backend caching and relay support are bounded and opt-in.
   [Git operation/blame scope and QA](git-operations-and-blame.md).
-- **GitHub · CI / PR** in repository history uses installed `gh`: polled workflow/
-  job/step statuses, completed-job logs, PR review/diffs/checks and explicitly
-  confirmed publication/merge actions. No automatic push, checkout or admin override.
+- Source Control shows **History**. PR and GitHub Actions integration was removed.
+  A GitHub/GitLab.com repository link appears before the branch in the bottom-left
+  status bar; other or ambiguous remotes show a neutral placeholder. Link detection
+  reads Git configuration only and does not authenticate or contact the host.
   Composer **Context… / Review… / Checks…** opens client-context provenance,
   approved decision memory, explicit saved-file checkpoints/selective restore and
   confirmed local check commands with evidence → draft, never automatic prompts.
   **Budget… / Compare… / Impact…** adds durable request/time/reported-USD limits,
   separately authorized same-commit A/B worktrees with shared limits, and incremental
   Rust AST references/candidate tests. **On a relay project**, the same review,
-  comparison, context and GitHub surfaces use explicit server-side endpoints;
-  remote GitHub remains administrator-only because it uses the host's `gh`
-  account rather than a per-member token. Unknown cost/coverage is not zero;
+  comparison and context surfaces use explicit server-side endpoints.
+  GitHub topics/import support remains separate from the removed PR/Actions UI.
+  Unknown cost/coverage is not zero;
   worktrees are not sandboxes and impact is not compiler/LSP-complete. No paid
   comparison replay on restart, automatic merge or buffer discard.
   [Bounds and pending acceptance](agent-workbench-and-github.md).
@@ -182,13 +219,36 @@ Website download links are advanced only after release assets are verified.
   system's local clock/timezone, including while the app remains open. Native
   macOS menus expose Settings, project files, navigation and repository actions,
   with unavailable project actions disabled by context.
-- Open multiple local folders at once, or select a collection directory to discover
-  its repositories. Canonical roots are deduplicated without overwriting existing
-  names, groups, trust, pins or settings; batch imports do not activate every repo.
+- **Add Projects…** (`⌘O`) offers **Local folder** and **GitHub URL or filter**.
+  The in-app folder explorer previews how many repositories the selected directory
+  contains before import. Collections with multiple repositories offer optional
+  root tracking: every 30 seconds while Dunlin runs, new repositories are imported
+  without changing the active project or automatically granting trust. Tracking
+  survives restart; stop it in **Settings → General → Project imports**. A single
+  repository does not offer tracking. Select a collection directory to discover
+  its repositories. A selected collection becomes a logical group named after that
+  folder; discovered repositories become its projects, not a parent workspace.
+  Reimport reuses that group and adds newly discovered repositories. Existing
+  ungrouped projects join it; manual group assignments, names, trust, pins and
+  settings are preserved. Same-named folders in different locations stay separate.
+  With overlapping selections, the closest explicitly selected collection owns
+  new projects. Ordinary project/repository roots do not create wrapper groups.
+  Canonical roots are deduplicated; batch imports do not activate every repo.
   Discovery stops at Git/worktree roots, skips generated/hidden directories and
   implicit symlinks, and never fetches or executes repository scripts. Limits:
   8 directory levels, 20,000 entries, 256 projects and 8 seconds; partial imports
   report limits/errors until dismissed. Ordinary non-Git folders remain supported.
+  GitHub import accepts a direct repository URL or native repository-search query,
+  for example `org:example archived:false language:Rust`. It previews the complete
+  result list/count before explicit download via `gh repo clone`. Incomplete
+  searches and searches exceeding GitHub's 1000-result limit require a narrower
+  filter. Choose a destination with the same explorer, or use the default
+  `~/Library/Application Support/Dunlin/repositories`; clones are stored beneath
+  `<owner>/<repo>`. Existing folders are never overwritten. Failed clone files
+  remain for inspection. GitHub imports require project trust before agent use.
+  **Settings → General** reports gh installation and active github.com authorization;
+  install/authenticate outside Dunlin and use **Check again** to refresh. Details
+  and the isolated acceptance command: [project import](project-import.md).
   Declared npm/Yarn, pnpm, Cargo and Go workspaces, or multi-package Nx/Turbo/Lerna
   layouts, get a **Monorepo** badge on projects/tiles; packages stay within one
   root. Project rows keep that marker on the right, show the dominant repository
@@ -252,10 +312,10 @@ Website download links are advanced only after release assets are verified.
   Git completes. External editors/Git clients and repository hooks are not sandboxed.
 - Agent graph and trace waterfall projected from the live transcript.
 - Nested logical project groups, pinned ordering and per-project settings.
-  Switch **List / Tree** and sort by **Name ↑ / Modified ↓** in Projects; modification
+  Projects use the group tree only; sort by **Name ↑ / Modified ↓**. Modification
   sorting uses cached Git/worktree timestamps rather than a recursive file scan.
-  List mode retains assignments and shows full group paths. Right-click the
-  **Projects** heading or its list for **New group… / Open local folders…**;
+  Group membership is unchanged. Right-click the
+  **Projects** heading or its list for **New group… / Add projects…**;
   right-click a group for **New subgroup…**, rename/delete and **Move group to…**.
   Drag group headers to reparent them; cycles are rejected. Deleting a group
   promotes direct projects and subgroups one level. Undo restores eligible members
@@ -270,7 +330,12 @@ Website download links are advanced only after release assets are verified.
   in the group heading. New conversations include descendant groups' projects.
   The group's agent action creates a conversation with a frozen manifest of
   1–32 trusted local project roots, attached to every request without reading
-  their files or automatically sending a prompt. The strictest member approval
+  their files or automatically sending a prompt. A short context prefix explains
+  that the group is one logical multi-repository project, names its repositories
+  and gives their absolute paths. It is client-supplied context in the ACP user
+  message, not an override of the harness's system prompt. Each repository's Git
+  state remains independent; the parent folder is not an extra filesystem grant.
+  The strictest member approval
   policy applies. This is explicit agent context, not a filesystem sandbox;
   it does not widen remote grants or include future group members.
 - Dashboard is the first sidebar destination, with live working/waiting/connecting
@@ -309,6 +374,12 @@ Website download links are advanced only after release assets are verified.
   The Sessions sidebar and its count hide unstarted drafts, including adapter-only
   failures, until a user message is recorded. Drafts are not deleted; existing
   histories remain available when transcript reads fail or remote data is loading.
+  The list separates **General sessions** (standalone chats and group conversations,
+  labelled with their context) from **Project · name** (the current repository's
+  own conversations). General sessions remain visible when switching projects;
+  opening one selects its owning workspace and transcript. Each section sorts
+  newest first. Deletion still requires confirmation and does not change the
+  current conversation when deleting history from another workspace.
   Metrics use recorded requests, reported token deltas and tool-reported diffs
   only, not context occupancy or inferred Git history. Missing data stays unknown.
   Settings → General chooses visible widgets and Dashboard/last-project startup.
@@ -638,6 +709,17 @@ Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit 
 custom ACP command. Dunlin checks whether each command is installed and
 connects when a project opens.
 
+Onboarding lists detected agents, including CLI-only installations marked
+**CLI detected · adapter needed**. **Set up…** opens in-app setup instructions;
+**Choose another / Show all** expands the supported catalog. In onboarding, only
+detected ACP adapters can be set as the default. Use **Scan again** after installation;
+onboarding also rescans when you return to Dunlin. Detection checks the executable,
+not whether the adapter can connect or is signed in.
+
+Permission statuses refresh in the background when you return from System
+Settings. Onboarding's notification card and **Settings → Permissions** also
+provide **Recheck**, without requesting new permissions.
+
 | Harness | Command |
 | --- | --- |
 | OpenCode | `opencode acp` |
@@ -874,11 +956,25 @@ Successful reauthorization clears the cache. Trace rows reserve room for both
 label lines and padding at every zoom level.
 
 Harness settings automatically detect supported CLIs and ACP adapters on PATH
-and in common Homebrew/user installation directories, with a **Scan again**
-action. A CLI without its ACP adapter is labeled separately and links to setup
+and in common Homebrew/user installation directories, including NVM's installed
+Node versions (`NVM_DIR` or `~/.nvm`). **Scan again** rechecks the filesystem and
+reports the number of detected adapters. A CLI without its ACP adapter is labeled
+separately and links to setup
 instructions. No discovery command runs an agent, installs software, signs in or
-changes the active conversation. Choose an installed adapter as the default for
-new conversations; remote harnesses remain configured on the relay.
+changes the active conversation. Every radio in Settings can choose the default
+for new conversations, including an adapter you still need to install or configure;
+launch remains blocked until its executable is available. Existing conversations
+keep their harness. Remote harnesses remain configured on the relay.
+
+**Set up…** shows instructions without launching a browser or installing anything.
+For Claude Code, it provides a copyable global install command:
+`npm install -g @agentclientprotocol/claude-agent-acp@preview` (Node.js 22+).
+Without `-g`, npm installs locally under the current folder. Dunlin also checks
+`~/node_modules/.bin`, so an installation from your home directory is detected.
+Other project-local installations require an absolute executable path in
+**Custom ACP**; repository dependencies are not automatically trusted or scanned.
+Scanning runs in the background with a visible result. **Open setup guide** opens
+the browser off the UI thread, with a timeout and visible errors.
 
 To remove a configured project, use **… → Remove project…** beside its entry in
 the Projects sidebar, or right-click the project. This removes its local session

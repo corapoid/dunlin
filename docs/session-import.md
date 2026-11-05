@@ -43,9 +43,19 @@ jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
 }
 ```
 
-Plik JSON może być tablicą eksportów tego samego typu. Limity podglądu:
-16 MiB na plik, 64 MiB łącznie, 256 sesji, 30 000 wpisów/sesję. Błędy i pliki
-pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
+Plik JSON może być tablicą eksportów tego samego typu. **Nie ma limitu liczby
+skanowanych plików ani importowanych sesji**, również w jednej tablicy JSON lub
+bazie OpenCode. Nie ma też zbiorczego limitu 64 MiB. Pojedyncze pliki nadal
+podlegają walidacji: maksymalnie 16 MiB i 30 000 wpisów/sesję. Błędny lub zbyt
+duży plik jest zgłaszany, ale nie zatrzymuje odczytu pozostałych plików.
+
+Skanowanie i zapis działają w tle. Status pokazuje liczbę znalezionych plików,
+następnie odczytanych plików/sesji i zapisywanych sesji (`wykonane / wszystkie`).
+Podgląd trzyma pełne historie w prywatnym katalogu tymczasowym na dysku, nie
+wszystkie naraz w RAM. Lista renderuje tylko widoczne wiersze; ostrzeżenia mają
+osobny przewijany obszar. Katalog tymczasowy jest sprzątany po anulowaniu,
+zastąpieniu podglądu lub zakończeniu importu. Potrzebne jest wolne miejsce na
+kopie historii i transakcję SQLite.
 
 ## Dopasowanie i bezpieczeństwo
 
@@ -56,7 +66,10 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - Sesje bez przypisania są pomijane. Można zmienić automatyczne przypisanie
   i odznaczyć wybrane sesje przed potwierdzeniem.
 - Stała tożsamość harnessa i źródłowego ID chroni przed ponownym importem.
-  Nowe sesje są zapisywane w jednej transakcji. Otwarcie Dashboardu uruchamia
+  Nowe sesje są zapisywane strumieniowo w jednej transakcji. Błąd zapisu lub
+  odczytu tymczasowej historii wycofuje nowe sesje i pozostawia podgląd do ponowienia.
+  Zwykłe zamknięcie/Quit jest blokowane do zakończenia zapisu.
+  Otwarcie Dashboardu uruchamia
   jednorazowe uzupełnienie metryk w istniejących kopiach OpenCode; ręczny skan
   oznacza je dodatkowo jako **Update imported copy**. Obie ścieżki dokładają
   tylko brakujące tokeny/diffy i normalizują stare wpisy narzędzi, nie
@@ -68,8 +81,34 @@ pominięte z powodu limitów są pokazywane; nie ma cichego przycinania rozmowy.
 - To nie jest skaner billing usage: import nie rekonstruuje cen ani czasu pracy.
   Przenosi wyłącznie liczniki tokenów i zmienionych linii zapisane przez źródło.
 
-Skan plików jest ograniczony do standardowych folderów harnessa, maksymalnie 512
-plików i 64 MiB. OpenCode odczytuje maksymalnie 256 sesji najwyższego poziomu,
-30 000 wiadomości i 60 000 części na sesję, z obcięciem dużych wyników narzędzi.
+Skan plików obejmuje standardowe foldery harnessa, bez limitu liczby plików ani
+głębokości katalogów; pomija ukryte katalogi i dowiązania symboliczne. OpenCode
+odczytuje wszystkie sesje najwyższego poziomu; istniejące zabezpieczenia pojedynczej
+historii (30 000 wiadomości, 60 000 części, skracanie dużych wyników narzędzi)
+pozostają bez zmian. Uzupełnianie metryk również przetwarza historie pojedynczo.
 Nie ma synchronizacji w tle ani importu sesji z relay/SSH; źródłowe pliki i baza
 OpenCode pozostają niezmienione.
+
+## Kontrakt i regresje
+
+| Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
+| --- | --- | --- | --- | --- | --- |
+| Ograniczenia 512/256/64 MiB były lokalną polityką podglądu, nie limitem harnessa | `session_import.rs`: `collect_session_files`, `discover_session_files`, `read_files`; `adapters.rs::parse`; `opencode_db.rs`: zapytania sesji | Dunlin beta.8 / working tree | High | Brak | Testy 600 plików >64 MiB i obu schematów bazy |
+| Źródło jest read-only; docelowa tożsamość to harness + source ID | `opencode_db.rs::visit`, `session_import.rs::imported_id`, `adapters.rs::match_project`, `Store::import_session_stream` | Working tree | High | Nie testowano rzeczywistych historii użytkownika | Izolowane fixture JSON/JSONL/SQLite |
+| Błąd strumienia wycofuje nowe sesje; powtórzenie nie nadpisuje rozmów | `storage/src/lib.rs::streamed_import_reports_duplicates_and_rolls_back_on_a_source_read_failure`, `session_import.rs::staged_read_failure_rolls_back_inserts_and_leaves_preview_available_for_retry` | Working tree | High | Brak | `cargo test -p dunlin-storage`; testy aplikacji |
+
+Ścieżka danych: wybór harnessa → standardowy folder/baza lub ręcznie wskazane
+pliki → walidowany `Candidate.source_id` → prywatna tymczasowa historia → ręczne
+potwierdzenie/przypisanie lokalnego projektu → `imported_id(harness, source_id)` →
+transakcja w bazie Dunlina. Każdy krok ma implementację w powyższych plikach;
+żaden nie wymaga uruchamiania agenta, dostępu do credentiali ani zapisu do źródła.
+
+Potwierdzono: brak limitu liczby sesji, postęp i zapis strumieniowy. Odrzucono:
+zwiększenie limitu do kolejnej arbitralnej liczby lub usunięcie walidacji plików.
+Następny właściciel: maintainer aplikacji — testy jednostkowe, natywny smoke
+dużego importu i ręczna ocena UX na rzeczywistych historiach (bez automatycznego
+importowania danych użytkownika). Izolowany test GUI:
+`dunlin --session-import-smoke <nowy absolutny katalog dunlin-session-import-smoke-…>`
+tworzy 700 syntetycznych sesji i jeden błędny journal, renderuje rzeczywisty podgląd,
+sprawdza postęp, zapis w tle, powtórzenie bez duplikatów, sprzątanie i blokadę Quit.
+Sukces zapisuje w pliku `PASS` we wskazanym katalogu.
