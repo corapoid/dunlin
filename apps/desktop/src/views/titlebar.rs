@@ -5,11 +5,40 @@ use std::time::Duration;
 
 use dunlin_domain::{MainView, SidebarSection};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::{ActiveTheme, Icon, TitleBar};
+use dunlin_ui::component::{
+    ActiveTheme, Disableable, Icon, Sizable, TitleBar,
+    button::{Button, ButtonVariants},
+};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::DunlinApp;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Switcher {
+    Agent,
+    Git,
+    None,
+}
+
+pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
+    if this.projects.is_empty()
+        || this.settings_open
+        || this.section == SidebarSection::Dashboard
+        || (this.section == SidebarSection::Security && this.security_enabled)
+        || (this.spec_tools_enabled && this.spec.is_active_for(this.project()))
+    {
+        Switcher::None
+    } else if this.section == SidebarSection::SourceControl
+        || this.git_history.is_active_for(this.project())
+    {
+        Switcher::Git
+    } else if this.workbench.show_file {
+        Switcher::None
+    } else {
+        Switcher::Agent
+    }
+}
 
 pub(crate) fn render(
     this: &mut DunlinApp,
@@ -21,34 +50,12 @@ pub(crate) fn render(
     let has_projects = !this.projects.is_empty();
     let dashboard = this.section == SidebarSection::Dashboard;
     let security = this.section == SidebarSection::Security && this.security_enabled;
-    let show_session_context =
-        !dashboard && !security && has_projects && this.view != MainView::Chat;
+    let switcher = switcher(this);
+    let agent = switcher == Switcher::Agent;
+    let show_session_context = agent && this.view != MainView::Chat;
     let show_shortcut_hints = this.show_shortcut_hints;
-    let project = this.project().clone();
     let session = this.session().clone();
-    let running = if !dashboard && session.status == dunlin_domain::SessionStatus::Running {
-        crate::projection::nodes(&this.harness.transcript, &project, &session)
-            .iter()
-            .filter(|node| node.status == dunlin_domain::AgentStatus::Running)
-            .count()
-    } else {
-        0
-    };
-    let (badge_bg, badge_fg, badge_label) = match session.status {
-        dunlin_domain::SessionStatus::Idle => (p.muted, p.muted_fg, "ready".to_string()),
-        dunlin_domain::SessionStatus::Running if running > 0 => (
-            p.green_soft,
-            p.green,
-            format!(
-                "{running} {}",
-                if running == 1 { "agent" } else { "agents" }
-            ),
-        ),
-        dunlin_domain::SessionStatus::Running => (p.green_soft, p.green, "running".to_string()),
-        dunlin_domain::SessionStatus::Waiting => (p.amber_soft, p.amber, "waiting".to_string()),
-        dunlin_domain::SessionStatus::Failed => (p.red_soft, p.red, "failed".to_string()),
-        _ => (p.muted, p.muted_fg, "idle".to_string()),
-    };
+    let sidebar_collapsed = this.sidebar_collapsed;
 
     let left = div()
         .flex_1()
@@ -56,40 +63,57 @@ pub(crate) fn render(
         .flex()
         .items_center()
         .gap(px(8.))
+        .when(has_projects, |bar| bar.child(
+            Button::new("title-sidebar").ghost().small()
+                .icon(if sidebar_collapsed { IconName::PanelLeftOpen } else { IconName::PanelLeftClose })
+                .accessibility_label("Toggle sidebar")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.sidebar_collapsed = !this.sidebar_collapsed;
+                    this.persist_settings(cx); cx.notify();
+                }))
+        ))
         .child(
             div()
-                .size(px(20.))
-                .rounded(px(6.))
-                .bg(p.fg)
-                .text_color(p.bg)
                 .flex()
                 .items_center()
-                .justify_center()
-                .child(Icon::new(IconName::Bird).size(px(12.)).text_color(p.bg)),
+                .gap(px(2.))
+                .child(
+                    Button::new("navigation-back")
+                        .ghost()
+                        .small()
+                        .icon(IconName::ArrowLeft)
+                        .accessibility_label("Back")
+                        .tooltip(if show_shortcut_hints {
+                            "Back (⌘[)"
+                        } else {
+                            "Back"
+                        })
+                        .disabled(!this.can_navigate_history(false))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.navigate_history(false, window, cx);
+                        })),
+                )
+                .child(
+                    Button::new("navigation-forward")
+                        .ghost()
+                        .small()
+                        .icon(IconName::ArrowRight)
+                        .accessibility_label("Forward")
+                        .tooltip(if show_shortcut_hints {
+                            "Forward (⌘])"
+                        } else {
+                            "Forward"
+                        })
+                        .disabled(!this.can_navigate_history(true))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.navigate_history(true, window, cx);
+                        })),
+                ),
         )
-        .child(
-            div()
-                .text_size(px(13.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(p.fg)
-                .child("Dunlin"),
-        )
+        .when(has_projects, |bar| bar.child(super::sidebar::project_switcher(this, cx)))
+        .when(!has_projects, |bar| bar.child(div().text_size(px(13.)).child("Dunlin")))
         .when(show_session_context, |this| {
             this.child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(p.border_strong)
-                    .child("/"),
-            )
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(p.muted_fg)
-                    .truncate()
-                    .child(project.name.clone()),
-            )
-            .child(
                 div()
                     .text_size(px(12.5))
                     .text_color(p.border_strong)
@@ -117,7 +141,7 @@ pub(crate) fn render(
         .gap(px(2.));
 
     let epoch = this.view_epoch;
-    if has_projects && !dashboard && !security {
+    if agent {
         for view in MainView::ALL {
             let active = this.view == view;
             let (icon_name, hint) = match view {
@@ -189,36 +213,12 @@ pub(crate) fn render(
 
             center = center.child(tab);
         }
-        center = center.child(
-            div()
-                .id("title-new-session")
-                .aria_label("New session")
-                .h(px(24.))
-                .w(px(26.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .tooltip(move |window, cx| {
-                    dunlin_ui::component::tooltip::Tooltip::new(if show_shortcut_hints {
-                        "New session (⌘N)"
-                    } else {
-                        "New session"
-                    })
-                    .build(window, cx)
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.new_session(cx)))
-                .child(
-                    Icon::new(IconName::Plus)
-                        .size(px(13.5))
-                        .text_color(p.muted_fg),
-                ),
-        );
+    } else if switcher == Switcher::Git {
+        center = center.child(Button::new("title-git-history").ghost().small().label("History")
+            .on_click(cx.listener(|this, _, window, cx| this.show_git_history(window, cx))));
     }
     let center = if dashboard {
-        crate::dashboard::metric_switcher(this, compact, cx)
+        div().into_any_element()
     } else if security {
         div()
             .flex_shrink_0()
@@ -244,14 +244,12 @@ pub(crate) fn render(
                     .child("Security"),
             )
             .into_any_element()
-    } else if has_projects {
+    } else if switcher != Switcher::None {
         center.into_any_element()
     } else {
         div().flex_shrink_0().into_any_element()
     };
 
-    let sidebar_collapsed = this.sidebar_collapsed;
-    let minimal_mode = this.minimal_mode;
     let right = div()
         .flex_1()
         .min_w(px(0.))
@@ -260,155 +258,10 @@ pub(crate) fn render(
         .justify_end()
         .gap(px(6.))
         .child(super::host_control::render(this, cx))
-        .when(has_projects && !dashboard && !security, |bar| {
+        .when(agent, |bar| {
             bar.when(
                 this.view == MainView::Chat && !this.final_answer_only,
                 |bar| bar.child(super::chat::reasoning_toggle(this, cx)),
-            )
-        })
-        .when(show_session_context, |this| {
-            this.child(
-                div()
-                    .h(px(22.))
-                    .px(px(7.))
-                    .rounded_full()
-                    .bg(badge_bg)
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .child(dot(badge_fg, 5.0))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(badge_fg)
-                            .child(badge_label),
-                    ),
-            )
-        })
-        .when(has_projects && !minimal_mode, |this| {
-            this.child(
-                div()
-                    .id("title-sidebar")
-                    .aria_label("Toggle sidebar")
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.sidebar_collapsed = !this.sidebar_collapsed;
-                        this.persist_settings(cx);
-                        cx.notify();
-                    }))
-                    .child(
-                        Icon::new(if sidebar_collapsed {
-                            IconName::PanelLeftOpen
-                        } else {
-                            IconName::PanelLeftClose
-                        })
-                        .size(px(13.5))
-                        .text_color(p.muted_fg),
-                    ),
-            )
-        })
-        .when(has_projects, |this| {
-            this.child(
-                div()
-                    .id("title-search")
-                    .aria_label("Open command palette")
-                    .h(px(26.))
-                    .px(px(8.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.open_palette(window, cx);
-                    }))
-                    .child(
-                        Icon::new(IconName::Search)
-                            .size(px(12.5))
-                            .text_color(p.muted_fg),
-                    )
-                    .when(!compact, |this| {
-                        this.child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(p.muted_fg)
-                                .child("Search"),
-                        )
-                    })
-                    .when(!compact && show_shortcut_hints, |this| {
-                        this.child(kbd("⌘K", p))
-                    }),
-            )
-        })
-        .child(
-            div()
-                .id("title-minimal")
-                .aria_label(if minimal_mode {
-                    "Disable minimalist mode"
-                } else {
-                    "Enable minimalist mode"
-                })
-                .size(px(26.))
-                .rounded(px(7.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .when(minimal_mode, |button| button.bg(p.muted))
-                .hover(move |style| style.bg(p.hover))
-                .tooltip(move |window, cx| {
-                    dunlin_ui::component::tooltip::Tooltip::new(if minimal_mode {
-                        "Show the navigation rail, account usage and agent status again"
-                    } else {
-                        "Minimalist mode: explorer only, without the navigation rail, account usage or agent status details"
-                    })
-                    .build(window, cx)
-                })
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.toggle_minimal_mode();
-                    this.persist_settings(cx);
-                    cx.notify();
-                }))
-                .child(
-                    Icon::new(IconName::Minimize2)
-                        .size(px(13.5))
-                        .text_color(if minimal_mode { p.fg } else { p.muted_fg }),
-                ),
-        )
-        .when(minimal_mode, |bar| {
-            bar.child(
-                div()
-                    .id("title-settings")
-                    .aria_label("Open settings")
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .when(this.settings_open, |button| button.bg(p.muted))
-                    .hover(move |style| style.bg(p.hover))
-                    .tooltip(|window, cx| {
-                        dunlin_ui::component::tooltip::Tooltip::new("Open settings").build(window, cx)
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings_open = true;
-                        this.settings_tab = crate::app::SettingsTab::General;
-                        cx.notify();
-                    }))
-                    .child(
-                        Icon::new(IconName::Settings2)
-                            .size(px(13.5))
-                            .text_color(p.muted_fg),
-                    ),
             )
         })
         .child(
@@ -423,9 +276,7 @@ pub(crate) fn render(
                 .cursor_pointer()
                 .hover(move |style| style.bg(p.hover))
                 .on_click(cx.listener(|this, _, window, cx| {
-                    toggle_mode(window, cx);
-                    this.persist_settings(cx);
-                    cx.notify();
+                    this.toggle_appearance(window, cx);
                 }))
                 .child(
                     Icon::new(if cx.theme().is_dark() {

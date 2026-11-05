@@ -128,7 +128,6 @@ impl DunlinApp {
             .map(|m| m.unwrap_or_default());
         let view = self.git_history.view.as_mut().unwrap();
         view.hide_tools();
-        view.github.visible = false;
         view.context.visible = true;
         view.review.visible = false;
         view.checks.visible = false;
@@ -276,7 +275,7 @@ impl DunlinApp {
     }
 }
 fn safe(value: &str) -> String {
-    dunlin_workspace::github::display_text(value, 30_000)
+    dunlin_workspace::checks::display_text(value, 30_000)
 }
 impl DunlinApp {
     fn purge_decision_memory(&mut self, w: &mut Window, cx: &mut Context<Self>) {

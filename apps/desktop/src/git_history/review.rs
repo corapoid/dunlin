@@ -163,7 +163,7 @@ fn diff(c: &Change) -> String {
             before.as_deref().unwrap_or(""),
             after.as_deref().unwrap_or(""),
         );
-    dunlin_workspace::github::display_text(
+    dunlin_workspace::checks::display_text(
         &d.unified_diff()
             .context_radius(3)
             .header("checkpoint", "current saved file")
@@ -189,7 +189,6 @@ impl DunlinApp {
         let v = self.git_history.view.as_mut().unwrap();
         v.hide_tools();
         v.context.visible = false;
-        v.github.visible = false;
         v.review.visible = true;
         v.checks.visible = false;
         match loaded {

@@ -14,7 +14,6 @@ use std::{
 };
 pub(crate) fn run() {
     let light_narrow = std::env::args().any(|arg| arg == "--light-narrow");
-    let github_only = std::env::args().nth(1).as_deref() == Some("--github-smoke");
     let workbench_only = std::env::args().nth(1).as_deref() == Some("--workbench-smoke");
     let dir = PathBuf::from(
         std::env::args_os()
@@ -30,6 +29,23 @@ pub(crate) fn run() {
                 .starts_with("dunlin-git-smoke-")
     );
     fs::create_dir(&dir).unwrap();
+    // Auto-detection must never use the developer's gh credentials in a fixture.
+    let bin = dir.join("bin");
+    fs::create_dir(&bin).unwrap();
+    let gh = bin.join("gh");
+    fs::write(&gh, "#!/bin/sh\nexit 1\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let paths = std::iter::once(bin)
+        .chain(std::env::split_paths(&path))
+        .collect::<Vec<_>>();
+    unsafe {
+        std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
+    }
     let root = dir.join("project");
     fs::create_dir(&root).unwrap();
     let git = |args: &[&str]| {
@@ -62,7 +78,9 @@ pub(crate) fn run() {
     let disk = "fn changed_on_disk() {}\n// unchanged\n";
     let path = root.join("example.rs");
     fs::write(&path, original).unwrap();
-    git(&["add", "example.rs"]);
+    let other = root.join("other.rs");
+    fs::write(&other, "fn another_source_file() {}\n").unwrap();
+    git(&["add", "example.rs", "other.rs"]);
     git(&["commit", "-qm", "fixture"]);
     if workbench_only {
         fs::create_dir(root.join("src")).unwrap();
@@ -147,13 +165,26 @@ pub(crate) fn run() {
                     assert!(start.elapsed()<Duration::from_secs(75),"Git smoke stalled at stage {stage}");
                     handle.update(cx,|_,w,cx|{w.refresh();w.draw(cx).clear(cx);}).unwrap();
                     handle.update(cx,|_,w,cx|owner.update(cx,|app,cx| {
-                        if github_only {return super::github::smoke_step(app,&mut stage,w,cx);}
                         if workbench_only{return super::workbench_smoke::step(app,&mut stage,w,cx);}
                         match stage {
                             0 if app.active_file_tab().is_some_and(|t|!t.loading)=>{app.toggle_inline_blame(cx);app.editor.update(cx,|s,cx|s.set_cursor_position(dunlin_ui::component::input::Position::new(1,0),w,cx));stage=1;},
-                            1 if crate::inline_blame::smoke_attribution(app,cx).is_some()=>{
-                                assert_eq!(crate::inline_blame::smoke_attribution(app,cx).unwrap(),"Smoke Test");
-                                let offset=disk.find("//").unwrap();app.editor.update(cx,|s,cx|{s.set_selected_range(offset..disk.len()-1,cx);s.replace("// unsaved",w,cx);});stage=2;
+                             1 if crate::inline_blame::smoke_attribution(app,cx).is_some()=>{
+                                 assert_eq!(crate::inline_blame::smoke_attribution(app,cx).unwrap(),"Smoke Test");
+                                 assert!(app.store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap().inline_blame);
+                                 app.open_workbench_file(other.to_str().unwrap(), None, w, cx); stage=100;
+                             },
+                             100 if app.active_file_tab().is_some_and(|tab| !tab.loading) && crate::inline_blame::smoke_attribution(app,cx).is_some()=>{
+                                 assert!(app.inline_blame);
+                                 assert_eq!(crate::inline_blame::smoke_attribution(app,cx).unwrap(),"Smoke Test");
+                                 let id=app.workbench.tabs.iter().find(|tab| tab.inspector.path==path.to_string_lossy()).unwrap().id.clone();
+                                 app.activate_file_tab(&id,w,cx);stage=101;
+                             },
+                             101 if crate::inline_blame::smoke_attribution(app,cx).is_some()=>{
+                                 let id=app.workbench.tabs.iter().find(|tab| tab.inspector.path==other.to_string_lossy()).unwrap().id.clone();
+                                 app.request_close_tab(&id,w,cx);
+                                 let id=app.workbench.tabs.iter().find(|tab| tab.inspector.path==path.to_string_lossy()).unwrap().id.clone();
+                                 app.activate_file_tab(&id,w,cx);
+                                 let offset=disk.find("//").unwrap();app.editor.update(cx,|s,cx|{s.set_selected_range(offset..disk.len()-1,cx);s.replace("// unsaved",w,cx);});stage=2;
                             },
                             2=>{assert!(app.editor_dirty);assert!(crate::inline_blame::smoke_attribution(app,cx).is_none(),"edited line must not borrow an author");app.open_git_history(w,cx);app.prepare_repository_action(Action::StashPush{message:"blocked".into(),include_untracked:true},cx);assert!(!app.git_history.running);assert!(overview::load(root.to_str().unwrap()).unwrap().stashes.is_empty());
                                  let id=app.workbench.tabs[0].id.clone();app.activate_file_tab(&id,w,cx);stage=30;

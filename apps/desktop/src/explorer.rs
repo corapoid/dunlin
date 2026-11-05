@@ -14,6 +14,7 @@ pub(crate) struct State {
     pub busy: bool,
     pub expand_after_scan: Vec<String>,
     pub tree_generation: u64,
+    pub tree_loading: bool,
     pub git_generation: u64,
 }
 

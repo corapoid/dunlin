@@ -108,14 +108,14 @@ fn ha(hex: u32) -> Hsla {
 
 pub fn light() -> Palette {
     Palette {
-        bg: h(0xffffff),
-        panel: h(0xfafafa),
-        sidebar: h(0xfafafa),
+        bg: h(0xf7f8fa),
+        panel: h(0xeff1f5),
+        sidebar: h(0xeff1f5),
         card: h(0xffffff),
         titlebar: h(0xfbfbfc),
         statusbar: h(0xfafafa),
-        border: h(0xe6e6e9),
-        border_strong: h(0xd4d4d8),
+        border: h(0xaab3c1),
+        border_strong: h(0x858e9e),
         fg: h(0x101012),
         muted_fg: h(0x71717a),
         muted: h(0xf4f4f5),
@@ -146,14 +146,14 @@ pub fn light() -> Palette {
 
 pub fn dark() -> Palette {
     Palette {
-        bg: h(0x0a0a0a),
-        panel: h(0x111113),
-        sidebar: h(0x111113),
-        card: h(0x151517),
+        bg: h(0x0e1014),
+        panel: h(0x151820),
+        sidebar: h(0x151820),
+        card: h(0x1d212a),
         titlebar: h(0x101012),
         statusbar: h(0x101012),
-        border: ha(0xffffff14),
-        border_strong: h(0x2a2a2e),
+        border: h(0x505867),
+        border_strong: h(0x707b8e),
         fg: h(0xf4f4f5),
         muted_fg: h(0xa1a1aa),
         muted: h(0x1d1d20),
@@ -190,13 +190,34 @@ pub fn palette(cx: &App) -> Palette {
     }
 }
 
-const FONTS: [&[u8]; 6] = [
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+    fn luminance(color: Hsla) -> f32 {
+        let color: Rgba = color.into();
+        let linear = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+    fn contrast(a: Hsla, b: Hsla) -> f32 { let a = luminance(a); let b = luminance(b); (a.max(b) + 0.05) / (a.min(b) + 0.05) }
+    #[test]
+    fn both_palettes_keep_visible_card_edges_and_readable_text() {
+        for p in [light(), dark()] {
+            assert!(contrast(p.border, p.card) >= 2.);
+            assert!(contrast(p.border_strong, p.card) >= 3.);
+            assert!(contrast(p.fg, p.card) >= 7.);
+            assert_ne!(p.panel, p.card);
+        }
+    }
+}
+
+const FONTS: [&[u8]; 7] = [
     include_bytes!("../../../assets/fonts/Geist-Regular.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Medium.ttf"),
     include_bytes!("../../../assets/fonts/Geist-SemiBold.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Bold.ttf"),
     include_bytes!("../../../assets/fonts/GeistMono-Regular.ttf"),
     include_bytes!("../../../assets/fonts/GeistMono-Medium.ttf"),
+    include_bytes!("../../../assets/fonts/SymbolsNerdFontMono-Regular.ttf"),
 ];
 
 /// Register bundled fonts and install Dunlin's tokens over GPUI Kit.

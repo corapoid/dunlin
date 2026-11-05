@@ -242,7 +242,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let mut inner = div()
         .w_full()
         .flex_shrink_0()
-        .max_w(px(824.))
+        .min_w(px(0.))
         .pb(px(12.))
         .flex()
         .flex_col()
@@ -301,17 +301,20 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             }
             let timing = start.checked_sub(1).and_then(|index| {
                 if let ChatItem::User { timing, .. } = &items[index] {
-                    *timing
+                    timing.clone()
                 } else {
                     None
                 }
             });
             let caption = crate::chat_timing::agent_caption(
                 &items[start..index],
-                timing,
+                timing.clone(),
                 this.chat_timestamps,
                 this.chat_duration,
             );
+            let speaker = timing.and_then(|timing| timing.speaker).unwrap_or_else(|| crate::harness::Speaker {
+                harness: this.session_harness(), model: None,
+            });
             inner = inner.child(agent_group(
                 &items[start..index],
                 start,
@@ -321,6 +324,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     session: &session,
                     caption,
                     logo: this.chat_logo,
+                    speaker,
                 },
                 cx,
                 &p,
@@ -336,6 +340,8 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         ));
     }
 
+    #[cfg(debug_assertions)]
+    let inner = inner.relative().children(crate::workspace_ui_smoke::probe("conversation"));
     let stream = div()
         .id("chat-stream")
         .flex_1()
@@ -597,6 +603,7 @@ struct AgentGroupOptions<'a> {
     session: &'a str,
     caption: Option<String>,
     logo: bool,
+    speaker: crate::harness::Speaker,
 }
 
 fn agent_group(
@@ -612,6 +619,7 @@ fn agent_group(
         session,
         caption,
         logo,
+        speaker,
     } = options;
     let mut body = div()
         .pl(px(if logo { 33. } else { 0. }))
@@ -766,7 +774,7 @@ fn agent_group(
         .flex()
         .flex_col()
         .gap(px(9.))
-        .child(agent_header(logo, caption, p))
+        .child(agent_header(logo, &speaker, caption, p))
         .child(body)
         .into_any_element()
 }
@@ -909,7 +917,7 @@ fn user_message(
         .into_any_element()
 }
 
-fn agent_avatar(p: &Palette) -> AnyElement {
+fn agent_avatar(harness: &str, p: &Palette) -> AnyElement {
     div()
         .size(px(24.))
         .flex_shrink_0()
@@ -918,22 +926,22 @@ fn agent_avatar(p: &Palette) -> AnyElement {
         .flex()
         .items_center()
         .justify_center()
-        .child(Icon::new(IconName::Bird).size(px(13.)).text_color(p.bg))
+        .child(crate::harness_brand::logo(harness, 16., p.bg))
         .into_any_element()
 }
 
-fn agent_header(logo: bool, caption: Option<String>, p: &Palette) -> AnyElement {
+fn agent_header(logo: bool, speaker: &crate::harness::Speaker, caption: Option<String>, p: &Palette) -> AnyElement {
     div()
         .flex()
         .items_center()
         .gap(px(7.))
-        .when(logo, |view| view.child(agent_avatar(p)))
+        .when(logo, |view| view.child(agent_avatar(&speaker.harness, p)))
         .child(
             div()
                 .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
-                .child("Dunlin"),
+                .child(crate::harness_brand::signature(&speaker.harness, speaker.model.as_deref())),
         )
         .when_some(caption, |view, caption| {
             view.child(
@@ -1724,14 +1732,14 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
     let input = Textarea::new(&this.composer)
         .appearance(false)
         .bordered(false)
-        .h(px(92.));
+        .h(px(72.));
     let harness = chat_controls::harness(this, cx);
     let mode = chat_controls::mode(this, cx);
     let model = chat_controls::model(this, cx);
 
     let card = div()
         .w_full()
-        .rounded(px(12.))
+        .rounded(px(20.))
         .border_1()
         .border_color(if running {
             p.blue.opacity(0.45)
@@ -1749,6 +1757,8 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .flex_wrap()
                 .items_center()
                 .gap(px(5.))
+                // GPUI overflow masks are rectangular; round this painted child too.
+                .rounded_t(px(19.))
                 .bg(p.subtle)
                 .border_b_1()
                 .border_color(p.border)
@@ -1855,6 +1865,8 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 ),
         );
 
+    #[cfg(debug_assertions)]
+    let card = card.relative().children(crate::workspace_ui_smoke::probe("composer"));
     div()
         .flex_shrink_0()
         .w_full()

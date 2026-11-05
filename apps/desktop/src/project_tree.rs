@@ -3,12 +3,28 @@ use dunlin_domain::{Project, ProjectGroup};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum View {
-    List,
-    #[default]
-    Tree,
+pub(crate) fn show_session(updated: &str, live: bool, running_only: bool, now: i64) -> bool {
+    live || (!running_only && chrono::DateTime::parse_from_rfc3339(updated).is_ok_and(|date| {
+        let age = now.saturating_sub(date.timestamp_millis());
+        (0..=8 * 60 * 60 * 1000).contains(&age)
+    }))
 }
+
+#[cfg(test)]
+mod session_tests {
+    #[test]
+    fn recent_sessions_use_exact_eight_hour_boundary_and_live_state() {
+        let time = "2026-11-05T10:00:00Z";
+        let now = chrono::DateTime::parse_from_rfc3339(time).unwrap().timestamp_millis();
+        assert!(super::show_session(time, false, false, now + 28_800_000));
+        assert!(!super::show_session(time, false, false, now + 28_800_001));
+        assert!(!super::show_session(time, false, true, now));
+        assert!(!super::show_session("bad", false, false, now));
+        assert!(!super::show_session(time, false, false, now - 1));
+        assert!(super::show_session("bad", true, true, now));
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Sort {
     #[default]
@@ -389,18 +405,18 @@ mod tests {
     #[test]
     fn tree_preferences_and_sidebar_width_roundtrip_without_replacing_existing_preferences() {
         let legacy: crate::app::StoredSettings =
-            serde_json::from_str(r#"{"dark":false,"editor_minimap":false}"#).unwrap();
+            serde_json::from_str(r#"{"dark":false,"editor_minimap":false,"project_view":"List","minimal_mode":true}"#).unwrap();
         assert!(!legacy.dark);
         assert!(!legacy.editor_minimap);
-        assert_eq!(legacy.project_view, super::View::Tree);
         assert_eq!(legacy.sidebar_width, 278.);
         let mut settings = legacy;
-        settings.project_view = super::View::List;
         settings.project_sort = Sort::Modified;
         settings.sidebar_width = 403.;
         let saved: crate::app::StoredSettings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
-        assert_eq!(saved.project_view, super::View::List);
+        let json = serde_json::to_value(&saved).unwrap();
+        assert!(json.get("project_view").is_none());
+        assert!(json.get("minimal_mode").is_none());
         assert_eq!(saved.project_sort, Sort::Modified);
         assert_eq!(saved.sidebar_width, 403.);
         assert!(!saved.dark);

@@ -76,26 +76,11 @@ pub(crate) enum Metric {
     ChangedLines,
 }
 impl Metric {
-    pub const ALL: [Self; 3] = [Self::Requests, Self::Tokens, Self::ChangedLines];
     pub fn label(self) -> &'static str {
         match self {
             Self::Requests => "Requests",
             Self::Tokens => "Reported tokens",
             Self::ChangedLines => "Reported changed lines",
-        }
-    }
-    fn short_label(self) -> &'static str {
-        match self {
-            Self::Requests => "Requests",
-            Self::Tokens => "Tokens",
-            Self::ChangedLines => "Changed lines",
-        }
-    }
-    fn icon(self) -> IconName {
-        match self {
-            Self::Requests => IconName::MessageSquare,
-            Self::Tokens => IconName::ChartNoAxesColumn,
-            Self::ChangedLines => IconName::FileDiff,
         }
     }
 }
@@ -146,7 +131,7 @@ fn last_user_activity(items: &[ChatItem]) -> Option<u64> {
             ChatItem::User { at_ms, timing, .. } => Some(if *at_ms > 0 {
                 *at_ms
             } else {
-                timing.map(|t| t.started_at_ms).unwrap_or(0)
+                timing.as_ref().map(|t| t.started_at_ms).unwrap_or(0)
             }),
             _ => None,
         })
@@ -154,58 +139,6 @@ fn last_user_activity(items: &[ChatItem]) -> Option<u64> {
         .max()
 }
 
-/// Dashboard owns the titlebar's center slot, not the conversation view tabs.
-pub(crate) fn metric_switcher(
-    this: &DunlinApp,
-    compact: bool,
-    cx: &mut Context<DunlinApp>,
-) -> AnyElement {
-    let p = palette(cx);
-    div()
-        .id("dashboard-metrics")
-        .flex_shrink_0()
-        .h(px(28.))
-        .p(px(2.))
-        .rounded(px(8.))
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .gap(px(2.))
-        .children(Metric::ALL.map(|candidate| {
-            let active = this.dashboard_settings.metric == candidate;
-            let color = if active { p.fg } else { p.muted_fg };
-            div()
-                .id(format!("dashboard-metric:{candidate:?}"))
-                .aria_label(format!("Show {} activity", candidate.label()))
-                .h(px(24.))
-                .px(px(if compact { 6. } else { 9. }))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .cursor_pointer()
-                .when(active, |tab| tab.bg(p.card))
-                .when(!active, |tab| tab.hover(move |style| style.bg(p.hover)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.dashboard_settings.metric = candidate;
-                    this.persist_settings(cx);
-                    cx.notify();
-                }))
-                .child(Icon::new(candidate.icon()).size(px(12.5)).text_color(color))
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .text_color(color)
-                        .child(candidate.short_label()),
-                )
-        }))
-        .into_any_element()
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct Settings {
@@ -976,6 +909,7 @@ mod tests {
                     elapsed_ms: None,
                     usage: None,
                     usage_before: None,
+                    speaker: None,
                 }),
             },
             ChatItem::AgentText {
@@ -1038,6 +972,7 @@ mod tests {
                     elapsed_ms: None,
                     usage: None,
                     usage_before: None,
+                    speaker: None,
                 }),
                 at_ms: 1_750_000_000_000,
             },

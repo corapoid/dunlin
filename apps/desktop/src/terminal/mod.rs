@@ -22,6 +22,35 @@ use layout::{Axis, SplitNode};
 
 const ROW_HEIGHT: f32 = 15.;
 const CHAR_WIDTH: f32 = 7.1;
+const FONT_SIZE: f32 = 11.5;
+
+fn terminal_font() -> Font {
+    Font {
+        fallbacks: Some(FontFallbacks::from_fonts(vec!["Symbols Nerd Font Mono".into()])),
+        features: FontFeatures::disable_ligatures(),
+        ..font(dunlin_ui::theme::code_font())
+    }
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn smoke_glyphs(window: &Window, cx: &App) {
+    for text in ["\u{e0b0}", "\u{e0a0}", "\u{e718}", "\u{f07c}", "\u{f015}", "界"] {
+        let line = window.text_system().shape_line(text.into(), px(FONT_SIZE), &[TextRun {
+            len: text.len(), font: terminal_font(), color: palette(cx).fg.into(),
+            background_color: None, underline: None, strikethrough: None,
+        }], None);
+        assert!(!line.runs.is_empty());
+        assert!(line.runs.iter().flat_map(|r| &r.glyphs).all(|g| g.id.0 != 0), "missing terminal glyph: {text}");
+    }
+    assert!(cell_width(cx) > 0.);
+}
+
+fn cell_width(cx: &App) -> f32 {
+    let font = cx.text_system().resolve_font(&terminal_font());
+    cx.text_system().advance(font, px(FONT_SIZE), 'M')
+        .map(|advance| f32::from(advance.width)).ok()
+        .filter(|width| width.is_finite() && *width > 0.).unwrap_or(CHAR_WIDTH)
+}
 const BODY_PADDING: f32 = 8.;
 const PANE_HEADER: f32 = 15.;
 
@@ -64,6 +93,7 @@ pub(crate) struct SplitDrag {
 }
 
 pub(crate) struct State {
+    cell_width: f32,
     pub tabs: Vec<Tab>,
     pub active: usize,
     pub error: Option<String>,
@@ -83,6 +113,7 @@ pub(crate) struct State {
 impl State {
     pub fn new(cx: &mut Context<DunlinApp>) -> Self {
         Self {
+            cell_width: cell_width(cx),
             tabs: Vec::new(),
             active: 0,
             error: None,
@@ -793,7 +824,7 @@ impl DunlinApp {
         self.terminal.dock_height = height.max(1.);
         let sizes = self.terminal.pane_sizes(width, height);
         if sizes.is_empty() {
-            let (rows, cols) = terminal_size(width, height);
+            let (rows, cols) = terminal_size(width, height, self.terminal.cell_width);
             if let Some(tab) = self.terminal.active_tab_mut()
                 && tab.size != (rows, cols)
             {
@@ -807,7 +838,7 @@ impl DunlinApp {
         }
         let mut updates = Vec::with_capacity(sizes.len());
         for (id, (width, height)) in sizes {
-            let (rows, cols) = terminal_size(width, height);
+            let (rows, cols) = terminal_size(width, height, self.terminal.cell_width);
             updates.push((id, rows, cols));
         }
         for (id, rows, cols) in updates {
@@ -837,7 +868,7 @@ impl DunlinApp {
         };
         self.terminal.active = index;
         self.terminal.focus.focus(window, cx);
-        let Some(point) = terminal_point(&self.terminal.tabs[index], event.position) else {
+        let Some(point) = terminal_point(&self.terminal.tabs[index], event.position, self.terminal.cell_width) else {
             cx.notify();
             return;
         };
@@ -863,6 +894,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn terminal_pointer_move(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let cell_width = self.terminal.cell_width;
         if event.pressed_button != Some(MouseButton::Left) {
             return;
         }
@@ -883,7 +915,7 @@ impl DunlinApp {
         } else if y > bottom {
             tab.screen.scroll_down(1);
         }
-        let Some(head) = terminal_point(tab, event.position) else {
+        let Some(head) = terminal_point(tab, event.position, cell_width) else {
             return;
         };
         if head != anchor || tab.selection.is_some() {
@@ -1044,18 +1076,18 @@ impl DunlinApp {
     }
 }
 
-pub(crate) fn terminal_size(width: f32, height: f32) -> (u16, u16) {
-    let cols = ((width - 24.) / CHAR_WIDTH).clamp(20., 260.) as u16;
+pub(crate) fn terminal_size(width: f32, height: f32, cell_width: f32) -> (u16, u16) {
+    let cols = ((width - BODY_PADDING * 2. - 2.) / cell_width).clamp(20., 512.) as u16;
     let rows = ((height - 78.) / 15.5).clamp(3., 80.) as u16;
     (rows, cols)
 }
 
-fn terminal_point(tab: &Tab, position: Point<Pixels>) -> Option<TermPoint> {
+fn terminal_point(tab: &Tab, position: Point<Pixels>, cell_width: f32) -> Option<TermPoint> {
     let bounds = tab.bounds.get()?;
     let x = f32::from(position.x) - f32::from(bounds.left()) - BODY_PADDING;
     let y = f32::from(position.y) - f32::from(bounds.top()) - BODY_PADDING - PANE_HEADER;
     let row = (y / ROW_HEIGHT).floor().max(0.) as u16;
-    let col = (x / CHAR_WIDTH).floor().max(0.) as u16;
+    let col = (x / cell_width).floor().max(0.) as u16;
     let row = row.min(tab.screen.rows().saturating_sub(1));
     let col = col.min(tab.screen.cols().saturating_sub(1));
     Some(TermPoint::new(tab.screen.visible_line(row), col))
@@ -1116,6 +1148,9 @@ fn rgba(value: u32) -> Rgba {
 
 #[derive(Clone)]
 struct Run {
+    col: u16,
+    cells: u16,
+    wide: bool,
     text: String,
     fg: Hsla,
     bg: Option<Hsla>,
@@ -1125,20 +1160,17 @@ struct Run {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn row_element(
-    tab: &Tab,
+fn row_runs(
+    terminal: &Screen,
     row: u16,
     cursor: Option<(u16, u16)>,
     hide_cursor: bool,
-    query: &str,
     selection: Option<Selection>,
-    prompt_lines: &[i64],
     p: &Palette,
-    cx: &mut Context<DunlinApp>,
-) -> AnyElement {
-    let screen = tab.screen.screen();
-    let cols = tab.screen.cols();
-    let line = tab.screen.visible_line(row);
+) -> Vec<Run> {
+    let screen = terminal.screen();
+    let cols = terminal.cols();
+    let line = terminal.visible_line(row);
     let mut runs: Vec<Run> = Vec::new();
     for col in 0..cols {
         let Some(cell) = screen.cell(row, col) else {
@@ -1156,12 +1188,13 @@ fn row_element(
             std::mem::swap(&mut fg, &mut bg);
         }
         let selected = selection.is_some_and(|selection| selection.contains(line, col));
-        let link = tab.screen.link_at(row, col).map(str::to_string);
+        let link = terminal.link_at(row, col).map(str::to_string);
         let contents = cell.contents().to_string();
         if contents.is_empty()
             && !selected
             && link.is_none()
             && (hide_cursor || cursor != Some((row, col)))
+            && bg == p.bg
         {
             continue;
         }
@@ -1172,6 +1205,9 @@ fn row_element(
         };
         let background = (bg != p.bg).then_some(bg);
         if let Some(last) = runs.last_mut()
+            && last.col + last.cells == col
+            && last.text.is_ascii() && contents.is_ascii()
+            && !last.wide && !cell.is_wide()
             && last.fg == fg
             && last.bg == background
             && last.bold == cell.bold()
@@ -1179,8 +1215,12 @@ fn row_element(
             && last.selected == selected
         {
             last.text.push_str(&contents);
+            last.cells += 1;
         } else {
             runs.push(Run {
+                col,
+                cells: if cell.is_wide() { 2 } else { 1 },
+                wide: cell.is_wide(),
                 text: contents,
                 fg,
                 bg: background,
@@ -1190,8 +1230,27 @@ fn row_element(
             });
         }
     }
+    runs
+}
+
+#[allow(clippy::too_many_arguments)]
+fn row_element(
+    tab: &Tab,
+    row: u16,
+    cursor: Option<(u16, u16)>,
+    hide_cursor: bool,
+    query: &str,
+    selection: Option<Selection>,
+    prompt_lines: &[i64],
+    cell_width: f32,
+    p: &Palette,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    let runs = row_runs(&tab.screen, row, cursor, hide_cursor, selection, p);
+    let line = tab.screen.visible_line(row);
     let selection_color = p.blue.opacity(0.28);
     let mut line_element = div()
+        .relative()
         .h(px(ROW_HEIGHT))
         .w_full()
         .flex()
@@ -1201,6 +1260,11 @@ fn row_element(
         .when(prompt_lines.contains(&line), |this| this.bg(p.subtle));
     let mut link_index = 0usize;
     for run in runs {
+        let mut run_element = div().absolute().left(px(f32::from(run.col) * cell_width)).top_0()
+            .w(px(f32::from(run.cells) * cell_width)).h(px(ROW_HEIGHT))
+            .flex().items_center()
+            .when_some(run.bg, |element, bg| element.bg(bg))
+            .when(run.selected, |element| element.bg(selection_color));
         for (part, highlighted) in highlight_parts(&run.text, query) {
             let pieces = if run.link.is_some() {
                 vec![(part, None)]
@@ -1215,9 +1279,10 @@ fn row_element(
                 let target = handled.as_deref().and_then(safe_link);
                 let is_link = target.is_some();
                 let base = div()
-                    .text_size(px(11.5))
+                    .text_size(px(FONT_SIZE))
                     .line_height(px(ROW_HEIGHT))
-                    .font_family(dunlin_ui::theme::code_font())
+                    .font(terminal_font())
+                    .flex_shrink_0()
                     .text_color(if is_link { p.blue } else { run.fg })
                     .when_some(run.bg, |this, bg| this.bg(bg))
                     .when(run.selected, |this| this.bg(selection_color))
@@ -1233,9 +1298,10 @@ fn row_element(
                 } else {
                     base.into_any_element()
                 };
-                line_element = line_element.child(span);
+                run_element = run_element.child(span);
             }
         }
+        line_element = line_element.child(run_element);
     }
     line_element.into_any_element()
 }
@@ -1442,6 +1508,7 @@ fn render_pane(
             &query,
             selection,
             &prompt_lines,
+            this.terminal.cell_width,
             &p,
             cx,
         ));
@@ -1499,6 +1566,7 @@ pub(crate) fn render(
     window: &mut Window,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
+    this.terminal.cell_width = cell_width(cx);
     let viewport_width = f32::from(window.viewport_size().width);
     let viewport_height = f32::from(window.viewport_size().height);
     match this.terminal_dock {
@@ -1829,10 +1897,10 @@ mod tests {
 
     #[test]
     fn terminal_size_respects_dock_limits() {
-        let (rows, cols) = terminal_size(900., 300.);
+        let (rows, cols) = terminal_size(900., 300., 7.1);
         assert!((3..=80).contains(&rows));
-        assert!((20..=260).contains(&cols));
-        let (rows, cols) = terminal_size(10., 10.);
+        assert!((20..=512).contains(&cols));
+        let (rows, cols) = terminal_size(10., 10., 7.1);
         assert_eq!(rows, 3);
         assert_eq!(cols, 20);
     }
@@ -1844,9 +1912,30 @@ mod tests {
         let sizes = node.sizes(800., 300.);
         assert_eq!(sizes.len(), 2);
         for (_, (width, height)) in sizes {
-            let (rows, cols) = terminal_size(width, height);
+            let (rows, cols) = terminal_size(width, height, 7.1);
             assert!(rows >= 3);
             assert!(cols >= 20);
         }
+    }
+
+    #[test]
+    fn runs_preserve_empty_columns_right_prompts_and_wide_cell_positions() {
+        let mut screen = dunlin_terminal::Screen::new(3, 100, 10);
+        screen.process("left\x1b[70G\u{e718} 24.18.0".as_bytes());
+        let runs = super::row_runs(&screen, 0, None, true, None, &dunlin_ui::theme::dark());
+        assert_eq!(runs[0].col, 0);
+        assert_eq!(runs[0].text, "left");
+        assert_eq!(runs[1].col, 69);
+        assert!(runs[1].text.starts_with('\u{e718}'));
+        screen.process("\r\n界A\x1b[20GZ".as_bytes());
+        let runs = super::row_runs(&screen, 1, None, true, None, &dunlin_ui::theme::light());
+        assert_eq!((runs[0].col, runs[0].cells), (0, 2));
+        assert_eq!((runs[1].col, runs[1].text.as_str()), (2, "A"));
+        assert_eq!((runs[2].col, runs[2].text.as_str()), (19, "Z"));
+        screen.process(b"\r\n\x1b[41m\x1b[K");
+        let runs = super::row_runs(&screen, 2, None, true, None, &dunlin_ui::theme::dark());
+        assert_eq!((runs[0].col, runs[0].cells), (0, 100));
+        assert!(runs[0].bg.is_some(), "erased colored columns keep their background");
+        assert_eq!(terminal_size(1000., 400., 10.).1, 98);
     }
 }

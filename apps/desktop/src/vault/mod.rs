@@ -15,7 +15,7 @@ use dunlin_domain::vault::{
 };
 use dunlin_domain::{PermissionMode, Project};
 use dunlin_storage::Store;
-use dunlin_ui::{Context, PromptLevel, Window};
+use dunlin_ui::{Context, PromptButton, PromptLevel, Window};
 use dunlin_vault::store::{KeychainStore, SecretStore};
 
 use crate::app::DunlinApp;
@@ -942,7 +942,7 @@ impl DunlinApp {
                         PromptLevel::Warning,
                         "Agent wants to use a credential",
                         Some(text.as_str()),
-                        &["Deny", "Allow once", "Allow for this session"],
+                        &[PromptButton::cancel("Deny"), PromptButton::new("Allow once"), PromptButton::new("Allow for this session")],
                         cx,
                     );
                     let prompt = this.overlay_backdrop.track_native(prompt, cx);

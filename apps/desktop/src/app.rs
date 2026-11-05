@@ -26,6 +26,7 @@ actions!(dunlin, [Quit]);
 pub(crate) const CHAT_WINDOW: usize = 120;
 
 mod helpers;
+mod navigation;
 mod overlays;
 pub(crate) use helpers::*;
 
@@ -96,6 +97,26 @@ pub(crate) enum UiDensity {
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+impl Appearance {
+    fn native(self) -> Option<WindowAppearance> {
+        match self { Self::System => None, Self::Light => Some(WindowAppearance::Light), Self::Dark => Some(WindowAppearance::Dark) }
+    }
+    pub(crate) fn mode(self, system: WindowAppearance) -> ThemeMode {
+        match self {
+            Self::System => system.into(),
+            Self::Light => ThemeMode::Light,
+            Self::Dark => ThemeMode::Dark,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum TerminalDock {
     #[default]
     Bottom,
@@ -125,6 +146,7 @@ pub(crate) struct StoredSettings {
     pub restore_session: bool,
     pub word_wrap: bool,
     pub editor_minimap: bool,
+    pub inline_blame: bool,
     pub autosave: bool,
     pub code_font_size: f32,
     pub ui_font_family: String,
@@ -136,7 +158,8 @@ pub(crate) struct StoredSettings {
     pub chat_duration: bool,
     pub chat_logo: bool,
     pub dark: bool,
-    pub minimal_mode: bool,
+    #[serde(default)]
+    pub appearance: Option<Appearance>,
     pub view: MainView,
     pub default_view: MainView,
     pub section: SidebarSection,
@@ -147,11 +170,12 @@ pub(crate) struct StoredSettings {
     pub last_project_id: Option<String>,
     pub last_session_id: Option<String>,
     pub remote_hosts: Vec<remote::RemoteHost>,
+    pub watched_project_folders: Vec<PathBuf>,
     pub collapsed_project_groups: Vec<String>,
-    pub project_view: crate::project_tree::View,
     pub project_sort: crate::project_tree::Sort,
     pub sidebar_width: f32,
     pub show_project_branches: bool,
+    pub project_list: crate::project_catalog::Preferences,
     pub opencode_provider: Option<String>,
     pub recent_models: Vec<crate::providers::RecentModel>,
     pub group_contexts: HashMap<String, crate::project_groups::GroupContext>,
@@ -240,6 +264,7 @@ impl Default for StoredSettings {
             restore_session: true,
             word_wrap: false,
             editor_minimap: true,
+            inline_blame: false,
             autosave: false,
             notifications_enabled: true,
             show_shortcut_hints: true,
@@ -254,7 +279,7 @@ impl Default for StoredSettings {
             chat_duration: false,
             chat_logo: true,
             dark: true,
-            minimal_mode: false,
+            appearance: Some(Appearance::System),
             view: MainView::Chat,
             default_view: MainView::Chat,
             section: SidebarSection::Files,
@@ -262,11 +287,12 @@ impl Default for StoredSettings {
             last_project_id: None,
             last_session_id: None,
             remote_hosts: Vec::new(),
+            watched_project_folders: Vec::new(),
             collapsed_project_groups: Vec::new(),
-            project_view: Default::default(),
             project_sort: Default::default(),
             sidebar_width: crate::sidebar_layout::DEFAULT_WIDTH,
             show_project_branches: true,
+            project_list: Default::default(),
             opencode_provider: Some(crate::providers::GO.into()),
             recent_models: Vec::new(),
             group_contexts: HashMap::new(),
@@ -354,7 +380,6 @@ pub(crate) enum PendingDelete {
     Session { id: String, title: String },
     Project { id: String, name: String },
     History { count: usize },
-    DiscardFile { path: String },
 }
 
 /// The read-only unified patch shown for one source-control change.
@@ -430,13 +455,13 @@ impl ToastAction {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum ContextTarget {
     Project(usize),
-    Session(usize),
+    Session(String),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ContextMenuState {
     pub target: ContextTarget,
     pub position: Point<Pixels>,
@@ -453,7 +478,6 @@ pub(crate) enum Command {
     NewProjectGroup,
     ToggleSidebar,
     ToggleTheme,
-    ToggleMinimal,
     NewSession,
     NewChat,
     NewChatInRepo,
@@ -529,26 +553,32 @@ pub(crate) struct RemotePicker {
 pub(crate) struct DunlinApp {
     pub view: MainView,
     pub view_epoch: u64,
+    pub navigation: navigation::History,
     pub default_view: MainView,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
     pub local_import_running: bool,
+    pub project_import: crate::project_import::State,
+    pub watched_project_folders: Vec<PathBuf>,
     pub session_list: crate::session_list::State,
     pub session_import: crate::session_import::State,
     pub design_section: crate::views::settings::DesignSection,
     pub fallback_project: Project,
     pub project_groups: Vec<ProjectGroup>,
     pub collapsed_project_groups: Vec<String>,
-    pub project_view: crate::project_tree::View,
     pub project_sort: crate::project_tree::Sort,
     pub sidebar_width: f32,
     pub show_project_branches: bool,
+    pub project_list: crate::project_catalog::Preferences,
+    pub project_catalog: crate::project_catalog::State,
     pub sidebar_resize: Option<(f32, f32)>,
     pub project_group_editor: Option<usize>,
     pub group_contexts: HashMap<String, crate::project_groups::GroupContext>,
     pub pending_group_context: Option<crate::project_groups::GroupContext>,
     pub repo_summaries: crate::project_groups::RepoSummaries,
     pub branch_ui: crate::branch_picker::State,
+    pub pending_git_action: Option<crate::git_actions::Pending>,
+    pub project_sessions_running_only: bool,
     pub git_history: crate::git_history::State,
     pub spec: crate::spec::State,
     pub spec_tools_enabled: bool,
@@ -584,7 +614,16 @@ pub(crate) struct DunlinApp {
     pub remote_billing_loading: bool,
     pub remote_billing_error: Option<String>,
     pub onboarding_step: u8,
+    pub onboarding_show_all_harnesses: bool,
+    pub harness_setup: Option<String>,
+    pub harness_setup_notice: Option<String>,
+    pub harness_scanning: bool,
+    pub permissions_refreshing: bool,
+    pub factory_resetting: bool,
     pub density: UiDensity,
+    pub appearance: Appearance,
+    pub settings_offset: Point<Pixels>,
+    pub settings_drag: Option<(Point<Pixels>, Point<Pixels>)>,
     pub reduce_motion: bool,
     pub acp_log_text: Option<String>,
     pub acp_log_error: Option<String>,
@@ -659,7 +698,6 @@ pub(crate) struct DunlinApp {
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
     pub sidebar_collapsed: bool,
-    pub minimal_mode: bool,
     pub pending_delete: Option<PendingDelete>,
     pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
@@ -667,6 +705,7 @@ pub(crate) struct DunlinApp {
     pub restore_session: bool,
     pub word_wrap: bool,
     pub editor_minimap: bool,
+    pub inline_blame: bool,
     pub autosave: bool,
     pub notifications_enabled: bool,
     pub show_shortcut_hints: bool,
@@ -678,8 +717,6 @@ pub(crate) struct DunlinApp {
     pub remote_hosts: Vec<remote::RemoteHost>,
     pub remote_tokens: HashMap<String, String>,
     pub remote_sessions_loading: bool,
-    pub pending_remote_session: Option<PendingRemoteSession>,
-    pub pending_model: Option<String>,
     pub remote_url_input: Entity<InputState>,
     pub remote_code_input: Entity<InputState>,
     pub remote_name_input: Entity<InputState>,
@@ -923,7 +960,6 @@ impl DunlinApp {
         let command_query = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Type a command or search the workspace…")
-                .clean_on_escape()
         });
         let remote_url_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("https://host.tailnet.ts.net"));
@@ -1079,6 +1115,7 @@ impl DunlinApp {
         let mut app = Self {
             view: stored.view,
             view_epoch: 0,
+            navigation: Default::default(),
             default_view: stored.default_view,
             section: if stored.dashboard_settings.start_at_dashboard {
                 SidebarSection::Dashboard
@@ -1091,22 +1128,27 @@ impl DunlinApp {
             },
             projects,
             local_import_running: false,
+            project_import: Default::default(),
+            watched_project_folders: stored.watched_project_folders.clone(),
             session_list: Default::default(),
             session_import: Default::default(),
             design_section: Default::default(),
             fallback_project,
             project_groups,
             collapsed_project_groups: stored.collapsed_project_groups.clone(),
-            project_view: stored.project_view,
             project_sort: stored.project_sort,
             sidebar_width: stored.sidebar_width,
             show_project_branches: stored.show_project_branches,
+            project_list: stored.project_list,
+            project_catalog: Default::default(),
             sidebar_resize: None,
             project_group_editor: None,
             group_contexts: stored.group_contexts.clone(),
             pending_group_context: None,
             repo_summaries: Default::default(),
             branch_ui: Default::default(),
+            pending_git_action: None,
+            project_sessions_running_only: false,
             git_history: Default::default(),
             spec: Default::default(),
             spec_tools_enabled: stored.spec_tools_enabled,
@@ -1155,7 +1197,16 @@ impl DunlinApp {
             qa_report: None,
             qa_error: None,
             onboarding_step: stored.onboarding_step,
+            onboarding_show_all_harnesses: false,
+            harness_setup: None,
+            harness_setup_notice: None,
+            harness_scanning: false,
+            permissions_refreshing: false,
+            factory_resetting: false,
             density: stored.density,
+            appearance: stored.appearance.unwrap_or(if stored.dark { Appearance::Dark } else { Appearance::Light }),
+            settings_offset: point(px(0.), px(0.)),
+            settings_drag: None,
             reduce_motion: stored.reduce_motion,
             terminal: crate::terminal::State::new(cx),
             run: crate::run::State::new(stored.run_history.clone()),
@@ -1225,7 +1276,6 @@ impl DunlinApp {
             permission_mode: stored.permission_mode,
             project_menu_open: false,
             sidebar_collapsed: stored.sidebar_collapsed,
-            minimal_mode: stored.minimal_mode,
             pending_delete: None,
             diff_view: None,
             auto_connect: stored.auto_connect,
@@ -1233,6 +1283,7 @@ impl DunlinApp {
             restore_session: stored.restore_session,
             word_wrap: stored.word_wrap,
             editor_minimap: stored.editor_minimap,
+            inline_blame: stored.inline_blame,
             autosave: stored.autosave,
             notifications_enabled: stored.notifications_enabled,
             show_shortcut_hints: stored.show_shortcut_hints,
@@ -1244,8 +1295,6 @@ impl DunlinApp {
             remote_hosts: stored.remote_hosts.clone(),
             remote_tokens: HashMap::new(),
             remote_sessions_loading: false,
-            pending_remote_session: None,
-            pending_model: None,
             remote_url_input,
             remote_code_input,
             remote_name_input,
@@ -1308,12 +1357,9 @@ impl DunlinApp {
             recent_models: stored.recent_models.clone(),
         };
 
+        cx.set_window_appearance(app.appearance.native());
         dunlin_ui::theme::set_mode(
-            if stored.dark {
-                ThemeMode::Dark
-            } else {
-                ThemeMode::Light
-            },
+            app.appearance.mode(cx.window_appearance()),
             Some(window),
             cx,
         );
@@ -1323,6 +1369,12 @@ impl DunlinApp {
             UiDensity::Compact => dunlin_ui::scale::Density::Compact,
             UiDensity::Comfortable => dunlin_ui::scale::Density::Comfortable,
         });
+        cx.observe_window_appearance(window, |this, window, cx| {
+            if this.appearance == Appearance::System {
+                dunlin_ui::theme::set_mode(this.appearance.mode(window.appearance()), Some(window), cx);
+                cx.notify();
+            }
+        }).detach();
 
         let first_session = app.session().id.clone();
         app.load_transcript(&first_session);
@@ -1411,6 +1463,7 @@ impl DunlinApp {
                     .update(cx, |this, cx| {
                         this.check_open_file(cx);
                         this.poll_file_watcher(cx);
+                        this.poll_project_folders(cx);
                         this.refresh_project_icons(cx);
                         this.poll_task_budgets(cx);
                         this.advance_comparisons(cx);
@@ -1430,7 +1483,7 @@ impl DunlinApp {
         app._window_bounds_subscription =
             Some(cx.observe_window_bounds(window, |this, window, cx| {
                 let geometry = window_state::from_bounds(window.window_bounds());
-                if this.last_window_geometry != Some(geometry) {
+                if !this.factory_resetting && this.last_window_geometry != Some(geometry) {
                     this.last_window_geometry = Some(geometry);
                     window_state::save(geometry);
                 }
@@ -1442,8 +1495,8 @@ impl DunlinApp {
             }));
         app.app_active = window.is_window_active();
         app._activation_subscription =
-            Some(cx.observe_window_activation(window, |this, window, _| {
-                this.app_active = window.is_window_active() || this.overlay_window.active;
+            Some(cx.observe_window_activation(window, |this, window, cx| {
+                this.set_app_active(window.is_window_active() || this.overlay_window.active, cx);
             }));
 
         if let Ok(prompt) = std::env::var("DUNLIN_AUTOPROMPT")
@@ -1495,6 +1548,9 @@ impl DunlinApp {
     /// Existing conversations retain their harness even if the project default
     /// changes. ACP session ids are not interchangeable between harnesses.
     pub(crate) fn session_harness(&self) -> String {
+        if self.project().is_remote() && let harness::HarnessStatus::Ready { agent, .. } = &self.harness.status {
+            return agent.clone();
+        }
         self.sessions
             .get(self.selected_session)
             .map(|session| session.harness.clone())
@@ -1608,6 +1664,8 @@ impl DunlinApp {
             return;
         };
         let mut updates = Vec::new();
+        let mut active_sessions: std::collections::HashSet<_> = self.parked_runtimes.keys().cloned().collect();
+        if self.harness.harness.is_some() { active_sessions.insert(self.session().id.clone()); }
         for row in &rows {
             let summary = remote_session_summary(row, &project_id, &host_id);
             if let Some(existing) = self
@@ -1617,7 +1675,7 @@ impl DunlinApp {
             {
                 existing.title = summary.title;
                 existing.updated_at = summary.updated_at;
-                existing.status = SessionStatus::Idle;
+                if !active_sessions.contains(&existing.id) { existing.status = SessionStatus::Idle; }
                 existing.origin = summary.origin;
                 existing.acp_session_id = summary.acp_session_id;
                 updates.push(existing.clone());
@@ -1635,7 +1693,7 @@ impl DunlinApp {
         self.all_sessions.retain(|session| {
             !(session.project_id == project_id
                 && session.origin.is_remote()
-                && !live.contains(&session.id))
+                && !live.contains(&session.id) && !active_sessions.contains(&session.id))
         });
         self.sessions = self
             .all_sessions
@@ -1649,27 +1707,34 @@ impl DunlinApp {
             self.selected_session = 0;
             self.restore_session_id = None;
             self.harness.transcript.clear();
-            self.pending_remote_session = Some(PendingRemoteSession::New);
+            self.harness.pending_remote_session = Some(PendingRemoteSession::New);
             if self.auto_connect && !self.harness.status.is_busy() {
                 self.connect_harness(cx);
             }
             self.notice = Some("No remote sessions yet · starting a new one".into());
         } else {
-            let preferred = self.restore_session_id.take();
+            let preferred = self.restore_session_id.take().or_else(|| self.project_session_selections.get(&project_id).cloned());
             let index = preferred
                 .as_deref()
                 .and_then(|id| self.sessions.iter().position(|session| session.id == id))
                 .unwrap_or(0);
             self.selected_session = index;
             let session = self.sessions[index].clone();
+            if self.restore_runtime(&session.id) {
+                self.refresh_mcp(cx);
+                self.refresh_providers(cx);
+                self.ensure_usage(cx);
+                cx.notify();
+                return;
+            }
             self.load_transcript(&session.id);
             let acp_id = session
                 .acp_session_id
                 .clone()
                 .unwrap_or_else(|| session.id.clone());
-            self.pending_remote_session = Some(PendingRemoteSession::Load { session_id: acp_id });
+            self.harness.pending_remote_session = Some(PendingRemoteSession::Load { session_id: acp_id });
             if self.harness.status.is_ready() {
-                let action = self.pending_remote_session.take().unwrap();
+                let action = self.harness.pending_remote_session.take().unwrap();
                 self.start_remote_session(action, cx);
             } else if self.auto_connect && !self.harness.status.is_busy() {
                 self.connect_harness(cx);
@@ -1698,8 +1763,8 @@ impl DunlinApp {
 
         if let Some(existing) = self
             .sessions
-            .iter_mut()
-            .find(|session| session.id.starts_with("pending-"))
+            .get_mut(self.selected_session)
+            .filter(|session| session.id.starts_with("pending-"))
         {
             let pending_id = existing.id.clone();
             if let Some(context) = self.group_contexts.remove(&pending_id) {
@@ -1712,12 +1777,13 @@ impl DunlinApp {
             if let Some(all) = self
                 .all_sessions
                 .iter_mut()
-                .find(|session| session.id.starts_with("pending-"))
+                .find(|session| session.id == pending_id)
             {
                 all.id = session_id.to_string();
                 all.acp_session_id = Some(session_id.to_string());
                 all.status = SessionStatus::Idle;
             }
+            self.rekey_chat_tab(&pending_id, session_id);
             self.persist_session(&stored);
             self.selected_session = self
                 .sessions
@@ -1742,6 +1808,7 @@ impl DunlinApp {
         }
 
         let session = SessionSummary {
+            workspace: Some(self.project().path.clone()),
             id: session_id.to_string(),
             project_id,
             title: "New session".into(),
@@ -1749,7 +1816,7 @@ impl DunlinApp {
             harness: "Remote".into(),
             model: "Auto".into(),
             branch: None,
-            updated_at: "now".into(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
             cost_usd: 0.0,
             duration_secs: 0,
             tokens: 0,
@@ -1774,11 +1841,12 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) {
         let Some(harness) = self.harness.harness.as_ref() else {
-            self.pending_remote_session = Some(action);
+            self.harness.pending_remote_session = Some(action);
             return;
         };
         let cwd = PathBuf::from(&self.project().path);
         let roots = self.session_additional_directories();
+        self.harness.local_session_loading = true;
         match action {
             PendingRemoteSession::New => {
                 let model = self
@@ -1789,7 +1857,7 @@ impl DunlinApp {
                             .default_model(&self.session_harness())
                             .map(str::to_string)
                     });
-                self.pending_model = model.clone();
+                self.harness.pending_model = model.clone();
                 harness.new_session_with_roots(cwd, roots, model);
             }
             PendingRemoteSession::Load { session_id } => {
@@ -2050,10 +2118,10 @@ impl DunlinApp {
             },
             CommandItem {
                 command: Command::OpenFolder,
-                label: "Open Folder…".into(),
+                label: "Add Projects…".into(),
                 hint: Some("⌘O".into()),
                 icon: IconName::FolderOpen,
-                keywords: "add project workspace directory".into(),
+                keywords: "add project workspace directory folder import clone github repository filter".into(),
             },
             CommandItem {
                 command: Command::AddRemoteProject,
@@ -2110,17 +2178,6 @@ impl DunlinApp {
                 hint: Some("⌘⇧L".into()),
                 icon: IconName::Sun,
                 keywords: "appearance theme mode".into(),
-            },
-            CommandItem {
-                command: Command::ToggleMinimal,
-                label: if self.minimal_mode {
-                    "Disable Minimalist Mode".into()
-                } else {
-                    "Enable Minimalist Mode".into()
-                },
-                hint: None,
-                icon: IconName::Minimize2,
-                keywords: "focus distraction free explorer only hide rail usage status".into(),
             },
             CommandItem {
                 command: Command::RestartHarness,
@@ -2289,8 +2346,11 @@ impl DunlinApp {
                 if section == SidebarSection::Search {
                     let handle = self.search_input.read(cx).focus_handle(cx);
                     window.focus(&handle, cx);
-                } else if section == SidebarSection::SourceControl && !self.git_loading {
-                    self.refresh_git_status(cx);
+                } else if section == SidebarSection::SourceControl {
+                    self.open_git_history(window, cx);
+                    if !self.git_loading {
+                        self.refresh_git_status(cx);
+                    }
                 }
             }
             Command::Settings(tab) => {
@@ -2301,18 +2361,12 @@ impl DunlinApp {
             Command::AddRemoteProject => self.open_remote_picker(cx),
             Command::NewProjectGroup => self.open_new_group_prompt(None, window, cx),
             Command::ToggleSidebar => {
-                if !self.minimal_mode {
-                    self.sidebar_collapsed = !self.sidebar_collapsed;
-                    self.persist_settings(cx);
-                }
-            }
-            Command::ToggleTheme => {
-                toggle_mode(window, cx);
-                window.activate_window();
+                self.sidebar_collapsed = !self.sidebar_collapsed;
                 self.persist_settings(cx);
             }
-            Command::ToggleMinimal => {
-                self.toggle_minimal_mode();
+            Command::ToggleTheme => {
+                self.toggle_appearance(window, cx);
+                window.activate_window();
                 self.persist_settings(cx);
             }
             Command::NewSession => self.new_session(cx),
@@ -2419,28 +2473,9 @@ impl DunlinApp {
         cx.notify();
     }
 
-    /// Open the native macOS folder picker and add the chosen folder.
+    /// Choose local discovery or GitHub import in Dunlin's own explorer.
     pub(crate) fn open_folder(&mut self, cx: &mut Context<Self>) {
-        let receiver = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: true,
-            prompt: Some("Open project folders or a folder containing repositories".into()),
-        });
-        let receiver = self.overlay_backdrop.track_native(receiver, cx);
-
-        cx.spawn(async move |this, cx| {
-            if let Ok(Ok(Some(mut paths))) = receiver.await {
-                let _ = this.update(cx, |this, cx| {
-                    if paths.len() == 1 {
-                        this.add_project(paths.remove(0), cx);
-                    } else if !paths.is_empty() {
-                        this.import_local_folders(paths, cx);
-                    }
-                });
-            }
-        })
-        .detach();
+        self.open_project_import(cx);
     }
 
     /// Re-point a local project whose folder was moved or deleted.
@@ -3357,19 +3392,16 @@ impl DunlinApp {
             self.set_notice("Open a project first", cx);
             return;
         }
-        if self.harness.local_session_loading || self.harness.status.is_busy() {
+        if self.harness.local_session_loading || self.harness.session_metadata_pending || self.harness.status.is_busy() {
             self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
         let project_id = self.project().id.clone();
         if let Some(remote_project) = self.project().remote.clone() {
-            self.interrupt_live_turn(cx);
-            self.stash_transcript();
-            self.sessions
-                .retain(|session| !session.id.starts_with("pending-"));
-            self.all_sessions
-                .retain(|session| !session.id.starts_with("pending-"));
+            self.park_current_runtime(cx);
+            self.reset_mcp_for_navigation();
             let pending = SessionSummary {
+                workspace: Some(self.project().path.clone()),
                 id: format!("pending-{}", uuid::Uuid::now_v7()),
                 project_id,
                 title: "New session".into(),
@@ -3377,7 +3409,7 @@ impl DunlinApp {
                 harness: "Remote".into(),
                 model: "Auto".into(),
                 branch: None,
-                updated_at: "now".into(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
                 cost_usd: 0.0,
                 duration_secs: 0,
                 tokens: 0,
@@ -3390,6 +3422,7 @@ impl DunlinApp {
             self.sessions.push(pending.clone());
             self.all_sessions.push(pending.clone());
             self.selected_session = self.sessions.len() - 1;
+            self.restore_chat_ui();
             if let Some(context) = self.pending_group_context.take() {
                 self.group_contexts.insert(pending.id.clone(), context);
             }
@@ -3399,7 +3432,7 @@ impl DunlinApp {
             self.harness.running = false;
             self.selected_node = None;
             self.selected_span = None;
-            self.pending_remote_session = Some(PendingRemoteSession::New);
+            self.harness.pending_remote_session = Some(PendingRemoteSession::New);
             let group_roots = self.session_remote_roots();
 
             if !group_roots.is_empty() && self.harness.harness.is_some() {
@@ -3410,7 +3443,7 @@ impl DunlinApp {
                 self.disconnect_harness(cx);
             }
             if self.harness.status.is_ready() {
-                let action = self.pending_remote_session.take().unwrap();
+                let action = self.harness.pending_remote_session.take().unwrap();
                 self.start_remote_session(action, cx);
             } else if self.auto_connect && !self.harness.status.is_busy() {
                 self.connect_harness(cx);
@@ -3425,7 +3458,8 @@ impl DunlinApp {
         }
 
         let branch = self.project().branch.clone();
-        let session = blank_session(&project_id, &self.effective_harness(), branch);
+        let mut session = blank_session(&project_id, &self.effective_harness(), branch);
+        session.workspace = Some(self.project().path.clone());
         self.park_current_runtime(cx);
         self.reset_mcp_for_navigation();
         self.persist_session(&session);
@@ -3459,6 +3493,13 @@ impl DunlinApp {
         let Some(session) = self.sessions.get(index) else {
             return;
         };
+        self.request_delete_session_id(&session.id.clone(), cx);
+    }
+
+    pub(crate) fn request_delete_session_id(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(session) = self.all_sessions.iter().find(|s| s.id == id) else {
+            return;
+        };
         self.pending_delete = Some(PendingDelete::Session {
             id: session.id.clone(),
             title: session.title.clone(),
@@ -3486,11 +3527,8 @@ impl DunlinApp {
         cx.notify();
     }
 
-    pub(crate) fn request_discard_file(&mut self, path: &str, cx: &mut Context<Self>) {
-        self.pending_delete = Some(PendingDelete::DiscardFile {
-            path: path.to_string(),
-        });
-        cx.notify();
+    pub(crate) fn request_discard_file(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_git_action(dunlin_workspace::git::operations::Action::Discard { paths: vec![path.into()] }, window, cx);
     }
 
     pub(crate) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
@@ -3503,31 +3541,7 @@ impl DunlinApp {
             Some(PendingDelete::Session { id, .. }) => self.delete_session(&id, cx),
             Some(PendingDelete::Project { id, .. }) => self.delete_project(&id, cx),
             Some(PendingDelete::History { .. }) => self.clear_history(cx),
-            Some(PendingDelete::DiscardFile { path }) => self.discard_file(&path, cx),
             None => {}
-        }
-    }
-
-    fn discard_file(&mut self, path: &str, cx: &mut Context<Self>) {
-        if !self.guard_ai_commit_mutation(cx) {
-            return;
-        }
-        let backend = match self.backend() {
-            Ok(backend) => backend,
-            Err(error) => {
-                self.set_notice(error, cx);
-                return;
-            }
-        };
-        match backend.git_discard(path) {
-            Ok(()) => {
-                self.notice = Some(format!("Discarded changes in {path}"));
-                if self.inspector.as_ref().is_some_and(|i| i.path == path) {
-                    self.editor_stale = true;
-                }
-                self.refresh_git_status(cx);
-            }
-            Err(error) => self.set_notice(error, cx),
         }
     }
 
@@ -3587,14 +3601,15 @@ impl DunlinApp {
     }
 
     fn delete_session(&mut self, id: &str, cx: &mut Context<Self>) {
-        let Some(index) = self.sessions.iter().position(|session| session.id == id) else {
+        let Some(session) = self.all_sessions.iter().find(|session| session.id == id) else {
             return;
         };
+        let index = self.sessions.iter().position(|session| session.id == id);
         if self.harness.local_session_loading || self.harness.status.is_busy() {
             self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
-        let remote_origin = match &self.sessions[index].origin {
+        let remote_origin = match &session.origin {
             SessionOrigin::Remote { host_id } => Some(host_id.clone()),
             SessionOrigin::Local => None,
         };
@@ -3618,7 +3633,7 @@ impl DunlinApp {
             }
         }
 
-        let active = index == self.selected_session;
+        let active = index == Some(self.selected_session);
         self.stop_parked_runtime(id);
         if active && !self.project().is_remote() {
             self.disconnect_harness(cx);
@@ -3633,15 +3648,21 @@ impl DunlinApp {
             cx.notify();
             return;
         }
-        self.sessions.remove(index);
         self.all_sessions.retain(|session| session.id != id);
         self.group_contexts.remove(id);
         self.forget_transcript(id);
+        let Some(index) = index else {
+            self.notice = Some("Deleted session".into());
+            self.persist_settings(cx);
+            cx.notify();
+            return;
+        };
+        self.sessions.remove(index);
         let remote_project = self.project().is_remote();
         if self.sessions.is_empty() {
             if remote_project {
                 self.harness.transcript.clear();
-                self.pending_remote_session = Some(PendingRemoteSession::New);
+                self.harness.pending_remote_session = Some(PendingRemoteSession::New);
                 if self.auto_connect && !self.harness.status.is_busy() {
                     self.connect_harness(cx);
                 }
@@ -3659,6 +3680,13 @@ impl DunlinApp {
 
         if active && !self.sessions.is_empty() {
             let session = self.session().clone();
+            if self.restore_runtime(&session.id) {
+                self.refresh_providers(cx);
+                self.refresh_mcp(cx);
+                self.persist_settings(cx);
+                cx.notify();
+                return;
+            }
             if !session.origin.is_remote() {
                 if !self.restore_runtime(&session.id) {
                     self.load_transcript(&session.id);
@@ -3680,10 +3708,10 @@ impl DunlinApp {
                     .acp_session_id
                     .clone()
                     .unwrap_or_else(|| session.id.clone());
-                self.pending_remote_session =
+                self.harness.pending_remote_session =
                     Some(PendingRemoteSession::Load { session_id: acp_id });
                 if self.harness.status.is_ready() {
-                    let action = self.pending_remote_session.take().unwrap();
+                    let action = self.harness.pending_remote_session.take().unwrap();
                     self.start_remote_session(action, cx);
                 } else if self.auto_connect && !self.harness.status.is_busy() {
                     self.connect_harness(cx);
@@ -3764,7 +3792,7 @@ impl DunlinApp {
             self.sessions.clear();
             self.selected_project = 0;
             self.selected_session = 0;
-            self.pending_remote_session = None;
+            self.harness.pending_remote_session = None;
             self.remote_sessions_loading = false;
             self.close_inspector();
             self.diff_view = None;
@@ -4075,6 +4103,21 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.factory_resetting {
+            cx.stop_propagation();
+            return;
+        }
+        if event.keystroke.key == "escape" && !self.has_modal_overlay()
+            && (self.project_menu_open || self.context_menu.is_some() || self.remote_picker.is_some())
+        {
+            self.project_menu_open = false;
+            self.context_menu = None;
+            self.remote_picker = None;
+            self.focus_handle.focus(window, cx);
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         if self.group_settings_draft.is_some() {
             if event.keystroke.key == "escape" {
                 self.close_group_settings(cx);
@@ -4118,6 +4161,15 @@ impl DunlinApp {
         let platform = keystroke.modifiers.platform;
         let shift = keystroke.modifiers.shift;
 
+        if self.project_import.open {
+            if keystroke.key == "escape" {
+                self.project_import.dismiss();
+                cx.stop_propagation();
+                cx.notify();
+            }
+            return;
+        }
+
         if self.editor_conflict.is_some() {
             if keystroke.key.as_str() == "escape" {
                 self.cancel_editor_conflict(cx);
@@ -4148,7 +4200,7 @@ impl DunlinApp {
                     cx.stop_propagation();
                     return;
                 }
-                _ => {}
+                _ => return,
             }
         }
 
@@ -4156,6 +4208,13 @@ impl DunlinApp {
             self.queue_open = false;
             cx.stop_propagation();
             cx.notify();
+            return;
+        }
+
+        if self.pending_git_action.is_some() {
+            if keystroke.key == "escape" { self.cancel_git_action(window, cx); }
+            else if matches!(keystroke.key.as_str(), "tab" | "enter" | "space") { return; }
+            cx.stop_propagation();
             return;
         }
 
@@ -4279,6 +4338,10 @@ impl DunlinApp {
 
         if platform {
             let handled = match keystroke.key.as_str() {
+                "[" | "]" if !shift => {
+                    self.navigate_history(keystroke.key == "]", window, cx);
+                    true
+                }
                 "=" | "+" if matches!(self.view, MainView::Graph | MainView::Trace) => {
                     if self.view == MainView::Graph {
                         self.activity.graph_zoom = (self.activity.graph_zoom + 0.1).clamp(0.5, 1.8);
@@ -4332,11 +4395,9 @@ impl DunlinApp {
                     true
                 }
                 "b" => {
-                    if !self.minimal_mode {
-                        self.sidebar_collapsed = !self.sidebar_collapsed;
-                        self.persist_settings(cx);
-                        cx.notify();
-                    }
+                    self.sidebar_collapsed = !self.sidebar_collapsed;
+                    self.persist_settings(cx);
+                    cx.notify();
                     true
                 }
                 "," => {
@@ -4369,6 +4430,10 @@ impl DunlinApp {
                     self.focus_handle.focus(window, cx);
                     true
                 }
+                "w" if !self.workbench.show_file => {
+                    self.close_chat_tab(window, cx);
+                    true
+                }
                 "n" => {
                     self.new_session(cx);
                     true
@@ -4382,7 +4447,7 @@ impl DunlinApp {
                     true
                 }
                 "l" if shift => {
-                    toggle_mode(window, cx);
+                    self.toggle_appearance(window, cx);
                     window.activate_window();
                     self.persist_settings(cx);
                     cx.notify();
@@ -4522,16 +4587,49 @@ impl DunlinApp {
         cx.notify();
     }
 
+    pub(crate) fn set_app_active(&mut self, active: bool, cx: &mut Context<Self>) {
+        let returning = active && !self.app_active;
+        self.app_active = active;
+        if returning {
+            self.refresh_permissions(cx);
+            if self.projects.is_empty() {
+                self.harness_discovery = crate::harness_discovery::discover();
+            }
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
+        if self.permissions_refreshing {
+            return;
+        }
+        self.permissions_refreshing = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .spawn(async { crate::platform::refresh_permission_statuses() })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.permissions_refreshing = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub(crate) fn request_notifications(&mut self, cx: &mut Context<Self>) {
         self.notice = Some("Waiting for macOS notification permission…".into());
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async { crate::platform::request_notification_authorization() })
+                .spawn(async {
+                    let result = crate::platform::request_notification_authorization();
+                    crate::platform::refresh_permission_statuses();
+                    result
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                let _ = crate::platform::refresh_permission_statuses();
                 match result {
                     Ok(state) => this.set_notice(format!("Notifications: {}", state.label()), cx),
                     Err(error) => this.set_notice(error, cx),
@@ -4573,7 +4671,8 @@ impl DunlinApp {
             cx.notify();
             return;
         }
-        if index == self.selected_project {
+        // The first imported project also has index 0, but no workspace is loaded yet.
+        if index == self.selected_project && self.file_tree.root == self.projects[index].path {
             return;
         }
         self.cancel_ai_commit_preparation();
@@ -4616,7 +4715,7 @@ impl DunlinApp {
         self.selected_session = 0;
         self.harness.session_id = None;
         self.harness.commands.clear();
-        self.pending_remote_session = None;
+        self.harness.pending_remote_session = None;
 
         if let Some(remote_project) = project.remote.clone() {
             self.remote_sessions_loading = true;
@@ -4734,6 +4833,7 @@ impl DunlinApp {
             Ok(backend) => backend,
             Err(error) => {
                 self.file_tree.error = Some(error);
+                self.explorer.tree_loading = false;
                 cx.notify();
                 return;
             }
@@ -4744,6 +4844,8 @@ impl DunlinApp {
         let project = self.project().id.clone();
         self.explorer.tree_generation = self.explorer.tree_generation.wrapping_add(1);
         let generation = self.explorer.tree_generation;
+        self.explorer.tree_loading = true;
+        cx.notify();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
@@ -4758,6 +4860,9 @@ impl DunlinApp {
                 // populated tree, but do apply it when the current tree is
                 // empty; otherwise continuous edits can starve the explorer.
                 let current = this.explorer.tree_generation == generation;
+                if current {
+                    this.explorer.tree_loading = false;
+                }
                 match result {
                     Ok(mut tree) => {
                         if current || this.file_tree.entries.is_empty() {
@@ -5238,27 +5343,28 @@ impl DunlinApp {
         }
     }
 
-    /// Minimalist mode keeps the explorer visible and removes secondary chrome
-    /// (the section rail, account usage and agent/cost details in the footer).
-    pub(crate) fn set_minimal_mode(&mut self, enabled: bool) {
-        self.minimal_mode = enabled;
-        if enabled {
-            self.sidebar_collapsed = false;
-        }
+    pub(crate) fn set_appearance(&mut self, appearance: Appearance, window: &mut Window, cx: &mut Context<Self>) {
+        self.appearance = appearance;
+        cx.set_window_appearance(appearance.native());
+        dunlin_ui::theme::set_mode(appearance.mode(cx.window_appearance()), Some(window), cx);
+        self.persist_settings(cx);
+        cx.notify();
     }
 
-    pub(crate) fn toggle_minimal_mode(&mut self) {
-        self.set_minimal_mode(!self.minimal_mode);
+    pub(crate) fn toggle_appearance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let next = if cx.theme().is_dark() { Appearance::Light } else { Appearance::Dark };
+        self.set_appearance(next, window, cx);
     }
 
     /// Switch the primary surface, restarting the title-bar animation so the
     /// active tab visibly settles into place.
     pub(crate) fn set_view(&mut self, view: MainView, cx: &mut Context<Self>) {
+        self.ensure_chat_tab();
         self.git_history.active = false;
         self.spec.active = false;
         if matches!(
             self.section,
-            SidebarSection::Dashboard | SidebarSection::Security
+            SidebarSection::Dashboard | SidebarSection::Security | SidebarSection::SourceControl
         ) {
             self.section = SidebarSection::Projects;
         }
@@ -5284,6 +5390,7 @@ impl DunlinApp {
             restore_session: self.restore_session,
             word_wrap: self.word_wrap,
             editor_minimap: self.editor_minimap,
+            inline_blame: self.inline_blame,
             autosave: self.autosave,
             notifications_enabled: self.notifications_enabled,
             show_shortcut_hints: self.show_shortcut_hints,
@@ -5298,7 +5405,7 @@ impl DunlinApp {
             chat_duration: self.chat_duration,
             chat_logo: self.chat_logo,
             dark: cx.theme().is_dark(),
-            minimal_mode: self.minimal_mode,
+            appearance: Some(self.appearance),
             view: self.view,
             default_view: self.default_view,
             section: self.section,
@@ -5311,11 +5418,12 @@ impl DunlinApp {
                 .get(self.selected_session)
                 .map(|session| session.id.clone()),
             remote_hosts: self.remote_hosts.clone(),
+            watched_project_folders: self.watched_project_folders.clone(),
             collapsed_project_groups: self.collapsed_project_groups.clone(),
-            project_view: self.project_view,
             project_sort: self.project_sort,
             sidebar_width: self.sidebar_width,
             show_project_branches: self.show_project_branches,
+            project_list: self.project_list.clone(),
             sidebar_collapsed: self.sidebar_collapsed,
             opencode_provider: self.opencode_provider.clone(),
             recent_models: self.recent_models.clone(),
@@ -6012,14 +6120,18 @@ impl Render for DunlinApp {
         self.prepare_markdown_visual(window, cx);
         self.git_history.prune(&self.projects, &self.remote_hosts);
         self.spec.prune(&self.projects);
+        self.record_navigation();
         let tabs = &self.workbench.tabs;
         self.workbench
             .preview_cache
             .retain(|id| tabs.iter().any(|tab| tab.id == id));
         self.refresh_minimap(cx);
         self.refresh_inline_blame(cx);
+        if let Some(draft) = self.workbench.pending_chat_draft.take() {
+            self.composer.update(cx, |state, cx| state.set_value(draft, window, cx));
+        }
         let geometry = window_state::from_bounds(window.window_bounds());
-        if self.last_window_geometry != Some(geometry) {
+        if !self.factory_resetting && self.last_window_geometry != Some(geometry) {
             self.last_window_geometry = Some(geometry);
             window_state::save(geometry);
         }
@@ -6042,7 +6154,9 @@ impl Render for DunlinApp {
         }
         let p = palette(cx);
         let show_sidebar =
-            !self.projects.is_empty() && (self.minimal_mode || !self.sidebar_collapsed);
+            !self.projects.is_empty()
+                && self.section != SidebarSection::Dashboard
+                && !self.sidebar_collapsed;
         let (sidebar_fraction, moving) = self.sidebar_motion.sample(show_sidebar);
         if moving {
             let entity = cx.entity().downgrade();
@@ -6052,7 +6166,7 @@ impl Render for DunlinApp {
             window.request_animation_frame();
         }
         let titlebar = views::titlebar::render(self, window, cx);
-        let rail = (!self.minimal_mode).then(|| self.rail(cx));
+        let rail = Some(self.rail(cx));
         let sidebar = views::sidebar::render(self, window, cx);
         let main_panel = self.main_panel(window, cx);
         let dock =
@@ -6092,9 +6206,9 @@ impl Render for DunlinApp {
             Some(self.status_bar(cx))
         };
         let detached = crate::overlay_window::prepare(self, window, cx);
-        let overlays = (!detached && self.has_modal_overlay())
+        let overlays = (!detached && self.has_overlay())
             .then(|| self.render_overlay_content(window, cx));
-        let toast = (!self.has_modal_overlay())
+        let toast = (!self.has_overlay())
             .then(|| self.toast.as_ref().map(|_| self.toast_overlay(cx)))
             .flatten();
 
@@ -6108,7 +6222,13 @@ impl Render for DunlinApp {
             .font_family(dunlin_ui::theme::ui_font())
             .child(self.overlay_backdrop.begin())
             .track_focus(&self.focus_handle)
-            .on_action(
+            .on_action(cx.listener(|this, _: &crate::native_menu::Back, window, cx| {
+                this.navigate_history(false, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &crate::native_menu::Forward, window, cx| {
+                this.navigate_history(true, window, cx);
+            }))
+            .when(!self.factory_resetting, |root| root.on_action(
                 cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
                     if !this.dismiss_history_for_menu(cx) {
                         return;
@@ -6161,9 +6281,6 @@ impl Render for DunlinApp {
             )
             .on_action(
                 cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
-                    if this.minimal_mode {
-                        return;
-                    }
                     this.sidebar_collapsed = !this.sidebar_collapsed;
                     this.persist_settings(cx);
                     cx.notify();
@@ -6218,6 +6335,7 @@ impl Render for DunlinApp {
                         },
                     ))
                 },
+            )
             )
             .capture_key_down(cx.listener(Self::on_key_down))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
@@ -6380,6 +6498,13 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
     let confirmed = Rc::new(Cell::new(false));
     let prompting = Rc::new(Cell::new(false));
     let guard = Rc::new(RefCell::new(move |window: &mut Window, cx: &mut App| {
+        if handle.read_with(cx, |this, _| this.factory_resetting).unwrap_or(false) {
+            return false;
+        }
+        if handle.read_with(cx, |this, _| this.session_import.applying).unwrap_or(false) {
+            let _ = handle.update(cx, |this, cx| this.file_notice("Wait for the session import to finish before quitting", cx));
+            return false;
+        }
         let (dirty, busy, checkout) = handle
             .read_with(cx, |this, _| {
                 (
@@ -6405,6 +6530,11 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
             return false;
         }
 
+        let answers = if dirty {
+            vec![PromptButton::new("Save and Quit"), PromptButton::new("Discard and Quit"), PromptButton::cancel("Cancel")]
+        } else {
+            vec![PromptButton::cancel("Keep Running"), PromptButton::new("Quit Anyway")]
+        };
         let receiver = window.prompt(
             PromptLevel::Warning,
             if dirty {
@@ -6417,11 +6547,7 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
             } else {
                 "Save your edited file before quitting? Discarding cannot be undone."
             }),
-            if dirty {
-                &["Save and Quit", "Discard and Quit", "Cancel"]
-            } else {
-                &["Keep Running", "Quit Anyway"]
-            },
+            &answers,
             cx,
         );
         let backdrop = handle
@@ -6444,7 +6570,7 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
             if quit {
                 if handle
                     .read_with(cx, |this, _| {
-                        this.branch_ui.running() || this.git_history.running
+                        this.branch_ui.running() || this.git_history.running || this.session_import.applying
                     })
                     .unwrap_or(false)
                 {
@@ -6461,15 +6587,19 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
     window.on_window_should_close(cx, move |window, cx| (close_guard.borrow_mut())(window, cx));
     let window_handle = window.window_handle();
     App::on_action(cx, move |_: &Quit, cx| {
-        let result = window_handle.update(cx, |_, window, cx| {
-            if (guard.borrow_mut())(window, cx) {
+        // Global actions can arrive inside this window's dispatch borrow.
+        let guard = guard.clone();
+        cx.defer(move |cx| {
+            let result = window_handle.update(cx, |_, window, cx| {
+                if (guard.borrow_mut())(window, cx) {
+                    cx.quit();
+                }
+            });
+            if result.is_err() {
+                // The last window may already have been closed cleanly.
                 cx.quit();
             }
         });
-        if result.is_err() {
-            // The last window may already have been closed cleanly.
-            cx.quit();
-        }
     });
 }
 

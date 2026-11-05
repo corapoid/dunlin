@@ -83,6 +83,9 @@ chmod +x "$MACOS/$APP_NAME"
 cp LICENSE THIRD_PARTY_NOTICES.md "$RESOURCES/"
 cp licenses/Apache-2.0.txt "$RESOURCES/Apache-2.0.txt"
 cp assets/fonts/OFL.txt "$RESOURCES/Geist-OFL.txt"
+cp assets/fonts/Nerd-Fonts-LICENSE.txt "$RESOURCES/Nerd-Fonts-LICENSE.txt"
+cp assets/Simple-Icons-LICENSE.md "$RESOURCES/Simple-Icons-LICENSE.md"
+cp assets/harnesses/LICENSE.md "$RESOURCES/Harness-Marks-LICENSE.md"
 "$BIN" --syntax-notices > "$RESOURCES/Syntax-Notices.md"
 
 # Render the bundled SVG icon and expand it into an .icns.

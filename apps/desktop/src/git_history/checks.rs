@@ -93,7 +93,6 @@ impl DunlinApp {
         let v = self.git_history.view.as_mut().unwrap();
         v.hide_tools();
         v.context.visible = false;
-        v.github.visible = false;
         v.review.visible = false;
         v.checks.visible = true;
         match loaded {
@@ -339,8 +338,8 @@ impl DunlinApp {
             r.elapsed_ms,
             r.result,
             r.exit_code,
-            dunlin_workspace::github::display_text(&r.stdout, 30_000),
-            dunlin_workspace::github::display_text(&r.stderr, 30_000)
+            dunlin_workspace::checks::display_text(&r.stdout, 30_000),
+            dunlin_workspace::checks::display_text(&r.stderr, 30_000)
         );
         let old = self.composer.read(cx).value();
         if old.len() + evidence.len() > 100_000 {
@@ -472,7 +471,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     ),
             )
             .child(div().font_family("Menlo").text_size(px(11.)).child(
-                dunlin_workspace::github::display_text(
+                dunlin_workspace::checks::display_text(
                     &format!("STDOUT\n{}\nSTDERR\n{}", report.stdout, report.stderr),
                     40_000,
                 ),
