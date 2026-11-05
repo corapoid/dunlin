@@ -76,26 +76,11 @@ pub(crate) enum Metric {
     ChangedLines,
 }
 impl Metric {
-    pub const ALL: [Self; 3] = [Self::Requests, Self::Tokens, Self::ChangedLines];
     pub fn label(self) -> &'static str {
         match self {
             Self::Requests => "Requests",
             Self::Tokens => "Reported tokens",
             Self::ChangedLines => "Reported changed lines",
-        }
-    }
-    fn short_label(self) -> &'static str {
-        match self {
-            Self::Requests => "Requests",
-            Self::Tokens => "Tokens",
-            Self::ChangedLines => "Changed lines",
-        }
-    }
-    fn icon(self) -> IconName {
-        match self {
-            Self::Requests => IconName::MessageSquare,
-            Self::Tokens => IconName::ChartNoAxesColumn,
-            Self::ChangedLines => IconName::FileDiff,
         }
     }
 }
@@ -146,7 +131,7 @@ fn last_user_activity(items: &[ChatItem]) -> Option<u64> {
             ChatItem::User { at_ms, timing, .. } => Some(if *at_ms > 0 {
                 *at_ms
             } else {
-                timing.map(|t| t.started_at_ms).unwrap_or(0)
+                timing.as_ref().map(|t| t.started_at_ms).unwrap_or(0)
             }),
             _ => None,
         })
@@ -154,30 +139,6 @@ fn last_user_activity(items: &[ChatItem]) -> Option<u64> {
         .max()
 }
 
-/// Dashboard owns the titlebar's center slot, not the conversation view tabs.
-pub(crate) fn metric_switcher(
-    this: &DunlinApp,
-    compact: bool,
-    cx: &mut Context<DunlinApp>,
-) -> AnyElement {
-    let p = palette(cx);
-    segment_group(p)
-        .id("dashboard-metrics")
-        .flex_shrink_0()
-        .children(Metric::ALL.map(|candidate| {
-            let active = this.dashboard_settings.metric == candidate;
-            segment_button(format!("dashboard-metric:{candidate:?}"), candidate.short_label(), active)
-                .accessibility_label(format!("Show {} activity", candidate.label()))
-                .icon(candidate.icon())
-                .px(px(if compact { 6. } else { 9. }))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.dashboard_settings.metric = candidate;
-                    this.persist_settings(cx);
-                    cx.notify();
-                }))
-        }))
-        .into_any_element()
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct Settings {
@@ -948,6 +909,7 @@ mod tests {
                     elapsed_ms: None,
                     usage: None,
                     usage_before: None,
+                    speaker: None,
                 }),
             },
             ChatItem::AgentText {
@@ -1010,6 +972,7 @@ mod tests {
                     elapsed_ms: None,
                     usage: None,
                     usage_before: None,
+                    speaker: None,
                 }),
                 at_ms: 1_750_000_000_000,
             },

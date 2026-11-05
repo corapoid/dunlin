@@ -6,16 +6,23 @@ use crate::{
 };
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::{
-    Sizable,
+    Icon, Sizable,
     button::ButtonVariants,
     input::{EditorState, InputEvent},
 };
+use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::preview::{self, PreviewKind};
 use std::sync::Arc;
 
 const FILE_NOTICE_DURATION: std::time::Duration = std::time::Duration::from_millis(2500);
+fn tab_probe(name: &'static str) -> Option<AnyElement> {
+    #[cfg(debug_assertions)]
+    { crate::workspace_ui_smoke::probe(name) }
+    #[cfg(not(debug_assertions))]
+    { let _ = name; None }
+}
 
 fn preview_failure(path: &str, detail: Option<&str>) -> String {
     let name = std::path::Path::new(path)
@@ -50,6 +57,11 @@ pub(crate) struct State {
     pub active: Option<String>,
     pub show_file: bool,
     pub preview_cache: crate::file_preview::Cache,
+    pub closed_chats: std::collections::HashSet<String>,
+    pub chat_tabs: Vec<String>,
+    chat_drafts: std::collections::HashMap<String, String>,
+    chat_scrolls: std::collections::HashMap<String, crate::chat_scroll::ChatScroll>,
+    pub pending_chat_draft: Option<String>,
 }
 pub(crate) struct Tab {
     pub id: String,
@@ -76,6 +88,37 @@ pub(crate) struct Tab {
 }
 
 impl DunlinApp {
+    pub(crate) fn ensure_chat_tab(&mut self) {
+        let id = self.session().id.clone();
+        self.workbench.closed_chats.remove(&id);
+        if !self.workbench.chat_tabs.contains(&id) { self.workbench.chat_tabs.push(id); }
+    }
+
+    pub(crate) fn stash_chat_ui(&mut self, cx: &App) {
+        let id = self.session().id.clone();
+        let draft = self.workbench.pending_chat_draft.take().unwrap_or_else(|| self.composer.read(cx).value().to_string());
+        self.workbench.chat_drafts.insert(id.clone(), draft);
+        self.workbench.chat_scrolls.insert(id, std::mem::take(&mut self.chat_scroll));
+    }
+
+    pub(crate) fn rekey_chat_tab(&mut self, old: &str, new: &str) {
+        for id in self.project_session_selections.values_mut() { if id == old { *id = new.into(); } }
+        for id in &mut self.workbench.chat_tabs { if id == old { *id = new.into(); } }
+        if self.workbench.closed_chats.remove(old) { self.workbench.closed_chats.insert(new.into()); }
+        if let Some(draft) = self.workbench.chat_drafts.remove(old) { self.workbench.chat_drafts.insert(new.into(), draft); }
+        if let Some(scroll) = self.workbench.chat_scrolls.remove(old) { self.workbench.chat_scrolls.insert(new.into(), scroll); }
+    }
+
+    pub(crate) fn restore_chat_ui(&mut self) {
+        let id = self.session().id.clone();
+        self.workbench.pending_chat_draft = Some(self.workbench.chat_drafts.get(&id).cloned().unwrap_or_default());
+        self.chat_scroll = self.workbench.chat_scrolls.remove(&id).unwrap_or_default();
+        self.ensure_chat_tab();
+    }
+
+    pub(crate) fn activate_chat_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open_session_id(id, cx) { self.show_chat_tab(window, cx); }
+    }
     pub(crate) fn retained_buffer_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let tab = self.active_file_tab().filter(|t| t.git_changed)?;
         let p = palette(cx);
@@ -263,6 +306,32 @@ impl DunlinApp {
             .update(cx, |state, cx| state.focus(window, cx));
         cx.notify();
     }
+    pub(crate) fn close_chat_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let id = self.session().id.clone();
+        self.close_session_tab(&id, window, cx);
+    }
+
+    pub(crate) fn close_session_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let active = self.session().id == id && !self.workbench.show_file
+            && !self.git_history.is_active_for(self.project()) && !self.spec.is_active_for(self.project());
+        self.workbench.chat_tabs.retain(|tab| tab != id);
+        self.workbench.closed_chats.insert(id.to_string());
+        if !active { cx.notify(); return; }
+        if let Some(next) = self.workbench.chat_tabs.iter().rev().find(|tab| self.sessions.iter().any(|s| &s.id == *tab)).cloned() {
+            self.activate_chat_tab(&next, window, cx);
+            return;
+        }
+        if !self.workbench.show_file && !self.git_history.is_active_for(self.project()) && !self.spec.is_active_for(self.project()) {
+            if let Some(id) = self.workbench.tabs.iter().rev().find(|tab| tab.project == self.project().id).map(|tab| tab.id.clone()) {
+                self.activate_file_tab(&id, window, cx);
+            } else if self.git_history.is_open_for(self.project()) {
+                self.open_git_history(window, cx);
+            } else if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
+                self.open_spec_workspace(window, cx);
+            }
+        }
+        cx.notify();
+    }
     pub(crate) fn open_workbench_file(
         &mut self,
         path: &str,
@@ -358,7 +427,7 @@ impl DunlinApp {
             this.queue_markdown_preview(entity.entity_id(), cx);
             if this.editor.entity_id() == entity.entity_id()
                 && (this.editor_minimap
-                    || this.active_file_tab().is_some_and(|t| t.blame.enabled()))
+                    || this.inline_blame)
             {
                 cx.notify();
             }
@@ -691,9 +760,36 @@ impl DunlinApp {
     }
     pub(crate) fn render_workbench_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
-        let mut tabs = vec![document_tab("Chat")
-            .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx)))];
-        let mut selected = 0;
+        let mut tabs = Vec::new();
+        let mut selected = None;
+        for session in self.workbench.chat_tabs.iter().filter_map(|id| self.sessions.iter().find(|s| &s.id == id)) {
+            let current = session.id == self.session().id;
+            let id = session.id.clone();
+            let key_open = id.clone();
+            let close = id.clone();
+            let active = current && !self.workbench.show_file
+                && !self.git_history.is_active_for(self.project())
+                && !self.spec.is_active_for(self.project());
+            if active { selected = Some(tabs.len()); }
+            tabs.push(
+                document_tab(session.title.clone())
+                    .focusable()
+                    .tab_stop(true)
+                    .aria_label(format!("Open session {}", session.title))
+                    .relative().when(current, |tab| tab.children(tab_probe("chat-tab")))
+                    .prefix(Icon::new(IconName::MessageSquare).size(px(12.)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.activate_chat_tab(&id, window, cx)))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                            cx.stop_propagation(); this.activate_chat_tab(&key_open, window, cx);
+                        }
+                    }))
+                    .suffix(icon_button(format!("close-chat-tab:{close}"), IconName::X, format!("Close session tab {} without stopping its agent", session.title))
+                        .relative().when(current, |button| button.children(tab_probe("close-chat-tab")))
+                        .size(px(24.))
+                        .on_click(cx.listener(move |this, _, window, cx| { cx.stop_propagation(); this.close_session_tab(&close, window, cx); })))
+            );
+        }
         for tab in self
             .workbench
             .tabs
@@ -711,14 +807,16 @@ impl DunlinApp {
             } else {
                 tab.dirty
             };
-            if active { selected = tabs.len(); }
+            if active { selected = Some(tabs.len()); }
             tabs.push(
                 document_tab(format!("{}{}", tab.inspector.name, if dirty { " •" } else { "" }))
+                    .prefix(Icon::new(crate::file_icons::appearance(&tab.inspector.name, &p).0).size(px(13.)))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_file_tab(&id, window, cx)
                     }))
                     .suffix(
                         icon_button(format!("close-tab:{close}"), IconName::X, format!("Close {}", tab.inspector.name))
+                            .size(px(24.))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.request_close_tab(&close, window, cx);
@@ -727,13 +825,16 @@ impl DunlinApp {
             );
         }
         if self.git_history.is_open_for(self.project()) {
-            if self.git_history.is_active_for(self.project()) { selected = tabs.len(); }
+            if self.git_history.is_active_for(self.project()) { selected = Some(tabs.len()); }
             tabs.push(
                 document_tab(self.git_history.tab_label())
+                    .relative().children(tab_probe("git-history-tab"))
                     .aria_label("Git history tab")
                     .on_click(cx.listener(|this, _, window, cx| this.open_git_history(window, cx)))
                     .suffix(
                         icon_button("close-git-history-tab", IconName::X, "Close Git history")
+                            .relative().children(tab_probe("close-git-history-tab"))
+                            .size(px(24.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 let active = this.git_history.is_active_for(this.project());
@@ -746,7 +847,7 @@ impl DunlinApp {
             );
         }
         if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
-            if self.spec.is_active_for(self.project()) { selected = tabs.len(); }
+            if self.spec.is_active_for(self.project()) { selected = Some(tabs.len()); }
             tabs.push(
                 document_tab("Spec")
                     .aria_label("Spec workspace tab")
@@ -754,7 +855,8 @@ impl DunlinApp {
                         cx.listener(|this, _, window, cx| this.open_spec_workspace(window, cx)),
                     )
                     .suffix(
-                        icon_button("close-spec-workspace-tab", IconName::X, "Close Spec workspace")
+                        icon_button("close-spec-workspace-tab", IconName::X, "Close Spec")
+                            .size(px(24.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 let active = this.spec.is_active_for(this.project());
@@ -773,7 +875,11 @@ impl DunlinApp {
             .bg(p.panel)
             .border_b_1()
             .border_color(p.border)
-            .child(document_tabs("document-tabs").selected_index(selected).children(tabs).flex_1().min_w(px(0.)))
+            .child(document_tabs("document-tabs").children(tabs)
+                .when_some(selected, |tabs, selected| tabs.selected_index(selected))
+                .flex_1().min_w(px(0.)))
+            .child(icon_button("new-chat-tab", IconName::Plus, "New session tab · ⌘N")
+                .on_click(cx.listener(|this, _, _, cx| this.new_session(cx))))
             .when(
                 self.workbench
                     .tabs
@@ -781,12 +887,20 @@ impl DunlinApp {
                     .any(|tab| tab.project == self.project().id),
                 |bar| {
                     bar.child(
-                        dunlin_ui::button("close-all-file-tabs").ghost()
-                            .accessibility_label("Close all file tabs, keep Chat")
-                            .icon(IconName::X).label("Close all")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.request_close_all_file_tabs(window, cx)
-                            })),
+                        dunlin_ui::button("document-tabs-menu").ghost()
+                            .icon(IconName::Ellipsis).accessibility_label("Document tab menu")
+                            .dropdown_menu_with_anchor(Anchor::BottomRight, {
+                                let app = cx.entity().downgrade();
+                                let project = self.project().id.clone();
+                                move |menu, _, _| {
+                                    let app = app.clone(); let project = project.clone();
+                                    menu.item(PopupMenuItem::new("Close all file tabs").on_click(move |_, window, cx| {
+                                        if let Some(app) = app.upgrade() { app.update(cx, |this, cx| {
+                                            if this.project().id == project { this.request_close_all_file_tabs(window, cx); }
+                                        }); }
+                                    }))
+                                }
+                            }),
                     )
                 },
             )

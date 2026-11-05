@@ -194,6 +194,7 @@ pub(crate) fn remote_session_summary(
     host_id: &str,
 ) -> SessionSummary {
     SessionSummary {
+        workspace: None,
         id: row.id.clone(),
         project_id: project_id.to_string(),
         title: row.title.clone(),
@@ -201,7 +202,7 @@ pub(crate) fn remote_session_summary(
         harness: "Remote".into(),
         model: "Auto".into(),
         branch: None,
-        updated_at: relative_epoch(row.updated_at),
+        updated_at: chrono::DateTime::from_timestamp(row.updated_at, 0).map(|d| d.to_rfc3339()).unwrap_or_default(),
         cost_usd: 0.0,
         duration_secs: 0,
         tokens: 0,
@@ -232,23 +233,6 @@ pub(crate) fn format_session_date(value: &str) -> String {
     }
 }
 
-pub(crate) fn relative_epoch(epoch: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0);
-    let delta = (now - epoch).max(0);
-    if delta < 60 {
-        "now".into()
-    } else if delta < 3_600 {
-        format!("{}m ago", delta / 60)
-    } else if delta < 86_400 {
-        format!("{}h ago", delta / 3_600)
-    } else {
-        format!("{}d ago", delta / 86_400)
-    }
-}
-
 pub(crate) fn metadata_mtime_ms(metadata: &fs::Metadata) -> u64 {
     metadata
         .modified()
@@ -273,6 +257,7 @@ pub(crate) fn blank_session(
     branch: Option<String>,
 ) -> SessionSummary {
     SessionSummary {
+        workspace: None,
         id: format!("ses-{}", uuid::Uuid::now_v7()),
         project_id: project_id.to_string(),
         title: "New session".into(),
@@ -280,7 +265,7 @@ pub(crate) fn blank_session(
         harness: harness.to_string(),
         model: "Auto".into(),
         branch,
-        updated_at: "now".into(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
         cost_usd: 0.0,
         duration_secs: 0,
         tokens: 0,

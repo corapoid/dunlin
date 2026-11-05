@@ -44,8 +44,8 @@ impl DunlinApp {
             .update(cx, |s, cx| s.set_value(oid, window, cx));
         self.open_git_overview(cx);
     }
-    fn git_operation_guard(&self, project: &Project, action: &Action) -> Result<(), String> {
-        if !self.projects.iter().any(|p| owns(project, p)) || self.project().id != project.id {
+    pub(crate) fn git_operation_guard(&self, project: &Project, action: &Action) -> Result<(), String> {
+        if !self.projects.iter().any(|p| owns(project, p)) || (self.project().id != project.id && !matches!(action, Action::Switch { .. })) {
             return Err("Project changed; reopen repository state".into());
         }
         if self.git_history.running
@@ -195,6 +195,21 @@ impl DunlinApp {
         };
         let backend = view.backend.clone();
         view.mutations.pending = None;
+        self.run_prepared_git_action(id, project, backend, prepared, cx);
+    }
+    pub(crate) fn run_prepared_git_action(
+        &mut self,
+        id: uuid::Uuid,
+        project: Project,
+        backend: WorkspaceBackend,
+        prepared: Prepared,
+        cx: &mut Context<Self>,
+    ) {
+        let switched_branch = match &prepared.plan.action {
+            Action::Switch { branch, .. } => Some(branch.clone()),
+            _ => None,
+        };
+        if switched_branch.is_some() { self.branch_ui.begin(id, project.id.clone()); }
         let tabs = self
             .workbench
             .tabs
@@ -240,7 +255,18 @@ impl DunlinApp {
                 this.git_history.mutation_global=false;
                 this.git_history.mutation_project=None;
                 this.finish_git_mutation(&project.id);
+                this.branch_ui.finish(id);
                 this.repo_summaries.invalidate();
+                if result.as_ref().is_ok_and(|outcome| outcome.success) && let Some(branch) = switched_branch {
+                    if let Some(current) = this.projects.iter_mut().find(|p| owns(&project, p)) {
+                        current.branch = Some(branch);
+                        let current = current.clone();
+                        if let Some(store) = &this.store && let Err(error) = store.upsert_project(&current) {
+                            this.report_storage_error("save branch selection", error);
+                        }
+                    }
+                    this.repo_summaries.values.remove(&project.id);
+                }
                 for (id,owner,root,path,old,changed) in files {
                     if let Some(tab)=this.workbench.tabs.iter_mut().find(|t|t.id==id && t.project==owner && t.root==root && t.inspector.path==path) {
                         tab.blame.invalidate();tab.minimap.invalidate_baseline();tab.git_changed=changed;
@@ -253,8 +279,10 @@ impl DunlinApp {
                     }
                 }
                 if this.projects.iter().any(|p|owns(&project,p)) && this.project().id==project.id {
+                    this.diff_view = None;
                     this.refresh_file_tree(cx);
                     this.refresh_git_status(cx);
+                    this.invalidate_project_icon();
                     this.invalidate_minimap_baselines();
                     if this.workbench.show_file && let Some(tab)=this.active_file_tab() {this.editor_conflict=tab.conflict.clone();}
                 }

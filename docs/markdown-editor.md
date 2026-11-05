@@ -133,7 +133,7 @@ cannot attach an old preview. Closing/Raw switching discards panel state; in-fli
 bounded I/O may finish, but cannot restore the panel.
 
 **Open link…** opens relative files inside the workbench. HTTP(S) links require a
-native confirmation before opening a browser. Credentials, unsafe schemes, rooted
+themed in-app confirmation before opening a browser. Credentials, unsafe schemes, rooted
 paths, traversal outside the project, encoded separators and double encoding are
 rejected. External images, `file:`, `data:` and executable document content never load.
 

@@ -7,9 +7,11 @@ use crate::effects::menu_item;
 use dunlin_domain::*;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
-use dunlin_ui::component::{Disableable, Selectable, button::ButtonVariants};
+use dunlin_ui::component::{Disableable, Selectable};
+use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::component::input::Input;
-use dunlin_ui::component::menu::{ContextMenuExt, PopupMenu};
+use dunlin_ui::component::menu::{ContextMenuExt, PopupMenu, DropdownMenu, PopupMenuItem};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -23,13 +25,7 @@ pub(crate) fn render(
     _window: &mut Window,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
-    // Minimalist mode exposes only the file explorer; other sections and the
-    // account-usage footer stay out of the way until the mode is turned off.
-    let section = if this.minimal_mode {
-        SidebarSection::Files
-    } else {
-        this.section
-    };
+    let section = this.section;
     let body = match section {
         SidebarSection::Dashboard => projects_body(this, cx),
         SidebarSection::Projects => projects_body(this, cx),
@@ -43,8 +39,7 @@ pub(crate) fn render(
         SidebarSection::Sessions => sessions_body(this, cx),
     };
     let header = section_header(this, section, cx);
-    let footer = (!this.minimal_mode).then(|| usage_footer(this, cx));
-    let menu = this.project_menu_open.then(|| project_menu(this, cx));
+    let footer = Some(usage_footer(this, cx));
 
     let width =
         crate::sidebar_layout::width(this.sidebar_width, f32::from(_window.viewport_size().width));
@@ -65,7 +60,7 @@ pub(crate) fn render(
     } else {
         scroll.into_any_element()
     };
-    let mut root = div()
+    let root = div()
         .relative()
         .w(px(width))
         .h_full()
@@ -73,34 +68,33 @@ pub(crate) fn render(
         .flex()
         .flex_col()
         .pr(px(8.))
-        .child(project_switcher(this, cx))
         .child(header)
         .child(scroll)
         .children(footer)
         .child(crate::sidebar_layout::handle(this, cx));
 
-    if let Some(menu) = menu {
-        root = root.child(menu);
-    }
+    #[cfg(debug_assertions)]
+    let root = root.children(crate::workspace_ui_smoke::probe("sidebar"));
     root.into_any_element()
 }
 
-fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let project = this.project();
-    let tone = tone_color(&p, project.tone);
-    let running = this.running_sessions_for(&project.id);
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
 
     action_row("project-switcher", format!("Switch project: {}", project.name))
         .toggled(this.project_menu_open)
-        .border_b_1()
-        .border_color(p.border)
+        .h(px(30.))
+        .max_w(px(310.))
+        .flex_shrink_0()
+        .px(px(10.))
+        .rounded(px(6.))
         .on_click(cx.listener(|this, _, _, cx| {
             this.project_menu_open = !this.project_menu_open;
             cx.notify();
         }))
-        .child(crate::project_icons::render(this, project, 28., &p))
+        .child(crate::project_icons::render(this, project, 20., &p))
         .child(
             div()
                 .flex_1()
@@ -128,32 +122,6 @@ fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                                     .text_color(p.amber),
                             )
                         }),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .truncate()
-                        .child(project.path_tail().to_string()),
-                ),
-        )
-        .child(
-            div()
-                .h(px(19.))
-                .px(px(6.))
-                .rounded(px(5.))
-                .bg(p.muted)
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .child(dot(tone, 4.5))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .child(format!("{running} live")),
                 ),
         )
         .child(
@@ -192,6 +160,7 @@ fn section_header(
             .flex()
             .items_center()
             .gap(px(2.))
+            .child(crate::inline_blame::toggle(this, cx))
             .child(
                 icon_button("refresh-explorer", IconName::RefreshCw, "Refresh explorer")
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -273,6 +242,7 @@ fn section_header(
 
 fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     this.refresh_project_summaries(cx);
+    this.refresh_project_catalog(cx);
     let p = palette(cx);
     let mut list = div().flex().flex_col().gap(px(2.)).px(px(6.)).pb(px(10.));
     let dragging = cx.has_active_drag();
@@ -310,7 +280,8 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         list = list.child(div().h(px(1.)).my(px(6.)).bg(p.border));
     }
     list = list.child(project_view_controls(this, cx, &p));
-    if this.project_view == crate::project_tree::View::Tree {
+    list = list.child(project_filters(this, cx, &p));
+    {
         for (index, depth) in crate::project_tree::visible_groups(
             &groups,
             &this.projects,
@@ -323,7 +294,7 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .projects
                 .iter()
                 .enumerate()
-                .filter(|(_, p)| !p.is_chat_space() && p.group_id.as_deref() == Some(&group.id))
+                .filter(|(_, p)| !p.is_chat_space() && p.group_id.as_deref() == Some(&group.id) && crate::project_catalog::matches(this, p))
                 .map(|(i, _)| i)
                 .collect();
             crate::project_tree::sort_projects(
@@ -343,15 +314,18 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .is_some_and(|id| descendants.contains(id))
                 })
                 .count();
+            let any_match = this.projects.iter().any(|p| !p.is_chat_space() && p.group_id.as_ref().is_some_and(|id| descendants.contains(id)) && crate::project_catalog::matches(this, p));
+            if !any_match && ((this.project_list.show_language && this.project_catalog.language.is_some()) || (this.project_list.show_topics && this.project_catalog.topic.is_some())) { continue; }
             let collapsed = this.collapsed_project_groups.contains(&group.id);
             let mut section =
                 project_group_drop_zone(Some(group.id.clone()), &group.name, dragging, cx, &p)
                     .ml(px(depth.min(8) as f32 * 12.))
-                    .child(group_header(group, &groups, count, collapsed, cx, &p));
+                    .child(group_header(this, group, &groups, count, collapsed, cx, &p));
             for index in indices.into_iter().filter(|_| !collapsed) {
-                section = section.child(project_row(this, index, cx, &p));
+                section = section.child(div().ml(px(24.)).child(project_row(this, index, cx, &p)));
+                section = section.child(div().ml(px(24.)).child(project_sessions(this, index, cx, &p)));
                 if this.project_group_editor == Some(index) {
-                    section = section.child(project_group_picker(this, index, cx, &p));
+                    section = section.child(div().ml(px(24.)).child(project_group_picker(this, index, cx, &p)));
                 }
             }
             list = list.child(section);
@@ -363,8 +337,8 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .enumerate()
         .filter(|(_, p)| {
             !p.is_chat_space()
-                && (this.project_view == crate::project_tree::View::List
-                    || p.group_id
+                && crate::project_catalog::matches(this, p)
+                && (p.group_id
                         .as_ref()
                         .is_none_or(|id| !groups.iter().any(|g| &g.id == id)))
         })
@@ -375,18 +349,7 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         let mut section = project_group_drop_zone(None, "Top level", dragging, cx, &p);
         for index in indices {
             section = section.child(project_row(this, index, cx, &p));
-            if this.project_view == crate::project_tree::View::List
-                && let Some(id) = &this.projects[index].group_id
-            {
-                section = section.child(
-                    div()
-                        .pl(px(40.))
-                        .pb(px(4.))
-                        .text_size(px(10.))
-                        .text_color(p.muted_fg)
-                        .child(crate::project_tree::group_path(&groups, id)),
-                );
-            }
+            section = section.child(project_sessions(this, index, cx, &p));
             if this.project_group_editor == Some(index) {
                 section = section.child(project_group_picker(this, index, cx, &p));
             }
@@ -396,23 +359,90 @@ fn projects_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     list.into_any_element()
 }
 
-fn project_view_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>, _p: &Palette) -> AnyElement {
-    let mut row = div().flex().items_center().gap(px(3.)).pb(px(6.));
-    for (label, view) in [
-        ("List", crate::project_tree::View::List),
-        ("Tree", crate::project_tree::View::Tree),
-    ] {
-        row = row.child(
-            segment_button(format!("project-view:{label}"), label, this.project_view == view)
-                .accessibility_label(format!("Show projects as {label}"))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.project_view = view;
-                    this.persist_settings(cx);
-                    cx.notify();
-                })),
-        );
+fn project_filters(this: &DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    let mut row = div().flex().flex_wrap().items_center().gap(px(5.)).pb(px(5.));
+    if this.project_list.show_language {
+        let owner = cx.entity().downgrade();
+        row = row.child(dunlin_ui::button("project-language-filter").ghost()
+            .label(this.project_catalog.language.clone().unwrap_or_else(|| "All languages".into())).dropdown_caret(true)
+            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
+                let Some(app) = owner.upgrade() else { return menu; };
+                let this = app.read(cx);
+                for language in std::iter::once(None).chain(crate::project_catalog::languages(this).into_iter().map(Some)) {
+                    let app = owner.clone();
+                    menu = menu.item(PopupMenuItem::new(language.clone().unwrap_or_else(|| "All languages".into()))
+                        .checked(this.project_catalog.language == language)
+                        .on_click(move |_, _, cx| { let _ = app.update(cx, |this, cx| { this.project_catalog.language = language.clone(); cx.notify(); }); }));
+                }
+                menu.scrollable(true).max_h(px(320.))
+            }));
     }
-    row.child(div().flex_1())
+    if this.project_list.show_topics && let Some(topic) = &this.project_catalog.topic {
+        row = row.child(dunlin_ui::button("project-topic-clear").ghost().label(format!("#{topic} ×"))
+            .on_click(cx.listener(|this, _, _, cx| { this.project_catalog.topic = None; cx.notify(); })));
+    }
+    row.text_color(p.muted_fg).into_any_element()
+}
+
+fn project_sessions(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    let project = &this.projects[index];
+    let live = this.live_agents();
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut sessions: Vec<_> = this.all_sessions.iter().filter(|session| {
+        let running = live.iter().any(|(owner, id, _)| owner == &project.id && id == &session.id);
+        session.project_id == project.id && (running || this.session_visible(session)) && crate::project_tree::show_session(
+            &session.updated_at, running,
+            this.project_sessions_running_only, now,
+        )
+    }).collect();
+    if sessions.is_empty() {
+        return div().into_any_element();
+    }
+    sessions.sort_by(|a, b| {
+        let running = |id: &str| live.iter().any(|(_, session, _)| session == id);
+        let time = |s: &SessionSummary| chrono::DateTime::parse_from_rfc3339(&s.updated_at).map(|d| d.timestamp_millis()).unwrap_or(0);
+        running(&b.id).cmp(&running(&a.id)).then_with(|| time(b).cmp(&time(a)))
+    });
+    let mut rows = div().ml(px(25.)).pl(px(8.)).border_l_1().border_color(p.border).mb(px(6.));
+    #[cfg(debug_assertions)]
+    { rows = rows.relative().children(crate::workspace_ui_smoke::probe("project-sessions")); }
+    for session in sessions {
+        let id = session.id.clone(); let owner = project.id.clone();
+        let status = live.iter().find(|(_, id, _)| id == &session.id).map(|(_, _, label)| *label);
+        let root = this.parked_runtimes.get(&session.id).map(|r| r.root.as_str())
+            .or(session.workspace.as_deref());
+        let workspace = root.map(|path| std::path::Path::new(path).file_name().unwrap_or_default().to_string_lossy().into_owned())
+            .unwrap_or_else(|| "workspace not recorded".into());
+        rows = rows.child(div().id(format!("project-session:{}", session.id))
+            .aria_label(format!("{} · {} · {}", session.title, session.branch.as_deref().unwrap_or("branch not recorded"), workspace))
+            .px(px(6.)).py(px(dunlin_ui::scale::space(5.))).rounded(px(6.)).cursor_pointer().hover(move |s| s.bg(p.hover))
+            .when(this.project().id == project.id && this.session().id == session.id, |r| r.bg(p.accent))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                if this.all_sessions.iter().any(|s| s.id == id && s.project_id == owner)
+                    && this.open_session_id(&id, cx) { this.show_chat_tab(window, cx); }
+            }))
+            .child(div().flex().items_center().gap(px(5.))
+                .child(div().size(px(5.)).rounded_full().bg(if status.is_some() { p.green } else { p.muted_fg }))
+                .child(div().flex_1().min_w(px(0.)).truncate().text_size(px(11.)).child(session.title.clone())))
+            .child(div().text_size(px(9.5)).text_color(p.muted_fg).truncate()
+                .child(format!("{} · {} · {}", session.harness, status.unwrap_or("Recent"), session.branch.as_deref().unwrap_or("branch not recorded"))))
+            .child(div().text_size(px(9.5)).text_color(p.muted_fg).truncate().child(workspace)));
+    }
+    rows.into_any_element()
+}
+
+fn project_view_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    let row = div().flex().items_center().gap(px(3.)).pb(px(6.));
+    row.child(
+        div().id("project-sessions-filter").aria_label("Toggle running sessions only")
+            .px(px(6.)).py(px(4.)).rounded(px(5.)).text_size(px(10.))
+            .text_color(if this.project_sessions_running_only { p.blue } else { p.muted_fg })
+            .cursor_pointer().hover(move |s| s.bg(p.hover))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.project_sessions_running_only = !this.project_sessions_running_only; cx.notify();
+            }))
+            .child(if this.project_sessions_running_only { "Running only" } else { "Running + 8h" })
+    ).child(div().flex_1())
         .child(
             dunlin_ui::button("project-sort").ghost()
                 .accessibility_label("Switch project sorting: name ascending or modification date descending; pinned projects stay first")
@@ -460,7 +490,7 @@ fn projects_context(
         );
         let open = app.clone();
         menu = menu.item(
-            menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Open local folders…")).on_click(
+            menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Add projects…")).on_click(
                 move |_, _, cx| {
                     let _ = open.update(cx, |this, cx| this.open_folder(cx));
                 },
@@ -584,6 +614,7 @@ fn project_group_drop_zone(
 }
 
 fn group_header(
+    this: &DunlinApp,
     group: &ProjectGroup,
     groups: &[ProjectGroup],
     count: usize,
@@ -592,10 +623,10 @@ fn group_header(
     p: &Palette,
 ) -> AnyElement {
     let id = group.id.clone();
-    let rename_id = group.id.clone();
+    let settings_id = group.id.clone();
     let agent_id = group.id.clone();
+    let appearance_id = group.id.clone();
     let name = group.name.clone();
-    let tone = tone_color(p, group.tone);
 
     let menu_id = group.id.clone();
     let drag = crate::project_groups::GroupDrag {
@@ -610,7 +641,7 @@ fn group_header(
         .rounded(px(6.))
         .flex()
         .gap(px(5.))
-        .child(div().id(format!("group-collapse-{}", group.id)).h(px(29.)).flex().items_center().gap(px(5.)).cursor_pointer().rounded(px(5.)).hover(move |style| style.bg(p.hover)).on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
+        .child(div().id(format!("group-collapse-{}", group.id)).h(px(dunlin_ui::scale::control(29.))).flex().items_center().gap(px(5.)).cursor_pointer().rounded(px(5.)).hover(move |style| style.bg(p.hover)).on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
         .on_click(cx.listener(move |this, _, _, cx| {
             this.toggle_project_group(&id, cx);
         }))
@@ -623,7 +654,9 @@ fn group_header(
             .size(px(11.))
             .text_color(p.muted_fg),
         )
-        .child(div().size(px(6.)).rounded_full().bg(tone))
+        .child(div().id(format!("group-appearance:{}", group.id)).aria_label("Change group color and icon").size(px(24.)).flex().items_center().justify_center().cursor_pointer()
+            .on_click(cx.listener(move |this, _, window, cx| { cx.stop_propagation(); this.open_group_settings(&appearance_id, window, cx); }))
+            .child(crate::project_icons::render_group(this, group, 15., p)))
         .child(
             div()
                 .flex_1()
@@ -649,10 +682,17 @@ fn group_header(
                 .tooltip("Start one group conversation, including subgroups. No request is sent until you write a message."),
         )
         .child(
-            icon_button(format!("project-group-rename-{}", group.id), IconName::Pencil, "Rename project group")
+            icon_button(format!("project-group-settings-{}", group.id), IconName::Settings2, "Group settings · color and image")
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    { crate::workspace_ui_smoke::probe("group-settings-button") }
+                    #[cfg(not(debug_assertions))]
+                    { None::<AnyElement> }
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
-                    this.open_rename_group_prompt(&rename_id, window, cx);
+                    this.open_group_settings(&settings_id, window, cx);
                 })),
         ));
     projects_context(header, Some(menu_id), groups.to_vec(), cx).into_any_element()
@@ -790,7 +830,10 @@ fn project_row(
     let editing = this.project_group_editor == Some(index);
     let meta = {
         let monorepo = crate::local_projects::monorepo_badge(this, project, p);
-        let languages = crate::local_projects::language_badge(this, project, p);
+        let languages = if this.project_list.show_language {
+            crate::local_projects::language_badge(this, project, p).or_else(|| crate::project_catalog::primary_language(this, project)
+                .map(|name| div().text_size(px(9.5)).text_color(p.muted_fg).child(name).into_any_element()))
+        } else { None };
         if monorepo.is_none() && languages.is_none() {
             None
         } else {
@@ -808,14 +851,15 @@ fn project_row(
         }
     };
 
-    div()
+    let row = div()
         .id(("project-row", index))
-        .h(px(46.))
+        .min_h(px(dunlin_ui::scale::control(46.)))
+        .py(px(dunlin_ui::scale::space(5.)))
         .px(px(8.))
         .rounded(px(8.))
         .flex()
         .items_center()
-        .gap(px(8.))
+        .gap(px(dunlin_ui::scale::space(8.)))
         .cursor_pointer()
         .on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
         .when(active, |this| {
@@ -849,10 +893,12 @@ fn project_row(
                         .gap(px(5.))
                         .child(
                             div()
+                                .flex_1().min_w(px(0.))
                                 .text_size(px(12.5))
-                                .font_weight(FontWeight::MEDIUM)
+                                .font_weight(FontWeight::NORMAL)
                                 .text_color(p.fg)
-                                .truncate()
+                                .when(!this.project_list.wrap_names, |name| name.truncate())
+                                .when(this.project_list.wrap_names, |name| name.whitespace_normal())
                                 .child(name),
                         )
                         .when(pinned, |this| {
@@ -929,8 +975,32 @@ fn project_row(
                     };
                     cx.notify();
                 })),
-        )
-        .into_any_element()
+        );
+    #[cfg(debug_assertions)]
+    let row = row.relative().when(active, |row| row.children(crate::workspace_ui_smoke::probe("active-project-row")));
+    let row = crate::project_catalog::attach_preview(row, this, project, cx);
+    let mut entry = div().flex().flex_col().child(row);
+    if this.project_list.show_topics {
+        let topics = crate::project_catalog::topics(this, project);
+        if !topics.is_empty() {
+            let mut tags = div().pl(px(42.)).pb(px(dunlin_ui::scale::space(5.))).flex().flex_wrap().gap(px(4.));
+            for topic in topics {
+                let selected = this.project_catalog.topic.as_ref() == Some(&topic);
+                tags = tags.child(dunlin_ui::button(format!("project-topic:{}:{topic}", project.id))
+                    .bg(if selected { p.blue_soft } else { p.card }).border_1()
+                    .border_color(if selected { p.blue } else { p.border_strong })
+                    .text_color(if selected { p.blue } else { p.fg })
+                    .label(format!("#{topic}"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.project_catalog.topic = if this.project_catalog.topic.as_ref() == Some(&topic) { None } else { Some(topic.clone()) };
+                        cx.notify();
+                    })));
+            }
+            entry = entry.child(tags);
+        }
+    }
+    entry.into_any_element()
 }
 
 fn project_group_picker(
@@ -1039,7 +1109,7 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .id("explorer-project-root")
             .mx(px(6.))
             .px(px(7.))
-            .h(px(26.))
+            .h(px(dunlin_ui::scale::control(26.)))
             .flex()
             .items_center()
             .gap(px(5.))
@@ -1102,7 +1172,11 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .p(px(9.))
                 .text_size(px(11.0))
                 .text_color(p.muted_fg)
-                .child("Loading files…"),
+                .child(if this.explorer.tree_loading {
+                    "Loading files…"
+                } else {
+                    "No files to show"
+                }),
         );
     } else {
         root = root.children(rows);
@@ -1144,7 +1218,7 @@ fn file_rows(
 
         let mut row = div()
             .id(format!("file-row:{path}"))
-            .h(px(24.))
+            .h(px(dunlin_ui::scale::control(24.)))
             .pl(px(7. + depth as f32 * 13.))
             .pr(px(8.))
             .flex()
@@ -1489,6 +1563,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     let loading = this.git_loading;
     let error = this.git.error.clone();
     let change_count = changes.len();
+    let commit_enabled = preparing || change_count > 0;
 
     let header = div()
         .mx(px(6.))
@@ -1512,12 +1587,6 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                     "source-control-branch-picker",
                     cx,
                 ))
-                .child(
-                    icon_button("open-git-history", IconName::Waypoints, "Open branch graph and history")
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_git_history(window, cx)),
-                        ),
-                )
                 .child(div().flex_1())
                 .child(
                     icon_button("git-refresh", if loading { IconName::LoaderCircle } else { IconName::RefreshCw }, "Refresh source control")
@@ -1559,6 +1628,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         })
         .child(
             dunlin_ui::button("commit-button").primary().icon(IconName::GitCommitHorizontal)
+                .disabled(!commit_enabled)
                 .label(if preparing { "Cancel preparation" } else if ai { "Commit on AI" } else { "Commit staged" })
                 .on_click(cx.listener(|this, _, window, cx| {
                     if this.ai_commit_preparing() {
@@ -1609,6 +1679,24 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                     .on_click(cx.listener(|this, _, _, cx| this.stage_all_changes(cx))),
             ),
     );
+
+    if !changes.is_empty() {
+        let mut actions = div().px(px(12.)).py(px(5.)).flex().flex_wrap().gap(px(12.));
+        for (label, action) in [
+            ("Unstage all", dunlin_workspace::git::operations::Action::UnstageAll),
+            ("Discard all changes", dunlin_workspace::git::operations::Action::Discard {
+                paths: changes.iter().map(|c| c.path.clone()).collect::<std::collections::BTreeSet<_>>().into_iter().collect(),
+            }),
+        ] {
+            let owner = this.project().id.clone();
+            actions = actions.child(div().id(format!("source-control:{label}")).text_size(px(11.))
+                .text_color(if label.starts_with("Discard") { p.red } else { p.blue }).cursor_pointer().child(label)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if this.project().id == owner { this.request_git_action(action.clone(), window, cx); }
+                })));
+        }
+        list = list.child(actions);
+    }
 
     if let Some(error) = error {
         list = list.child(
@@ -1697,12 +1785,15 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         let action_path = path.clone();
         let diff_path = path.clone();
         let discard_path = path.clone();
+        let menu_path = path.clone();
+        let menu_project = this.project().id.clone();
+        let app = cx.entity().downgrade();
         let discard_button = (!staged && status != 'U').then(|| {
             icon_button(format!("change-discard:{side}:{discard_path}"), IconName::Undo2, "Discard working tree changes")
                 .danger().outline()
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, _, window, cx| {
                     cx.stop_propagation();
-                    this.request_discard_file(&discard_path, cx);
+                    this.request_discard_file(&discard_path, window, cx);
                 }))
                 .into_any_element()
         });
@@ -1712,7 +1803,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .id(format!("change:{side}:{path}"))
                 .mx(px(6.))
                 .px(px(7.))
-                .h(px(29.))
+                .h(px(dunlin_ui::scale::control(29.)))
                 .rounded(px(6.))
                 .flex()
                 .items_center()
@@ -1793,7 +1884,22 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                                 this.stage_file(&action_path, cx);
                             }
                         })),
-                ),
+                )
+                .context_menu(move |mut menu, _, _| {
+                    for (label, action) in [
+                        ("Discard changes…", dunlin_workspace::git::operations::Action::Discard { paths: vec![menu_path.clone()] }),
+                        ("Add to .gitignore…", dunlin_workspace::git::operations::Action::Ignore { path: menu_path.clone() }),
+                    ] {
+                        let app = app.clone(); let owner = menu_project.clone();
+                        menu = menu.item(menu_item(move |_, _| div().px(px(4.)).py(px(3.)).child(label))
+                            .on_click(move |_, window, cx| {
+                                if let Some(app) = app.upgrade() { app.update(cx, |this, cx| {
+                                    if this.project().id == owner { this.request_git_action(action.clone(), window, cx); }
+                                }); }
+                            }));
+                    }
+                    menu
+                }),
         );
     }
 
@@ -1801,33 +1907,92 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
 }
 
 fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    use crate::session_list::Scope;
+
     this.refresh_session_list(cx);
+    div()
+        .flex()
+        .flex_col()
+        .pb(px(10.))
+        .child(sessions_section(this, Scope::General, cx))
+        .when(!this.project().is_chat_space(), |list| {
+            list.child(sessions_section(this, Scope::Project, cx))
+        })
+        .into_any_element()
+}
+
+fn sessions_section(
+    this: &DunlinApp,
+    scope: crate::session_list::Scope,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    use crate::session_list::Scope;
+
     let p = palette(cx);
-    let selected = this.selected_session;
-    let sessions = this.sessions.clone();
-
-    let mut list =
-        div()
-            .flex()
-            .flex_col()
-            .pb(px(10.))
-            .when(this.visible_session_count() == 0, |list| {
-                list.child(
-                    div()
-                        .p(px(12.))
-                        .text_size(px(11.))
-                        .text_color(p.muted_fg)
-                        .child("No conversations yet. Send a message to start one."),
-                )
-            });
-
-    let mut last_group = None;
-    for (index, session) in sessions
+    let mut sessions: Vec<_> = this
+        .all_sessions
         .iter()
         .enumerate()
-        .filter(|(_, session)| this.session_visible(session))
+        .filter(|(_, session)| {
+            this.session_scope(session) == Some(scope) && this.session_visible(session)
+        })
+        .collect();
+    sessions.sort_by_cached_key(|(_, session)| {
+        std::cmp::Reverse(chrono::DateTime::parse_from_rfc3339(&session.updated_at).ok())
+    });
+
+    let count = sessions.len();
+    let title = match scope {
+        Scope::General => format!("General sessions · {count}"),
+        Scope::Project => format!("Project · {} · {count}", this.project().name),
+    };
+    let mut list = div().flex().flex_col().child(
+        div()
+            .px(px(12.))
+            .py(px(8.))
+            .text_size(px(11.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(p.fg)
+            .truncate()
+            .child(title),
+    );
+    #[cfg(debug_assertions)]
     {
-        let active = index == selected;
+        list = list.relative().children(crate::workspace_ui_smoke::probe(match scope {
+            Scope::General => "general-sessions",
+            Scope::Project => "current-project-sessions",
+        }));
+    }
+    if count == 0 {
+        list = list.child(
+            div()
+                .px(px(12.))
+                .py(px(8.))
+                .text_size(px(11.))
+                .text_color(p.muted_fg)
+                .child(if scope == Scope::General {
+                    "No general conversations yet. Start a standalone chat or a group session."
+                } else {
+                    "No conversations in this project yet. Send a message to start one."
+                }),
+        );
+    }
+
+    let mut last_group = None;
+    for (index, session) in sessions {
+        let active = session.id == this.session().id;
+        let open_id = session.id.clone();
+        let context_id = session.id.clone();
+        let delete_id = session.id.clone();
+        let context = this
+            .group_contexts
+            .get(&session.id)
+            .map(|context| format!("Group · {}", context.name))
+            .or_else(|| {
+                this.projects.iter().find(|project| project.id == session.project_id)
+                    .filter(|project| project.is_chat_space())
+                    .map(|project| project.name.clone())
+            });
         let (status_color, status_soft) = status_palette(&p, session.status);
         let title = session.title.clone();
         let harness = session.harness.clone();
@@ -1854,15 +2019,17 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     this.bg(p.card).border_1().border_color(p.border)
                 })
                 .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.select_session(index, cx);
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if this.open_session_id(&open_id, cx) {
+                        this.show_chat_tab(window, cx);
+                    }
                 }))
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(move |this, event: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
                         this.context_menu = Some(ContextMenuState {
-                            target: ContextTarget::Session(index),
+                            target: ContextTarget::Session(context_id.clone()),
                             position: event.position,
                         });
                         cx.notify();
@@ -1904,6 +2071,9 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 .child(updated),
                         ),
                 )
+                .when_some(context, |row, context| {
+                    row.child(div().pl(px(11.)).text_size(px(10.5)).text_color(p.muted_fg).truncate().child(context))
+                })
                 .child(
                     div()
                         .pl(px(11.))
@@ -1940,7 +2110,7 @@ fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 .danger().outline()
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
-                                    this.request_delete_session(index, cx);
+                                    this.request_delete_session_id(&delete_id, cx);
                                 })),
                         ),
                 ),
@@ -2156,16 +2326,11 @@ fn project_menu_row(
     };
     let active = index == this.selected_project;
     let name = project.name.clone();
-    let tail = project.path_tail().to_string();
-    let group = project
-        .group_id
-        .as_ref()
-        .and_then(|id| this.project_groups.iter().find(|group| &group.id == id))
-        .map(|group| crate::project_tree::group_path(&this.project_groups, &group.id));
 
-    div()
+    let row = div()
         .id(("project-menu-row", index))
         .h(px(36.))
+        .flex_shrink_0()
         .px(px(6.))
         .rounded(px(6.))
         .flex()
@@ -2174,73 +2339,57 @@ fn project_menu_row(
         .cursor_pointer()
         .when(active, |this| this.bg(p.accent))
         .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-        .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.select_project(index, cx);
+            if this.selected_project == index {
+                this.project_menu_open = false;
+                cx.notify();
+            }
+        }))
+        .child(div().w(px(12.)).flex_shrink_0())
         .child(crate::project_icons::render(this, project, 20., p))
         .child(
             div()
+                .flex_1()
                 .min_w(px(0.))
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .text_color(p.fg)
-                        .truncate()
-                        .child(name),
-                )
-                .when_some(group, |this, group| {
-                    this.child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(p.muted_fg.opacity(0.65))
-                            .truncate()
-                            .child(group),
-                    )
-                }),
-        )
-        .child(div().flex_1())
-        .child(
-            div()
-                .max_w(px(86.))
-                .text_size(px(10.5))
-                .font_family(dunlin_ui::theme::code_font())
-                .text_color(p.muted_fg.opacity(0.7))
+                .text_size(px(12.0))
+                .font_weight(FontWeight::NORMAL)
+                .text_color(p.fg)
                 .truncate()
-                .child(tail),
+                .child(name),
         )
         .when(active, |this| {
             this.child(Icon::new(IconName::Check).size(px(11.)).text_color(p.fg))
-        })
-        .into_any_element()
+        });
+    #[cfg(debug_assertions)]
+    let row = row.relative()
+        .when(active, |r| r.children(crate::workspace_ui_smoke::probe("project-menu-active-row")))
+        .when(project.id == "picker-top-level", |r| r.children(crate::workspace_ui_smoke::probe("project-menu-ungrouped-row")));
+    row.into_any_element()
 }
 
-fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let trusted = this.project().trusted;
     let pinned = this.project().pinned;
     let missing = !this.project().is_remote() && !Path::new(&this.project().path).is_dir();
     let mut menu = div()
         .id("project-menu")
-        .child(crate::effects::rounded_scroll_probe(
-            &this.overlay_backdrop,
-            10.,
-        ))
+        .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+            this.project_menu_open = false;
+            cx.stop_propagation();
+            cx.notify();
+        }))
+        .popover_style(cx)
+        .occlude()
         .absolute()
-        .top(px(45.))
-        .left(px(6.))
-        .right(px(6.))
-        .max_h(px(720.))
+        .top(px(44.))
+        .left(px(80.))
+        .w(px(360.))
+        .max_w_full()
+        .max_h(relative(0.85))
         .overflow_y_scroll()
         .p(px(5.))
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border_strong)
-        .bg(p.card)
         .flex()
         .flex_col()
         .gap(px(2.))
@@ -2255,7 +2404,27 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         );
 
     let groups = this.project_groups.clone();
-    for group in &groups {
+    for (group_index, depth) in crate::project_tree::visible_groups(
+        &groups, &this.projects, &this.collapsed_project_groups,
+        crate::project_tree::Sort::Name, &Default::default(),
+    ) {
+        let group = &groups[group_index];
+        let collapsed = this.collapsed_project_groups.contains(&group.id);
+        let id = group.id.clone();
+        let header = div()
+            .id(format!("project-menu-group:{}", group.id))
+            .aria_label(format!("{} group · {}", group.name, if collapsed { "expand" } else { "collapse" }))
+            .h(px(32.)).flex_shrink_0().ml(px(depth.min(8) as f32 * 14.))
+            .px(px(6.)).rounded(px(6.)).flex().items_center().gap(px(7.))
+            .cursor_pointer().hover(move |s| s.bg(p.hover))
+            .on_click(cx.listener(move |this, _, _, cx| this.toggle_project_group(&id, cx)))
+            .child(Icon::new(if collapsed { IconName::ChevronRight } else { IconName::ChevronDown }).size(px(12.)).text_color(p.muted_fg))
+            .child(crate::project_icons::render_group(this, group, 18., &p))
+            .child(div().flex_1().min_w(px(0.)).text_size(px(12.)).text_color(p.fg).truncate().child(group.name.clone()));
+        #[cfg(debug_assertions)]
+        let header = header.relative().children(crate::workspace_ui_smoke::probe(if group.id == "picker-root" { "project-menu-root" } else { "project-menu-child" }));
+        menu = menu.child(header);
+        if collapsed { continue; }
         let mut indices: Vec<usize> = this
             .projects
             .iter()
@@ -2269,22 +2438,8 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 this.projects[*index].name.to_lowercase(),
             )
         });
-        if indices.is_empty() {
-            continue;
-        }
-        menu = menu.child(
-            div()
-                .px(px(8.))
-                .pt(px(5.))
-                .pb(px(2.))
-                .text_size(px(10.0))
-                .font_family(dunlin_ui::theme::code_font())
-                .text_color(p.muted_fg.opacity(0.75))
-                .truncate()
-                .child(group.name.to_uppercase()),
-        );
         for index in indices {
-            menu = menu.child(project_menu_row(this, index, cx, &p));
+            menu = menu.child(div().flex_shrink_0().ml(px((depth + 1).min(9) as f32 * 14.)).child(project_menu_row(this, index, cx, &p)));
         }
     }
 
@@ -2292,7 +2447,7 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .projects
         .iter()
         .enumerate()
-        .filter(|(_, project)| project.group_id.is_none())
+        .filter(|(_, project)| project.group_id.as_ref().is_none_or(|id| !groups.iter().any(|g| &g.id == id)))
         .map(|(index, _)| index)
         .collect();
     let ungrouped = {
@@ -2321,7 +2476,7 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         menu = menu.child(project_menu_row(this, index, cx, &p));
     }
 
-    menu.child(div().h(px(1.)).my(px(3.)).bg(p.border))
+    let menu = menu.child(div().h(px(1.)).my(px(3.)).bg(p.border))
         .child(
             menu_button("menu-new-group", "New project group…").icon(IconName::FolderTree)
                 .on_click(cx.listener(|this, _, window, cx| {
@@ -2422,8 +2577,10 @@ fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     this.project_menu_open = false;
                     this.request_delete_project(this.selected_project, cx);
                 })),
-        )
-        .into_any_element()
+        );
+    #[cfg(debug_assertions)]
+    let menu = menu.children(crate::workspace_ui_smoke::probe("title-project-menu"));
+    menu.into_any_element()
 }
 
 fn group_label(label: &str, p: &Palette) -> AnyElement {

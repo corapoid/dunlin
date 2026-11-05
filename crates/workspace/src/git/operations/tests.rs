@@ -59,6 +59,132 @@ impl Repo {
     }
 }
 #[test]
+fn discard_restores_partial_staging_renames_and_preserves_ignored_files() {
+    let r = Repo::new();
+    r.write(".gitignore", "secret\n"); r.git(&["add", ".gitignore"]); r.git(&["commit", "-qm", "ignore"]);
+    r.write("secret", "keep");
+    r.write("file", "staged"); r.git(&["add", "file"]); r.write("file", "unstaged");
+    r.write("added", "new"); r.git(&["add", "added"]); r.write("loose", "loose");
+    r.apply(Action::Discard { paths: vec!["file".into(), "added".into(), "loose".into()] });
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "one\ntwo\n");
+    assert!(!r.dir.path().join("added").exists()); assert!(!r.dir.path().join("loose").exists());
+    assert_eq!(fs::read_to_string(r.dir.path().join("secret")).unwrap(), "keep");
+    r.git(&["mv", "file", "renamed"]);
+    r.apply(Action::Discard { paths: vec!["renamed".into()] });
+    assert!(r.dir.path().join("file").exists()); assert!(!r.dir.path().join("renamed").exists());
+    assert_eq!(r.git(&["status", "--porcelain"]), "");
+}
+
+#[test]
+fn unstage_all_keeps_working_files_and_handles_unborn_head() {
+    let r = Repo::new(); r.write("file", "working"); r.git(&["add", "file"]);
+    r.apply(Action::UnstageAll);
+    assert_eq!(r.git(&["diff", "--cached"]), "");
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "working");
+    r.git(&["checkout", "--orphan", "empty"]); r.git(&["add", "file"]);
+    r.apply(Action::UnstageAll);
+    assert_eq!(r.git(&["ls-files"]), "");
+    assert!(r.dir.path().join("file").exists());
+    r.git(&["add", "file"]);
+    r.apply(Action::Discard { paths: vec!["file".into()] });
+    assert!(!r.dir.path().join("file").exists());
+}
+
+#[test]
+fn discard_consent_rejects_content_changes_and_literal_pathspecs_do_not_expand() {
+    let r = Repo::new(); r.write("file", "approved");
+    let plan = preflight(r.root(), Action::Discard { paths: vec!["file".into()] }).unwrap();
+    r.write("file", "changed after approval");
+    assert!(execute(r.root(), &plan).is_err());
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "changed after approval");
+    r.write("*", "literal");
+    r.apply(Action::Discard { paths: vec!["*".into()] });
+    assert!(!r.dir.path().join("*").exists()); assert!(r.dir.path().join("file").exists());
+    for path in ["../file", ".git/config", "/file", "directory"] {
+        assert!(preflight(r.root(), Action::Discard { paths: vec![path.into()] }).is_err());
+    }
+}
+
+#[test]
+fn ignore_appends_literal_root_pattern_preserves_existing_and_checks_snapshot() {
+    let r = Repo::new(); r.write(".gitignore", "old"); r.write("a[1]* #!.txt", "literal");
+    r.apply(Action::Ignore { path: "a[1]* #!.txt".into() });
+    assert!(r.git(&["check-ignore", "--", "a[1]* #!.txt"]).contains("a[1]* #!.txt"));
+    assert!(fs::read_to_string(r.dir.path().join(".gitignore")).unwrap().starts_with("old\n/"));
+    let before = fs::read(r.dir.path().join(".gitignore")).unwrap();
+    r.apply(Action::Ignore { path: "a[1]* #!.txt".into() });
+    assert_eq!(before, fs::read(r.dir.path().join(".gitignore")).unwrap());
+    let plan = preflight(r.root(), Action::Ignore { path: "file".into() }).unwrap();
+    r.write(".gitignore", "different\n"); assert!(execute(r.root(), &plan).is_err());
+    r.apply(Action::Ignore { path: "file".into() });
+    assert!(r.git(&["ls-files"]).contains("file"));
+}
+
+#[cfg(unix)]
+#[test]
+fn discard_and_ignore_reject_unsafe_parents_nested_repositories_and_hardlinks() {
+    use std::os::unix::fs::symlink;
+    let r = Repo::new(); let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("file"), "keep").unwrap();
+    symlink(outside.path(), r.dir.path().join("link")).unwrap();
+    assert!(preflight(r.root(), Action::Ignore { path: "link/file".into() }).is_err());
+    symlink(outside.path().join("file"), r.dir.path().join(".gitignore")).unwrap();
+    assert!(preflight(r.root(), Action::Ignore { path: "file".into() }).is_err());
+    fs::remove_file(r.dir.path().join(".gitignore")).unwrap();
+    fs::hard_link(outside.path().join("file"), r.dir.path().join(".gitignore")).unwrap();
+    assert!(preflight(r.root(), Action::Ignore { path: "file".into() }).is_err());
+    fs::remove_file(r.dir.path().join(".gitignore")).unwrap();
+    r.apply(Action::Discard { paths: vec!["link".into()] });
+    assert_eq!(fs::read_to_string(outside.path().join("file")).unwrap(), "keep");
+    fs::create_dir(r.dir.path().join("nested")).unwrap();
+    r.git(&["-C", "nested", "init", "--template=", "-q"]); r.write("nested/local", "keep");
+    assert!(preflight(r.root(), Action::Discard { paths: vec!["nested/".into()] }).is_err());
+    assert!(preflight(r.root(), Action::Ignore { path: "nested/local".into() }).is_err());
+}
+
+#[test]
+fn switch_preserves_or_discards_changes_only_after_explicit_fresh_plan() {
+    let r = Repo::new(); r.git(&["branch", "feature"]); r.write("file", "working");
+    r.apply(Action::Switch { branch: "feature".into(), discard: false });
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "working");
+    r.write("loose", "untracked");
+    r.apply(Action::Switch { branch: "main".into(), discard: true });
+    assert_eq!(r.git(&["branch", "--show-current"]).trim(), "main");
+    assert_eq!(r.git(&["status", "--porcelain"]), "");
+    assert!(!r.dir.path().join("loose").exists());
+    r.write("file", "keep");
+    assert!(preflight(r.root(), Action::Switch { branch: "missing".into(), discard: true }).is_err());
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "keep");
+}
+
+#[test]
+fn deleted_submodules_and_project_subfolders_never_authorize_root_discard() {
+    let r = Repo::new(); let head = r.head();
+    r.git(&["update-index", "--add", "--cacheinfo", "160000", &head, "module"]);
+    r.git(&["commit", "-qm", "gitlink"]); r.git(&["rm", "--cached", "module"]);
+    assert!(preflight(r.root(), Action::Discard { paths: vec!["module".into()] }).is_err());
+    fs::create_dir(r.dir.path().join("subfolder")).unwrap();
+    r.write("file", "keep");
+    assert!(preflight(r.dir.path().join("subfolder").to_str().unwrap(), Action::Discard { paths: vec!["file".into()] }).is_err());
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "keep");
+}
+
+#[test]
+fn switch_rejects_checked_out_branch_and_ignored_collisions_before_discard() {
+    let r = Repo::new(); r.git(&["branch", "feature"]);
+    let parent = tempfile::tempdir().unwrap(); let tree = parent.path().join("tree");
+    r.git(&["worktree", "add", tree.to_str().unwrap(), "feature"]);
+    r.write("file", "keep");
+    assert!(preflight(r.root(), Action::Switch { branch: "feature".into(), discard: true }).is_err());
+    r.git(&["worktree", "remove", tree.to_str().unwrap()]);
+    r.git(&["switch", "feature"]); r.write("secret", "target"); r.git(&["add", "secret"]); r.git(&["commit", "-qm", "target"]);
+    r.git(&["switch", "main"]); r.write(".gitignore", "secret\n"); r.write("secret", "preserve ignored");
+    assert!(preflight(r.root(), Action::Switch { branch: "feature".into(), discard: true }).is_err());
+    assert_eq!(fs::read_to_string(r.dir.path().join("secret")).unwrap(), "preserve ignored");
+    assert_eq!(fs::read_to_string(r.dir.path().join("file")).unwrap(), "keep");
+}
+
+#[test]
 fn stash_push_apply_pop_drop_preserve_partial_staging_and_untracked() {
     let r = Repo::new();
     r.write("file", "staged\ntwo\n");

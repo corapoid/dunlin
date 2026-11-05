@@ -17,10 +17,15 @@ use std::{
 };
 
 const LIMIT: u64 = 8 * 1024 * 1024;
+mod changes;
 const CONTENT_LIMIT: u64 = 64 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    Discard { paths: Vec<String> },
+    Ignore { path: String },
+    UnstageAll,
+    Switch { branch: String, discard: bool },
     StashPush {
         message: String,
         include_untracked: bool,
@@ -69,6 +74,11 @@ pub enum Action {
 impl Action {
     pub fn label(&self) -> &'static str {
         match self {
+            Self::Discard { .. } => "Discard changes",
+            Self::Ignore { .. } => "Add to .gitignore",
+            Self::UnstageAll => "Unstage all",
+            Self::Switch { discard: true, .. } => "Discard changes and switch branch",
+            Self::Switch { discard: false, .. } => "Keep changes and switch branch",
             Self::StashPush { .. } => "Stash changes",
             Self::StashApply { .. } => "Apply stash (restore index)",
             Self::StashPop { .. } => "Pop stash (drop only after success)",
@@ -365,6 +375,7 @@ fn snapshot(root: &str, inventory: &Overview) -> Result<(String, String), String
     hash.update(read(root, &["ls-files", "--stage", "-z"])?);
     hash.update(read(root, &["ls-files", "-v", "-z"])?);
     let mut budget = CONTENT_LIMIT;
+    digest_path(&mut hash, &Path::new(root).join(".gitignore"), &mut budget)?;
     let dir = directory(root, "--git-dir")?;
     for name in [
         "HEAD",
@@ -600,6 +611,11 @@ fn tree_root(root: &str, path: &str, inventory: &Overview) -> Result<String, Str
 }
 pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
     let root = repository_root(path, None)?;
+    if matches!(action, Action::Discard { .. } | Action::Ignore { .. } | Action::UnstageAll | Action::Switch { .. }) {
+        if fs::canonicalize(path).map_err(|_| "Project folder is unavailable")? != Path::new(&root) {
+            return Err("Choose the repository root, not a project subfolder".into());
+        }
+    }
     locks(&root)?;
     let common = directory(&root, "--git-common-dir")?;
     let inventory = overview::load(&root)?;
@@ -621,6 +637,15 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
     let mut target = None;
     let mut worktree_target = None;
     match &action {
+        Action::Discard { paths } => { changes::discard_paths(&root, paths)?; }
+        Action::Ignore { path } => changes::check_ignore(&root, path)?,
+        Action::UnstageAll => {},
+        Action::Switch { branch, discard } => {
+            target = Some(changes::check_switch(&root, branch, &inventory)?);
+            if *discard {
+                changes::discard_paths(&root, &changes::changed_paths(&root)?)?;
+            }
+        }
         Action::StashPush { message, .. } => {
             if message.len() > 1024 || message.chars().any(char::is_control) {
                 return Err(
@@ -728,7 +753,12 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
         let (tree, _) = snapshot(path, &other)?;
         fingerprint = format!("{fingerprint}:{tree}");
     }
-    let warning=match action {Action::Abort{..}=>"Native abort may discard ALL staged/unstaged tracked edits made since this operation started, including unrelated edits and conflict resolutions. Back them up explicitly first. No automatic backup or stash is created.",Action::StashDrop{..}=>"Permanently removes the selected stash reference. There is no application Undo.",Action::WorktreeRemove{..}=>"Removes the selected clean worktree directory. Unsaved buffers in it must be closed first.",Action::SubtaskAdd{..}=>"Creates one local branch and one worktree from the selected commit. It never starts an agent, merges, pushes or deletes anything. The worktree is not a security sandbox.",Action::Rebase{..}=>"Rewrites local commits. No fetch, auto-stash or force push is performed.",_=>"No force, reset, automatic stash, fetch or push is performed."}.to_string();
+    let warning=match action {
+        Action::Discard { .. } | Action::Switch { discard: true, .. } => "Permanently discards staged and unstaged edits and deletes the selected untracked files. Renames restore the original path too. Ignored files and nested repositories are preserved. There is no Undo or automatic stash; a failed operation can leave some paths changed. Close external writers first.",
+        Action::Switch { discard: false, .. } => "Git will carry compatible changes to the destination branch and refuse overwrites, including ignored files. No stash, reset, merge or commit is created.",
+        Action::Ignore { .. } => "Appends an exact root-relative entry to .gitignore. Existing entries and file contents stay unchanged. Tracked files remain tracked until explicitly removed from the index.",
+        Action::UnstageAll => "Removes all staged changes from the index without changing working-tree files.",
+        Action::Abort{..}=>"Native abort may discard ALL staged/unstaged tracked edits made since this operation started, including unrelated edits and conflict resolutions. Back them up explicitly first. No automatic backup or stash is created.",Action::StashDrop{..}=>"Permanently removes the selected stash reference. There is no application Undo.",Action::WorktreeRemove{..}=>"Removes the selected clean worktree directory. Unsaved buffers in it must be closed first.",Action::SubtaskAdd{..}=>"Creates one local branch and one worktree from the selected commit. It never starts an agent, merges, pushes or deletes anything. The worktree is not a security sandbox.",Action::Rebase{..}=>"Rewrites local commits. No fetch, auto-stash or force push is performed.",_=>"No force, reset, automatic stash, fetch or push is performed."}.to_string();
     repository_root(path, Some(&root))?;
     Ok(Plan {
         root,
@@ -888,6 +918,27 @@ pub fn execute(path: &str, plan: &Plan) -> Result<Outcome, String> {
     let root = plan.root.as_str();
     let target = plan.target.as_deref().unwrap_or("");
     let success = match &plan.action {
+        Action::Discard { paths } => {
+            changes::discard(root, paths)?;
+            true
+        }
+        Action::Ignore { path } => {
+            changes::ignore(root, path)?;
+            true
+        }
+        Action::UnstageAll => {
+            if plan.head.is_some() {
+                read(root, &["restore", "--staged", "--", "."])?;
+            } else {
+                read(root, &["rm", "--cached", "-r", "--ignore-unmatch", "--", "."])?;
+            }
+            true
+        }
+        Action::Switch { branch, discard } => {
+            if *discard { changes::discard(root, &changes::changed_paths(root)?)?; }
+            read(root, &["switch", "--no-guess", "--no-overwrite-ignore", "--no-recurse-submodules", "--", branch])?;
+            true
+        }
         Action::StashPush {
             message,
             include_untracked,

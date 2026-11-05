@@ -138,7 +138,8 @@ fn reconcile(owner: Entity<DunlinApp>, parent: AnyWindowHandle, cx: &mut App) {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             window_background: WindowBackgroundAppearance::Transparent,
-            kind: WindowKind::PopUp,
+            // Dialogs need an activating panel, not PopUp's nonactivating NSPanel.
+            kind: WindowKind::Floating,
             titlebar: None,
             focus: false,
             show: false,
@@ -223,9 +224,9 @@ impl OverlayWindow {
             let parent_active = parent
                 .update(cx, |_, window, _| window.is_window_active())
                 .unwrap_or(false);
-            let _ = active_owner.update(cx, |app, _| {
+            let _ = active_owner.update(cx, |app, cx| {
                 app.overlay_window.active = child_active;
-                app.app_active = child_active || parent_active;
+                app.set_app_active(child_active || parent_active, cx);
             });
         });
         let bounds = cx.observe_window_bounds(window, |_, _, cx| cx.notify());
@@ -288,6 +289,10 @@ mod native {
             // the relationship and keeps movement/Spaces tied to the owner.
             unsafe {
                 parent.addChildWindow_ordered(&child, NSWindowOrderingMode::Above);
+            }
+            // Changing the native style/parent can replace the first responder.
+            if !child.makeFirstResponder(Some(cv)) {
+                return false;
             }
         }
         if child.frame() != parent.frame() {

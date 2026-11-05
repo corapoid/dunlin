@@ -98,10 +98,19 @@ impl Render for Controls {
                     )
                     .child(
                         document_tab("File •")
+                            .focusable()
+                            .tab_stop(true)
                             .prefix(marker(self.tab_bounds.clone()).w(px(8.)).h(px(16.)))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.tab = 1;
                                 cx.notify();
+                            }))
+                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.tab = 1;
+                                    cx.stop_propagation();
+                                    cx.notify();
+                                }
                             }))
                             .suffix(measured(
                                 icon_button("smoke-tab-close", IconName::X, "Close file").on_click(
@@ -201,9 +210,11 @@ pub(crate) fn run() {
                             4 => { assert_eq!(owner.read(cx).disabled_actions, 0); let probe = owner.read(cx).tab_bounds.clone(); click(window, cx, &probe); }
                             5 => { assert_eq!(owner.read(cx).tab, 1); owner.update(cx, |this, cx| { this.tab = 0; cx.notify(); }); }
                             6 => { let probe = owner.read(cx).close_bounds.clone(); click(window, cx, &probe); }
-                            7 => { assert_eq!(owner.read(cx).closed, 1); assert_eq!(owner.read(cx).tab, 0, "closing a tab also selected it"); let probe = owner.read(cx).row_bounds.clone(); click(window, cx, &probe); }
+                            7 => { assert_eq!(owner.read(cx).closed, 1); assert_eq!(owner.read(cx).tab, 0, "closing a tab also selected it"); window.blur(cx); for _ in 0..5 { window.focus_next(cx); } key(window, cx, "space"); let probe = owner.read(cx).row_bounds.clone(); click(window, cx, &probe); }
                             8 => {
                                 assert_eq!(owner.read(cx).row_actions, 1);
+                                assert_eq!(owner.read(cx).closed, 2, "focused close did not activate once from Space");
+                                assert_eq!(owner.read(cx).tab, 0, "keyboard close also selected its parent tab");
                                 let controls = owner.read(cx);
                                 let menu = controls.menu_bounds.get().unwrap();
                                 let marker = controls.menu_marker.get().unwrap();

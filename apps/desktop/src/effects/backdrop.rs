@@ -40,7 +40,8 @@ struct Frame {
 }
 impl Frame {
     fn foreground(&self) -> Option<Bounds<Pixels>> {
-        self.menu.or(self.surface)
+        // A non-modal dropdown must not create its own dim/blur cutout.
+        self.surface.map(|surface| self.menu.unwrap_or(surface))
     }
 }
 
@@ -121,8 +122,15 @@ impl OverlayBackdrop {
     pub(crate) fn set_external_modal(&self, active: bool) {
         self.shared.external_modal.set(active);
     }
+    #[cfg(test)]
     pub(crate) fn is_panel_plane(&self) -> bool {
         self.shared.panel_plane.get()
+    }
+    #[cfg(debug_assertions)]
+    pub(crate) fn has_dimming(&self) -> bool {
+        self.shared.native_depth.get() > 0
+            || self.shared.external_modal.get()
+            || self.shared.frame.borrow().foreground().is_some()
     }
     #[cfg(debug_assertions)]
     pub(crate) fn panel_diagnostic(&self) -> Option<Bounds<Pixels>> {
@@ -153,6 +161,11 @@ impl OverlayBackdrop {
         canvas(
             |bounds, _, _| bounds,
             move |viewport, _, window, cx| {
+                if window.has_active_prompt() {
+                    // A GPUI confirmation paints its own backdrop above this scene.
+                    this.shared.native.borrow_mut().update(window, viewport, &[], false, None);
+                    return;
+                }
                 let panel_plane = this.shared.panel_plane.get();
                 let native_prompt = this.shared.native_depth.get() > 0;
                 let foreground = this.shared.frame.borrow().foreground();
@@ -1160,11 +1173,6 @@ mod tests {
         assert_eq!(panel.shared.native_depth.get(), 1);
         drop(lease);
         assert_eq!(panel.shared.native_depth.get(), 0);
-        for p in [dunlin_ui::theme::light(), dunlin_ui::theme::dark()] {
-            assert_eq!(crate::effects::panel_fill(&parent, p.card), p.card);
-            assert!((crate::effects::panel_fill(&panel, p.card).a - 0.14).abs() < 0.001);
-            assert_eq!(crate::effects::panel_border(&parent, &p), p.border_strong);
-        }
     }
     #[test]
     fn measurement_includes_the_border_without_resizing_the_actual_panels() {
@@ -1373,6 +1381,17 @@ mod tests {
         assert!(regions(viewport, Some(rect(2000., 2000., 100., 100.)), false).is_empty());
         assert!(regions(rect(0., 0., 0., 0.), None, true).is_empty());
         assert!(regions(viewport, Some(viewport), false).is_empty());
+    }
+    #[test]
+    fn standalone_dropdowns_do_not_dim_the_window_or_leave_a_bright_rectangle() {
+        let viewport = rect(0., 0., 1360., 860.);
+        let frame = Frame {
+            menu: Some(rect(900., 10., 340., 280.).dilate(px(32.))),
+            ..Default::default()
+        };
+        assert!(frame.foreground().is_none());
+        assert!(regions(viewport, frame.foreground(), false).is_empty());
+        assert_eq!(regions(viewport, frame.foreground(), true), [viewport]);
     }
     #[test]
     fn scrolling_contents_do_not_move_the_sharp_panel_cutout() {

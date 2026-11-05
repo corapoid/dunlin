@@ -58,7 +58,7 @@ are disabled for relevant reads, and no fetch, hooks, filters or Git writes run.
 
 This is a non-atomic observation, **not mutation preflight**: external Git tools
 may change state between commands. Stash/worktree/merge/rebase/cherry-pick actions
-now prepare a new content-backed plan and require native confirmation. They do not
+now prepare a new content-backed plan and require themed in-app confirmation. They do not
 reuse this inventory as authority; [details and limits](git-operations-and-blame.md).
 
 ## Validation and pending manual QA

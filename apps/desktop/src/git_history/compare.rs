@@ -667,7 +667,7 @@ impl DunlinApp {
                         }
                         if text.len()>80_000{break;}
                     }
-                    Ok::<_,String>(dunlin_workspace::github::display_text(&text,80_000))
+                    Ok::<_,String>(dunlin_workspace::checks::display_text(&text,80_000))
                 }).map(|r|r.unwrap_or_else(|e|format!("Evidence unavailable, not an empty diff: {e}"))).collect::<Vec<_>>()
             }).await;
             let _=this.update(cx,|this,cx|{if let Some(v)=&mut this.git_history.view&&v.id==id{v.compare.preview=Some((target,previews));}cx.notify();});
@@ -797,11 +797,11 @@ impl DunlinApp {
                             for (side, result) in results {
                                 match result {
                                     Ok(mut report) => {
-                                        report.stdout = dunlin_workspace::github::display_text(
+                            report.stdout = dunlin_workspace::checks::display_text(
                                             &report.stdout,
                                             40_000,
                                         );
-                                        report.stderr = dunlin_workspace::github::display_text(
+                            report.stderr = dunlin_workspace::checks::display_text(
                                             &report.stderr,
                                             40_000,
                                         );
@@ -996,7 +996,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     report.elapsed_ms
                 ))
                 .child(div().font_family("Menlo").text_size(px(11.)).child(
-                    dunlin_workspace::github::display_text(
+                    dunlin_workspace::checks::display_text(
                         &format!("{}\n{}", report.stdout, report.stderr),
                         16_000,
                     ),

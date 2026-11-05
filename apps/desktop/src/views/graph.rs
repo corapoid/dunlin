@@ -500,7 +500,6 @@ fn graph_canvas(
         .w(px(width))
         .h(px(height))
         .flex_shrink_0()
-        .child(dot_grid(grid))
         .child(edge_layer);
 
     let visible = crate::activity::visible_graph_indices(nodes, viewport);
@@ -519,7 +518,7 @@ fn graph_canvas(
         ));
     }
 
-    div()
+    let viewport = div()
         .id("graph-scroll")
         .role(Role::Tree)
         .aria_label("Agent graph")
@@ -543,7 +542,18 @@ fn graph_canvas(
         .min_w(px(0.))
         .overflow_scroll()
         .child(layer)
-        .into_any_element()
+        .into_any_element();
+    let background = div()
+        .relative()
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .flex()
+        .child(dot_grid(grid))
+        .child(viewport);
+    #[cfg(debug_assertions)]
+    let background = background.children(crate::workspace_ui_smoke::probe("graph-background"));
+    background.into_any_element()
 }
 
 fn graph_viewport(scroll: &ScrollHandle, window: &Window) -> crate::activity::Viewport {

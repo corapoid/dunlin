@@ -316,9 +316,6 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         )),
                 )
                 .child(toolbar::mode_toggle(mode, cx))
-                .when(mode == Mode::Source, |header| {
-                    header.child(crate::inline_blame::toggle(this, cx))
-                })
                 .child(
                     dunlin_ui::button("markdown-save")
                         .ghost()

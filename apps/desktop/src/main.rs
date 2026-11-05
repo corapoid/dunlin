@@ -13,16 +13,20 @@ mod controls_smoke;
 mod dashboard;
 mod effects;
 mod explorer;
+mod factory_reset;
 mod file_icons;
 mod file_preview;
 mod git_history;
+mod git_actions;
 #[cfg(debug_assertions)]
 mod glass_smoke;
 mod group_settings;
 mod harness;
 mod harness_discovery;
+mod harness_brand;
 mod inline_blame;
 mod local_projects;
+mod project_import;
 mod logging;
 mod markdown_editor;
 mod mcp;
@@ -36,6 +40,7 @@ mod plugins;
 mod project_activity;
 mod project_groups;
 mod project_icons;
+mod project_catalog;
 mod project_runtime_settings;
 mod project_tree;
 mod projection;
@@ -61,6 +66,8 @@ mod window_state;
 mod workbench;
 #[cfg(test)]
 mod ui_contract_tests;
+#[cfg(debug_assertions)]
+mod workspace_ui_smoke;
 
 use app::DunlinApp;
 use dunlin_ui::*;
@@ -69,6 +76,16 @@ fn main() {
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--controls-smoke") {
         controls_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--project-import-smoke") {
+        project_import::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--workspace-ui-smoke") {
+        workspace_ui_smoke::run();
         return;
     }
     if std::env::args().nth(1).as_deref() == Some("--mcp-vault") {
@@ -124,10 +141,6 @@ fn main() {
         return;
     }
     #[cfg(debug_assertions)]
-    if std::env::args().nth(1).as_deref() == Some("--github-smoke") {
-        git_history::smoke::run();
-        return;
-    }
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--glass-smoke") {
         glass_smoke::run();
@@ -136,6 +149,11 @@ fn main() {
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--onboarding-smoke") {
         onboarding_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--session-import-smoke") {
+        session_import::smoke::run();
         return;
     }
     if std::env::args().nth(1).as_deref() == Some("--syntax-notices") {

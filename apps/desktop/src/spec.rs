@@ -879,41 +879,6 @@ impl DunlinApp {
         );
     }
 
-    fn attach_github_evidence(&mut self, task_id: String, cx: &mut Context<Self>) {
-        let project = self.project().clone();
-        let evidence = self.selected_github_evidence();
-        if evidence.is_empty() {
-            self.file_notice(
-                "Open GitHub CI / PR and select a run or PR before attaching task evidence",
-                cx,
-            );
-            return;
-        }
-        let Some(store) = self.store.as_ref() else {
-            self.file_notice(
-                "Local storage is unavailable; evidence was not recorded",
-                cx,
-            );
-            return;
-        };
-        let mut recorded = 0;
-        for (kind, reference, summary) in evidence {
-            if store
-                .set_task_evidence(&project.id, &task_id, &kind, &reference, &summary)
-                .is_ok()
-            {
-                recorded += 1;
-            }
-        }
-        if let Some(view) = self.spec.view.as_mut() {
-            view.evidence = store.task_evidence(&view.project.id).unwrap_or_default();
-        }
-        self.set_notice(
-            format!("Attached {recorded} GitHub evidence record(s) to {task_id}"),
-            cx,
-        );
-    }
-
     fn complete_task(&mut self, task_id: String, tasks_path: String, cx: &mut Context<Self>) {
         let project = self.project().clone();
         let worktree = self
@@ -993,13 +958,6 @@ impl DunlinApp {
             cx,
         );
         self.refresh_spec_workspace(cx);
-    }
-
-    fn open_github_for_spec(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_git_history(window, cx);
-        if self.git_history.is_open_for(self.project()) {
-            self.open_github(cx);
-        }
     }
 
     fn open_artifact(&mut self, path: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -2468,16 +2426,6 @@ fn detail_panel(
                                 this.attach_head_evidence(attach_id.clone(), cx)
                             })),
                     );
-                    let github_id = task_id.clone();
-                    actions = actions.child(
-                        dunlin_ui::button(format!("spec-attach-github:{}", task.id))
-                            .ghost()
-                            .small()
-                            .label("Attach GitHub")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.attach_github_evidence(github_id.clone(), cx)
-                            })),
-                    );
                     let complete_id = task_id.clone();
                     let complete_path = tasks_path.clone();
                     actions = actions.child(
@@ -2512,17 +2460,6 @@ fn detail_panel(
                         .label("Task review")
                         .on_click(
                             cx.listener(|this, _, window, cx| this.open_task_review(window, cx)),
-                        ),
-                )
-                .child(
-                    dunlin_ui::button("spec-open-github")
-                        .ghost()
-                        .small()
-                        .label("GitHub CI / PR")
-                        .on_click(
-                            cx.listener(|this, _, window, cx| {
-                                this.open_github_for_spec(window, cx)
-                            }),
                         ),
                 ),
         );

@@ -225,6 +225,7 @@ impl DunlinApp {
                     settings,
                 };
                 let mut session = crate::app::blank_session(&project.id, &choice.harness, None);
+                session.workspace = Some(project.path.clone());
                 session.title = format!("Comparison {}", if i == 0 { "A" } else { "B" });
                 let store = self.store.as_ref().ok_or("Storage unavailable")?;
                 store
@@ -335,6 +336,7 @@ impl DunlinApp {
                     settings,
                 };
                 let mut session = crate::app::blank_session(&project.id, &choice.harness, None);
+                session.workspace = Some(project.path.clone());
                 session.title = format!("Comparison {}", if i == 0 { "A" } else { "B" });
                 let store = self.store.as_ref().ok_or("Storage unavailable")?;
                 store

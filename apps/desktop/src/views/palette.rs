@@ -3,6 +3,7 @@
 
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
+use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::component::input::Input;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -149,12 +150,9 @@ pub(crate) fn render(
 
     let panel = div()
         .id("command-palette")
-        .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
+        .popover_style(cx)
+        .occlude()
         .w(px(590.))
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.border_strong)
-        .bg(p.card)
         .overflow_hidden()
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(search)

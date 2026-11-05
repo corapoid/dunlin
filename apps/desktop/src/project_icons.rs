@@ -34,6 +34,7 @@ struct Entry {
 #[derive(Default)]
 pub(crate) struct State {
     entries: HashMap<String, Entry>,
+    groups: HashMap<String, (String, Arc<Image>)>,
     busy: bool,
     revision: u64,
 }
@@ -107,6 +108,44 @@ fn custom_image(value: &str) -> Result<Arc<Image>, String> {
     )
 }
 
+pub(crate) fn read_icon(path: PathBuf) -> Result<String, String> {
+    let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "svg" | "ico") { return Err("Choose PNG, JPEG, SVG or ICO".into()); }
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() { return Err("Choose a regular image file".into()); }
+    let mut bytes = Vec::new();
+    file.take(MAX_ICON_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let image = decode(&bytes, &extension)?;
+    Ok(format!("png:{}", STANDARD.encode(image.bytes())))
+}
+
+fn group_image(value: &str) -> Result<Arc<Image>, String> {
+    let builtin = match value {
+        "aws-lambda" => Some((include_str!("../../../assets/aws-lambda.svg"), "#FF9900")),
+        "kubernetes" => Some((include_str!("../../../assets/kubernetes.svg"), "#326CE5")),
+        _ => None,
+    };
+    if let Some((svg, color)) = builtin {
+        return decode(svg.replace("<path ", &format!("<path fill=\"{color}\" ")).as_bytes(), "svg");
+    }
+    custom_image(value)
+}
+
+pub(crate) fn render_group(this: &DunlinApp, group: &dunlin_domain::ProjectGroup, side: f32, p: &Palette) -> AnyElement {
+    let image = this.project_icons.groups.get(&group.id)
+        .filter(|(value, _)| group.settings.icon.as_ref() == Some(value));
+    let view = div().size(px(side)).flex_shrink_0().flex().items_center().justify_center();
+    if let Some((_, image)) = image {
+        #[cfg(debug_assertions)]
+        let view = view.relative().children(crate::workspace_ui_smoke::probe("group-image"));
+        view.child(img(image.clone()).size(px(side)).object_fit(ObjectFit::Contain)).into_any_element()
+    } else {
+        #[cfg(debug_assertions)]
+        let view = view.relative().children(crate::workspace_ui_smoke::probe("group-dot"));
+        view.child(div().size(px(6.)).rounded_full().bg(tone_color(p, group.tone))).into_any_element()
+    }
+}
+
 fn detect(root: &str, previous: Option<&Detected>) -> Option<Detected> {
     let root = std::fs::canonicalize(root).ok()?;
     let mut attempts = 0;
@@ -175,24 +214,7 @@ impl DunlinApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let extension = path
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("")
-                        .to_ascii_lowercase();
-                    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "svg" | "ico") {
-                        return Err("Choose PNG, JPEG, SVG or ICO".to_string());
-                    }
-                    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-                    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
-                        return Err("Choose a regular image file".into());
-                    }
-                    let mut bytes = Vec::new();
-                    file.take(MAX_ICON_BYTES as u64 + 1)
-                        .read_to_end(&mut bytes)
-                        .map_err(|e| e.to_string())?;
-                    let image = decode(&bytes, &extension)?;
-                    Ok(format!("png:{}", STANDARD.encode(image.bytes())))
+                    read_icon(path)
                 })
                 .await;
             let _ = this.update(cx, |this, cx| match result {
@@ -220,6 +242,14 @@ impl DunlinApp {
         }
     }
     pub(crate) fn refresh_project_icons(&mut self, cx: &mut Context<Self>) {
+        self.project_icons.groups.retain(|id, (value, _)| self.project_groups.iter().any(|g| &g.id == id && g.settings.icon.as_ref() == Some(value)));
+        for group in &self.project_groups {
+            if !self.project_icons.groups.contains_key(&group.id)
+                && let Some(value) = &group.settings.icon
+                && let Ok(image) = group_image(value) {
+                self.project_icons.groups.insert(group.id.clone(), (value.clone(), image));
+            }
+        }
         self.project_icons.entries.retain(|id, entry| {
             self.projects.iter().any(|p| {
                 matches_project(p, id, &entry.root) && p.settings.custom_icon == entry.custom

@@ -1,6 +1,27 @@
 //! Prevent screens from bypassing Dunlin's shared button defaults.
 use std::path::Path;
 
+fn has_constructor(source: &str, constructor: &str) -> bool {
+    source.match_indices(constructor).any(|(index, _)| {
+        source[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+    })
+}
+
+#[test]
+fn constructor_check_distinguishes_controls_from_prompt_answers() {
+    assert!(has_constructor(
+        concat!("view.child(Button", "::new(\"save\"))"),
+        concat!("Button", "::new(")
+    ));
+    assert!(!has_constructor(
+        concat!("PromptButton", "::new(\"Save\")"),
+        concat!("Button", "::new(")
+    ));
+}
+
 #[test]
 fn application_actions_use_shared_button_constructor() {
     fn check(path: &Path) {
@@ -17,7 +38,7 @@ fn application_actions_use_shared_button_constructor() {
                     concat!("TabBar", "::new("),
                 ] {
                     assert!(
-                        !source.contains(constructor),
+                        !has_constructor(&source, constructor),
                         "{} bypasses shared control defaults with {constructor}",
                         path.display()
                     );

@@ -21,7 +21,6 @@ mod checks;
 mod compare;
 mod context;
 mod details;
-mod github;
 mod impact;
 mod mutations;
 mod overview;
@@ -37,16 +36,13 @@ pub(crate) struct State {
     pub view: Option<View>,
     pub running: bool,
     pub active: bool,
-    mutation_project: Option<String>,
-    mutation_global: bool,
+    pub(crate) mutation_project: Option<String>,
+    pub(crate) mutation_global: bool,
     pub(crate) cancel_check: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 impl State {
     pub(crate) fn tab_label(&self) -> &'static str {
         if let Some(v) = &self.view {
-            if v.github.visible {
-                return "GitHub · CI / PR";
-            }
             if v.context.visible {
                 return "Context & decisions";
             }
@@ -118,7 +114,6 @@ pub(crate) struct View {
     scroll: ScrollHandle,
     focus: FocusHandle,
     mutations: mutations::Form,
-    github: github::State,
     context: context::State,
     review: review::State,
     checks: checks::State,
@@ -130,7 +125,6 @@ pub(crate) struct View {
 impl View {
     fn hide_tools(&mut self) {
         self.impact.visible = false;
-        self.github.visible = false;
         self.context.visible = false;
         self.review.visible = false;
         self.checks.visible = false;
@@ -224,14 +218,6 @@ fn layout(commits: &[Commit]) -> Vec<LaneRow> {
 }
 
 impl DunlinApp {
-    pub(crate) fn selected_github_evidence(&self) -> Vec<(String, String, String)> {
-        self.git_history
-            .view
-            .as_ref()
-            .map(|view| view.github.attachable_evidence())
-            .unwrap_or_default()
-    }
-
     pub(crate) fn open_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.projects.is_empty() {
             self.file_notice("Open a project first", cx);
@@ -318,7 +304,6 @@ impl DunlinApp {
             scroll: ScrollHandle::new(),
             focus: cx.focus_handle(),
             mutations: mutations::Form::new(window, cx),
-            github: github::State::new(window, cx),
             context: context::State::new(window, cx),
             review: review::State::new(window, cx),
             checks: checks::State::new(window, cx),
@@ -335,6 +320,14 @@ impl DunlinApp {
             .focus
             .focus(window, cx);
         self.load_git_history(cx);
+    }
+    pub(crate) fn show_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_git_history(window, cx);
+        if let Some(view) = &mut self.git_history.view {
+            view.hide_tools();
+            view.overview.visible = false;
+        }
+        cx.notify();
     }
     pub(crate) fn close_git_history(&mut self, cx: &mut Context<Self>) {
         // Mutation ownership lives outside the view, so closing a read tab must
@@ -917,15 +910,6 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     {
         return context::render(this, cx);
     }
-    if this
-        .git_history
-        .view
-        .as_ref()
-        .is_some_and(|v| v.github.visible)
-    {
-        github::refresh_visible(this, cx);
-        return github::render(this, cx);
-    }
     let p = palette(cx);
     let Some(view) = this
         .git_history
@@ -1025,7 +1009,6 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                   .child(div().text_size(px(11.)).text_color(p.muted_fg).child(view.project.name.clone()))
                   .child(div().flex_1())
                     .child(dunlin_ui::button("history-inventory").ghost().label("Repository state").tooltip("Stashes, worktrees and operations").on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))))
-                    .child(dunlin_ui::button("history-github").ghost().label("GitHub · CI / PR").on_click(cx.listener(|this,_,_,cx|this.open_github(cx))))
                    .child(dunlin_ui::button("history-selected-operation").ghost().label("Merge / rebase / pick…").tooltip("Review an operation using the selected commit").disabled(selected.is_none()||view.loading||this.git_history.running).on_click(cx.listener(|this,_,window,cx|this.operate_on_history_commit(window,cx))))
                   .when(!view.project.is_remote(), |toolbar| toolbar.child(dunlin_ui::button("history-checkout").ghost().label("Checkout commit…").tooltip("Detach HEAD at the selected commit; requires a clean worktree").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, window, cx| this.checkout_history_commit(window, cx)))))
                   .child(dunlin_ui::button("history-branch-form").ghost().label("Create branch…").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| {

@@ -13,7 +13,15 @@ use crate::{Palette, scale};
 
 /// Standard action. Use the kit's semantic variants, sizes and loading state.
 pub fn button(id: impl Into<ElementId>) -> Button {
-    Button::new(id).small().rounded(px(scale::RADIUS_MD))
+    Button::new(id)
+        .small()
+        .rounded(px(scale::RADIUS_MD))
+        // The kit activates on key-up; keep key-down from activating a parent tab.
+        .on_key_down(|event, _, cx| {
+            if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                cx.stop_propagation();
+            }
+        })
 }
 
 /// A toolbar action always has an accessible name, even without visible text.
@@ -51,7 +59,7 @@ pub fn checkbox(
 
 pub fn document_tabs(id: impl Into<ElementId>) -> TabBar {
     // shortcut: kit tabs rely on app navigation shortcuts; adopt roving focus when the kit supports it.
-    TabBar::new(id).underline().small().max_width(px(240.))
+    TabBar::new(id).outline().small().max_width(px(240.))
 }
 
 pub fn document_tab(label: impl Into<SharedString>) -> Tab {

@@ -5,7 +5,24 @@ use std::path::{Path, PathBuf};
 pub(crate) struct Detected {
     pub name: &'static str,
     pub cli: Option<PathBuf>,
+    pub adapter: Option<PathBuf>,
     pub docs: &'static str,
+}
+
+impl Detected {
+    pub(crate) fn visible_in_onboarding(&self, show_all: bool) -> bool {
+        show_all || self.adapter.is_some() || self.cli.is_some()
+    }
+
+    pub(crate) fn status(&self) -> &'static str {
+        if self.adapter.is_some() {
+            "Adapter detected"
+        } else if self.cli.is_some() {
+            "CLI detected · adapter needed"
+        } else {
+            "Not installed"
+        }
+    }
 }
 
 pub(crate) fn search_paths() -> Vec<PathBuf> {
@@ -18,18 +35,13 @@ pub(crate) fn search_paths() -> Vec<PathBuf> {
         .unwrap_or_default();
     paths.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].map(PathBuf::from));
     if let Some(home) = std::env::var_os("HOME") {
-        paths.extend(
-            [
-                ".local/bin",
-                ".cargo/bin",
-                ".bun/bin",
-                ".npm-global/bin",
-                ".volta/bin",
-                ".opencode/bin",
-                "Library/pnpm",
-            ]
-            .map(|dir| PathBuf::from(&home).join(dir)),
-        );
+        paths.extend(home_bins(Path::new(&home)));
+        // Finder-launched apps do not inherit the shell's NVM initialization.
+        let nvm = std::env::var_os("NVM_DIR")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .unwrap_or_else(|| PathBuf::from(&home).join(".nvm"));
+        paths.extend(nvm_bins(&nvm));
     }
     let mut unique = Vec::new();
     for path in paths {
@@ -38,6 +50,25 @@ pub(crate) fn search_paths() -> Vec<PathBuf> {
         }
     }
     unique
+}
+
+fn home_bins(home: &Path) -> Vec<PathBuf> {
+    [
+        ".local/bin", ".cargo/bin", ".bun/bin", ".npm-global/bin",
+        ".volta/bin", ".opencode/bin", "Library/pnpm", "node_modules/.bin",
+    ].map(|dir| home.join(dir)).into()
+}
+
+fn nvm_bins(root: &Path) -> Vec<PathBuf> {
+    let mut bins: Vec<_> = std::fs::read_dir(root.join("versions/node"))
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.path().join("bin")))
+        .filter(|path| path.is_dir())
+        .collect();
+    bins.sort();
+    bins.reverse();
+    bins
 }
 
 fn executable(path: &Path) -> bool {
@@ -125,7 +156,7 @@ pub(crate) const SPECS: &[Spec] = &[
         name: "Claude Code",
         cli: "claude",
         command: "claude-agent-acp",
-        docs: "https://github.com/zed-industries/claude-agent-acp",
+        docs: "https://github.com/agentclientprotocol/claude-agent-acp",
     },
     Spec {
         name: "OpenAI Codex",
@@ -207,13 +238,68 @@ pub(crate) fn catalog_docs(name: &str) -> Option<&'static str> {
         .map(|spec| spec.docs)
 }
 
+pub(crate) fn install_command(name: &str) -> Option<&'static str> {
+    (name == "Claude Code").then_some("npm install -g @agentclientprotocol/claude-agent-acp@preview")
+}
+
+impl crate::app::DunlinApp {
+    pub(crate) fn show_harness_setup(&mut self, name: &str, cx: &mut dunlin_ui::Context<Self>) {
+        self.harness_setup = Some(name.into());
+        self.settings_tab = crate::app::SettingsTab::Harnesses;
+        self.settings_open = true;
+        cx.notify();
+    }
+
+    pub(crate) fn rescan_harnesses(&mut self, cx: &mut dunlin_ui::Context<Self>) {
+        if self.harness_scanning { return; }
+        self.harness_scanning = true;
+        self.harness_setup_notice = Some("Scanning installed ACP adapters…".into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let detected = cx.background_executor().spawn(async { discover() }).await;
+            let _ = this.update(cx, |this, cx| {
+                let count = detected.iter().filter(|entry| entry.adapter.is_some()).count();
+                this.harness_discovery = detected;
+                this.harness_scanning = false;
+                let message = format!("Scan complete · {count} ACP adapters detected");
+                this.harness_setup_notice = Some(message.clone());
+                this.set_notice(message, cx);
+            });
+        }).detach();
+    }
+
+    pub(crate) fn open_harness_docs(&mut self, name: &str, cx: &mut dunlin_ui::Context<Self>) {
+        let Some(url) = catalog_docs(name) else { return; };
+        self.harness_setup_notice = Some("Opening the setup guide…".into());
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move {
+                let mut command = std::process::Command::new(if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" });
+                crate::providers::command_output(command.arg(url), std::time::Duration::from_secs(5))
+            }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.harness_setup_notice = Some(if result.is_ok_and(|output| output.status.success()) {
+                    "Setup guide opened in your browser; nothing was installed.".into()
+                } else {
+                    format!("Could not open the browser. Open this URL manually: {url}")
+                });
+                cx.notify();
+            });
+        }).detach();
+    }
+}
+
 pub(crate) fn discover() -> Vec<Detected> {
-    let paths = search_paths();
+    discover_in(&search_paths())
+}
+
+fn discover_in(paths: &[PathBuf]) -> Vec<Detected> {
     SPECS
         .iter()
         .map(|spec| Detected {
             name: spec.name,
-            cli: find_in(spec.cli, &paths),
+            cli: find_in(spec.cli, paths),
+            adapter: split_command(spec.command).and_then(|(name, _)| find_in(name, paths)),
             docs: spec.docs,
         })
         .collect()
@@ -222,6 +308,105 @@ pub(crate) fn discover() -> Vec<Detected> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn finds_home_local_npm_install_without_scanning_project_dependencies() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let bin = home.path().join("node_modules/.bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let target = home.path().join("node_modules/adapter.js");
+        std::fs::write(&target, b"#!/usr/bin/env node\nthrow new Error('must not execute');\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let adapter = bin.join("claude-agent-acp");
+        std::os::unix::fs::symlink(&target, &adapter).unwrap();
+        let detected = discover_in(&home_bins(home.path()));
+        assert_eq!(detected.iter().find(|entry| entry.name == "Claude Code").unwrap().adapter.as_ref(), Some(&adapter));
+        assert!(!home_bins(home.path()).iter().any(|path| path.starts_with(home.path().join("project"))));
+        assert_eq!(install_command("Claude Code"), Some("npm install -g @agentclientprotocol/claude-agent-acp@preview"));
+        assert!(install_command("Unknown").is_none());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn rescan_detects_new_nvm_adapters_without_executing_them() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("versions/node/v24.18.0/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let paths = nvm_bins(dir.path());
+        assert_eq!(paths, vec![bin.clone()]);
+        assert!(
+            discover_in(&paths)
+                .iter()
+                .all(|entry| entry.adapter.is_none())
+        );
+        let adapter = bin.join("claude-agent-acp");
+        std::fs::write(&adapter, b"#!/bin/sh\nexit 99\n").unwrap();
+        assert!(find_in("claude-agent-acp", &paths).is_none());
+        std::fs::set_permissions(&adapter, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let entries = discover_in(&nvm_bins(dir.path()));
+        let claude = entries
+            .iter()
+            .find(|entry| entry.name == "Claude Code")
+            .unwrap();
+        assert_eq!(claude.adapter.as_ref(), Some(&adapter));
+        assert!(claude.cli.is_none());
+        assert!(nvm_bins(&dir.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn onboarding_keeps_cli_only_agents_visible_without_advertising_them_as_ready() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["opencode", "claude", "codex"] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let entries = discover_in(&[dir.path().to_path_buf()]);
+        let visible = entries
+            .iter()
+            .filter(|entry| entry.visible_in_onboarding(false))
+            .map(|entry| (entry.name, entry.status(), entry.adapter.is_some()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            visible,
+            vec![
+                ("OpenCode", "Adapter detected", true),
+                ("Claude Code", "CLI detected · adapter needed", false),
+                ("OpenAI Codex", "CLI detected · adapter needed", false),
+            ]
+        );
+        assert!(
+            entries
+                .iter()
+                .all(|entry| entry.visible_in_onboarding(true))
+        );
+        let hermes = entries
+            .iter()
+            .find(|entry| entry.name == "Hermes Agent")
+            .unwrap();
+        assert_eq!(hermes.status(), "Not installed");
+        assert!(!hermes.visible_in_onboarding(false));
+
+        let adapter = dir.path().join("claude-agent-acp");
+        std::fs::write(&adapter, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(adapter, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::remove_file(dir.path().join("claude")).unwrap();
+        let entries = discover_in(&[dir.path().to_path_buf()]);
+        let claude = entries
+            .iter()
+            .find(|entry| entry.name == "Claude Code")
+            .unwrap();
+        assert!(claude.adapter.is_some());
+        assert!(claude.cli.is_none());
+        assert!(claude.visible_in_onboarding(false));
+        assert_eq!(claude.status(), "Adapter detected");
+    }
+
     #[test]
     fn discovery_requires_an_executable_and_preserves_quoted_command_arguments() {
         assert_eq!(

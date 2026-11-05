@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) mod activity;
 pub mod blame;
 pub mod history;
+pub mod hosting;
 pub mod operations;
 pub mod overview;
 pub use activity::{
@@ -48,6 +49,8 @@ pub struct GitChange {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitStatus {
+    #[serde(default)]
+    pub repository: Option<hosting::RepositoryLink>,
     pub branch: String,
     pub changes: Vec<GitChange>,
     pub error: Option<String>,
@@ -78,6 +81,7 @@ pub fn load(path: &str) -> GitStatus {
         Err(error) => {
             let not_repository = error.contains("not a git repository");
             return GitStatus {
+                repository: None,
                 branch,
                 changes: Vec::new(),
                 error: (!not_repository).then_some(error),
@@ -109,6 +113,7 @@ pub fn load(path: &str) -> GitStatus {
     }
 
     GitStatus {
+        repository: hosting::detect(path),
         branch,
         changes,
         error: None,

@@ -18,6 +18,8 @@ actions!(
         Home,
         Projects,
         Security,
+        Back,
+        Forward,
         ToggleSidebar,
         Commands,
         GitHistory,
@@ -36,6 +38,8 @@ pub(crate) fn install(cx: &mut App) {
         KeyBinding::new("cmd-b", ToggleSidebar, None),
         KeyBinding::new("cmd-shift-p", Commands, None),
         KeyBinding::new("cmd-alt-g", GitHistory, None),
+        KeyBinding::new("cmd-[", Back, None),
+        KeyBinding::new("cmd-]", Forward, None),
     ]);
     cx.set_menus([
         Menu::new("Dunlin").items([
@@ -46,13 +50,16 @@ pub(crate) fn install(cx: &mut App) {
             MenuItem::action("Quit Dunlin", crate::app::Quit),
         ]),
         Menu::new("File").items([
-            MenuItem::action("Open Project Folders…", OpenFolders),
+            MenuItem::action("Add Projects…", OpenFolders),
             MenuItem::action("New Session", NewSession),
             MenuItem::separator(),
             MenuItem::action("Save All", SaveAll),
             MenuItem::action("Project Settings…", ProjectSettings),
         ]),
         Menu::new("View").items([
+            MenuItem::action("Back", Back),
+            MenuItem::action("Forward", Forward),
+            MenuItem::separator(),
             MenuItem::action("Home", Home),
             MenuItem::action("Projects", Projects),
             MenuItem::action("Security", Security),

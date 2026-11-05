@@ -147,7 +147,7 @@ pub struct ServiceHandle {
     socket: PathBuf,
     sessions: SharedSessions,
     shutdown: Arc<AtomicBool>,
-    join: Option<JoinHandle<()>>,
+    join: Option<JoinHandle<Vec<JoinHandle<()>>>>,
 }
 
 impl ServiceHandle {
@@ -218,6 +218,7 @@ impl ServiceHandle {
         let join = thread::Builder::new()
             .name("dunlin-vault".into())
             .spawn(move || {
+                let mut workers = Vec::new();
                 let secrets: Arc<dyn SecretStore> = Arc::new(KeychainStore);
                 let http = Arc::new(UreqExecutor::new());
                 let recipes = Arc::new(CommandExecutor);
@@ -226,7 +227,7 @@ impl ServiceHandle {
                 let cleanup_secrets = secrets.clone();
                 let cleanup_database = thread_database.clone();
                 let cleanup_shutdown = thread_shutdown.clone();
-                let _ = thread::Builder::new()
+                if let Ok(cleanup) = thread::Builder::new()
                     .name("dunlin-vault-cleanup".into())
                     .spawn(move || {
                         let mut last_cleanup = Instant::now() - Duration::from_secs(61);
@@ -237,8 +238,12 @@ impl ServiceHandle {
                             }
                             thread::sleep(Duration::from_secs(1));
                         }
-                    });
+                    })
+                {
+                    workers.push(cleanup);
+                }
                 while !thread_shutdown.load(Ordering::Relaxed) {
+                    workers.retain(|worker| !worker.is_finished());
                     match listener.accept() {
                         Ok((stream, _)) => {
                             let sessions = thread_sessions.clone();
@@ -247,14 +252,17 @@ impl ServiceHandle {
                             let recipes = recipes.clone();
                             let approver = approver.clone();
                             let database = thread_database.clone();
-                            let _ = thread::Builder::new()
+                            if let Ok(client) = thread::Builder::new()
                                 .name("dunlin-vault-client".into())
                                 .spawn(move || {
                                     handle_connection(
                                         stream, sessions, secrets, http, recipes, approver,
                                         database,
                                     );
-                                });
+                                })
+                            {
+                                workers.push(client);
+                            }
                         }
                         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(40));
@@ -263,6 +271,7 @@ impl ServiceHandle {
                     }
                 }
                 let _ = std::fs::remove_file(&thread_socket);
+                workers
             })
             .map_err(|error| format!("Could not start the credential broker: {error}"))?;
         Ok(Self {
@@ -275,6 +284,22 @@ impl ServiceHandle {
 
     pub fn socket_path(&self) -> &Path {
         &self.socket
+    }
+
+    /// Reset must drain writers before deleting records; call off the UI thread.
+    pub(crate) fn shutdown_and_wait(mut self) -> Result<(), String> {
+        self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(join) = self.join.take() {
+            let workers = join
+                .join()
+                .map_err(|_| "Credential broker shutdown failed")?;
+            for worker in workers {
+                worker
+                    .join()
+                    .map_err(|_| "Credential request shutdown failed")?;
+            }
+        }
+        Ok(())
     }
 
     pub fn new_session(
@@ -622,5 +647,8 @@ mod tests {
             dunlin_vault::client::VaultClient::connect(service.socket_path(), &session.token)
                 .is_err()
         );
+        let socket = service.socket_path().to_path_buf();
+        service.shutdown_and_wait().unwrap();
+        assert!(!socket.exists());
     }
 }

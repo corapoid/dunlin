@@ -115,11 +115,13 @@ can fail closed rather than execute a filter before consent.
 
 ## Inline blame
 
-Use **Blame** in a text editor header (Markdown: **Raw** mode). It is opt-in per
-open tab and starts no agent. An unchanged line shows author and short commit ID
-after the line when space permits. Hover gives full OID, author/date, subject,
+Use **Inline blame** in the Explorer toolbar or **Settings → Editor** (Markdown:
+**Raw** mode). Enablement is an app preference that survives file changes and
+restarts; it starts no agent. Cached attribution remains scoped to each file,
+backend and HEAD. An unchanged line shows subdued author and last modification
+date (`YYYY-MM-DD HH:MM`, local time) after the line when space permits. Hover gives full OID, author/date, subject,
 original filename/line and snapshot HEAD; click opens that commit in the existing
-history tab. A compact footer provides the same hover/click target for long lines
+history tab. A compact footer shows the same author/date and hover/click target for long lines
 and narrow windows. New/modified lines display no author attribution.
 
 The backend reads immutable HEAD blobs and bounded porcelain blame; it never
