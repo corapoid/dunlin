@@ -254,6 +254,9 @@ impl SessionOrigin {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionSummary {
+    /// Recorded workspace at execution time, never inferred for imported history.
+    #[serde(default)]
+    pub workspace: Option<String>,
     pub id: Id,
     pub project_id: Id,
     pub title: String,

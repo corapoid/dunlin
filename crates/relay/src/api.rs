@@ -44,7 +44,6 @@ pub struct AppState {
     terminal_sessions: Arc<Semaphore>,
     pair_attempts: Arc<Mutex<VecDeque<Instant>>>,
     git_plans: Arc<Mutex<HashMap<String, operations::Pending>>>,
-    github_plans: Arc<Mutex<HashMap<String, PendingGithub>>>,
     review_plans: Arc<Mutex<HashMap<String, PendingRestore>>>,
     compare_plans: Arc<Mutex<HashMap<String, PendingCompare>>>,
     checks: Arc<Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>>,
@@ -62,13 +61,6 @@ struct PendingCompare {
     project_id: String,
     prepared: Instant,
     plan: dunlin_workspace::comparison::Prepared,
-}
-
-struct PendingGithub {
-    user_id: String,
-    project_id: String,
-    prepared: Instant,
-    plan: dunlin_workspace::github::Plan,
 }
 
 #[derive(Clone)]
@@ -102,7 +94,6 @@ impl AppState {
             terminal_sessions: Arc::new(Semaphore::new(8)),
             pair_attempts: Arc::new(Mutex::new(VecDeque::new())),
             git_plans: Arc::new(Mutex::new(HashMap::new())),
-            github_plans: Arc::new(Mutex::new(HashMap::new())),
             review_plans: Arc::new(Mutex::new(HashMap::new())),
             compare_plans: Arc::new(Mutex::new(HashMap::new())),
             checks: Arc::new(Mutex::new(HashMap::new())),
@@ -285,13 +276,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/checks/cancel", post(check_cancel))
         .route("/v1/impact/build", post(impact_build))
         .route("/v1/impact/verify", post(impact_verify))
-        .route("/v1/github/load", post(github_load))
-        .route("/v1/github/runs", post(github_runs))
-        .route("/v1/github/jobs", post(github_jobs))
-        .route("/v1/github/pull", post(github_pull))
-        .route("/v1/github/log", post(github_log))
-        .route("/v1/github/prepare", post(github_prepare))
-        .route("/v1/github/execute", post(github_execute))
+        .route("/v1/github/metadata", post(github_metadata))
         .route("/v1/review/capture", post(review_capture))
         .route("/v1/review/changes", post(review_changes))
         .route("/v1/review/restore/prepare", post(review_restore_prepare))
@@ -311,6 +296,7 @@ pub fn router(state: AppState) -> Router {
         .route("/acp", get(acp_ws))
         .route("/v1/terminal", get(crate::terminal::ws))
         .route("/v1/fs/tree", get(fs_tree))
+        .route("/v1/fs/storage", get(fs_storage))
         .route("/v1/fs/file", get(fs_file).put(fs_write))
         .route("/v1/audits", get(audit_runs))
         .route("/v1/audits/file", get(audit_file))
@@ -485,243 +471,18 @@ async fn impact_verify(
 #[derive(Deserialize)]
 struct GithubLoadRequest {
     project: String,
-    remote: String,
 }
 
-#[derive(Deserialize)]
-struct GithubRunsRequest {
-    project: String,
-    remote: String,
-    head: String,
-}
-
-#[derive(Deserialize)]
-struct GithubJobsRequest {
-    project: String,
-    remote: String,
-    run: dunlin_workspace::github::Run,
-}
-
-#[derive(Deserialize)]
-struct GithubPullRequest {
-    project: String,
-    remote: String,
-    number: u64,
-}
-
-#[derive(Deserialize)]
-struct GithubLogRequest {
-    project: String,
-    remote: String,
-    run: dunlin_workspace::github::Run,
-    job: dunlin_workspace::github::Job,
-}
-
-#[derive(Deserialize)]
-struct GithubPrepareRequest {
-    project: String,
-    remote: String,
-    action: dunlin_workspace::github::Action,
-}
-
-#[derive(Deserialize)]
-struct GithubExecuteRequest {
-    project: String,
-    id: String,
-}
-
-#[derive(Serialize)]
-struct GithubPlanResponse {
-    id: String,
-    summary: String,
-}
-
-fn github_repository(
-    project: &Project,
-    remote: &str,
-) -> Result<dunlin_workspace::github::Repository, String> {
-    dunlin_workspace::github::repository(&project.path, remote)
-}
-
-async fn github_load(
+async fn github_metadata(
     AuthUser { user, .. }: AuthUser,
     State(state): State<AppState>,
     Json(request): Json<GithubLoadRequest>,
-) -> Result<Json<dunlin_workspace::github::Overview>, ApiError> {
+) -> Result<Json<dunlin_workspace::github::Metadata>, ApiError> {
     if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "Relay GitHub metadata uses the host account and requires an administrator"));
     }
     let project = state.project_for_user(&user.id, &request.project)?;
-    let overview =
-        run_blocking(move || dunlin_workspace::github::load(&project.path, &request.remote))
-            .await?;
-    Ok(Json(overview))
-}
-
-async fn github_runs(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubRunsRequest>,
-) -> Result<Json<Vec<dunlin_workspace::github::Run>>, ApiError> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    let project = state.project_for_user(&user.id, &request.project)?;
-    let runs = run_blocking(move || {
-        let repository = github_repository(&project, &request.remote)?;
-        dunlin_workspace::github::runs(&repository, &request.head)
-    })
-    .await?;
-    Ok(Json(runs))
-}
-
-async fn github_jobs(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubJobsRequest>,
-) -> Result<
-    Json<(
-        dunlin_workspace::github::Run,
-        Vec<dunlin_workspace::github::Job>,
-    )>,
-    ApiError,
-> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    let project = state.project_for_user(&user.id, &request.project)?;
-    let result = run_blocking(move || {
-        let repository = github_repository(&project, &request.remote)?;
-        dunlin_workspace::github::refresh_run(&repository, &request.run)
-    })
-    .await?;
-    Ok(Json(result))
-}
-
-async fn github_pull(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubPullRequest>,
-) -> Result<Json<dunlin_workspace::github::PullDetails>, ApiError> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    let project = state.project_for_user(&user.id, &request.project)?;
-    let detail = run_blocking(move || {
-        let repository = github_repository(&project, &request.remote)?;
-        dunlin_workspace::github::details(&repository, request.number)
-    })
-    .await?;
-    Ok(Json(detail))
-}
-
-async fn github_log(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubLogRequest>,
-) -> Result<Json<String>, ApiError> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    let project = state.project_for_user(&user.id, &request.project)?;
-    let log = run_blocking(move || {
-        let repository = github_repository(&project, &request.remote)?;
-        dunlin_workspace::github::logs(&repository, &request.run, &request.job)
-    })
-    .await?;
-    Ok(Json(log))
-}
-
-async fn github_prepare(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubPrepareRequest>,
-) -> Result<Json<GithubPlanResponse>, ApiError> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    let project = state.project_for_user(&user.id, &request.project)?;
-    if state
-        .github_plans
-        .lock()
-        .map(|plans| plans.len())
-        .unwrap_or(0)
-        >= 64
-    {
-        return Err(ApiError::new(
-            StatusCode::TOO_MANY_REQUESTS,
-            "Too many prepared GitHub actions; submit or wait for expiry",
-        ));
-    }
-    let plan = run_blocking(move || {
-        let repository = github_repository(&project, &request.remote)?;
-        dunlin_workspace::github::prepare(&repository, request.action)
-    })
-    .await?;
-    let id = uuid::Uuid::now_v7().to_string();
-    let summary = plan.summary.clone();
-    state
-        .github_plans
-        .lock()
-        .map_err(|_| ApiError::internal("GitHub plan registry lock poisoned"))?
-        .insert(
-            id.clone(),
-            PendingGithub {
-                user_id: user.id,
-                project_id: request.project,
-                prepared: Instant::now(),
-                plan,
-            },
-        );
-    Ok(Json(GithubPlanResponse { id, summary }))
-}
-
-async fn github_execute(
-    AuthUser { user, .. }: AuthUser,
-    State(state): State<AppState>,
-    Json(request): Json<GithubExecuteRequest>,
-) -> Result<Json<String>, ApiError> {
-    if user.role != "admin" {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Relay GitHub uses the host's gh account and is restricted to relay administrators",
-        ));
-    }
-    state.project_for_user(&user.id, &request.project)?;
-    let pending = state
-        .github_plans
-        .lock()
-        .map_err(|_| ApiError::internal("GitHub plan registry lock poisoned"))?
-        .remove(&request.id)
-        .ok_or_else(ApiError::not_found)?;
-    if pending.user_id != user.id
-        || pending.project_id != request.project
-        || pending.prepared.elapsed() > Duration::from_secs(300)
-    {
-        return Err(ApiError::conflict(
-            "GitHub confirmation expired or belongs to another session",
-        ));
-    }
-    let result = run_blocking(move || dunlin_workspace::github::execute(pending.plan)).await?;
-    Ok(Json(result))
+    Ok(Json(run_blocking(move || dunlin_workspace::github::metadata(&project.path)).await?))
 }
 
 #[derive(Deserialize)]
@@ -1534,6 +1295,19 @@ async fn fs_tree(
     })
     .await?;
     Ok(Json(tree))
+}
+
+async fn fs_storage(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<ProjectQuery>,
+) -> Result<Json<Option<u64>>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let permit = state.fs_permit()?;
+    Ok(Json(run_blocking(move || {
+        let _permit = permit;
+        Ok(dunlin_workspace::tree::storage_size(std::path::Path::new(&project.path)))
+    }).await?))
 }
 
 #[derive(Deserialize)]

@@ -17,7 +17,7 @@ impl Drop for Child {
         let _ = self.0.wait();
     }
 }
-pub(super) fn run(
+pub(crate) fn run(
     mut command: Command,
     input: Option<Vec<u8>>,
     timeout: Duration,
