@@ -108,7 +108,9 @@ Release artifacts include a ZIP, a DMG, an unsigned `.pkg` installer for
 advanced to the same verified DMG and SHA-256 after each beta publication.
 `./scripts/bundle-pkg.sh` builds the installer from the already-signed app;
 `DUNLIN_PKG_SIGN_IDENTITY` enables Developer ID Installer signing when
-available.
+available. The release workflow also calls `.github/workflows/package.yml`,
+which verifies the published assets and pushes them to GHCR as
+`ghcr.io/corapoid/dunlin:<version>` plus the `beta` (or `latest`) tag.
 
 For isolated automatic QA use `python3 scripts/release_qa.py --tmp-root "$TMPDIR"
 --native --audit` after installing cargo-deny 0.20.2. Native mode needs a desktop;
