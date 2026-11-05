@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{BufRead, BufReader, Seek, SeekFrom},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -111,8 +111,13 @@ struct Price {
 
 /// USD per million tokens. Unknown models deliberately return `None`.
 fn price(model: &str, huge_context: bool) -> Option<Price> {
-    let model = model.to_ascii_lowercase();
-    if model.contains("opus-4-5") || model.contains("opus-4.5") {
+    let normalized = model.to_ascii_lowercase().replace('.', "-");
+    let model = normalized.strip_prefix("anthropic/").unwrap_or(&normalized);
+    let model = model.rsplit_once('-').filter(|(_, suffix)| suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_digit())).map_or(model, |(base, _)| base);
+    // Official Claude API pricing, verified 2026-11-05; unknown versions stay unpriced.
+    if matches!(model, "claude-opus-5-5" | "opus-5-5") {
+        Some(Price { input: 4., output: 20., cache_read: 0.2, cache_write: 5. })
+    } else if matches!(model, "claude-opus-5" | "opus-5" | "claude-opus-4-5" | "claude-opus-4-6" | "claude-opus-4-7" | "claude-opus-4-8" | "opus-4-5") {
         Some(Price {
             input: 5.,
             output: 25.,
@@ -331,7 +336,11 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
         output_tokens,
         cache_read_tokens,
         cache_write_tokens,
-    );
+    ).map(|cost| {
+        let one_hour = number(usage.pointer("/cache_creation/ephemeral_1h_input_tokens")).min(cache_write_tokens);
+        let price = price(&model, input_tokens.saturating_add(cache_read_tokens) > 200_000).unwrap();
+        cost + one_hour as f64 * (price.input * 2. - price.cache_write).max(0.) / 1_000_000.
+    });
     let attribution = claude_attribution(value, &model);
     Some(BillingEvent {
         key: format!("claude:{key}"),
@@ -355,7 +364,7 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
     })
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct CodexState {
     model: String,
     project: Option<String>,
@@ -499,6 +508,12 @@ pub struct FileCheckpoint {
     pub offset: u64,
     pub size: u64,
     pub mtime_ms: u64,
+    #[serde(default)]
+    line: u64,
+    #[serde(default)]
+    state: CodexState,
+    #[serde(default)]
+    skipping_line: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -582,7 +597,7 @@ fn scan_jsonl(
     paths: Vec<PathBuf>,
     checkpoint: &mut Checkpoint,
     report: &mut ScanReport,
-    mut parse: impl FnMut(&serde_json::Value, &Path, u64, &mut ScanReport) -> Option<BillingEvent>,
+    mut parse: impl FnMut(&serde_json::Value, &Path, u64, &mut CodexState) -> Option<BillingEvent>,
 ) {
     for path in paths {
         if report.events.len() >= MAX_EVENTS {
@@ -598,13 +613,7 @@ fn scan_jsonl(
         let Ok(metadata) = fs::metadata(&path) else {
             continue;
         };
-        if report.bytes.saturating_add(metadata.len()) > MAX_BYTES {
-            report.truncated = true;
-            report.warn("Byte limit reached; remaining provider logs were not read.");
-            break;
-        }
         report.files += 1;
-        report.bytes = report.bytes.saturating_add(metadata.len());
         let key = path.to_string_lossy().to_string();
         let previous = checkpoint.files.get(&key).cloned().unwrap_or_default();
         let size = metadata.len();
@@ -618,7 +627,7 @@ fn scan_jsonl(
             events: 0,
             state: "scanned".into(),
         };
-        if previous.size == size && previous.mtime_ms == modified {
+        if previous.size == size && previous.mtime_ms == modified && previous.offset == size {
             source.state = "cached".into();
             report.sources.push(source);
             continue;
@@ -639,29 +648,52 @@ fn scan_jsonl(
             let _ = file.seek(SeekFrom::Start(0));
         }
         let mut reader = BufReader::new(file);
-        let mut line = String::new();
-        let mut line_number = 0u64;
+        let mut line = Vec::new();
+        let resume = previous.offset <= size;
+        let mut line_number = if resume { previous.line } else { 0 };
+        let mut state = if resume { previous.state.clone() } else { CodexState::default() };
+        let mut skipping = resume && previous.skipping_line;
         loop {
+            if report.bytes >= MAX_BYTES || report.events.len() >= MAX_EVENTS || checkpoint.seen.len() >= MAX_SEEN {
+                report.truncated = true;
+                report.warn("Scan batch limit reached; additional provider logs remain.");
+                break;
+            }
             line.clear();
-            let Ok(read) = reader.read_line(&mut line) else {
+            let bound = (MAX_BYTES - report.bytes).min(MAX_LINE as u64 + 1);
+            let Ok(read) = reader.by_ref().take(bound).read_until(b'\n', &mut line) else {
+                report.warn(format!("Could not decode {provider} log"));
                 break;
             };
+            report.bytes += read as u64;
             if read == 0 {
                 break;
             }
-            line_number += 1;
-            if !line.ends_with('\n') {
+            if !line.ends_with(b"\n") {
+                if line.len() > MAX_LINE || skipping {
+                    offset += read as u64;
+                    skipping = true;
+                    report.warn("Oversized provider log line skipped; billing evidence may be incomplete.");
+                    continue;
+                }
+                if report.bytes >= MAX_BYTES && offset + (read as u64) < size {
+                    report.truncated = true;
+                    report.warn("Scan batch limit reached; additional provider logs remain.");
+                }
                 // Keep a partial last line for the next incremental scan.
                 break;
             }
+            line_number += 1;
             offset = offset.saturating_add(read as u64);
-            if line.len() > MAX_LINE {
+            if line.len() > MAX_LINE || skipping {
+                skipping = false;
+                report.warn("Oversized provider log line skipped; billing evidence may be incomplete.");
                 continue;
             }
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            let Ok(value) = serde_json::from_slice::<serde_json::Value>(&line) else {
                 continue;
             };
-            let Some(event) = parse(&value, &path, line_number, report) else {
+            let Some(event) = parse(&value, &path, line_number, &mut state) else {
                 continue;
             };
             if checkpoint.seen.len() >= MAX_SEEN {
@@ -681,6 +713,9 @@ fn scan_jsonl(
                 offset,
                 size,
                 mtime_ms: modified,
+                line: line_number,
+                state,
+                skipping_line: skipping,
             },
         );
         report.sources.push(source);
@@ -704,6 +739,7 @@ pub fn scan_claude(root: &Path) -> Vec<BillingEvent> {
 pub fn scan_claude_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport {
     let mut report = ScanReport::default();
     let paths = claude_paths(root);
+    if paths.len() == MAX_FILES { report.truncated = true; report.warn("File discovery limit reached; additional logs may remain."); }
     scan_jsonl(
         "Claude Code",
         paths,
@@ -726,20 +762,13 @@ pub fn scan_codex_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport
     let mut report = ScanReport::default();
     let mut paths = Vec::new();
     files(root, "jsonl", &mut paths, 0);
-    let mut state = CodexState::default();
-    let mut current_file = PathBuf::new();
+    if paths.len() == MAX_FILES { report.truncated = true; report.warn("File discovery limit reached; additional logs may remain."); }
     scan_jsonl(
         "OpenAI Codex",
         paths,
         checkpoint,
         &mut report,
-        |value, path, line, _| {
-            if path != current_file {
-                state = CodexState::default();
-                current_file = path.to_path_buf();
-            }
-            codex_event(value, path, line, &mut state)
-        },
+        codex_event,
     );
     checkpoint.last_scan_ms = now_ms();
     report.events.sort_by_key(|event| event.at_ms);
@@ -759,10 +788,21 @@ struct OpenCodeSession {
     project: Option<String>,
     parent: Option<String>,
     title: Option<String>,
+    model: Option<String>,
 }
 
-fn session_projects(connection: &Connection) -> BTreeMap<String, OpenCodeSession> {
+fn session_projects(connection: &Connection, v2: bool) -> BTreeMap<String, OpenCodeSession> {
     let mut result = BTreeMap::new();
+    let table = if v2 { "session_v2" } else { "session" };
+    if let Ok(mut statement) = connection.prepare(&format!("SELECT id, directory, parent_id, title, model FROM {table}"))
+        .or_else(|_| connection.prepare(&format!("SELECT id, directory, parent_id, title, NULL FROM {table}"))) {
+        if let Ok(rows) = statement.query_map([], |row| Ok((row.get::<_, String>(0)?, OpenCodeSession {
+            project: row.get(1)?, parent: row.get(2)?, title: row.get(3)?, model: row.get::<_, Option<String>>(4)?.map(|model| {
+                serde_json::from_str::<serde_json::Value>(&model).ok().and_then(|v| v.get("id").and_then(|s| s.as_str()).map(str::to_owned)).unwrap_or(model)
+            }),
+        }))) { result.extend(rows.flatten()); }
+        return result;
+    }
     let Ok(mut statement) = connection.prepare("SELECT id, data FROM session") else {
         return result;
     };
@@ -781,6 +821,7 @@ fn session_projects(connection: &Connection) -> BTreeMap<String, OpenCodeSession
                         .or_else(|| string(value.pointer("/project/path"))),
                     parent: first_string(&value, &["/parentID", "/parent_id", "/parentId"]),
                     title: string(value.get("title")),
+                    model: string(value.get("modelID")).or_else(|| string(value.get("model"))),
                 },
             );
         }
@@ -809,25 +850,23 @@ fn opencode_event(
     if input == 0 && output == 0 && cache_read == 0 && cache_write == 0 {
         return None;
     }
+    let session = data.get("sessionID").and_then(serde_json::Value::as_str).map(str::to_string);
+    let session_info = session.as_deref().and_then(|session| projects.get(session));
     let model = string(data.get("modelID"))
         .or_else(|| string(data.get("model")))
         .or_else(|| string(data.pointer("/model/id")))
+        .or_else(|| session_info.and_then(|session| session.model.clone()))
         .unwrap_or_else(|| "unknown".into());
     let provider = string(data.get("providerID")).unwrap_or_else(|| "OpenCode".into());
     let at_ms = timestamp_value(data.pointer("/time/created"))
         .or_else(|| timestamp_value(data.get("created")))
         .unwrap_or(at_fallback);
-    let session = data
-        .get("sessionID")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    let session_info = session.as_deref().and_then(|session| projects.get(session));
     let project = string(data.get("directory"))
         .or_else(|| string(data.get("path")))
         .or_else(|| session_info.and_then(|session| session.project.clone()));
     let recorded = float(data.get("cost"));
     let cost = recorded.or_else(|| priced_cost(&model, input, output, cache_read, cache_write));
-    let mut attribution = Attribution::new(if session.is_some() {
+    let mut attribution = Attribution::new(if session_info.is_some() {
         WorkKind::Main
     } else {
         WorkKind::Unknown
@@ -874,25 +913,38 @@ pub fn scan_opencode_db(path: &Path) -> Result<Vec<BillingEvent>, String> {
     )
     .map_err(|_| "OpenCode database is locked or unavailable".to_string())?;
     let _ = connection.busy_timeout(std::time::Duration::from_secs(2));
-    let projects = session_projects(&connection);
-    let mut statement = connection
-        .prepare("SELECT id, data, time_created FROM message ORDER BY time_created DESC LIMIT ?1")
-        .or_else(|_| connection.prepare("SELECT id, data, 0 FROM message LIMIT ?1"))
-        .map_err(|_| "OpenCode message schema is not recognized".to_string())?;
+    let v2 = connection.query_row("SELECT EXISTS(SELECT 1 FROM session_message WHERE type = 'assistant')", [], |row| row.get::<_, bool>(0)).unwrap_or(false);
+    let projects = session_projects(&connection, v2);
+    let queries = if v2 { vec![
+        "SELECT id, data, time_created, session_id, type FROM session_message WHERE type = 'assistant' ORDER BY seq DESC LIMIT ?1",
+        "SELECT CAST(rowid AS TEXT), data, 0, session_id, type FROM session_message WHERE type = 'assistant' ORDER BY seq DESC LIMIT ?1",
+    ] } else { vec![
+        "SELECT id, data, time_created, session_id, '' FROM message ORDER BY time_created DESC LIMIT ?1",
+        "SELECT id, data, 0, session_id, '' FROM message LIMIT ?1",
+        "SELECT id, data, time_created, NULL, '' FROM message ORDER BY time_created DESC LIMIT ?1",
+        "SELECT id, data, 0, NULL, '' FROM message LIMIT ?1",
+    ] };
+    let mut statement = queries.into_iter().find_map(|query| connection.prepare(query).ok())
+        .ok_or_else(|| "OpenCode message schema is not recognized".to_string())?;
     let rows = statement
         .query_map([MAX_OPENCODE_ROWS], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(|_| "OpenCode messages could not be read".to_string())?;
     let mut events = Vec::new();
     for row in rows.flatten() {
-        let Ok(data) = serde_json::from_str::<serde_json::Value>(&row.1) else {
+        let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&row.1) else {
             continue;
         };
+        if !data.is_object() { continue; }
+        if data.get("sessionID").and_then(|s| s.as_str()).is_none() { data["sessionID"] = row.3.clone().into(); }
+        if data.get("role").is_none() && !row.4.is_empty() { data["role"] = row.4.clone().into(); }
         let fallback = if row.2 < 10_000_000_000 && row.2 > 0 {
             row.2 as u64 * 1000
         } else {
@@ -1202,7 +1254,7 @@ impl Summary {
                 ),
             });
         }
-        if self.truncated {
+        if self.truncated && !self.warnings.iter().any(|warning| warning.contains("limit reached")) {
             alerts.push(Alert {
                 level: AlertLevel::Warning,
                 message: "The scan reached a file, byte or event bound. The summary is incomplete."
@@ -1210,6 +1262,7 @@ impl Summary {
             });
         }
         for warning in &self.warnings {
+            if alerts.iter().any(|alert| &alert.message == warning) { continue; }
             alerts.push(Alert {
                 level: AlertLevel::Warning,
                 message: warning.clone(),
@@ -1362,15 +1415,43 @@ impl Evidence {
     }
 }
 
-/// Scan every supported local source with the default bounds.
+fn scan_batches(root: &Path, scanner: fn(&Path, &mut Checkpoint) -> ScanReport) -> ScanReport {
+    let started = std::time::Instant::now();
+    let mut checkpoint = Checkpoint::default();
+    let mut result = ScanReport::default();
+    let mut sources = BTreeMap::<String, SourceFile>::new();
+    loop {
+        let before: u64 = checkpoint.files.values().map(|f| f.offset).sum();
+        let mut batch = scanner(root, &mut checkpoint);
+        let pending = batch.truncated;
+        result.bytes += batch.bytes;
+        result.events.append(&mut batch.events);
+        for mut source in batch.sources {
+            if let Some(previous) = sources.get(&source.path) { source.events += previous.events; }
+            sources.insert(source.path.clone(), source);
+        }
+        for warning in batch.warnings {
+            if warning != "Scan batch limit reached; additional provider logs remain." { result.warn(warning); }
+        }
+        let after: u64 = checkpoint.files.values().map(|f| f.offset).sum();
+        if !pending || after <= before || checkpoint.seen.len() >= MAX_SEEN || started.elapsed().as_secs() >= 10 {
+            result.truncated = pending;
+            if pending { result.warn("Scan limit reached; the summary is incomplete. Remaining logs were not included."); }
+            break;
+        }
+    }
+    result.files = sources.len(); result.sources = sources.into_values().collect(); result.checkpoint = checkpoint;
+    result
+}
+
+/// Scan supported sources in bounded batches; cached bytes never consume the next batch.
 pub fn scan_all() -> ScanReport {
     let mut report = ScanReport::default();
     let mut checkpoint = Checkpoint::default();
     if let Some(root) = default_claude_root() {
-        let mut claude_checkpoint = Checkpoint::default();
-        let mut claude = scan_claude_report(&root, &mut claude_checkpoint);
-        checkpoint.files.extend(claude_checkpoint.files);
-        checkpoint.seen.extend(claude_checkpoint.seen);
+        let mut claude = scan_batches(&root, scan_claude_report);
+        checkpoint.files.append(&mut claude.checkpoint.files);
+        checkpoint.seen.append(&mut claude.checkpoint.seen);
         report.events.append(&mut claude.events);
         report.sources.append(&mut claude.sources);
         report.warnings.append(&mut claude.warnings);
@@ -1379,10 +1460,9 @@ pub fn scan_all() -> ScanReport {
         report.truncated |= claude.truncated;
     }
     if let Some(root) = default_codex_root() {
-        let mut codex_checkpoint = Checkpoint::default();
-        let mut codex = scan_codex_report(&root, &mut codex_checkpoint);
-        checkpoint.files.extend(codex_checkpoint.files);
-        checkpoint.seen.extend(codex_checkpoint.seen);
+        let mut codex = scan_batches(&root, scan_codex_report);
+        checkpoint.files.append(&mut codex.checkpoint.files);
+        checkpoint.seen.append(&mut codex.checkpoint.seen);
         report.events.append(&mut codex.events);
         report.sources.append(&mut codex.sources);
         report.warnings.append(&mut codex.warnings);
@@ -1411,6 +1491,7 @@ pub fn scan_all() -> ScanReport {
                             offset: 0,
                             size: metadata.len(),
                             mtime_ms: mtime_ms(&metadata),
+                            ..Default::default()
                         },
                     );
                     report.sources.push(SourceFile {
@@ -1506,6 +1587,109 @@ mod tests {
         assert_eq!(summary.by_project.len(), 2);
         assert_eq!(summary.unpriced_models, vec!["unknown-model"]);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opus_55_uses_verified_prices_and_one_hour_cache_writes() {
+        let value = serde_json::json!({"type":"assistant", "sessionId":"main", "timestamp":"2026-11-05T10:00:00Z",
+            "message":{"id":"opus55", "model":"claude-opus-5-5", "usage":{"input_tokens":1000000, "output_tokens":1000000,
+                "cache_read_input_tokens":1000000, "cache_creation_input_tokens":1000000,
+                "cache_creation":{"ephemeral_1h_input_tokens":1000000}}}});
+        assert!((claude_event(&value).unwrap().cost_usd.unwrap() - 32.2).abs() < 1e-9);
+        assert_eq!(price("claude-opus-4-6", false).unwrap().input, 5.);
+        assert!(price("claude-opus-5-6", false).is_none());
+    }
+
+    #[test]
+    fn large_jsonl_files_resume_in_bounded_batches_and_cached_bytes_are_free() {
+        let root = fixture("large-batches");
+        let mut file = fs::File::create(root.join("large.jsonl")).unwrap();
+        let padding = "x".repeat(256 * 1024);
+        for id in 0..160 {
+            writeln!(file, "{}", serde_json::json!({"type":"assistant", "timestamp":"2026-11-05T10:00:00Z", "padding":padding,
+                "message":{"id":format!("m{id}"),"model":"claude-opus-5-5","usage":{"input_tokens":1}}})).unwrap();
+        }
+        let mut checkpoint = Checkpoint::default();
+        let first = scan_claude_report(&root, &mut checkpoint);
+        assert!(first.truncated && !first.events.is_empty() && first.bytes <= MAX_BYTES);
+        let second = scan_claude_report(&root, &mut checkpoint);
+        assert_eq!(first.events.len() + second.events.len(), 160); assert!(!second.truncated);
+        assert_eq!(scan_claude_report(&root, &mut checkpoint).bytes, 0);
+        let all = scan_batches(&root, scan_claude_report);
+        assert_eq!(all.events.len(), 160); assert!(!all.truncated); assert!(all.warnings.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn incremental_codex_preserves_model_attribution_totals_and_line_identity() {
+        let root = fixture("codex-resume"); let path = root.join("rollout.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"main","model":"gpt-5","cwd":"/code"}})).unwrap();
+        let mut checkpoint = Checkpoint::default();
+        for total in [100, 120, 140] {
+            writeln!(file, "{}", serde_json::json!({"type":"event_msg", "timestamp":"2026-11-05T10:00:00Z",
+                "payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":total,"output_tokens":total}}}})).unwrap();
+            let events = scan_codex_report(&root, &mut checkpoint).events;
+            assert_eq!(events.len(), 1); assert_eq!(events[0].model, "gpt-5");
+            assert_eq!(events[0].input_tokens, if total == 100 {100} else {20});
+            assert_eq!(events[0].attribution.kind, WorkKind::Main);
+        }
+        assert_eq!(checkpoint.seen.len(), 3);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_and_partial_lines_resume_without_losing_the_next_event() {
+        let root = fixture("oversized-partial");
+        let path = root.join("log.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(&vec![b'x'; MAX_LINE + 100]).unwrap();
+        let mut checkpoint = Checkpoint::default();
+        let first = scan_claude_report(&root, &mut checkpoint);
+        assert!(first.events.is_empty());
+        assert!(first.warnings.iter().any(|warning| warning.contains("Oversized")));
+        let event = serde_json::json!({"type":"assistant", "timestamp":"2026-11-05T10:00:00Z",
+            "message":{"id":"after-oversized","model":"claude-opus-5-5","usage":{"input_tokens":1}}}).to_string();
+        write!(file, "\n{event}").unwrap();
+        assert!(scan_claude_report(&root, &mut checkpoint).events.is_empty());
+        writeln!(file).unwrap();
+        let events = scan_claude_report(&root, &mut checkpoint).events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].input_tokens, 1);
+        assert_eq!(scan_claude_report(&root, &mut checkpoint).bytes, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn relational_opencode_v1_and_v2_supply_session_identity_and_parent() {
+        let root = fixture("relational-opencode");
+        for v2 in [false, true] {
+            let path = root.join(if v2 {"v2.db"} else {"v1.db"}); let c = Connection::open(&path).unwrap();
+            let table = if v2 {"session_v2"} else {"session"};
+            c.execute_batch(&format!("CREATE TABLE {table} (id TEXT, directory TEXT, parent_id TEXT, title TEXT);
+                INSERT INTO {table} VALUES ('main','/repo',NULL,'Main'),('child','/repo','main','Child');")).unwrap();
+            let data = serde_json::json!({"role":"assistant", "modelID":"claude-opus-5-5", "tokens":{"input":1000000,"output":1000000}}).to_string();
+            if v2 {
+                c.execute_batch("CREATE TABLE session_message (id TEXT, session_id TEXT, type TEXT, seq INTEGER, data TEXT, time_created INTEGER);").unwrap();
+                c.execute("INSERT INTO session_message VALUES ('m','child','assistant',1,?1,1762336800000)", [&data]).unwrap();
+            } else {
+                c.execute_batch("CREATE TABLE message (id TEXT, data TEXT, time_created INTEGER, session_id TEXT);").unwrap();
+                c.execute("INSERT INTO message VALUES ('m',?1,1762336800000,'child')", [&data]).unwrap();
+            }
+            let events = scan_opencode_db(&path).unwrap(); assert_eq!(events.len(), 1);
+            assert_eq!(events[0].attribution.kind, WorkKind::Subagent); assert_eq!(events[0].attribution.parent.as_deref(), Some("main"));
+            assert_eq!(events[0].project.as_deref(), Some("/repo")); assert_eq!(events[0].cost_usd, Some(24.));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_limit_alerts_are_not_repeated_or_hidden() {
+        let warning = "Byte limit reached; remaining provider logs were not read.".to_string();
+        let summary = summarize(ScanReport { truncated: true, warnings: vec![warning.clone(), warning.clone()], ..Default::default() });
+        let alerts = summary.alerts(None);
+        assert_eq!(alerts.iter().filter(|alert| alert.message == warning).count(), 1);
+        assert!(!alerts.iter().any(|alert| alert.message.contains("file, byte or event bound")));
     }
 
     #[test]
