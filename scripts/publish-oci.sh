@@ -43,7 +43,9 @@ for artifact in "$ZIP" "$DMG" "$PKG" "$RELAY" "$SUMS"; do
 done
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+INSTALL_NAME=".dunlin-oci-install.md"
+INSTALL="$DIST/$INSTALL_NAME"
+trap 'rm -rf "$TMP"; rm -f "$INSTALL"' EXIT
 cat > "$TMP/INSTALL.md" <<EOF
 # Dunlin $VERSION
 
@@ -68,22 +70,26 @@ brew install --cask corapoid/tap/dunlin@beta
 
 Project: https://github.com/corapoid/dunlin
 EOF
+cp "$TMP/INSTALL.md" "$INSTALL"
 
-oras push "$REF" \
-  --artifact-type "application/vnd.dunlin.bundle.v1+json" \
-  --annotation "org.opencontainers.image.title=$APP_NAME $VERSION" \
-  --annotation "org.opencontainers.image.description=Native, agent-first IDE for macOS (public beta)" \
-  --annotation "org.opencontainers.image.version=$VERSION" \
-  --annotation "org.opencontainers.image.source=https://github.com/corapoid/dunlin" \
-  --annotation "org.opencontainers.image.url=https://github.com/corapoid/dunlin" \
-  --annotation "org.opencontainers.image.documentation=https://github.com/corapoid/dunlin/blob/main/docs/guide.md" \
-  --annotation "org.opencontainers.image.licenses=MIT" \
-  "$DMG:application/x-apple-diskimage" \
-  "$PKG:application/vnd.apple.installer+xml" \
-  "$ZIP:application/zip" \
-  "$RELAY:application/gzip" \
-  "$SUMS:text/plain" \
-  "$TMP/INSTALL.md:text/markdown"
+(
+  cd "$DIST"
+  oras push "$REF" \
+    --artifact-type "application/vnd.dunlin.bundle.v1+json" \
+    --annotation "org.opencontainers.image.title=$APP_NAME $VERSION" \
+    --annotation "org.opencontainers.image.description=Native, agent-first IDE for macOS (public beta)" \
+    --annotation "org.opencontainers.image.version=$VERSION" \
+    --annotation "org.opencontainers.image.source=https://github.com/corapoid/dunlin" \
+    --annotation "org.opencontainers.image.url=https://github.com/corapoid/dunlin" \
+    --annotation "org.opencontainers.image.documentation=https://github.com/corapoid/dunlin/blob/main/docs/guide.md" \
+    --annotation "org.opencontainers.image.licenses=MIT" \
+    "$APP_NAME-$VERSION-macos-arm64.dmg:application/x-apple-diskimage" \
+    "$APP_NAME-$VERSION-macos-arm64.pkg:application/vnd.apple.installer+xml" \
+    "$APP_NAME-$VERSION-macos-arm64.zip:application/zip" \
+    "dunlin-relay-$VERSION-macos-arm64.tar.gz:application/gzip" \
+    "SHA256SUMS:text/plain" \
+    "$INSTALL_NAME:text/markdown"
+)
 
 if [[ "$VERSION" == *-* ]]; then
   oras tag "$REF" beta
