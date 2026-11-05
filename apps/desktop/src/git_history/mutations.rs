@@ -280,10 +280,9 @@ fn action_button(
     disabled: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Button {
-    Button::new(id)
+    dunlin_ui::button(id)
         .ghost()
         .small()
-        .rounded(px(4.))
         .label(label)
         .disabled(disabled)
         .on_click(
@@ -520,7 +519,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .flex()
                             .gap(px(6.))
                             .child(
-                                Button::new("git-operation-confirm")
+                                dunlin_ui::button("git-operation-confirm")
                                     .small()
                                     .label("Review and confirm…")
                                     .disabled(busy)
@@ -529,7 +528,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                     })),
                             )
                             .child(
-                                Button::new("git-operation-cancel")
+                                dunlin_ui::button("git-operation-cancel")
                                     .ghost()
                                     .small()
                                     .label("Cancel")

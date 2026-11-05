@@ -3,7 +3,7 @@
 //! center in an isolated data directory, then quit that process only.
 use crate::app::{DunlinApp, SettingsTab};
 use dunlin_domain::SidebarSection;
-use dunlin_ui::{assets, component::TitleBar, *};
+use dunlin_ui::{assets, *};
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -44,7 +44,7 @@ pub(crate) fn run() {
             let (parent, owner) = open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    ..TitleBar::window_options()
+                    ..dunlin_ui::window_options()
                 },
                 cx,
                 |window, cx| cx.new(|cx| DunlinApp::new(window, cx)),

@@ -7,7 +7,7 @@ use dunlin_terminal::{
     highlight_parts, link_parts, safe_link,
 };
 use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::{Input, InputState};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -1563,7 +1563,7 @@ pub(crate) fn render(
                         .child(tab.title.clone()),
                 )
                 .child(
-                    Button::new(format!("terminal-close:{close}"))
+                    dunlin_ui::button(format!("terminal-close:{close}"))
                         .ghost()
                         .small()
                         .label("×")
@@ -1575,7 +1575,7 @@ pub(crate) fn render(
     }
     toolbar = toolbar
         .child(
-            Button::new("terminal-new")
+            dunlin_ui::button("terminal-new")
                 .ghost()
                 .small()
                 .label("+")
@@ -1587,7 +1587,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            Button::new("terminal-split-right")
+            dunlin_ui::button("terminal-split-right")
                 .ghost()
                 .small()
                 .label("◫")
@@ -1599,7 +1599,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            Button::new("terminal-split-down")
+            dunlin_ui::button("terminal-split-down")
                 .ghost()
                 .small()
                 .label("⬓")
@@ -1611,7 +1611,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            Button::new("terminal-ssh")
+            dunlin_ui::button("terminal-ssh")
                 .ghost()
                 .small()
                 .label("SSH")
@@ -1639,7 +1639,7 @@ pub(crate) fn render(
                     .child(format!("{matches} visible")),
             )
             .child(
-                Button::new("terminal-search-close")
+                dunlin_ui::button("terminal-search-close")
                     .ghost()
                     .small()
                     .label("×")
@@ -1669,7 +1669,7 @@ pub(crate) fn render(
                     }),
             )
             .child(
-                Button::new("terminal-find")
+                dunlin_ui::button("terminal-find")
                     .ghost()
                     .small()
                     .label("Find")
@@ -1681,7 +1681,7 @@ pub(crate) fn render(
                     })),
             )
             .child(
-                Button::new("terminal-copy")
+                dunlin_ui::button("terminal-copy")
                     .ghost()
                     .small()
                     .label("Copy")
@@ -1689,14 +1689,14 @@ pub(crate) fn render(
             )
             .when(has_block, |bar| {
                 bar.child(
-                    Button::new("terminal-copy-command")
+                    dunlin_ui::button("terminal-copy-command")
                         .ghost()
                         .small()
                         .label("Cmd")
                         .on_click(cx.listener(|this, _, _, cx| this.terminal_copy_command(cx))),
                 )
                 .child(
-                    Button::new("terminal-copy-output")
+                    dunlin_ui::button("terminal-copy-output")
                         .ghost()
                         .small()
                         .label("Out")
@@ -1704,7 +1704,7 @@ pub(crate) fn render(
                 )
             })
             .child(
-                Button::new("terminal-clear")
+                dunlin_ui::button("terminal-clear")
                     .ghost()
                     .small()
                     .label("Clear")
@@ -1747,7 +1747,7 @@ pub(crate) fn render(
         }));
         bar = bar
             .child(
-                Button::new("terminal-ssh-connect")
+                dunlin_ui::button("terminal-ssh-connect")
                     .small()
                     .label("Connect")
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1758,7 +1758,7 @@ pub(crate) fn render(
                     })),
             )
             .child(
-                Button::new("terminal-ssh-cancel")
+                dunlin_ui::button("terminal-ssh-cancel")
                     .ghost()
                     .small()
                     .label("×")
@@ -1794,7 +1794,7 @@ pub(crate) fn render(
                 "No terminal tab. Open a local shell to begin."
             })
             .child(
-                Button::new("terminal-empty-new")
+                dunlin_ui::button("terminal-empty-new")
                     .small()
                     .label("New terminal")
                     .on_click(cx.listener(|this, _, _, cx| {

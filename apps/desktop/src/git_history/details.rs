@@ -88,10 +88,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             comparison = comparison.child("Compare parent");
             for (index, parent) in parents.iter().enumerate() {
                 comparison = comparison.child(
-                    Button::new(format!("history-parent-{index}"))
+                    dunlin_ui::button(format!("history-parent-{index}"))
                         .ghost()
                         .small()
-                        .rounded(px(4.))
                         .label(format!("{} · {}", index + 1, short_oid(parent)))
                         .tooltip(format!("Compare with parent {}: {parent}", index + 1))
                         .when(index == view.parent, |button| {
@@ -131,11 +130,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .text_size(px(11.))
                 .text_color(p.muted_fg)
                 .child(
-                    Button::new("commit-copy-oid")
+                    dunlin_ui::button("commit-copy-oid")
                         .ghost()
                         .small()
-                        .rounded(px(3.))
-                        .h(px(18.))
                         .px(px(2.))
                         .font_family(dunlin_ui::theme::code_font())
                         .label(short_oid(&commit.oid))
@@ -176,7 +173,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             let active = view.selected_file == Some(index);
             let (icon, icon_color) = crate::file_icons::appearance(&file.path, &p);
             rows = rows.child(
-                Button::new(format!("commit-file-{index}"))
+                dunlin_ui::button(format!("commit-file-{index}"))
                     .custom(
                         ButtonCustomVariant::new(cx)
                             .color(if active { p.blue_soft } else { p.panel })

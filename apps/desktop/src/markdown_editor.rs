@@ -4,7 +4,7 @@ use crate::{app::DunlinApp, workbench::Tab};
 use dunlin_ui::{
     component::{
         Disableable, Sizable,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         input::Editor,
     },
     prelude::FluentBuilder as _,
@@ -320,10 +320,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     header.child(crate::inline_blame::toggle(this, cx))
                 })
                 .child(
-                    Button::new("markdown-save")
+                    dunlin_ui::button("markdown-save")
                         .ghost()
                         .small()
-                        .rounded(px(4.))
                         .icon(assets::IconName::Save)
                         .tooltip("Save · ⌘S")
                         .accessibility_label("Save Markdown")
@@ -333,10 +332,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         })),
                 )
                 .child(
-                    Button::new("markdown-close")
+                    dunlin_ui::button("markdown-close")
                         .ghost()
                         .small()
-                        .rounded(px(4.))
                         .icon(assets::IconName::X)
                         .tooltip("Close")
                         .accessibility_label("Close Markdown")

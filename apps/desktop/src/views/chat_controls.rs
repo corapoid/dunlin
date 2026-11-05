@@ -27,7 +27,7 @@ enum Action {
 }
 
 fn trigger(id: &'static str, label: String, icon: IconName) -> Button {
-    Button::new(id)
+    dunlin_ui::button(id)
         .ghost()
         .small()
         .icon(icon)
@@ -333,7 +333,7 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             .unwrap_or_else(|| "Choose model".into())
     };
     let app = cx.entity().downgrade();
-    Button::new("composer-model").ghost().small().label(label).dropdown_caret(true).max_w(px(240.))
+    dunlin_ui::button("composer-model").ghost().label(label).dropdown_caret(true).max_w(px(240.))
         .tooltip("Choose a model from the connected harness")
         .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
@@ -479,7 +479,7 @@ pub(crate) fn provider_controls(
             .bg(p.card)
             .child(provider(this, cx))
             .when(!connected && !this.provider_catalog.loading && !this.harness.status.is_busy(), |view| view.child(div().w(px(1.)).h(px(14.)).bg(p.border)).child(
-                Button::new("composer-provider-sign-in")
+                dunlin_ui::button("composer-provider-sign-in")
                     .ghost()
                     .small()
                     .icon(IconName::KeyRound)
@@ -618,7 +618,7 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
                     .items_center()
                     .gap(px(8.))
                     .child(
-                        Button::new("provider-account-connect")
+                        dunlin_ui::button("provider-account-connect")
                             .label(if this.provider_connected() {
                                 "Add / reconnect account…"
                             } else {
@@ -631,7 +631,7 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
                             .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))),
                     )
                     .child(
-                        Button::new("provider-account-refresh")
+                        dunlin_ui::button("provider-account-refresh")
                             .label("Refresh providers / models")
                             .small()
                             .h(px(28.))

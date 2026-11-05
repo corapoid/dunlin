@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::{Input, InputState};
 use dunlin_ui::component::{Disableable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
-    AnyElement, AppContext, ClipboardItem, Context, Entity, InteractiveElement, IntoElement,
+    AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement, IntoElement,
     ParentElement, StatefulInteractiveElement, Styled, Window, div, palette, px,
 };
 use serde::Deserialize;
@@ -353,6 +353,12 @@ impl DunlinApp {
         }).detach();
     }
 
+    pub(crate) fn provider_auth_input_focused(&self, window: &Window, cx: &dunlin_ui::App) -> bool {
+        self.provider_auth.as_ref().is_some_and(|dialog| {
+            dialog.input.read(cx).focus_handle(cx).is_focused(window)
+        })
+    }
+
     pub(crate) fn close_provider_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self
             .provider_auth
@@ -646,7 +652,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         if dialog.methods.len() > 1 {
             for (index, method) in dialog.methods.iter().enumerate() {
                 content = content.child(
-                    Button::new(("auth-method", index))
+                    dunlin_ui::button(("auth-method", index))
                         .label(method.label.clone())
                         .small()
                         .disabled(dialog.busy)
@@ -663,7 +669,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .child(div().text_size(px(12.)).child("API key"))
                 .child(Input::new(&dialog.input).disabled(dialog.busy))
                 .when(dialog.provider_id == crate::providers::GO, |view| view.child(
-                    Button::new("auth-console").ghost().small().label("Get a Go API key ↗")
+                    dunlin_ui::button("auth-console").ghost().label("Get a Go API key ↗")
                         .on_click(|_, _, cx| cx.open_url("https://opencode.ai/console/go"))));
         } else if !dialog.methods.is_empty() {
             content = content.child(div().text_color(p.muted_fg).text_size(px(12.)).child("Continue in your browser to authorize your account. Dunlin will detect completion and refresh your models automatically."));
@@ -681,13 +687,13 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             )
             .child(div().text_size(px(13.)).child(attempt.instructions))
             .child(
-                Button::new("auth-open-browser")
+                dunlin_ui::button("auth-open-browser")
                     .label("Open sign-in page ↗")
                     .small()
                     .on_click(move |_, _, cx| cx.open_url(&url)),
             )
             .child(
-                Button::new("auth-copy-code")
+                dunlin_ui::button("auth-copy-code")
                     .ghost()
                     .small()
                     .label("Copy authorization instructions")
@@ -779,7 +785,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .justify_end()
                         .gap(px(8.))
                         .child(
-                            Button::new("auth-cancel")
+                            dunlin_ui::button("auth-cancel")
                                 .ghost()
                                 .label(if connected { "Done" } else { "Cancel" })
                                 .disabled(dialog.busy)
@@ -789,7 +795,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         )
                         .when((ready && !dialog.methods.is_empty()) || code, |view| {
                             view.child(
-                                Button::new("auth-submit")
+                                dunlin_ui::button("auth-submit")
                                     .primary()
                                     .label(primary_label)
                                     .disabled(dialog.busy)
@@ -799,7 +805,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             )
                         })
                         .when(ready && dialog.service.is_none(), |view| {
-                            view.child(Button::new("auth-retry").primary().label("Retry").on_click(
+                            view.child(dunlin_ui::button("auth-retry").primary().label("Retry").on_click(
                                 cx.listener(|this, _, window, cx| {
                                     this.connect_provider(window, cx)
                                 }),

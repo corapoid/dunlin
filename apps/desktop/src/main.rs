@@ -8,6 +8,8 @@ mod chat_presentation;
 mod chat_scroll;
 mod chat_timing;
 mod comparisons;
+#[cfg(debug_assertions)]
+mod controls_smoke;
 mod dashboard;
 mod effects;
 mod explorer;
@@ -57,12 +59,18 @@ mod views;
 mod watch;
 mod window_state;
 mod workbench;
+#[cfg(test)]
+mod ui_contract_tests;
 
 use app::DunlinApp;
-use dunlin_ui::component::TitleBar;
 use dunlin_ui::*;
 
 fn main() {
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--controls-smoke") {
+        controls_smoke::run();
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--mcp-vault") {
         std::process::exit(dunlin_vault::mcp::run_stdio());
     }
@@ -163,7 +171,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(window_bounds),
                 window_min_size: Some(size(px(1100.), px(720.))),
-                ..TitleBar::window_options()
+                ..dunlin_ui::window_options()
             },
             cx,
             |window, cx| cx.new(|cx| DunlinApp::new(window, cx)),

@@ -307,10 +307,9 @@ fn info(value: &Blame, line: &Line) -> String {
 }
 pub(crate) fn toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Button {
     let enabled = this.active_file_tab().is_some_and(|t| t.blame.enabled);
-    Button::new("editor-inline-blame-toggle")
+    dunlin_ui::button("editor-inline-blame-toggle")
         .ghost()
         .small()
-        .rounded(px(4.))
         .label(if enabled { "Blame ✓" } else { "Blame" })
         .tooltip("Toggle HEAD attribution for unchanged source lines")
         .on_click(cx.listener(|this, _, _, cx| this.toggle_inline_blame(cx)))
@@ -353,7 +352,7 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
         .max_w(available)
         .overflow_hidden()
         .child(
-            Button::new("editor-inline-blame")
+            dunlin_ui::button("editor-inline-blame")
                 .ghost()
                 .small()
                 .h(px(18.))
@@ -376,7 +375,7 @@ pub(crate) fn status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
     let p = palette(cx);
     let content = if let Some((value, line)) = current(this, cx) {
         let oid = line.oid.clone();
-        Button::new("blame-current-line-details")
+        dunlin_ui::button("blame-current-line-details")
             .ghost()
             .small()
             .h(px(22.))

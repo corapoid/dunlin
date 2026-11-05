@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use dunlin_domain::{MainView, SidebarSection};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::{ActiveTheme, Icon, TitleBar};
+use dunlin_ui::component::{ActiveTheme, Icon, Selectable, TitleBar};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -104,17 +104,7 @@ pub(crate) fn render(
             )
         });
 
-    let mut center = div()
-        .flex_shrink_0()
-        .h(px(28.))
-        .p(px(2.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .gap(px(2.));
+    let mut center = segment_group(p).flex_shrink_0();
 
     let epoch = this.view_epoch;
     if has_projects && !dashboard && !security {
@@ -125,37 +115,12 @@ pub(crate) fn render(
                 MainView::Graph => (IconName::Waypoints, "⌘2"),
                 MainView::Trace => (IconName::ChartNoAxesGantt, "⌘3"),
             };
-            let color = if active { p.fg } else { p.muted_fg };
-
-            let tab = div()
-                .id(("view-tab", view as usize))
-                .aria_label(format!("Open {} view", view.label()))
-                .h(px(24.))
-                .px(px(8.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .cursor_pointer()
-                .when(active, |this| {
-                    this.bg(p.card).border_1().border_color(p.border)
-                })
-                .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+            let tab = segment_button(("view-tab", view as usize), view.label(), active)
+                .accessibility_label(format!("Open {} view", view.label()))
+                .icon(icon_name)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.set_view(view, cx);
                 }))
-                .child(Icon::new(icon_name).size(px(12.5)).text_color(color))
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .text_color(color)
-                        .child(view.label()),
-                )
                 .when(!compact && this.show_shortcut_hints, |this| {
                     this.child(
                         div()
@@ -190,31 +155,11 @@ pub(crate) fn render(
             center = center.child(tab);
         }
         center = center.child(
-            div()
-                .id("title-new-session")
-                .aria_label("New session")
-                .h(px(24.))
-                .w(px(26.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .tooltip(move |window, cx| {
-                    dunlin_ui::component::tooltip::Tooltip::new(if show_shortcut_hints {
-                        "New session (⌘N)"
-                    } else {
-                        "New session"
-                    })
-                    .build(window, cx)
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.new_session(cx)))
-                .child(
-                    Icon::new(IconName::Plus)
-                        .size(px(13.5))
-                        .text_color(p.muted_fg),
-                ),
+            icon_button("title-new-session", IconName::Plus, if show_shortcut_hints {
+                "New session (⌘N)"
+            } else {
+                "New session"
+            }).on_click(cx.listener(|this, _, _, cx| this.new_session(cx))),
         );
     }
     let center = if dashboard {
@@ -288,60 +233,26 @@ pub(crate) fn render(
         })
         .when(has_projects && !minimal_mode, |this| {
             this.child(
-                div()
-                    .id("title-sidebar")
-                    .aria_label("Toggle sidebar")
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
+                icon_button("title-sidebar", if sidebar_collapsed {
+                    IconName::PanelLeftOpen
+                } else {
+                    IconName::PanelLeftClose
+                }, "Toggle sidebar")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.sidebar_collapsed = !this.sidebar_collapsed;
                         this.persist_settings(cx);
                         cx.notify();
-                    }))
-                    .child(
-                        Icon::new(if sidebar_collapsed {
-                            IconName::PanelLeftOpen
-                        } else {
-                            IconName::PanelLeftClose
-                        })
-                        .size(px(13.5))
-                        .text_color(p.muted_fg),
-                    ),
+                    })),
             )
         })
         .when(has_projects, |this| {
             this.child(
-                div()
-                    .id("title-search")
-                    .aria_label("Open command palette")
-                    .h(px(26.))
-                    .px(px(8.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
+                icon_button("title-search", IconName::Search, "Open command palette")
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_palette(window, cx);
                     }))
-                    .child(
-                        Icon::new(IconName::Search)
-                            .size(px(12.5))
-                            .text_color(p.muted_fg),
-                    )
                     .when(!compact, |this| {
-                        this.child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(p.muted_fg)
-                                .child("Search"),
-                        )
+                        this.w_auto().label("Search")
                     })
                     .when(!compact && show_shortcut_hints, |this| {
                         this.child(kbd("⌘K", p))
@@ -349,99 +260,47 @@ pub(crate) fn render(
             )
         })
         .child(
-            div()
-                .id("title-minimal")
-                .aria_label(if minimal_mode {
+            icon_button("title-minimal", IconName::Minimize2, if minimal_mode {
                     "Disable minimalist mode"
                 } else {
                     "Enable minimalist mode"
                 })
-                .size(px(26.))
-                .rounded(px(7.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .when(minimal_mode, |button| button.bg(p.muted))
-                .hover(move |style| style.bg(p.hover))
-                .tooltip(move |window, cx| {
-                    dunlin_ui::component::tooltip::Tooltip::new(if minimal_mode {
-                        "Show the navigation rail, account usage and agent status again"
-                    } else {
-                        "Minimalist mode: explorer only, without the navigation rail, account usage or agent status details"
-                    })
-                    .build(window, cx)
-                })
+                .selected(minimal_mode)
+                .toggled(minimal_mode)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.toggle_minimal_mode();
                     this.persist_settings(cx);
                     cx.notify();
-                }))
-                .child(
-                    Icon::new(IconName::Minimize2)
-                        .size(px(13.5))
-                        .text_color(if minimal_mode { p.fg } else { p.muted_fg }),
-                ),
+                })),
         )
         .when(minimal_mode, |bar| {
             bar.child(
-                div()
-                    .id("title-settings")
-                    .aria_label("Open settings")
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .when(this.settings_open, |button| button.bg(p.muted))
-                    .hover(move |style| style.bg(p.hover))
-                    .tooltip(|window, cx| {
-                        dunlin_ui::component::tooltip::Tooltip::new("Open settings").build(window, cx)
-                    })
+                icon_button("title-settings", IconName::Settings2, "Open settings")
+                    .selected(this.settings_open)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = true;
                         this.settings_tab = crate::app::SettingsTab::General;
                         cx.notify();
-                    }))
-                    .child(
-                        Icon::new(IconName::Settings2)
-                            .size(px(13.5))
-                            .text_color(p.muted_fg),
-                    ),
+                    })),
             )
         })
         .child(
-            div()
-                .id("title-theme")
-                .aria_label("Toggle light or dark theme")
-                .size(px(26.))
-                .rounded(px(7.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            icon_button("title-theme", if cx.theme().is_dark() {
+                IconName::Sun
+            } else {
+                IconName::Moon
+            }, "Toggle light or dark theme")
                 .on_click(cx.listener(|this, _, window, cx| {
                     toggle_mode(window, cx);
                     this.persist_settings(cx);
                     cx.notify();
-                }))
-                .child(
-                    Icon::new(if cx.theme().is_dark() {
-                        IconName::Sun
-                    } else {
-                        IconName::Moon
-                    })
-                    .size(px(13.5))
-                    .text_color(p.muted_fg),
-                ),
+                })),
         );
 
     TitleBar::new()
-        .h(px(44.))
-        .bg(p.titlebar)
-        .border_color(p.border)
+        .h(px(dunlin_ui::scale::TITLEBAR_HEIGHT))
+        .bg(transparent_black())
+        .border_color(transparent_black())
         .child(
             div()
                 .w_full()

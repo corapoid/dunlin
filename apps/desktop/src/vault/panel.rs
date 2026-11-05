@@ -2,7 +2,7 @@
 
 use dunlin_domain::vault::now_secs;
 use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::{Input, InputState};
 use dunlin_ui::*;
 
@@ -109,7 +109,7 @@ pub(crate) fn render(
                 )
                 .child(div().flex_1())
                 .child(
-                    Button::new("vault-open-settings")
+                    dunlin_ui::button("vault-open-settings")
                         .ghost()
                         .small()
                         .label("Manage in Settings…")
@@ -176,7 +176,7 @@ pub(crate) fn render(
                         .child("This harness started without vault access. Restart it to attach the credential MCP server."),
                 )
                 .child(
-                    Button::new("vault-panel-restart-harness")
+                    dunlin_ui::button("vault-panel-restart-harness")
                         .small()
                         .label("Restart harness")
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -245,7 +245,7 @@ pub(crate) fn render(
                     })),
                 )
                 .child(
-                    Button::new("vault-panel-create")
+                    dunlin_ui::button("vault-panel-create")
                         .primary()
                         .small()
                         .label("Create quick key")
@@ -380,7 +380,7 @@ pub(crate) fn render(
                         .text_color(if secret.is_expired(now_secs()) { p.red } else { p.muted_fg })
                         .child(remaining(secret.expires_at)),
                 )
-                .child(Button::new(format!("vault-panel-revoke-{id}")).ghost().small().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
+                .child(dunlin_ui::button(format!("vault-panel-revoke-{id}")).ghost().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
                     let answer = window.prompt(PromptLevel::Warning, "Revoke this quick key?", Some("The value is removed from the macOS Keychain immediately. The agent can no longer use it."), &["Cancel", "Revoke"], cx);
                     let answer = this.overlay_backdrop.track_native(answer, cx);
                     let id = id.clone();

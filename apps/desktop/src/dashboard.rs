@@ -161,48 +161,20 @@ pub(crate) fn metric_switcher(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    div()
+    segment_group(p)
         .id("dashboard-metrics")
         .flex_shrink_0()
-        .h(px(28.))
-        .p(px(2.))
-        .rounded(px(8.))
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .gap(px(2.))
         .children(Metric::ALL.map(|candidate| {
             let active = this.dashboard_settings.metric == candidate;
-            let color = if active { p.fg } else { p.muted_fg };
-            div()
-                .id(format!("dashboard-metric:{candidate:?}"))
-                .aria_label(format!("Show {} activity", candidate.label()))
-                .h(px(24.))
+            segment_button(format!("dashboard-metric:{candidate:?}"), candidate.short_label(), active)
+                .accessibility_label(format!("Show {} activity", candidate.label()))
+                .icon(candidate.icon())
                 .px(px(if compact { 6. } else { 9. }))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .cursor_pointer()
-                .when(active, |tab| tab.bg(p.card))
-                .when(!active, |tab| tab.hover(move |style| style.bg(p.hover)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.dashboard_settings.metric = candidate;
                     this.persist_settings(cx);
                     cx.notify();
                 }))
-                .child(Icon::new(candidate.icon()).size(px(12.5)).text_color(color))
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .text_color(color)
-                        .child(candidate.short_label()),
-                )
         }))
         .into_any_element()
 }

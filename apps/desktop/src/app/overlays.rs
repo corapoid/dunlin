@@ -1,4 +1,5 @@
 use super::*;
+use dunlin_ui::component::{Disableable, Selectable, Sizable, button::{Button, ButtonVariants}};
 
 impl DunlinApp {
     pub(super) fn rail(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -11,10 +12,7 @@ impl DunlinApp {
             .flex_col()
             .items_center()
             .py(px(9.))
-            .gap(px(3.))
-            .bg(p.panel)
-            .border_r_1()
-            .border_color(p.border);
+            .gap(px(3.));
 
         let security_attention = !self.skill_in_library(crate::skills::SECURITY_AUDIT_SKILL);
         let mut items = vec![
@@ -51,37 +49,18 @@ impl DunlinApp {
 
         for (section, icon_name, count, has_badge) in items {
             let active = self.section == section && !self.settings_open;
-            let color = if active { p.fg } else { p.muted_fg };
-            let mut button = div()
-                .id(("rail", section as usize))
+            let mut button = icon_button(("rail", section as usize), icon_name, section.label())
                 .relative()
                 .size(px(36.))
-                .rounded(px(8.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+                .selected(active)
+                .toggled(active)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.section = section;
                     this.sidebar_collapsed = false;
                     this.settings_open = false;
                     this.persist_settings(cx);
                     cx.notify();
-                }))
-                .child(icon(icon_name, 17.0, color));
-
-            if active {
-                button = button.child(
-                    div()
-                        .absolute()
-                        .left(px(-8.))
-                        .h(px(16.))
-                        .w(px(2.))
-                        .rounded_full()
-                        .bg(p.fg),
-                );
-            }
+                }));
             if has_badge && count > 0 {
                 button = button.child(
                     div()
@@ -100,17 +79,11 @@ impl DunlinApp {
 
         rail.child(div().flex_1())
             .child(
-                div()
-                    .id("rail-usage")
+                dunlin_ui::button("rail-usage")
+                    .ghost()
+                    .accessibility_label("Account usage")
+                    .tooltip("Account usage")
                     .size(px(34.))
-                    .rounded(px(8.))
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(2.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = true;
                         this.settings_tab = SettingsTab::Usage;
@@ -119,48 +92,44 @@ impl DunlinApp {
                     .child(
                         div()
                             .flex()
-                            .items_end()
+                            .flex_col()
+                            .items_center()
                             .gap(px(2.))
-                            .h(px(13.))
-                            .child(div().w(px(3.)).h(px(6.)).rounded(px(1.)).bg(p.violet))
-                            .child(div().w(px(3.)).h(px(10.)).rounded(px(1.)).bg(p.blue))
-                            .child(div().w(px(3.)).h(px(13.)).rounded(px(1.)).bg(p.teal)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.muted_fg)
                             .child(
-                                self.active_usages()
-                                    .first()
-                                    .and_then(|usage| usage.primary())
-                                    .map(|window| format!("{:.0}%", window.used_percent))
-                                    .unwrap_or_else(|| "—".into()),
+                                div()
+                                    .flex()
+                                    .items_end()
+                                    .gap(px(2.))
+                                    .h(px(13.))
+                                    .child(div().w(px(3.)).h(px(6.)).rounded(px(1.)).bg(p.violet))
+                                    .child(div().w(px(3.)).h(px(10.)).rounded(px(1.)).bg(p.blue))
+                                    .child(div().w(px(3.)).h(px(13.)).rounded(px(1.)).bg(p.teal)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .child(
+                                        self.active_usages()
+                                            .first()
+                                            .and_then(|usage| usage.primary())
+                                            .map(|window| format!("{:.0}%", window.used_percent))
+                                            .unwrap_or_else(|| "—".into()),
+                                    ),
                             ),
                     ),
             )
             .child(
-                div()
-                    .id("rail-settings")
+                icon_button("rail-settings", IconName::Settings, "Settings")
                     .size(px(36.))
-                    .rounded(px(8.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .when(self.settings_open, |this| this.bg(p.accent))
-                    .hover(move |style| style.bg(p.hover))
+                    .selected(self.settings_open)
+                    .toggled(self.settings_open)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = !this.settings_open;
                         this.settings_tab = SettingsTab::Harnesses;
                         cx.notify();
-                    }))
-                    .child(icon(
-                        IconName::Settings,
-                        16.5,
-                        if self.settings_open { p.fg } else { p.muted_fg },
-                    )),
+                    })),
             )
             .into_any_element()
     }
@@ -340,20 +309,8 @@ impl DunlinApp {
                 let name = detected.name;
                 let selected = self.default_harness == name;
                 let name_owned = name.to_string();
-                let name_for_button = name_owned.clone();
-                let row = div()
-                    .id(format!("onboarding-harness:{name}"))
-                    .h(px(52.))
-                    .w_full()
-                    .px(px(12.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(if selected { p.border_strong } else { p.border })
-                    .bg(p.card)
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .cursor_pointer()
+                let row = action_row(format!("onboarding-harness:{name}"), format!("Use {name} harness"))
+                    .selected(selected).toggled(selected)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.default_harness = name_owned.clone();
                         this.persist_settings(cx);
@@ -414,18 +371,7 @@ impl DunlinApp {
                             )
                             .into_any_element()
                     } else {
-                        onboarding_secondary_button(
-                            format!("onboarding-harness-use:{name}"),
-                            "Set default",
-                            &p,
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.default_harness = name_for_button.clone();
-                            this.persist_settings(cx);
-                            cx.notify();
-                        }))
-                        .into_any_element()
+                        div().text_size(px(11.)).text_color(p.muted_fg).child("Set default").into_any_element()
                     }));
                 rows = rows.child(row);
             }
@@ -613,44 +559,17 @@ impl DunlinApp {
         ] {
             let active = self.bottom_panel == panel;
             header = header.child(
-                div()
-                    .id(format!("bottom-panel:{}", panel as usize))
-                    .h(px(22.))
-                    .px(px(8.))
-                    .rounded(px(5.))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .cursor_pointer()
-                    .when(active, |this| {
-                        this.bg(p.card).border_1().border_color(p.border)
+                segment_button(format!("bottom-panel:{}", panel as usize), label, active)
+                    .icon(match panel {
+                        BottomPanel::Terminal | BottomPanel::Hidden => IconName::Terminal,
+                        BottomPanel::Run => IconName::SquareTerminal,
+                        BottomPanel::Secrets => IconName::KeyRound,
                     })
-                    .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if this.bottom_panel != panel {
                             this.toggle_bottom_panel(panel, window, cx);
                         }
-                    }))
-                    .child(
-                        Icon::new(match panel {
-                            BottomPanel::Terminal => IconName::Terminal,
-                            BottomPanel::Run => IconName::SquareTerminal,
-                            BottomPanel::Secrets => IconName::KeyRound,
-                            BottomPanel::Hidden => IconName::Terminal,
-                        })
-                        .size(px(11.))
-                        .text_color(if active {
-                            p.fg
-                        } else {
-                            p.muted_fg
-                        }),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(if active { p.fg } else { p.muted_fg })
-                            .child(label),
-                    ),
+                    })),
             );
         }
         header = header
@@ -664,51 +583,19 @@ impl DunlinApp {
                     ]
                     .map(|(dock, glyph, label)| {
                         let active = self.terminal_dock == dock;
-                        div()
-                            .id(format!("terminal-dock-position:{label}"))
-                            .aria_label(format!("Place terminal panel at {label}"))
-                            .h(px(20.))
-                            .w(px(20.))
-                            .rounded(px(4.))
-                            .flex()
-                            .items_center()
-                            .cursor_pointer()
-                            .when(active, |this| {
-                                this.bg(p.card).border_1().border_color(p.border)
-                            })
-                            .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-                            .tooltip(move |window, cx| {
-                                Tooltip::new(format!("Move panel to the {label} edge"))
-                                    .build(window, cx)
-                            })
+                        segment_button(format!("terminal-dock-position:{label}"), glyph, active)
+                            .accessibility_label(format!("Place terminal panel at {label}"))
+                            .tooltip(format!("Move panel to the {label} edge"))
                             .on_click(
                                 cx.listener(move |this, _, _, cx| this.set_terminal_dock(dock, cx)),
-                            )
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(if active { p.fg } else { p.muted_fg })
-                                    .child(glyph),
                             )
                             .into_any_element()
                     }),
                 ),
             )
             .child(
-                div()
-                    .id("bottom-panel-close")
-                    .size(px(20.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| this.close_bottom_panel(cx)))
-                    .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                icon_button("bottom-panel-close", IconName::X, "Close bottom panel")
+                    .on_click(cx.listener(|this, _, _, cx| this.close_bottom_panel(cx))),
             );
         let body = match self.bottom_panel {
             BottomPanel::Terminal => crate::terminal::render(self, window, cx),
@@ -871,18 +758,10 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| this.cancel_pending_editor(cx)))
             .child(
-                div()
+                dialog_surface(p)
                     .id("editor-prompt")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(400.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(16.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -930,69 +809,22 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                div()
-                                    .id("editor-cancel")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("editor-cancel").label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.cancel_pending_editor(cx);
-                                    }))
-                                    .child(
-                                        div().text_size(px(12.0)).text_color(p.fg).child("Cancel"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("editor-discard")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.red_soft))
+                                dunlin_ui::button("editor-discard").danger().outline().label("Discard")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.discard_pending_editor(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .text_color(p.red)
-                                            .child("Discard"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("editor-save")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .bg(p.fg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.opacity(0.9))
+                                dunlin_ui::button("editor-save").primary().label("Save")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_pending_editor(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(p.bg)
-                                            .child("Save"),
-                                    ),
+                                    })),
                             ),
                     ),
             )
@@ -1124,45 +956,17 @@ impl DunlinApp {
                                     ),
                             )
                             .child(
-                                div()
-                                    .id("diff-open-file")
-                                    .h(px(26.))
-                                    .px(px(9.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(5.))
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("diff-open-file").icon(IconName::ExternalLink).label("Open file")
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_diff(window, cx);
                                         this.open_file(&open_path, window, cx);
-                                    }))
-                                    .child(icon(IconName::ExternalLink, 10.5, p.muted_fg))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.5))
-                                            .text_color(p.fg)
-                                            .child("Open file"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("diff-close")
-                                    .size(px(26.))
-                                    .rounded(px(6.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                icon_button("diff-close", IconName::X, "Close diff")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.close_diff(window, cx)
-                                    }))
-                                    .child(icon(IconName::X, 12.0, p.muted_fg)),
+                                    })),
                             ),
                     )
                     .child(body),
@@ -1236,16 +1040,7 @@ impl DunlinApp {
                 let info_for_click = info.clone();
                 let host = host_id.clone();
                 list = list.child(
-                    div()
-                        .id(format!("remote-project:{}", info.id))
-                        .h(px(42.))
-                        .px(px(8.))
-                        .rounded(px(6.))
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    action_row(format!("remote-project:{}", info.id), format!("Add remote project {}", info.name))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.add_remote_project(&host, &info_for_click, cx);
                         }))
@@ -1301,18 +1096,10 @@ impl DunlinApp {
                 cx.notify();
             }))
             .child(
-                div()
+                dialog_surface(p)
                     .id("remote-picker")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(440.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(14.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(10.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -1350,20 +1137,11 @@ impl DunlinApp {
                             )
                             .child(div().flex_1())
                             .child(
-                                div()
-                                    .id("remote-picker-close")
-                                    .size(px(24.))
-                                    .rounded(px(5.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                icon_button("remote-picker-close", IconName::X, "Close remote project picker")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.remote_picker = None;
                                         cx.notify();
-                                    }))
-                                    .child(icon(IconName::X, 11.0, p.muted_fg)),
+                                    })),
                             ),
                     )
                     .child(
@@ -1412,18 +1190,10 @@ impl DunlinApp {
                 cx.notify();
             }))
             .child(
-                div()
+                dialog_surface(p)
                     .id("new-file-modal")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(380.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(14.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(10.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -1448,20 +1218,7 @@ impl DunlinApp {
                             )),
                     )
                     .child(
-                        div()
-                            .h(px(30.))
-                            .px(px(7.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(p.border)
-                            .bg(p.bg)
-                            .flex()
-                            .items_center()
-                            .child(
-                                Input::new(&self.new_file_input)
-                                    .appearance(false)
-                                    .bordered(false),
-                            ),
+                        Input::new(&self.new_file_input).aria_label("File or folder name"),
                     )
                     .child(
                         div()
@@ -1470,57 +1227,25 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                div()
-                                    .id("new-file-cancel")
-                                    .h(px(27.))
-                                    .px(px(9.))
-                                    .rounded(px(5.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("new-file-cancel").label("Cancel")
+                                    .disabled(self.explorer.busy)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         if this.explorer.busy {
                                             return;
                                         }
                                         this.new_file_prompt = false;
                                         cx.notify();
-                                    }))
-                                    .child(
-                                        div().text_size(px(11.5)).text_color(p.fg).child("Cancel"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("new-file-create")
-                                    .h(px(27.))
-                                    .px(px(9.))
-                                    .rounded(px(5.))
-                                    .bg(p.fg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
+                                dunlin_ui::button("new-file-create").primary()
+                                    .disabled(self.explorer.busy)
+                                    .label(if self.explorer.busy {
+                                        if renaming { "Renaming…" } else { "Creating…" }
+                                    } else if renaming { "Rename" } else { "Create" })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.create_remote_file(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.5))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(p.bg)
-                                            .child(if self.explorer.busy {
-                                                if renaming {
-                                                    "Renaming…"
-                                                } else {
-                                                    "Creating…"
-                                                }
-                                            } else {
-                                                if renaming { "Rename" } else { "Create" }
-                                            }),
-                                    ),
+                                    })),
                             ),
                     ),
             )
@@ -1554,18 +1279,10 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| this.cancel_editor_conflict(cx)))
             .child(
-                div()
+                dialog_surface(p)
                     .id("editor-conflict")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(430.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(16.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -1613,72 +1330,22 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                div()
-                                    .id("conflict-cancel")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("conflict-cancel").label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.cancel_editor_conflict(cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .text_color(p.fg)
-                                            .child("Cancel"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("conflict-reload")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("conflict-reload").label("Reload")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.reload_editor_conflict(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .text_color(p.fg)
-                                            .child("Reload"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("conflict-overwrite")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .bg(p.amber)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.opacity(0.9))
+                                dunlin_ui::button("conflict-overwrite").warning().label("Overwrite")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.overwrite_editor_conflict(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(p.bg)
-                                            .child("Overwrite"),
-                                    ),
+                                    })),
                             ),
                     ),
             )
@@ -1699,25 +1366,8 @@ impl DunlinApp {
 
         let chip =
             |id: String, label: &str, active: bool, cx: &mut Context<Self>, action: ChipAction| {
-                div()
-                    .id(id)
-                    .h(px(25.))
-                    .px(px(8.))
-                    .rounded(px(5.))
-                    .border_1()
-                    .border_color(if active { p.blue } else { p.border })
-                    .bg(if active { p.blue_soft } else { p.card })
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
+                segment_button(id, label.to_owned(), active)
                     .on_click(cx.listener(move |this, _, _, cx| action(this, cx)))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(if active { p.blue } else { p.fg })
-                            .child(label.to_string()),
-                    )
             };
 
         div()
@@ -1731,20 +1381,12 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| this.close_project_settings(cx)))
             .child(
-                div()
+                dialog_surface(p)
                     .id("project-settings-modal")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(460.))
                     .max_h(px(620.))
                     .overflow_y_scroll()
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(14.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -1765,21 +1407,10 @@ impl DunlinApp {
                                     .child(project.name.clone()),
                             )
                             .child(
-                                div()
-                                    .id("project-settings-close")
-                                    .size(px(22.))
-                                    .rounded(px(4.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                icon_button("project-settings-close", IconName::X, "Close project settings")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.close_project_settings(cx);
-                                    }))
-                                    .child(
-                                        Icon::new(IconName::X).size(px(12.)).text_color(p.muted_fg),
-                                    ),
+                                    })),
                             ),
                     )
                     .child(div().text_size(px(11.0)).text_color(p.muted_fg).child(
@@ -1873,39 +1504,15 @@ impl DunlinApp {
                             .items_center()
                             .gap(px(7.))
                             .child(
-                                div()
-                                    .id("project-settings-reset")
-                                    .h(px(26.))
-                                    .px(px(8.))
-                                    .rounded(px(5.))
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.red_soft))
+                                dunlin_ui::button("project-settings-reset").danger().outline().label("Reset overrides")
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.reset_project_settings(index, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .text_color(p.red)
-                                            .child("Reset overrides"),
-                                    ),
+                                    })),
                             )
                             .child(div().flex_1())
                             .when(index == self.selected_project, |this| {
                                 this.child(
-                                    div()
-                                        .id("project-settings-new-session")
-                                        .h(px(26.))
-                                        .px(px(8.))
-                                        .rounded(px(5.))
-                                        .border_1()
-                                        .border_color(p.border)
-                                        .flex()
-                                        .items_center()
-                                        .cursor_pointer()
-                                        .hover(move |style| style.bg(p.hover))
+                                    dunlin_ui::button("project-settings-new-session").label("New conversation")
                                          .on_click(cx.listener(|this, _, _, cx| {
                                             if this.chat_controls_busy() {
                                                 this.set_notice("Wait for the current operation before starting a conversation", cx);
@@ -1913,35 +1520,14 @@ impl DunlinApp {
                                             }
                                             this.close_project_settings(cx);
                                             this.new_session(cx);
-                                        }))
-                                        .child(
-                                            div()
-                                                .text_size(px(11.0))
-                                                .text_color(p.fg)
-                                                .child("New conversation"),
-                                        ),
+                                        })),
                                 )
                             })
                             .child(
-                                div()
-                                    .id("project-settings-done")
-                                    .h(px(26.))
-                                    .px(px(10.))
-                                    .rounded(px(5.))
-                                    .bg(p.fg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
+                                dunlin_ui::button("project-settings-done").primary().label("Done")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.close_project_settings(cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(p.bg)
-                                            .child("Done"),
-                                    ),
+                                    })),
                             ),
                     ),
             )
@@ -1963,23 +1549,9 @@ impl DunlinApp {
             .max(8.0);
 
         let item = |id: &'static str, label: &str, color: Hsla| {
-            div()
-                .id(id)
-                .h(px(28.))
-                .px(px(8.))
-                .rounded(px(5.))
-                .flex()
-                .items_center()
-                .gap(px(7.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(11.5))
-                        .text_color(color)
-                        .child(label.to_string()),
-                )
+            menu_button(id, label.to_owned())
+                .when(color == p.red, |button| button.danger().outline())
+                .when(color == p.amber, |button| button.warning().outline())
         };
 
         let menu =
@@ -2200,37 +1772,12 @@ impl DunlinApp {
                     .child(message),
             )
             .child(
-                div()
-                    .id("toast-action")
-                    .h(px(24.))
-                    .px(px(7.))
-                    .rounded(px(5.))
-                    .bg(p.fg)
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.opacity(0.9))
-                    .on_click(cx.listener(|this, _, _, cx| this.apply_toast(cx)))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.bg)
-                            .child(action_label),
-                    ),
+                dunlin_ui::button("toast-action").primary().label(action_label)
+                    .on_click(cx.listener(|this, _, _, cx| this.apply_toast(cx))),
             )
             .child(
-                div()
-                    .id("toast-dismiss")
-                    .size(px(22.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(|this, _, _, cx| this.dismiss_toast(cx)))
-                    .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                icon_button("toast-dismiss", IconName::X, "Dismiss notification")
+                    .on_click(cx.listener(|this, _, _, cx| this.dismiss_toast(cx))),
             )
             .into_any_element()
     }
@@ -2264,18 +1811,10 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| this.cancel_group_prompt(cx)))
             .child(
-                div()
+                dialog_surface(p)
                     .id("group-modal")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(380.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(14.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(10.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -2319,20 +1858,7 @@ impl DunlinApp {
                             )),
                     )
                     .child(
-                        div()
-                            .h(px(30.))
-                            .px(px(7.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(p.border)
-                            .bg(p.bg)
-                            .flex()
-                            .items_center()
-                            .child(
-                                Input::new(&self.group_input)
-                                    .appearance(false)
-                                    .bordered(false),
-                            ),
+                        Input::new(&self.group_input).aria_label("Project group name"),
                     )
                     .child(
                         div()
@@ -2341,72 +1867,25 @@ impl DunlinApp {
                             .gap(px(7.))
                             .when_some(delete_id, |this, id| {
                                 this.child(
-                                    div()
-                                        .id("group-delete")
-                                        .h(px(27.))
-                                        .px(px(9.))
-                                        .rounded(px(5.))
-                                        .flex()
-                                        .items_center()
-                                        .cursor_pointer()
-                                        .hover(move |style| style.bg(p.red_soft))
+                                    dunlin_ui::button("group-delete").danger().outline().label("Delete group")
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.delete_project_group(&id, cx);
-                                        }))
-                                        .child(
-                                            div()
-                                                .text_size(px(11.0))
-                                                .text_color(p.red)
-                                                .child("Delete group"),
-                                        ),
+                                        })),
                                 )
                             })
                             .child(div().flex_1())
                             .child(
-                                div()
-                                    .id("group-cancel")
-                                    .h(px(27.))
-                                    .px(px(9.))
-                                    .rounded(px(5.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
+                                dunlin_ui::button("group-cancel").label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.cancel_group_prompt(cx);
-                                    }))
-                                    .child(
-                                        div().text_size(px(11.0)).text_color(p.fg).child("Cancel"),
-                                    ),
+                                    })),
                             )
                             .child(
-                                div()
-                                    .id("group-save")
-                                    .h(px(27.))
-                                    .px(px(10.))
-                                    .rounded(px(5.))
-                                    .bg(p.fg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.opacity(0.9))
+                                dunlin_ui::button("group-save").primary()
+                                    .label(if editing.is_some() { "Save" } else { "Create group" })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.submit_group_prompt(window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(11.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(p.bg)
-                                            .child(if editing.is_some() {
-                                                "Save"
-                                            } else {
-                                                "Create group"
-                                            }),
-                                    ),
+                                    })),
                             ),
                     ),
             )
@@ -2460,18 +1939,10 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
             .child(
-                div()
+                dialog_surface(p)
                     .id("delete-dialog")
                     .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
                     .w(px(392.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
-                    .p(px(16.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -2517,42 +1988,12 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                div()
-                                    .id("delete-cancel")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(p.border)
-                                    .bg(p.bg)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.bg(p.hover))
-                                    .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
-                                    .child(
-                                        div().text_size(px(12.0)).text_color(p.fg).child("Cancel"),
-                                    ),
+                                dunlin_ui::button("delete-cancel").label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx))),
                             )
                             .child(
-                                div()
-                                    .id("delete-confirm")
-                                    .h(px(28.))
-                                    .px(px(11.))
-                                    .rounded(px(6.))
-                                    .bg(p.red)
-                                    .flex()
-                                    .items_center()
-                                    .cursor_pointer()
-                                    .hover(move |style| style.opacity(0.88))
-                                    .on_click(cx.listener(|this, _, _, cx| this.confirm_delete(cx)))
-                                    .child(
-                                        div()
-                                            .text_size(px(12.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(white())
-                                            .child(action),
-                                    ),
+                                dunlin_ui::button("delete-confirm").danger().label(action)
+                                    .on_click(cx.listener(|this, _, _, cx| this.confirm_delete(cx))),
                             ),
                     ),
             )
@@ -2642,24 +2083,10 @@ impl DunlinApp {
                     .child(crate::inline_blame::toggle(self, cx))
                     .when(dirty && !readonly, |header| {
                         header.child(
-                            div()
-                                .id("inspector-save")
-                                .h(px(24.))
-                                .px(px(7.))
-                                .rounded(px(5.))
-                                .border_1()
-                                .border_color(p.border)
-                                .bg(p.bg)
-                                .flex()
-                                .items_center()
-                                .gap(px(4.))
-                                .cursor_pointer()
-                                .hover(move |style| style.bg(p.hover))
+                            dunlin_ui::button("inspector-save").icon(IconName::Save).label("Save")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.save_editor(cx);
                                 }))
-                                .child(icon(IconName::Save, 11.5, p.muted_fg))
-                                .child(div().text_size(px(11.5)).text_color(p.fg).child("Save"))
                                 .when(self.show_shortcut_hints, |this| {
                                     this.child(
                                         div()
@@ -2672,20 +2099,10 @@ impl DunlinApp {
                         )
                     })
                     .child(
-                        div()
-                            .id("inspector-close")
-                            .aria_label("Close editor")
-                            .size(px(26.))
-                            .rounded(px(6.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .hover(move |style| style.bg(p.hover))
+                        icon_button("inspector-close", IconName::X, "Close editor")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.request_close_inspector(cx);
-                            }))
-                            .child(icon(IconName::X, 13.0, p.muted_fg)),
+                            })),
                     ),
             )
             .child(
@@ -2821,9 +2238,6 @@ impl DunlinApp {
             .flex()
             .items_center()
             .gap(px(12.))
-            .border_t_1()
-            .border_color(p.border)
-            .bg(p.statusbar)
             .text_size(px(11.5))
             .text_color(p.muted_fg)
             .child(crate::branch_picker::status_badge(
@@ -2886,96 +2300,30 @@ impl DunlinApp {
             .child({
                 let panel = self.bottom_panel;
                 let active = panel == crate::app::BottomPanel::Terminal;
-                div()
-                    .id("statusbar-terminal")
-                    .aria_label("Toggle terminal panel")
-                    .h(px(20.))
-                    .px(px(6.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .when(active, |this| {
-                        this.bg(p.card).border_1().border_color(p.border)
-                    })
-                    .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+                segment_button("statusbar-terminal", "Terminal", active)
+                    .accessibility_label("Toggle terminal panel")
+                    .icon(IconName::Terminal)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_bottom_panel(crate::app::BottomPanel::Terminal, window, cx)
                     }))
-                    .child(icon(
-                        IconName::Terminal,
-                        10.5,
-                        if active { p.fg } else { p.muted_fg },
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(if active { p.fg } else { p.muted_fg })
-                            .child("Terminal"),
-                    )
             })
             .child({
                 let active = self.bottom_panel == crate::app::BottomPanel::Run;
-                div()
-                    .id("statusbar-run")
-                    .aria_label("Toggle Run panel")
-                    .h(px(20.))
-                    .px(px(6.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .when(active, |this| {
-                        this.bg(p.card).border_1().border_color(p.border)
-                    })
-                    .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+                segment_button("statusbar-run", "Run", active)
+                    .accessibility_label("Toggle Run panel")
+                    .icon(IconName::SquareTerminal)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_bottom_panel(crate::app::BottomPanel::Run, window, cx)
                     }))
-                    .child(icon(
-                        IconName::SquareTerminal,
-                        10.5,
-                        if active { p.fg } else { p.muted_fg },
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(if active { p.fg } else { p.muted_fg })
-                            .child("Run"),
-                    )
             })
             .child({
                 let active = self.bottom_panel == crate::app::BottomPanel::Secrets;
-                div()
-                    .id("statusbar-secrets")
-                    .aria_label("Toggle Secrets panel")
-                    .h(px(20.))
-                    .px(px(6.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .when(active, |this| {
-                        this.bg(p.card).border_1().border_color(p.border)
-                    })
-                    .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
+                segment_button("statusbar-secrets", "Secrets", active)
+                    .accessibility_label("Toggle Secrets panel")
+                    .icon(IconName::KeyRound)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_bottom_panel(crate::app::BottomPanel::Secrets, window, cx)
                     }))
-                    .child(icon(
-                        IconName::KeyRound,
-                        10.5,
-                        if active { p.fg } else { p.muted_fg },
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .text_color(if active { p.fg } else { p.muted_fg })
-                            .child("Secrets"),
-                    )
             })
             .when(!minimal, |view| {
                 view.child(div().w(px(1.)).h(px(12.)).bg(p.border))
@@ -3292,67 +2640,23 @@ fn onboarding_permission_card(cx: &mut Context<DunlinApp>, p: &Palette) -> AnyEl
 fn onboarding_primary_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
-    p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(34.))
-        .px(px(14.))
-        .rounded(px(7.))
-        .bg(p.fg)
-        .text_color(p.bg)
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(6.))
-        .text_size(px(12.0))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .hover(move |style| style.opacity(0.9))
-        .child(label.into())
+    _p: &Palette,
+) -> Button {
+    dunlin_ui::button(id).primary().large().label(label)
 }
 
 fn onboarding_secondary_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
-    p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(28.))
-        .px(px(9.))
-        .rounded(px(5.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .text_color(p.fg)
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(11.0))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
-        .child(label.into())
+    _p: &Palette,
+) -> Button {
+    dunlin_ui::button(id).label(label)
 }
 
 fn onboarding_text_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
-    p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(32.))
-        .px(px(8.))
-        .rounded(px(6.))
-        .text_color(p.muted_fg)
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(11.5))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .hover(move |style| style.text_color(p.fg).bg(p.hover))
-        .child(label.into())
+    _p: &Palette,
+) -> Button {
+    dunlin_ui::button(id).ghost().label(label)
 }

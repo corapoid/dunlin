@@ -417,7 +417,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             "Approved project decisions · local-only memory · never automatically injected",
         ));
     content = content.child(
-        Button::new("decision-purge-history")
+        dunlin_ui::button("decision-purge-history")
             .ghost()
             .small()
             .label("Delete local decision history…")
@@ -427,8 +427,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         let id = decision.id.clone();
         let edit = decision.clone();
         content=content.child(div().border_l_2().border_color(p.border).pl(px(10.)).child(format!("{} · revision {} · {}",safe(&decision.title),decision.revision,if decision.stale{"STALE (excluded)"}else{"approved"})).child(safe(&decision.body)).child(format!("Sources: {} · approved at {}",safe(&decision.evidence),decision.approved_ms))
-            .child(Button::new(format!("decision-draft-{id}")).ghost().small().label("Add decision to draft").disabled(decision.stale).on_click(cx.listener(move|this,_,w,cx|this.decision_to_draft(&id,w,cx))))
-            .child(Button::new(format!("decision-edit-{}",decision.id)).ghost().small().label("Edit / mark stale…").on_click(cx.listener(move|this,_,w,cx|{
+            .child(dunlin_ui::button(format!("decision-draft-{id}")).ghost().label("Add decision to draft").disabled(decision.stale).on_click(cx.listener(move|this,_,w,cx|this.decision_to_draft(&id,w,cx))))
+            .child(dunlin_ui::button(format!("decision-edit-{}",decision.id)).ghost().label("Edit / mark stale…").on_click(cx.listener(move|this,_,w,cx|{
                 let Some(v)=&mut this.git_history.view else{return;};let s=&mut v.context;
                 if !s.title.read(cx).value().is_empty() || !s.body.read(cx).value().is_empty() {this.file_notice("Existing decision draft preserved; clear it before loading another revision",cx);return;}
                 s.editing=Some((edit.id.clone(),edit.revision));s.title.update(cx,|s,cx|s.set_value(edit.title.clone(),w,cx));s.body.update(cx,|s,cx|s.set_value(edit.body.clone(),w,cx));s.evidence.update(cx,|s,cx|s.set_value(edit.evidence.clone(),w,cx));cx.notify();
@@ -439,13 +439,13 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .child(Textarea::new(&s.body).h(px(100.)))
         .child(Input::new(&s.evidence).small())
         .child(
-            Button::new("decision-approve")
+            dunlin_ui::button("decision-approve")
                 .small()
                 .label("Approve and save new revision locally")
                 .on_click(cx.listener(|this, _, w, cx| this.save_decision(false, w, cx))),
         )
         .child(
-            Button::new("decision-stale")
+            dunlin_ui::button("decision-stale")
                 .ghost()
                 .small()
                 .label("Save revision as stale")
@@ -453,7 +453,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .on_click(cx.listener(|this, _, w, cx| this.save_decision(true, w, cx))),
         )
         .child(
-            Button::new("decision-clear")
+            dunlin_ui::button("decision-clear")
                 .ghost()
                 .small()
                 .label("Clear decision draft")
@@ -486,7 +486,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(8.))
                 .child("Context inspector & decision memory")
                 .child(
-                    Button::new("context-back")
+                    dunlin_ui::button("context-back")
                         .ghost()
                         .small()
                         .label("Commit history")

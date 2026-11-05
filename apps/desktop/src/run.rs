@@ -7,7 +7,7 @@ use crate::app::DunlinApp;
 use dunlin_terminal::Exit;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::{Icon, Sizable};
 
 use dunlin_ui::*;
@@ -365,7 +365,7 @@ pub(crate) fn render(
         )
         .child(div().flex_1())
         .child(
-            Button::new("run-refresh")
+            dunlin_ui::button("run-refresh")
                 .ghost()
                 .small()
                 .label(if this.run.loading {
@@ -499,7 +499,7 @@ pub(crate) fn render(
                                         ),
                                 )
                                 .child(
-                                    Button::new(format!("run-copy:{}", candidate.id))
+                                    dunlin_ui::button(format!("run-copy:{}", candidate.id))
                                         .ghost()
                                         .small()
                                         .label("Copy")
@@ -511,7 +511,7 @@ pub(crate) fn render(
                                         })),
                                 )
                                 .child(
-                                    Button::new(format!("run-start:{}", candidate.id))
+                                    dunlin_ui::button(format!("run-start:{}", candidate.id))
                                         .small()
                                         .label("Run…")
                                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -602,7 +602,7 @@ pub(crate) fn render(
                         ),
                 )
                 .child(
-                    Button::new(format!("run-stop:{}", record.id))
+                    dunlin_ui::button(format!("run-stop:{}", record.id))
                         .ghost()
                         .small()
                         .label("Stop")
@@ -610,7 +610,7 @@ pub(crate) fn render(
                         .on_click(cx.listener(move |this, _, _, cx| this.stop_run(&stop, cx))),
                 )
                 .child(
-                    Button::new(format!("run-rerun:{}", record.id))
+                    dunlin_ui::button(format!("run-rerun:{}", record.id))
                         .ghost()
                         .small()
                         .label("Rerun…")

@@ -3,7 +3,7 @@ use dunlin_domain::{GroupSettings, PermissionMode, ResolvedSettings, SettingSour
 use dunlin_ui::{
     component::{
         Sizable,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         input::{Editor, EditorState, Input, InputState},
     },
     prelude::FluentBuilder as _,
@@ -349,7 +349,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     for name in harness_options {
         let selected = draft.settings.harness.as_deref() == name;
         harnesses = harnesses.child(
-            Button::new(format!("group-harness-{}", name.unwrap_or("inherit")))
+            dunlin_ui::button(format!("group-harness-{}", name.unwrap_or("inherit")))
                 .small()
                 .label(name.unwrap_or("Inherit"))
                 .when(selected, |b| b.primary())
@@ -367,7 +367,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     ] {
         let selected = draft.settings.permission_mode == mode;
         permissions = permissions.child(
-            Button::new(format!(
+            dunlin_ui::button(format!(
                 "group-permissions-{}",
                 mode.map(|m| m.label()).unwrap_or("inherit")
             ))
@@ -422,10 +422,10 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .child(match preview { Ok(resolved) => render_sources(this, &resolved, cx), Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element() })
             .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
             .child(div().flex().flex_wrap().gap(px(7.))
-                .child(Button::new("reset-group-defaults").small().label("Reset to inherited").on_click(cx.listener(|this, _, window, cx| this.reset_group_draft(window, cx))))
+                .child(dunlin_ui::button("reset-group-defaults").label("Reset to inherited").on_click(cx.listener(|this, _, window, cx| this.reset_group_draft(window, cx))))
                 .child(div().flex_1())
-                .child(Button::new("cancel-group-settings").small().label("Cancel").on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx))))
-                .child(Button::new("save-group-settings").small().primary().label("Save group defaults").on_click(cx.listener(|this, _, _, cx| this.save_group_settings(cx))))))
+                .child(dunlin_ui::button("cancel-group-settings").label("Cancel").on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx))))
+                .child(dunlin_ui::button("save-group-settings").primary().label("Save group defaults").on_click(cx.listener(|this, _, _, cx| this.save_group_settings(cx))))))
         .into_any_element()
 }
 

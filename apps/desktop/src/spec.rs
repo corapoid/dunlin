@@ -12,7 +12,7 @@ use dunlin_artifacts::{
 };
 use dunlin_domain::Project;
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::{Input, InputState};
 use dunlin_ui::component::text::TextView;
 use dunlin_ui::component::{Icon, Sizable};
@@ -1753,7 +1753,7 @@ fn trace_panel(
                         .child("Traceability · requirement → task → evidence"),
                 )
                 .child(
-                    Button::new("trace-expand-all")
+                    dunlin_ui::button("trace-expand-all")
                         .ghost()
                         .small()
                         .label("Expand all")
@@ -1774,7 +1774,7 @@ fn trace_panel(
                         })),
                 )
                 .child(
-                    Button::new("trace-collapse-all")
+                    dunlin_ui::button("trace-collapse-all")
                         .ghost()
                         .small()
                         .label("Collapse all")
@@ -2243,7 +2243,7 @@ fn detail_panel(
                     .flex_wrap()
                     .gap(px(6.))
                     .child(
-                        Button::new(format!("spec-open:{path}"))
+                        dunlin_ui::button(format!("spec-open:{path}"))
                             .small()
                             .label("Open")
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -2251,7 +2251,7 @@ fn detail_panel(
                             })),
                     )
                     .child(
-                        Button::new(format!("spec-attach:{path}"))
+                        dunlin_ui::button(format!("spec-attach:{path}"))
                             .ghost()
                             .small()
                             .label("Attach to composer")
@@ -2260,7 +2260,7 @@ fn detail_panel(
                             })),
                     )
                     .child(
-                        Button::new(format!("spec-approve:{path}"))
+                        dunlin_ui::button(format!("spec-approve:{path}"))
                             .ghost()
                             .small()
                             .label("Approve…")
@@ -2269,7 +2269,7 @@ fn detail_panel(
                             })),
                     )
                     .child(
-                        Button::new(format!("spec-reject:{path}"))
+                        dunlin_ui::button(format!("spec-reject:{path}"))
                             .ghost()
                             .small()
                             .label("Reject…")
@@ -2279,7 +2279,7 @@ fn detail_panel(
                     )
                     .when(approval.is_some(), |row| {
                         row.child(
-                            Button::new(format!("spec-clear:{path}"))
+                            dunlin_ui::button(format!("spec-clear:{path}"))
                                 .ghost()
                                 .small()
                                 .label("Clear decision")
@@ -2449,7 +2449,7 @@ fn detail_panel(
                 let mut actions = div().flex().flex_wrap().gap(px(5.)).pl(px(22.));
                 if worktree.is_none() {
                     actions = actions.child(
-                        Button::new(format!("spec-worktree:{}", task.id))
+                        dunlin_ui::button(format!("spec-worktree:{}", task.id))
                             .ghost()
                             .small()
                             .label("Create worktree · gate")
@@ -2460,7 +2460,7 @@ fn detail_panel(
                 } else {
                     let attach_id = task_id.clone();
                     actions = actions.child(
-                        Button::new(format!("spec-attach-evidence:{}", task.id))
+                        dunlin_ui::button(format!("spec-attach-evidence:{}", task.id))
                             .ghost()
                             .small()
                             .label("Attach HEAD")
@@ -2470,7 +2470,7 @@ fn detail_panel(
                     );
                     let github_id = task_id.clone();
                     actions = actions.child(
-                        Button::new(format!("spec-attach-github:{}", task.id))
+                        dunlin_ui::button(format!("spec-attach-github:{}", task.id))
                             .ghost()
                             .small()
                             .label("Attach GitHub")
@@ -2481,7 +2481,7 @@ fn detail_panel(
                     let complete_id = task_id.clone();
                     let complete_path = tasks_path.clone();
                     actions = actions.child(
-                        Button::new(format!("spec-complete:{}", task.id))
+                        dunlin_ui::button(format!("spec-complete:{}", task.id))
                             .ghost()
                             .small()
                             .label("Complete…")
@@ -2499,14 +2499,14 @@ fn detail_panel(
                 .flex_wrap()
                 .gap(px(6.))
                 .child(
-                    Button::new("spec-open-checks")
+                    dunlin_ui::button("spec-open-checks")
                         .ghost()
                         .small()
                         .label("Checks")
                         .on_click(cx.listener(|this, _, window, cx| this.open_checks(window, cx))),
                 )
                 .child(
-                    Button::new("spec-open-review")
+                    dunlin_ui::button("spec-open-review")
                         .ghost()
                         .small()
                         .label("Task review")
@@ -2515,7 +2515,7 @@ fn detail_panel(
                         ),
                 )
                 .child(
-                    Button::new("spec-open-github")
+                    dunlin_ui::button("spec-open-github")
                         .ghost()
                         .small()
                         .label("GitHub CI / PR")
@@ -2638,7 +2638,7 @@ fn detail_panel(
                 .flex_wrap()
                 .gap(px(6.))
                 .child(
-                    Button::new("spec-contract-audit")
+                    dunlin_ui::button("spec-contract-audit")
                         .ghost()
                         .small()
                         .label("Ask agent to audit")
@@ -2652,7 +2652,7 @@ fn detail_panel(
                         })),
                 )
                 .child(
-                    Button::new("spec-contract-eval")
+                    dunlin_ui::button("spec-contract-eval")
                         .ghost()
                         .small()
                         .label("Run manual eval")
@@ -2724,13 +2724,13 @@ fn empty_state(p: &Palette, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .flex()
                 .gap(px(6.))
                 .child(
-                    Button::new("spec-empty-intent")
+                    dunlin_ui::button("spec-empty-intent")
                         .small()
                         .label("Capture intent…")
                         .on_click(cx.listener(|this, _, window, cx| this.capture_intent(window, cx))),
                 )
                 .child(
-                    Button::new("spec-empty-interview")
+                    dunlin_ui::button("spec-empty-interview")
                         .ghost()
                         .small()
                         .label("Interview with agent")
@@ -2739,14 +2739,14 @@ fn empty_state(p: &Palette, cx: &mut Context<DunlinApp>) -> AnyElement {
                         })),
                 )
                 .child(
-                    Button::new("spec-empty-contract")
+                    dunlin_ui::button("spec-empty-contract")
                         .ghost()
                         .small()
                         .label("Create agent contract")
                         .on_click(cx.listener(|this, _, window, cx| this.open_agent_contract(window, cx))),
                 )
                 .child(
-                    Button::new("spec-empty-refresh")
+                    dunlin_ui::button("spec-empty-refresh")
                         .ghost()
                         .small()
                         .label("Refresh")
@@ -2827,21 +2827,21 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     header = header
         .child(div().flex_1())
         .child(
-            Button::new("spec-next-step")
+            dunlin_ui::button("spec-next-step")
                 .ghost()
                 .small()
                 .label("Next step")
                 .on_click(cx.listener(|this, _, window, cx| this.attach_next_step(window, cx))),
         )
         .child(
-            Button::new("spec-refresh")
+            dunlin_ui::button("spec-refresh")
                 .ghost()
                 .small()
                 .label("Refresh")
                 .on_click(cx.listener(|this, _, _, cx| this.refresh_spec_workspace(cx))),
         )
         .child(
-            Button::new("spec-inbox-toggle")
+            dunlin_ui::button("spec-inbox-toggle")
                 .ghost()
                 .small()
                 .label(if view.inbox {
@@ -2852,7 +2852,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_intent_inbox(cx))),
         )
         .child(
-            Button::new("spec-trace-toggle")
+            dunlin_ui::button("spec-trace-toggle")
                 .ghost()
                 .small()
                 .label(if view.trace { "Workflow" } else { "Trace" })
@@ -2860,7 +2860,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         )
         .when(features.len() > 1, |header| {
             header.child(
-                Button::new("spec-feature-cycle")
+                dunlin_ui::button("spec-feature-cycle")
                     .ghost()
                     .small()
                     .label(
@@ -2879,21 +2879,21 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             )
         })
         .child(
-            Button::new("spec-persistence")
+            dunlin_ui::button("spec-persistence")
                 .ghost()
                 .small()
                 .label(format!("Persistence: {}", view.persistence.label()))
                 .on_click(cx.listener(|this, _, _, cx| this.cycle_spec_persistence(cx))),
         )
         .child(
-            Button::new("spec-copy-decisions")
+            dunlin_ui::button("spec-copy-decisions")
                 .ghost()
                 .small()
                 .label("Copy decisions")
                 .on_click(cx.listener(|this, _, _, cx| this.copy_decision_log(cx))),
         )
         .child(
-            Button::new("spec-intent-interview")
+            dunlin_ui::button("spec-intent-interview")
                 .ghost()
                 .small()
                 .label("Interview…")
@@ -2902,20 +2902,20 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 })),
         )
         .child(
-            Button::new("spec-capture-intent")
+            dunlin_ui::button("spec-capture-intent")
                 .small()
                 .label("Capture intent…")
                 .on_click(cx.listener(|this, _, window, cx| this.capture_intent(window, cx))),
         )
         .child(
-            Button::new("spec-agent-contract")
+            dunlin_ui::button("spec-agent-contract")
                 .ghost()
                 .small()
                 .label("Agent contract")
                 .on_click(cx.listener(|this, _, window, cx| this.open_agent_contract(window, cx))),
         )
         .child(
-            Button::new("spec-install-pack-skill")
+            dunlin_ui::button("spec-install-pack-skill")
                 .ghost()
                 .small()
                 .label("Install Spec Kit skill")
@@ -2951,7 +2951,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 })),
         )
         .child(
-            Button::new("spec-extensions")
+            dunlin_ui::button("spec-extensions")
                 .ghost()
                 .small()
                 .label("Extensions")

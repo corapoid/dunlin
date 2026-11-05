@@ -1,7 +1,7 @@
 //! Debug-only, isolated integration smoke. No harness, real database, screenshot
-//! or simulated user input: exercise our own windows/state on the main thread.
+//! or external OS input: dispatch only to our own windows on the main thread.
 use crate::app::{DunlinApp, StoredSettings};
-use dunlin_ui::{assets, component::TitleBar, *};
+use dunlin_ui::{assets, *};
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -61,7 +61,7 @@ pub(crate) fn run() {
         cx.set_app_identity("dev.dunlin.ide.glass-smoke", "Dunlin Glass Smoke");
         dunlin_ui::init(cx); crate::logging::init();
         let bounds = Bounds::new(point(px(80.), px(80.)), size(px(1360.), px(860.)));
-        let (parent, owner) = open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..TitleBar::window_options() }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
+        let (parent, owner) = open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..dunlin_ui::window_options() }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); });
         cx.spawn(async move |cx| {
             let started = Instant::now(); let mut stage = 0;
@@ -101,7 +101,40 @@ pub(crate) fn run() {
                             owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); }); stage = 4;
                         }
                         4 if open && panel.is_some() => {
-                            println!("PASS: Settings glass plane, resize synchronization, unchanged 530x460 branch picker, focus handoff, close/reopen cleanup and Quit with panel open");
+                            owner.update(cx, |app, cx| {
+                                app.settings_open = false;
+                                app.request_delete_project(0, cx);
+                            }); stage = 5;
+                        }
+                        5 if owner.read(cx).pending_delete.is_some() && panel.is_some() => {
+                            let child = owner.read(cx).overlay_window.debug_window().unwrap();
+                            child.update(cx, |_, window, cx| {
+                                crate::controls_smoke::key(window, cx, "tab");
+                                crate::controls_smoke::key(window, cx, "enter");
+                            }).unwrap(); stage = 6;
+                        }
+                        6 if !open => {
+                            assert!(owner.read(cx).pending_delete.is_none());
+                            assert_eq!(owner.read(cx).projects.len(), 1, "Enter on Cancel removed the fixture project");
+                            parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| app.open_new_group_prompt(None, window, cx))).unwrap(); stage = 7;
+                        }
+                        7 if owner.read(cx).group_prompt.is_some() && panel.is_some() => {
+                            let child = owner.read(cx).overlay_window.debug_window().unwrap();
+                            child.update(cx, |_, window, cx| {
+                                owner.update(cx, |app, cx| app.group_input.update(cx, |input, cx| {
+                                    input.set_value("Keyboard fixture group", window, cx);
+                                    input.focus(window, cx);
+                                }));
+                                crate::controls_smoke::key(window, cx, "enter");
+                            }).unwrap(); stage = 8;
+                        }
+                        8 if !open => {
+                            assert!(owner.read(cx).group_prompt.is_none());
+                            assert_eq!(owner.read(cx).project_groups.len(), 1, "Enter in a form did not submit exactly once");
+                            owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); }); stage = 9;
+                        }
+                        9 if open && panel.is_some() => {
+                            println!("PASS: Settings glass plane, resize synchronization, unchanged 530x460 branch picker, focus handoff, keyboard Cancel preserves project, form Enter submits once, close/reopen cleanup and Quit with panel open");
                             // Exercise the normal guarded Quit action in this
                             // isolated process, never the user's running app.
                             cx.dispatch_action(&crate::app::Quit); return true;

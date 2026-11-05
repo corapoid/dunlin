@@ -6,7 +6,7 @@ use std::time::Duration;
 use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::Input;
 use dunlin_ui::component::{ActiveTheme, Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -158,7 +158,7 @@ pub(crate) fn render(
             ),
         )
         .child(
-            Button::new("graph-zoom-out")
+            dunlin_ui::button("graph-zoom-out")
                 .ghost()
                 .small()
                 .label("−")
@@ -179,7 +179,7 @@ pub(crate) fn render(
                 .child(format!("{:.0}%", zoom * 100.)),
         )
         .child(
-            Button::new("graph-zoom-in")
+            dunlin_ui::button("graph-zoom-in")
                 .ghost()
                 .small()
                 .label("+")
@@ -191,7 +191,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            Button::new("graph-zoom-reset")
+            dunlin_ui::button("graph-zoom-reset")
                 .ghost()
                 .small()
                 .label("Fit")
@@ -200,32 +200,9 @@ pub(crate) fn render(
         )
         .child(div().flex_1())
         .child(
-            div()
-                .id("graph-export-svg")
-                .role(Role::Button)
-                .aria_label("Save graph as SVG")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.card)
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx)))
-                .child(
-                    Icon::new(IconName::Download)
-                        .size(px(11.))
-                        .text_color(p.muted_fg),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(p.muted_fg)
-                        .child("Save SVG"),
-                ),
+            dunlin_ui::button("graph-export-svg").icon(IconName::Download).label("Save SVG")
+                .accessibility_label("Save graph as SVG")
+                .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx))),
         );
 
     let content = graph_canvas(
@@ -975,22 +952,11 @@ fn node_detail(
                 )
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id("close-node-detail")
-                        .role(Role::Button)
-                        .aria_label("Close agent details")
-                        .size(px(18.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    icon_button("close-node-detail", IconName::X, "Close agent details")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.selected_node = None;
                             cx.notify();
-                        }))
-                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                        })),
                 ),
         )
         .child(
@@ -1028,35 +994,12 @@ fn node_detail(
                 .children(node.tools.iter().map(|kind| tool_chip(*kind, p)))
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id("open-node-session")
-                        .role(Role::Button)
-                        .aria_label("Open the live transcript for this node")
-                        .h(px(21.))
-                        .px(px(6.))
-                        .rounded(px(4.))
-                        .border_1()
-                        .border_color(p.border)
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    dunlin_ui::button("open-node-session").icon(IconName::ArrowUpRight).label("Transcript")
+                        .accessibility_label("Open the live transcript for this node")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.set_view(MainView::Chat, cx);
                             this.set_notice("Opened the live transcript", cx);
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(p.muted_fg)
-                                .child("Transcript"),
-                        )
-                        .child(
-                            Icon::new(IconName::ArrowUpRight)
-                                .size(px(9.5))
-                                .text_color(p.muted_fg),
-                        ),
+                        })),
                 ),
         );
 

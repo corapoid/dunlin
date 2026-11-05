@@ -4,7 +4,7 @@ use crate::app::DunlinApp;
 use dunlin_ui::{
     assets::IconName,
     component::{
-        Disableable, Icon, Sizable,
+        Disableable, Icon,
         button::{Button, ButtonVariants},
         input::{Redo, Undo},
         menu::{DropdownMenu, PopupMenuItem},
@@ -36,31 +36,13 @@ pub(super) fn mode_toggle(mode: Mode, cx: &mut Context<DunlinApp>) -> Button {
         Mode::Visual => (IconName::CodeXml, "Raw", "Switch to raw Markdown"),
         Mode::Source => (IconName::Eye, "Visual", "Switch to visual editing"),
     };
-    Button::new("markdown-mode-toggle")
-        .ghost()
-        .small()
-        .h(px(26.))
-        .rounded(px(4.))
-        .border_1()
-        .border_color(palette(cx).border)
+    dunlin_ui::button("markdown-mode-toggle")
         .icon(Icon::new(icon).size(px(14.)))
         .label(label)
         .text_size(px(11.))
         .tooltip(hint)
         .accessibility_label(hint)
         .on_click(cx.listener(|this, _, window, cx| this.toggle_markdown_mode(window, cx)))
-}
-
-fn icon_button(id: impl Into<ElementId>, icon: IconName, hint: &'static str) -> Button {
-    Button::new(id)
-        .ghost()
-        .small()
-        .size(px(28.))
-        .flex_shrink_0()
-        .rounded(px(4.))
-        .icon(Icon::new(icon).size(px(15.)))
-        .tooltip(hint)
-        .accessibility_label(hint)
 }
 
 fn separator(p: &Palette) -> Div {
@@ -87,12 +69,9 @@ fn table_menu(
 ) -> AnyElement {
     use markdown::mdast::AlignKind;
     let app = cx.entity().downgrade();
-    Button::new("markdown-table-tools")
+    dunlin_ui::button("markdown-table-tools")
         .ghost()
-        .small()
-        .h(px(28.))
         .flex_shrink_0()
-        .rounded(px(4.))
         .icon(Icon::new(IconName::Table2).size(px(14.)))
         .label("Table")
         .text_size(px(11.))
@@ -239,11 +218,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if this.visual_resource_target(cx).is_some() {
         tools = tools.child(separator(&p)).child(
-            Button::new("markdown-resource-properties")
+            dunlin_ui::button("markdown-resource-properties")
                 .ghost()
-                .small()
-                .h(px(28.))
-                .rounded(px(4.))
                 .label("Link / image…")
                 .text_size(px(11.))
                 .on_click(cx.listener(|this, _, window, cx| this.open_visual_resource(window, cx))),
@@ -254,12 +230,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     tools
         .child(separator(&p))
         .child(
-            Button::new("markdown-insert")
+            dunlin_ui::button("markdown-insert")
                 .ghost()
-                .small()
-                .h(px(28.))
                 .flex_shrink_0()
-                .rounded(px(4.))
                 .icon(Icon::new(IconName::Plus).size(px(14.)))
                 .label("Insert")
                 .text_size(px(11.))

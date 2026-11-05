@@ -697,10 +697,9 @@ fn action(
     busy: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Button {
-    Button::new(id)
+    dunlin_ui::button(id)
         .ghost()
         .small()
-        .rounded(px(4.))
         .label(label)
         .disabled(busy)
         .on_click(cx.listener(move |this, _, _, cx| this.prepare_github_action(value.clone(), cx)))
@@ -712,10 +711,9 @@ fn read_button(
     busy: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Button {
-    Button::new(id)
+    dunlin_ui::button(id)
         .ghost()
         .small()
-        .rounded(px(4.))
         .label(label)
         .disabled(busy)
         .on_click(cx.listener(move |this, _, _, cx| this.github_read(read.clone(), cx)))
@@ -750,11 +748,11 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     if let Some(data) = &s.data {
         content = content.child(format!("github.com/{} · remote {} · account {} · local HEAD {}", data.repository.name,data.repository.remote, data.account, data.repository.local_head))
             .child("Up to 20 CI runs for an exact commit; 50 most recently updated PRs, all states. No push/checkout. Logs and PR text can contain secrets: inspect before adding to an agent draft.")
-            .child(Button::new("github-follow").ghost().small().label(if s.follow { "Pause 15s refresh" } else { "Follow CI every 15s" }).disabled(busy).on_click(cx.listener(|this, _, _, cx| {
+            .child(dunlin_ui::button("github-follow").ghost().label(if s.follow { "Pause 15s refresh" } else { "Follow CI every 15s" }).disabled(busy).on_click(cx.listener(|this, _, _, cx| {
                 let Some(v) = &mut this.git_history.view else { return; }; v.github.follow = !v.github.follow;
                 let read = v.github.selected_run.clone().map(Read::Jobs).unwrap_or(Read::Overview); this.github_read(read, cx);
             })))
-            .child(Button::new("github-create-form").ghost().small().label("New PR…").on_click(cx.listener(|this, _, _, cx| { if let Some(v) = &mut this.git_history.view { v.github.create_form = !v.github.create_form; } cx.notify(); })))
+            .child(dunlin_ui::button("github-create-form").ghost().label("New PR…").on_click(cx.listener(|this, _, _, cx| { if let Some(v) = &mut this.git_history.view { v.github.create_form = !v.github.create_form; } cx.notify(); })))
             .child(div().text_color(p.muted_fg).child(s.checked.map_or("Not refreshed".into(), |t| format!("Last response {}s ago · polled status, not live logs", t.elapsed().as_secs()))));
         for run in &data.runs {
             content = content.child(
@@ -828,7 +826,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 data.repository.name, run.id
             );
             content = content.child(
-                Button::new("github-run-web")
+                dunlin_ui::button("github-run-web")
                     .ghost()
                     .small()
                     .label("Open workflow on GitHub")
@@ -864,7 +862,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 cx,
                             ))
                             .child(
-                                Button::new(format!("ci-evidence-{}", job.id))
+                                dunlin_ui::button(format!("ci-evidence-{}", job.id))
                                     .ghost()
                                     .small()
                                     .label("Add status/error to agent draft")
@@ -890,7 +888,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             let text = log.clone();
             content = content
                 .child(
-                    Button::new("ci-log-to-agent")
+                    dunlin_ui::button("ci-log-to-agent")
                         .ghost()
                         .small()
                         .label("Add displayed log to agent draft")
@@ -941,7 +939,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 ))
                 .child(plain(pr.body.as_deref().unwrap_or("")))
                 .child(
-                    Button::new("github-pr-web")
+                    dunlin_ui::button("github-pr-web")
                         .ghost()
                         .small()
                         .label("Open PR on GitHub")
@@ -965,7 +963,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .flex_wrap()
                     .gap(px(4.))
                     .child(
-                        Button::new("github-pr-evidence")
+                        dunlin_ui::button("github-pr-evidence")
                             .ghost()
                             .small()
                             .label("Add PR/checks to agent draft")
@@ -1137,7 +1135,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 let number = detail.pull.number;
                 let copy_title = detail.pull.title.clone();
                 let copy_body = detail.pull.body.clone().unwrap_or_default();
-                content = content.child(Button::new("github-copy-pr-form").ghost().small().label("Load current title/body into publication draft").on_click(cx.listener(move |this, _, w, cx| {
+                content = content.child(dunlin_ui::button("github-copy-pr-form").ghost().label("Load current title/body into publication draft").on_click(cx.listener(move |this, _, w, cx| {
                     if let Some(v) = &this.git_history.view {
                         if !v.github.title.read(cx).value().is_empty() || !v.github.body.read(cx).value().is_empty() { this.file_notice("Clear the publication draft first; existing text was preserved", cx); return; }
                         v.github.title.update(cx, |s, cx| s.set_value(copy_title.clone(), w, cx)); v.github.body.update(cx, |s, cx| s.set_value(copy_body.clone(), w, cx));
@@ -1192,14 +1190,14 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .child(plain(plan.summary())),
             )
             .child(
-                Button::new("github-confirm")
+                dunlin_ui::button("github-confirm")
                     .small()
                     .label("Review and confirm publication…")
                     .disabled(busy)
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_github_action(w, cx))),
             )
             .child(
-                Button::new("github-cancel-plan")
+                dunlin_ui::button("github-cancel-plan")
                     .ghost()
                     .small()
                     .label("Discard prepared request")
@@ -1232,7 +1230,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(6.))
                 .child("GitHub · CI / PR")
                 .child(
-                    Button::new("github-back")
+                    dunlin_ui::button("github-back")
                         .ghost()
                         .small()
                         .label("Commit history")

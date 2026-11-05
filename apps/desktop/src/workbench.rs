@@ -6,8 +6,8 @@ use crate::{
 };
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::{
-    Icon, Sizable,
-    button::{Button, ButtonVariants},
+    Sizable,
+    button::ButtonVariants,
     input::{EditorState, InputEvent},
 };
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -97,7 +97,7 @@ impl DunlinApp {
                 })
                 .when(is_text, |banner| {
                     banner.child(
-                        Button::new("review-retained-git-buffer")
+                        dunlin_ui::button("review-retained-git-buffer")
                             .ghost()
                             .small()
                             .label("Review…")
@@ -691,34 +691,9 @@ impl DunlinApp {
     }
     pub(crate) fn render_workbench_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
-        let mut row = div()
-            .id("document-tabs")
-            .h(px(35.))
-            .flex_shrink_0()
-            .overflow_x_scroll()
-            .flex()
-            .items_center()
-            .gap(px(2.))
-            .bg(p.panel)
-            .border_b_1()
-            .border_color(p.border)
-            .child(
-                div()
-                    .id("chat-tab")
-                    .h_full()
-                    .px(px(14.))
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .when(
-                        !self.workbench.show_file
-                            && !self.git_history.is_active_for(self.project())
-                            && !self.spec.is_active_for(self.project()),
-                        |v| v.bg(p.card).border_b_2().border_color(p.blue),
-                    )
-                    .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx)))
-                    .child("Chat"),
-            );
+        let mut tabs = vec![document_tab("Chat")
+            .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx)))];
+        let mut selected = 0;
         for tab in self
             .workbench
             .tabs
@@ -736,57 +711,29 @@ impl DunlinApp {
             } else {
                 tab.dirty
             };
-            row = row.child(
-                div()
-                    .id(format!("document-tab:{id}"))
-                    .h_full()
-                    .px(px(10.))
-                    .max_w(px(240.))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .cursor_pointer()
-                    .when(active, |v| v.bg(p.card).border_b_2().border_color(p.blue))
+            if active { selected = tabs.len(); }
+            tabs.push(
+                document_tab(format!("{}{}", tab.inspector.name, if dirty { " •" } else { "" }))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_file_tab(&id, window, cx)
                     }))
-                    .child(div().text_size(px(11.5)).truncate().child(format!(
-                        "{}{}",
-                        tab.inspector.name,
-                        if dirty { " •" } else { "" }
-                    )))
-                    .child(
-                        div()
-                            .id(format!("close-tab:{close}"))
-                            .size(px(17.))
+                    .suffix(
+                        icon_button(format!("close-tab:{close}"), IconName::X, format!("Close {}", tab.inspector.name))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.request_close_tab(&close, window, cx);
-                            }))
-                            .child(Icon::new(IconName::X).size(px(11.))),
+                            })),
                     ),
             );
         }
         if self.git_history.is_open_for(self.project()) {
-            row = row.child(
-                div()
-                    .id("git-history-tab")
-                    .h_full()
-                    .px(px(12.))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .cursor_pointer()
+            if self.git_history.is_active_for(self.project()) { selected = tabs.len(); }
+            tabs.push(
+                document_tab(self.git_history.tab_label())
                     .aria_label("Git history tab")
-                    .when(self.git_history.is_active_for(self.project()), |tab| {
-                        tab.bg(p.card).border_b_2().border_color(p.blue)
-                    })
                     .on_click(cx.listener(|this, _, window, cx| this.open_git_history(window, cx)))
-                    .child(self.git_history.tab_label())
-                    .child(
-                        div()
-                            .id("close-git-history-tab")
-                            .size(px(17.))
+                    .suffix(
+                        icon_button("close-git-history-tab", IconName::X, "Close Git history")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 let active = this.git_history.is_active_for(this.project());
@@ -794,33 +741,20 @@ impl DunlinApp {
                                 if active {
                                     this.focus_handle.focus(window, cx);
                                 }
-                            }))
-                            .child(Icon::new(IconName::X).size(px(11.))),
+                            })),
                     ),
             );
         }
         if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
-            row = row.child(
-                div()
-                    .id("spec-workspace-tab")
-                    .h_full()
-                    .px(px(12.))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .cursor_pointer()
+            if self.spec.is_active_for(self.project()) { selected = tabs.len(); }
+            tabs.push(
+                document_tab("Spec")
                     .aria_label("Spec workspace tab")
-                    .when(self.spec.is_active_for(self.project()), |tab| {
-                        tab.bg(p.card).border_b_2().border_color(p.blue)
-                    })
                     .on_click(
                         cx.listener(|this, _, window, cx| this.open_spec_workspace(window, cx)),
                     )
-                    .child("Spec")
-                    .child(
-                        div()
-                            .id("close-spec-workspace-tab")
-                            .size(px(17.))
+                    .suffix(
+                        icon_button("close-spec-workspace-tab", IconName::X, "Close Spec workspace")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 let active = this.spec.is_active_for(this.project());
@@ -828,19 +762,18 @@ impl DunlinApp {
                                 if active {
                                     this.focus_handle.focus(window, cx);
                                 }
-                            }))
-                            .child(Icon::new(IconName::X).size(px(11.))),
+                            })),
                     ),
             );
         }
         div()
-            .h(px(35.))
+            .h(px(36.))
             .flex_shrink_0()
             .flex()
             .bg(p.panel)
             .border_b_1()
             .border_color(p.border)
-            .child(div().flex_1().min_w(px(0.)).overflow_hidden().child(row))
+            .child(document_tabs("document-tabs").selected_index(selected).children(tabs).flex_1().min_w(px(0.)))
             .when(
                 self.workbench
                     .tabs
@@ -848,23 +781,12 @@ impl DunlinApp {
                     .any(|tab| tab.project == self.project().id),
                 |bar| {
                     bar.child(
-                        div()
-                            .id("close-all-file-tabs")
-                            .aria_label("Close all file tabs, keep Chat")
-                            .px(px(10.))
-                            .flex_shrink_0()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.))
-                            .text_size(px(11.))
-                            .text_color(p.muted_fg)
-                            .cursor_pointer()
-                            .hover(move |style| style.bg(p.hover).text_color(p.fg))
+                        dunlin_ui::button("close-all-file-tabs").ghost()
+                            .accessibility_label("Close all file tabs, keep Chat")
+                            .icon(IconName::X).label("Close all")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.request_close_all_file_tabs(window, cx)
-                            }))
-                            .child(Icon::new(IconName::X).size(px(12.)))
-                            .child("Close all"),
+                            })),
                     )
                 },
             )
@@ -888,16 +810,12 @@ impl DunlinApp {
         if let Some(preview) = &tab.preview
             && preview.pages > 1
         {
-            for (label, delta) in [("←", -1isize), ("→", 1isize)] {
+            for (label, icon, delta) in [("Previous page", IconName::ArrowLeft, -1isize), ("Next page", IconName::ArrowRight, 1isize)] {
                 header = header.child(
-                    div()
-                        .id(format!("pdf-page:{label}"))
-                        .px(px(8.))
-                        .cursor_pointer()
+                    icon_button(format!("pdf-page:{label}"), icon, label)
                         .on_click(
                             cx.listener(move |this, _, _, cx| this.change_pdf_page(delta, cx)),
-                        )
-                        .child(label),
+                        ),
                 );
             }
             header = header.child(format!("{} / {}", preview.page, preview.pages));

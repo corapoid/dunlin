@@ -11,7 +11,7 @@ use dunlin_ui::component::Disableable;
 use dunlin_ui::{
     component::{
         Sizable,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         menu::{DropdownMenu, PopupMenuItem},
     },
     *,
@@ -727,7 +727,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .map(|p| p.name.clone())
                     .unwrap_or_else(|| "Assign project…".into())
             };
-            let choose = Button::new(format!("import-project-{i}"))
+            let choose = dunlin_ui::button(format!("import-project-{i}"))
                 .small()
                 .label(label)
                 .disabled(row.duplicate)
@@ -776,7 +776,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .items_center()
                     .gap(px(8.))
                     .child(
-                        Button::new(format!("import-select-{i}"))
+                        dunlin_ui::button(format!("import-select-{i}"))
                             .small()
                             .label(if row.selected { "✓" } else { "–" })
                             .disabled(row.duplicate && !row.update)
@@ -842,7 +842,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .flex()
                     .gap(px(8.))
                     .child(
-                        Button::new("confirm-session-import")
+                        dunlin_ui::button("confirm-session-import")
                             .small()
                             .primary()
                             .label(format!("Apply {ready} selected sessions"))
@@ -850,7 +850,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .on_click(cx.listener(|this, _, _, cx| this.apply_session_import(cx))),
                     )
                     .child(
-                        Button::new("cancel-session-import")
+                        dunlin_ui::button("cancel-session-import")
                             .small()
                             .label("Cancel")
                             .on_click(cx.listener(|this, _, _, cx| {

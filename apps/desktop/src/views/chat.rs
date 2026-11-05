@@ -5,8 +5,8 @@ use dunlin_agent::{PermissionChoice, PermissionKind, PlanItem, PlanStatus, ToolC
 use dunlin_domain::ToolStatus;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
-use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::{Disableable, Selectable, Sizable};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::Textarea;
 use dunlin_ui::component::text::TextView;
 use dunlin_ui::component::tooltip::Tooltip;
@@ -131,7 +131,7 @@ fn trust_notice(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElem
                             ),
                     )
                     .child(
-                        Button::new("trust-project-banner")
+                        dunlin_ui::button("trust-project-banner")
                             .small()
                             .label("Trust project")
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_project_trust(cx))),
@@ -157,66 +157,26 @@ fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<A
             .child(div().text_size(px(11.5)).font_family(dunlin_ui::theme::code_font()).child(command.clone()))
             .child(div().flex().flex_wrap().gap(px(8.))
                 .when(can_use_opencode, |view| view.child(
-                    Button::new("missing-adapter-opencode").primary().small().label("Start with OpenCode")
+                    dunlin_ui::button("missing-adapter-opencode").primary().label("Start with OpenCode")
                         .on_click(cx.listener(|this, _, _, cx| this.select_chat_harness("OpenCode", cx)))))
-                .child(Button::new("missing-adapter-settings").ghost().small().label("Harness settings")
+                .child(dunlin_ui::button("missing-adapter-settings").ghost().label("Harness settings")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = true;
                         this.settings_tab = SettingsTab::Harnesses;
                         cx.notify();
                     })))
-                .child(Button::new("missing-adapter-retry").ghost().small().label("Check again")
+                .child(dunlin_ui::button("missing-adapter-retry").ghost().label("Check again")
                     .on_click(cx.listener(|this, _, _, cx| this.connect_harness(cx)))))
     ).into_any_element())
 }
 
 pub(crate) fn reasoning_toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let p = palette(cx);
-    div()
-        .id("reasoning-toggle")
-        .h(px(23.))
-        .px(px(7.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(if this.reasoning_open {
-            p.violet.opacity(0.35)
-        } else {
-            p.border
-        })
-        .bg(if this.reasoning_open {
-            p.violet_soft
-        } else {
-            p.card
-        })
-        .flex()
-        .items_center()
-        .gap(px(5.))
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
+    segment_button("reasoning-toggle", "Reasoning", this.reasoning_open)
+        .icon(IconName::Brain)
         .on_click(cx.listener(|this, _, _, cx| {
             this.reasoning_open = !this.reasoning_open;
             cx.notify();
         }))
-        .child(
-            Icon::new(IconName::Brain)
-                .size(px(11.5))
-                .text_color(if this.reasoning_open {
-                    p.violet
-                } else {
-                    p.muted_fg
-                }),
-        )
-        .child(
-            div()
-                .text_size(px(11.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(if this.reasoning_open {
-                    p.violet
-                } else {
-                    p.muted_fg
-                })
-                .child("Reasoning"),
-        )
         .into_any_element()
 }
 
@@ -252,7 +212,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     if first_visible > 0 {
         inner = inner.child(
             div().w_full().flex().justify_center().child(
-                Button::new("chat-show-earlier")
+                dunlin_ui::button("chat-show-earlier")
                     .ghost()
                     .small()
                     .icon(IconName::ChevronUp)
@@ -393,7 +353,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     .flex()
                     .justify_center()
                     .child(
-                        Button::new("chat-jump-latest")
+                        dunlin_ui::button("chat-jump-latest")
                             .small()
                             .icon(IconName::ArrowDown)
                             .label("Jump to latest")
@@ -529,20 +489,7 @@ fn starter_row(
     p: &Palette,
 ) -> AnyElement {
     let prompt = subtitle.to_string();
-    div()
-        .id(format!("starter:{title}"))
-        .w_full()
-        .px(px(11.))
-        .py(px(9.))
-        .rounded(px(9.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
+    action_row(format!("starter:{title}"), title.to_owned())
         .on_click(cx.listener(move |this, _, window, cx| {
             this.composer.update(cx, |state, cx| {
                 state.set_value(prompt.clone(), window, cx);
@@ -629,12 +576,10 @@ fn agent_group(
                     continue;
                 }
                 let copy_text = text.clone();
-                let group = format!("agent-text-{index}");
                 let mut text_block = div()
                     .id(("agent-text", index))
-                    .group(group.clone())
                     .relative()
-                    .pr(px(24.))
+                    .pr(px(32.))
                     .text_size(px(13.0))
                     .line_height(relative(1.62))
                     .text_color(p.fg.opacity(0.92))
@@ -644,30 +589,14 @@ fn agent_group(
                     ));
                 if !*streaming {
                     text_block = text_block.child(
-                        div()
-                            .id(("agent-copy", index))
+                        icon_button(("agent-copy", index), IconName::Copy, "Copy response")
                             .absolute()
                             .top(px(0.))
                             .right(px(0.))
-                            .size(px(21.))
-                            .rounded(px(4.))
-                            .bg(p.bg)
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .opacity(0.0)
-                            .group_hover(group, move |style| style.opacity(1.0))
-                            .hover(move |style| style.bg(p.hover))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(copy_text.clone()));
                                 this.set_notice("Copied the response", cx);
-                            }))
-                            .child(
-                                Icon::new(IconName::Copy)
-                                    .size(px(11.))
-                                    .text_color(p.muted_fg),
-                            ),
+                            })),
                     );
                 }
                 body = body.child(text_block);
@@ -738,7 +667,7 @@ fn agent_group(
                         .border_color(p.border)
                         .p(px(8.))
                         .child(
-                            Button::new(("child-details", index))
+                            dunlin_ui::button(("child-details", index))
                                 .ghost()
                                 .small()
                                 .label(format!("Subagent · {label}"))
@@ -794,12 +723,9 @@ fn user_message(
     let copy_text = text.to_string();
     let retry_text = text.to_string();
     let edit_text = text.to_string();
-    let group = format!("user-message-{index}");
-    let action_group = group.clone();
 
     div()
         .id(("user-message", index))
-        .group(group)
         .w_full()
         .flex()
         .justify_end()
@@ -839,70 +765,25 @@ fn user_message(
                         )
                         .child(div().flex_1())
                         .child(
-                            div()
-                                .id(("user-copy", index))
-                                .size(px(20.))
-                                .rounded(px(4.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .opacity(0.0)
-                                .group_hover(action_group.clone(), move |style| style.opacity(1.0))
-                                .hover(move |style| style.bg(p.card))
+                            icon_button(("user-copy", index), IconName::Copy, "Copy prompt")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
                                         copy_text.clone(),
                                     ));
                                     this.set_notice("Copied the prompt", cx);
-                                }))
-                                .child(
-                                    Icon::new(IconName::Copy)
-                                        .size(px(11.))
-                                        .text_color(p.muted_fg),
-                                ),
+                                })),
                         )
                         .child(
-                            div()
-                                .id(("user-edit", index))
-                                .size(px(20.))
-                                .rounded(px(4.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .opacity(0.0)
-                                .group_hover(action_group.clone(), move |style| style.opacity(1.0))
-                                .hover(move |style| style.bg(p.card))
+                            icon_button(("user-edit", index), IconName::Pencil, "Edit prompt")
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.edit_prompt(edit_text.clone(), window, cx);
-                                }))
-                                .child(
-                                    Icon::new(IconName::Pencil)
-                                        .size(px(11.))
-                                        .text_color(p.muted_fg),
-                                ),
+                                })),
                         )
                         .child(
-                            div()
-                                .id(("user-retry", index))
-                                .size(px(20.))
-                                .rounded(px(4.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .opacity(0.0)
-                                .group_hover(action_group, move |style| style.opacity(1.0))
-                                .hover(move |style| style.bg(p.card))
+                            icon_button(("user-retry", index), IconName::RotateCcw, "Retry prompt")
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.retry_prompt(retry_text.clone(), window, cx);
-                                }))
-                                .child(
-                                    Icon::new(IconName::RotateCcw)
-                                        .size(px(11.))
-                                        .text_color(p.muted_fg),
-                                ),
+                                })),
                         ),
                 ),
         )
@@ -953,38 +834,17 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette
         .collect();
     let line_count = lines.len().max(1);
 
-    let mut card = div()
-        .rounded(px(9.))
-        .border_1()
+    let mut card = card_surface(*p)
         .border_color(p.border)
         .bg(p.subtle)
         .overflow_hidden()
         .child(
-            div()
-                .id("reasoning-card")
-                .h(px(30.))
-                .px(px(9.))
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            action_row("reasoning-card", "Toggle thought details")
+                .toggled(open).icon(IconName::Brain).label("Thought")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.reasoning_open = !this.reasoning_open;
                     cx.notify();
                 }))
-                .child(
-                    Icon::new(IconName::Brain)
-                        .size(px(12.5))
-                        .text_color(p.violet),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.fg.opacity(0.85))
-                        .child("Thought"),
-                )
                 .child(
                     div()
                         .text_size(px(11.0))
@@ -1086,23 +946,11 @@ fn tool_card(
     let deletions = tool.deletions;
     let diff = tool.diff.clone();
 
-    let mut card = div()
-        .rounded(px(9.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    let mut card = card_surface(*p)
         .overflow_hidden()
         .child(
-            div()
-                .id(("tool-card", index))
-                .min_h(px(34.))
-                .px(px(8.))
-                .py(px(6.))
-                .flex()
-                .items_center()
-                .gap(px(7.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            action_row(("tool-card", index), format!("Toggle tool details: {title}"))
+                .toggled(is_open)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.expanded_tool = if this.expanded_tool == Some(index) {
                         None
@@ -1271,21 +1119,9 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
         );
     }
 
-    div()
-        .rounded(px(7.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.bg)
-        .overflow_hidden()
+    code_surface(*p)
         .child(
-            div()
-                .h(px(24.))
-                .px(px(7.))
-                .flex()
-                .items_center()
-                .gap(px(5.))
-                .border_b_1()
-                .border_color(p.border)
+            code_header(*p)
                 .child(
                     div()
                         .text_size(px(10.0))
@@ -1295,31 +1131,11 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
                 )
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id(("tool-diff-copy", index))
-                        .h(px(18.))
-                        .px(px(5.))
-                        .rounded(px(3.))
-                        .flex()
-                        .items_center()
-                        .gap(px(3.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    icon_button(("tool-diff-copy", index), IconName::Copy, "Copy diff")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
                             this.set_notice("Copied the diff", cx);
-                        }))
-                        .child(
-                            Icon::new(IconName::Copy)
-                                .size(px(9.5))
-                                .text_color(p.muted_fg),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.0))
-                                .text_color(p.muted_fg)
-                                .child("Copy"),
-                        ),
+                        })),
                 ),
         )
         .child(
@@ -1334,11 +1150,7 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
 }
 
 fn plan_card(items: &[PlanItem], p: &Palette) -> AnyElement {
-    let mut card = div()
-        .rounded(px(9.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    let mut card = card_surface(*p)
         .p(px(10.))
         .flex()
         .flex_col()
@@ -1426,9 +1238,7 @@ fn permission_card(
         .unwrap_or(false);
     let accent = if denied { p.red } else { p.amber };
 
-    let mut card = div()
-        .rounded(px(9.))
-        .border_1()
+    let mut card = card_surface(*p)
         .border_color(accent.opacity(0.35))
         .bg(if denied { p.red_soft } else { p.amber_soft })
         .overflow_hidden()
@@ -1544,27 +1354,10 @@ fn permission_card(
                 option.label
             );
             let primary = option.kind == PermissionKind::AllowOnce;
-            let outline = option.kind == PermissionKind::AllowAlways;
-
             buttons = buttons.child(
-                div()
-                    .id(format!("permission:{request_id}:{}", option.id))
-                    .h(px(25.))
-                    .px(px(10.))
-                    .rounded(px(5.))
-                    .when(primary, |this| this.bg(p.fg))
-                    .when(outline, |this| {
-                        this.border_1()
-                            .border_color(accent.opacity(0.35))
-                            .bg(p.card)
-                    })
-                    .when(!primary && !outline, |this| {
-                        this.border_1().border_color(p.border).bg(p.card)
-                    })
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .hover(move |style| style.opacity(0.88))
+                dunlin_ui::button(format!("permission:{request_id}:{}", option.id))
+                    .label(option.label.clone())
+                    .when(primary, |button| button.primary())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.resolve_permission(
                             &request,
@@ -1572,24 +1365,7 @@ fn permission_card(
                             label.clone(),
                             cx,
                         );
-                    }))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(if primary {
-                                FontWeight::MEDIUM
-                            } else {
-                                FontWeight::NORMAL
-                            })
-                            .text_color(if primary {
-                                p.bg
-                            } else if allowed {
-                                p.fg
-                            } else {
-                                p.muted_fg
-                            })
-                            .child(option.label.clone()),
-                    ),
+                    })),
             );
         }
 
@@ -1754,7 +1530,7 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .border_color(p.border)
                 .when(this.git_history.cancel_check.is_some(), |bar| {
                     bar.child(
-                        Button::new("composer-stop-check")
+                        dunlin_ui::button("composer-stop-check")
                             .ghost()
                             .small()
                             .label("Stop check")
@@ -1766,33 +1542,16 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .child(div().flex_1())
                 .when(!queued.is_empty(), |this| {
                     this.child(
-                        div()
-                            .id("composer-queue")
-                            .h(px(20.))
-                            .px(px(6.))
-                            .rounded(px(5.))
-                            .bg(if queue_open { p.amber } else { p.amber_soft })
-                            .flex()
-                            .items_center()
-                            .gap(px(4.))
-                            .cursor_pointer()
-                            .hover(move |style| style.opacity(0.9))
+                        dunlin_ui::button("composer-queue")
+                            .warning().outline()
+                            .icon(IconName::Clock3)
+                            .label(format!("{} queued", queued.len()))
+                            .accessibility_label("Toggle prompt queue")
+                            .selected(queue_open).toggled(queue_open)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.queue_open = !this.queue_open;
                                 cx.notify();
-                            }))
-                            .child(
-                                Icon::new(IconName::Clock3)
-                                    .size(px(10.))
-                                    .text_color(if queue_open { p.bg } else { p.amber }),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_family(dunlin_ui::theme::code_font())
-                                    .text_color(if queue_open { p.bg } else { p.amber })
-                                    .child(format!("{} queued", queued.len())),
-                            ),
+                            })),
                     )
                 }),
         )
@@ -1811,7 +1570,6 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                     IconName::Paperclip,
                     "Attach",
                     cx,
-                    &p,
                     |this, window, cx| this.attach_files(window, cx),
                 ))
                 .child(chat_controls::mcp(this, cx))
@@ -1824,33 +1582,21 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                         .gap(px(5.))
                         .child(model)
                         .child(
-                            div()
-                                .id("composer-send")
-                                .size(px(27.))
-                                .rounded_full()
-                                .bg(if running { p.blue } else { p.fg })
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .when(!running && !has_text, |this| this.opacity(0.55))
-                                .hover(move |style| style.opacity(0.9))
+                            icon_button("composer-send", if running {
+                                IconName::CircleStop
+                            } else {
+                                IconName::ArrowUp
+                            }, if running { "Stop response" } else { "Send prompt" })
+                                .primary()
+                                .when(running, |button| button.info())
+                                .disabled(!running && !has_text)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if this.harness.running {
                                         this.cancel_turn(cx);
                                     } else {
                                         this.send_prompt(window, cx);
                                     }
-                                }))
-                                .child(
-                                    Icon::new(if running {
-                                        IconName::CircleStop
-                                    } else {
-                                        IconName::ArrowUp
-                                    })
-                                    .size(px(14.))
-                                    .text_color(p.bg),
-                                ),
+                                })),
                         ),
                 ),
         );
@@ -1932,88 +1678,37 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                         .child(text),
                 )
                 .child(
-                    div()
-                        .id(("queued-up", index))
-                        .size(px(19.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .when(!first, |this| this.hover(move |style| style.bg(p.muted)))
-                        .when(first, |this| this.opacity(0.3))
+                    icon_button(("queued-up", index), IconName::ChevronUp, "Move prompt up")
+                        .disabled(first)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.reorder_queued_prompt(id, -1, cx);
-                        }))
-                        .child(
-                            Icon::new(IconName::ChevronUp)
-                                .size(px(10.5))
-                                .text_color(p.muted_fg),
-                        ),
+                        })),
                 )
                 .child(
-                    div()
-                        .id(("queued-down", index))
-                        .size(px(19.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .when(!last, |this| this.hover(move |style| style.bg(p.muted)))
-                        .when(last, |this| this.opacity(0.3))
+                    icon_button(("queued-down", index), IconName::ChevronDown, "Move prompt down")
+                        .disabled(last)
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.reorder_queued_prompt(id, 1, cx);
-                        }))
-                        .child(
-                            Icon::new(IconName::ChevronDown)
-                                .size(px(10.5))
-                                .text_color(p.muted_fg),
-                        ),
+                        })),
                 )
                 .child(
-                    div()
-                        .id(("queued-edit", index))
-                        .size(px(19.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.muted))
+                    icon_button(("queued-edit", index), IconName::Pencil, "Edit queued prompt")
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.edit_queued_prompt(id, window, cx);
-                        }))
-                        .child(
-                            Icon::new(IconName::Pencil)
-                                .size(px(10.5))
-                                .text_color(p.muted_fg),
-                        ),
+                        })),
                 )
                 .child(
-                    div()
-                        .id(("queued-remove", index))
-                        .size(px(19.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.red_soft))
+                    icon_button(("queued-remove", index), IconName::X, "Remove queued prompt")
+                        .danger().outline()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.remove_queued_prompt(id, cx);
-                        }))
-                        .child(Icon::new(IconName::X).size(px(10.5)).text_color(p.red)),
+                        })),
                 ),
         );
     }
 
-    div()
+    card_surface(*p)
         .w_full()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
         .p(px(7.))
         .flex()
         .flex_col()
@@ -2039,40 +1734,17 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                 )
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id("queue-clear")
-                        .h(px(20.))
-                        .px(px(6.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.red_soft))
+                    dunlin_ui::button("queue-clear").danger().outline().label("Clear")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.clear_queued_prompts(cx);
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .text_color(p.muted_fg)
-                                .child("Clear"),
-                        ),
+                        })),
                 )
                 .child(
-                    div()
-                        .id("queue-close")
-                        .size(px(20.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    icon_button("queue-close", IconName::X, "Close prompt queue")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.queue_open = false;
                             cx.notify();
-                        }))
-                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                        })),
                 ),
         )
         .child(rows)
@@ -2083,30 +1755,13 @@ fn attachment_button(
     icon_name: IconName,
     label: &str,
     cx: &mut Context<DunlinApp>,
-    p: &Palette,
     action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
 ) -> AnyElement {
-    let label_owned = label.to_string();
-    div()
-        .id(format!("composer-action:{label}"))
-        .h(px(22.))
-        .px(px(5.))
-        .rounded(px(5.))
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
+    dunlin_ui::button(format!("composer-action:{label}"))
+        .ghost().icon(icon_name).label(label.to_owned())
         .on_click(cx.listener(move |this, _, window, cx| {
             action(this, window, cx);
         }))
-        .child(Icon::new(icon_name).size(px(11.5)).text_color(p.muted_fg))
-        .child(
-            div()
-                .text_size(px(11.0))
-                .text_color(p.muted_fg)
-                .child(label_owned),
-        )
         .into_any_element()
 }
 

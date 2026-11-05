@@ -2,7 +2,7 @@
 //! only here; no user repository, harness, or installed application is touched.
 use crate::app::{DunlinApp, StoredSettings};
 use dunlin_ui::{
-    component::{TitleBar, input::Undo},
+    component::input::Undo,
     *,
 };
 use dunlin_workspace::git::{operations::Action, overview};
@@ -138,7 +138,7 @@ pub(crate) fn run() {
     }
     application().with_assets(assets::AllAssets).run(move |cx| {
         cx.set_app_identity("dev.dunlin.ide.git-smoke","Dunlin Git Smoke");dunlin_ui::init(cx);crate::logging::init();
-        let (handle,owner)=open_window(WindowOptions{window_bounds:Some(WindowBounds::Windowed(Bounds::new(point(px(90.),px(90.)),size(px(if light_narrow {760.} else {1200.}),px(800.))))),..TitleBar::window_options()},cx,|window,cx|cx.new(|cx|DunlinApp::new(window,cx))).unwrap();
+        let (handle,owner)=open_window(WindowOptions{window_bounds:Some(WindowBounds::Windowed(Bounds::new(point(px(90.),px(90.)),size(px(if light_narrow {760.} else {1200.}),px(800.))))),..dunlin_ui::window_options()},cx,|window,cx|cx.new(|cx|DunlinApp::new(window,cx))).unwrap();
         handle.update(cx,|_,w,cx|owner.update(cx,|app,cx|app.open_workbench_file(path.to_str().unwrap(),None,w,cx))).unwrap();
         cx.spawn(async move |cx| {
             let start=Instant::now();let mut stage=0;

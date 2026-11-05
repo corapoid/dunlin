@@ -9,6 +9,7 @@ use dunlin_ui::{
     assets::IconName,
     component::{
         Icon, Sizable,
+        button::ButtonVariants,
         input::{Input, InputEvent, InputState},
     },
     *,
@@ -700,18 +701,10 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .child(format!("Switch branch · {}", picker.project.name)),
                     )
                     .child(
-                        div()
-                            .id("branch-picker-close")
-                            .px(px(8.))
-                            .py(px(4.))
-                            .rounded(px(5.))
-                            .text_size(px(11.))
-                            .cursor_pointer()
-                            .hover(move |style| style.bg(p.hover))
+                        dunlin_ui::button("branch-picker-close").ghost().label("Close")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_branch_picker(window, cx)
-                            }))
-                            .child("Close"),
+                            })),
                     ),
             )
         })

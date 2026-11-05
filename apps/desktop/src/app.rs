@@ -4092,7 +4092,11 @@ impl DunlinApp {
             return;
         }
         if self.branch_ui.is_open() {
-            self.branch_picker_key(&event.keystroke.key, window, cx);
+            if event.keystroke.key == "escape"
+                || self.branch_ui.input_focus(cx).is_some_and(|focus| focus.is_focused(window))
+            {
+                self.branch_picker_key(&event.keystroke.key, window, cx);
+            }
             return;
         }
         if self.provider_auth.is_some() {
@@ -4101,7 +4105,7 @@ impl DunlinApp {
                     self.close_provider_auth(window, cx);
                     cx.stop_propagation();
                 }
-                "enter" => {
+                "enter" if self.focus_handle.is_focused(window) || self.provider_auth_input_focused(window, cx) => {
                     self.submit_provider_auth(window, cx);
                     cx.stop_propagation();
                 }
@@ -4121,18 +4125,21 @@ impl DunlinApp {
         if self.editor_conflict.is_some() {
             if keystroke.key.as_str() == "escape" {
                 self.cancel_editor_conflict(cx);
+                cx.stop_propagation();
             }
-            cx.stop_propagation();
             return;
         }
 
         if self.pending_editor.is_some() {
+            // A focused action owns Enter/Space; only the dialog's default focus submits here.
             match keystroke.key.as_str() {
-                "escape" => self.cancel_pending_editor(cx),
-                "enter" => self.save_pending_editor(window, cx),
+                "escape" => { self.cancel_pending_editor(cx); cx.stop_propagation(); }
+                "enter" if self.focus_handle.is_focused(window) => {
+                    self.save_pending_editor(window, cx);
+                    cx.stop_propagation();
+                }
                 _ => {}
             }
-            cx.stop_propagation();
             return;
         }
 
@@ -4143,13 +4150,15 @@ impl DunlinApp {
                     cx.stop_propagation();
                     return;
                 }
-                "enter" => {
+                "enter" if self.focus_handle.is_focused(window)
+                    || self.group_input.read(cx).focus_handle(cx).is_focused(window) => {
                     self.submit_group_prompt(window, cx);
                     cx.stop_propagation();
                     return;
                 }
                 _ => {}
             }
+            return;
         }
 
         if self.queue_open && keystroke.key.as_str() == "escape" {
@@ -4161,11 +4170,13 @@ impl DunlinApp {
 
         if self.pending_delete.is_some() {
             match keystroke.key.as_str() {
-                "escape" => self.cancel_delete(cx),
-                "enter" => self.confirm_delete(cx),
+                "escape" => { self.cancel_delete(cx); cx.stop_propagation(); }
+                "enter" if self.focus_handle.is_focused(window) => {
+                    self.confirm_delete(cx);
+                    cx.stop_propagation();
+                }
                 _ => {}
             }
-            cx.stop_propagation();
             return;
         }
 
@@ -4213,6 +4224,8 @@ impl DunlinApp {
 
         if !platform
             && matches!(self.view, MainView::Graph | MainView::Trace)
+            && !self.has_modal_overlay()
+            && (self.activity_focus.is_focused(window) || self.focus_handle.is_focused(window))
             && !self
                 .activity_search
                 .read(cx)
@@ -6098,12 +6111,14 @@ impl Render for DunlinApp {
             .then(|| self.toast.as_ref().map(|_| self.toast_overlay(cx)))
             .flatten();
 
+        let chrome = chrome_background(p, crate::platform::reduce_transparency());
+
         div()
             .relative()
             .flex()
             .flex_col()
             .size_full()
-            .bg(p.bg)
+            .bg(chrome)
             .text_color(p.fg)
             .font_family(dunlin_ui::theme::ui_font())
             .child(self.overlay_backdrop.begin())
@@ -6322,6 +6337,10 @@ impl Render for DunlinApp {
                     .flex_1()
                     .min_h(px(0.))
                     .w_full()
+                    .pr(px(dunlin_ui::scale::WORKSPACE_INSET))
+                    .when(self.minimal_mode, |view| {
+                        view.pl(px(dunlin_ui::scale::WORKSPACE_INSET))
+                    })
                     .when_some(rail, |this, rail| this.child(rail))
                     .when(sidebar_fraction > 0., |this| {
                         this.child(
@@ -6337,20 +6356,13 @@ impl Render for DunlinApp {
                         )
                     })
                     .child(
-                        div()
-                            .flex()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .min_h(px(0.))
-                            .overflow_hidden()
-                            .flex()
-                            .flex_col()
-                            .border_l_1()
-                            .border_color(p.border)
-                            .child(workspace),
+                        workspace_surface(p).id("workspace-surface").child(workspace),
                     ),
             )
             .children(status_bar)
+            .when(self.projects.is_empty(), |root| {
+                root.child(div().h(px(dunlin_ui::scale::WORKSPACE_INSET)).flex_shrink_0())
+            })
             .children(overlays)
             .children(toast)
             .child(self.overlay_backdrop.finish())

@@ -3,7 +3,6 @@
 
 use dunlin_domain::{MainView, UsageSource};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Sizable;
 use dunlin_ui::component::ThemeMode;
 use dunlin_ui::component::button::{Button, ButtonVariants};
 use dunlin_ui::component::input::{Editor, Input};
@@ -466,20 +465,11 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 ),
         )
         .child(
-            div()
-                .id("settings-close")
-                .size(px(28.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            icon_button("settings-close", IconName::X, "Close settings")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.settings_open = false;
                     cx.notify();
-                }))
-                .child(Icon::new(IconName::X).size(px(14.)).text_color(p.muted_fg)),
+                })),
         )
         .into_any_element()
 }
@@ -3185,19 +3175,10 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                                 })),
                         )
                         .child(
-                            div()
-                                .id("remote-remove")
-                                .size(px(28.))
-                                .rounded(px(6.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_pointer()
-                                .hover(move |style| style.bg(p.hover))
+                            icon_button(format!("remote-remove:{host_id}"), IconName::X, "Remove remote host")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.remove_remote_host(&host_id, cx);
-                                }))
-                                .child(Icon::new(IconName::X).size(px(12.)).text_color(p.muted_fg)),
+                                })),
                         ),
                 ),
             );
@@ -3373,25 +3354,11 @@ fn section_label(label: &str, p: &Palette) -> AnyElement {
 }
 
 fn settings_card(p: &Palette) -> Div {
-    div()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    card_surface(*p)
 }
 
 fn settings_chip(label: impl Into<SharedString>, p: &Palette) -> Div {
-    div()
-        .h(px(18.))
-        .px(px(6.))
-        .rounded(px(4.))
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .text_size(px(9.5))
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(p.muted_fg)
-        .child(label.into())
+    badge(label, p.muted_fg, p.muted, *p)
 }
 
 fn risk_chip(p: &Palette) -> Div {
@@ -3410,82 +3377,25 @@ fn risk_chip(p: &Palette) -> Div {
 }
 
 fn segment_group(p: &Palette) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(2.))
-        .p(px(2.))
-        .rounded(px(7.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.subtle)
+    dunlin_ui::segment_group(*p)
 }
 
 fn segment(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     active: bool,
-    p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(24.))
-        .px(px(9.))
-        .rounded(px(5.))
-        .border_1()
-        .border_color(if active {
-            p.border
-        } else {
-            p.border.opacity(0.0)
-        })
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .text_size(px(11.0))
-        .when(active, |this| {
-            this.bg(p.accent)
-                .text_color(p.fg)
-                .font_weight(FontWeight::MEDIUM)
-        })
-        .when(!active, |this| {
-            this.text_color(p.muted_fg)
-                .hover(move |style| style.bg(p.hover))
-        })
-        .child(label.into())
+    _p: &Palette,
+) -> Button {
+    segment_button(id, label, active)
 }
 
 fn settings_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     primary: bool,
-    p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(28.))
-        .px(px(11.))
-        .rounded(px(6.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(6.))
-        .text_size(px(11.5))
-        .font_weight(FontWeight::MEDIUM)
-        .cursor_pointer()
-        .when(primary, |this| {
-            this.bg(p.primary)
-                .text_color(p.primary_fg)
-                .hover(move |style| style.opacity(0.88))
-        })
-        .when(!primary, |this| {
-            this.border_1()
-                .border_color(p.border)
-                .bg(p.card)
-                .text_color(p.fg)
-                .hover(move |style| style.bg(p.hover))
-        })
-        .child(label.into())
+    _p: &Palette,
+) -> Button {
+    dunlin_ui::button(id).label(label).when(primary, |button| button.primary())
 }
 
 fn settings_text_button(
@@ -3493,22 +3403,10 @@ fn settings_text_button(
     label: impl Into<SharedString>,
     color: Hsla,
     p: &Palette,
-) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(26.))
-        .px(px(7.))
-        .rounded(px(5.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(4.))
-        .cursor_pointer()
-        .text_size(px(11.0))
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(color)
-        .hover(move |style| style.bg(p.hover))
-        .child(label.into())
+) -> Button {
+    dunlin_ui::button(id).ghost().label(label)
+        .when(color == p.red, |button| button.danger().outline())
+        .when(color == p.amber, |button| button.warning().outline())
 }
 
 fn radio(selected: bool, p: &Palette) -> Div {
@@ -3615,58 +3513,30 @@ fn toggle_switch(
     value: bool,
     action: fn(&mut DunlinApp),
     cx: &mut Context<DunlinApp>,
-    p: &Palette,
+    _p: &Palette,
 ) -> AnyElement {
-    div()
-        .id(id)
-        .w(px(32.))
-        .h(px(18.))
-        .flex_shrink_0()
-        .rounded_full()
-        .bg(if value { p.primary } else { p.border_strong })
-        .flex()
-        .items_center()
-        .cursor_pointer()
+    dunlin_ui::switch(id, id.replace('-', " "), value)
         .on_click(cx.listener(move |this, _, window, cx| {
             action(this);
             this.apply_editor_preferences(window, cx);
             this.persist_settings(cx);
             cx.notify();
         }))
-        .child(
-            div()
-                .size(px(14.))
-                .rounded_full()
-                .bg(if value { p.primary_fg } else { p.card })
-                .ml(px(if value { 16. } else { 2. }))
-                .border_1()
-                .border_color(p.border.opacity(0.35)),
-        )
         .into_any_element()
 }
 
 fn font_picker(this: &DunlinApp, code: bool, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let p = palette(cx);
     let selected = if code {
         this.code_font_family.clone()
     } else {
         this.ui_font_family.clone()
     };
     let app = cx.entity().downgrade();
-    Button::new(if code {
+    dunlin_ui::button(if code {
         "code-font-picker"
     } else {
         "ui-font-picker"
     })
-    .ghost()
-    .small()
-    .h(px(28.))
-    .px(px(10.))
-    .rounded(px(6.))
-    .border_1()
-    .border_color(p.border)
-    .bg(p.card)
-    .text_color(p.fg)
     .label(selected)
     .dropdown_caret(true)
     .max_w(px(230.))
@@ -3754,31 +3624,12 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
 
 fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
     let size = this.code_font_size;
-    div()
-        .h(px(28.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(p.border)
-        .flex()
-        .items_center()
+    dunlin_ui::segment_group(*p)
         .child(
-            div()
-                .id("font-decrease")
-                .w(px(24.))
-                .h_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            icon_button("font-decrease", IconName::Minus, "Decrease code font size")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.adjust_code_font_size(-1.0, cx);
-                }))
-                .child(
-                    Icon::new(IconName::Minus)
-                        .size(px(10.))
-                        .text_color(p.muted_fg),
-                ),
+                })),
         )
         .child(
             div()
@@ -3789,23 +3640,10 @@ fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> An
                 .child(format!("{size:.0} px")),
         )
         .child(
-            div()
-                .id("font-increase")
-                .w(px(24.))
-                .h_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            icon_button("font-increase", IconName::Plus, "Increase code font size")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.adjust_code_font_size(1.0, cx);
-                }))
-                .child(
-                    Icon::new(IconName::Plus)
-                        .size(px(10.))
-                        .text_color(p.muted_fg),
-                ),
+                })),
         )
         .into_any_element()
 }

@@ -8,7 +8,7 @@ use std::time::Duration;
 use dunlin_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::Input;
 use dunlin_ui::component::{Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -179,7 +179,7 @@ pub(crate) fn render(
             ),
         )
         .child(
-            Button::new("trace-zoom-out")
+            dunlin_ui::button("trace-zoom-out")
                 .ghost()
                 .small()
                 .label("−")
@@ -200,7 +200,7 @@ pub(crate) fn render(
                 .child(format!("{:.0}%", zoom * 100.)),
         )
         .child(
-            Button::new("trace-zoom-in")
+            dunlin_ui::button("trace-zoom-in")
                 .ghost()
                 .small()
                 .label("+")
@@ -218,96 +218,28 @@ pub(crate) fn render(
         let active = filter == chip;
         let count = spans.iter().filter(|span| chip.matches(span.kind)).count();
         toolbar = toolbar.child(
-            div()
-                .id(format!("trace-filter:{}", chip.label()))
-                .role(Role::Button)
-                .aria_label(format!("Show {} trace spans", chip.label()))
-                .aria_selected(active)
-                .h(px(22.))
-                .px(px(6.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(if active {
-                    p.border_strong
-                } else {
-                    p.border.opacity(0.0)
-                })
-                .bg(if active { p.card } else { p.bg.opacity(0.0) })
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+            segment_button(format!("trace-filter:{}", chip.label()), format!("{} {count}", chip.label()), active)
+                .accessibility_label(format!("Show {} trace spans", chip.label()))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.trace_filter = chip;
                     this.activity_normalize_selection(cx);
-                }))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .text_color(if active { p.fg } else { p.muted_fg })
-                        .child(chip.label()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg.opacity(0.7))
-                        .child(count.to_string()),
-                ),
+                })),
         );
     }
 
     toolbar = toolbar
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
-            div()
-                .id("trace-collapse-requests")
-                .role(Role::Button)
-                .aria_label("Collapse request details")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.card)
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .cursor_pointer()
+            dunlin_ui::button("trace-collapse-requests").icon(IconName::FoldVertical).label("Requests")
+                .accessibility_label("Collapse request details")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.spans_expanded.clear();
                     this.activity_normalize_selection(cx);
-                }))
-                .child(
-                    Icon::new(IconName::FoldVertical)
-                        .size(px(11.))
-                        .text_color(p.muted_fg),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(p.muted_fg)
-                        .child("Requests"),
-                ),
+                })),
         )
         .child(
-            div()
-                .id("trace-expand-all")
-                .role(Role::Button)
-                .aria_label("Expand all trace details")
-                .h(px(23.))
-                .px(px(5.))
-                .rounded(px(5.))
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .cursor_pointer()
+            dunlin_ui::button("trace-expand-all").ghost().label("Expand all")
+                .accessibility_label("Expand all trace details")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.spans_expanded =
                         crate::projection::spans(&this.harness.transcript, this.session())
@@ -315,14 +247,7 @@ pub(crate) fn render(
                             .map(|span| span.id)
                             .collect();
                     cx.notify();
-                }))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .child("Expand all"),
-                ),
+                })),
         );
 
     let header = div()
@@ -851,22 +776,11 @@ fn span_detail(
                         ),
                 )
                 .child(
-                    div()
-                        .id("close-span-detail")
-                        .role(Role::Button)
-                        .aria_label("Close span detail")
-                        .size(px(19.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    icon_button("close-span-detail", IconName::X, "Close span detail")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.selected_span = None;
                             cx.notify();
-                        }))
-                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                        })),
                 ),
         )
         .child(
@@ -925,21 +839,7 @@ fn span_detail(
                         .child("PARENT"),
                 )
                 .child(
-                    div()
-                        .id("trace-parent")
-                        .role(Role::Button)
-                        .aria_label(format!("Select parent span {}", parent.name))
-                        .h(px(26.))
-                        .px(px(6.))
-                        .rounded(px(5.))
-                        .border_1()
-                        .border_color(p.border)
-                        .bg(p.card)
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    action_row("trace-parent", format!("Select parent span {}", parent.name))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(id) = &parent_id {
                                 this.selected_span = Some(id.clone());
@@ -981,18 +881,7 @@ fn span_detail(
         for child in children.iter().take(5) {
             let child_id = child.id.clone();
             child_list = child_list.child(
-                div()
-                    .id(format!("trace-child:{}", child.id))
-                    .role(Role::Button)
-                    .aria_label(format!("Select child span {}", child.name))
-                    .h(px(23.))
-                    .px(px(5.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
+                action_row(format!("trace-child:{}", child.id), format!("Select child span {}", child.name))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.selected_span = Some(child_id.clone());
                         cx.notify();
@@ -1028,66 +917,21 @@ fn span_detail(
             .items_center()
             .gap(px(5.))
             .child(
-                div()
-                    .id("span-open-chat")
-                    .role(Role::Button)
-                    .aria_label("Open this span in chat")
-                    .h(px(23.))
-                    .px(px(7.))
-                    .rounded(px(5.))
-                    .bg(p.fg)
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
+                dunlin_ui::button("span-open-chat").primary().icon(IconName::MessageSquare).label("Open in chat")
+                    .accessibility_label("Open this span in chat")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_span_in_chat(&span_id, cx);
-                    }))
-                    .child(
-                        Icon::new(IconName::MessageSquare)
-                            .size(px(10.))
-                            .text_color(p.bg),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.bg)
-                            .child("Open in chat"),
-                    ),
+                    })),
             )
             .child(
-                div()
-                    .id("span-copy-json")
-                    .role(Role::Button)
-                    .aria_label("Copy span JSON")
-                    .h(px(23.))
-                    .px(px(7.))
-                    .rounded(px(5.))
-                    .border_1()
-                    .border_color(p.border)
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(p.hover))
+                dunlin_ui::button("span-copy-json").icon(IconName::Copy).label("Copy JSON")
+                    .accessibility_label("Copy span JSON")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !span_json.is_empty() {
                             cx.write_to_clipboard(ClipboardItem::new_string(span_json.clone()));
                         }
                         this.set_notice("Span JSON copied to the clipboard", cx);
-                    }))
-                    .child(
-                        Icon::new(IconName::Copy)
-                            .size(px(9.5))
-                            .text_color(p.muted_fg),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(p.muted_fg)
-                            .child("Copy JSON"),
-                    ),
+                    })),
             ),
     );
 

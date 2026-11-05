@@ -3,7 +3,7 @@
 
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -122,7 +122,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         crate::harness::HarnessStatus::Failed(_) | crate::harness::HarnessStatus::Exited(_)
     );
 
-    Button::new("title-host")
+    dunlin_ui::button("title-host")
         .ghost()
         .small()
         .icon(if remote.is_some() {
