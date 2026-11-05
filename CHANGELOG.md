@@ -6,6 +6,12 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- macOS `.pkg` installer for `/Applications`, included in release checksums,
+  provenance attestations and publication verification.
+- Homebrew beta channel (`corapoid/tap/dunlin@beta`) pinned to the verified DMG.
+
 ## [0.1.0-beta.8] — 2026-11-04
 
 ### Added

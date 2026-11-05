@@ -88,7 +88,7 @@ def artifact_names(value, name="Dunlin"):
     version(value)
     app_name(name)
     return {f"{name}-{value}-macos-arm64.zip", f"{name}-{value}-macos-arm64.dmg",
-            f"dunlin-relay-{value}-macos-arm64.tar.gz"}
+            f"{name}-{value}-macos-arm64.pkg", f"dunlin-relay-{value}-macos-arm64.tar.gz"}
 
 
 def notary_result(report):
@@ -153,7 +153,7 @@ def verify(directory, value, name="Dunlin", bundle_id="dev.dunlin.ide"):
             raise ValueError("Unexpected or duplicate SHA256SUMS entry")
         checksums[filename] = checksum
     if set(checksums) != expected:
-        raise ValueError("SHA256SUMS does not cover exactly the expected three artifacts")
+        raise ValueError("SHA256SUMS does not cover exactly the expected four artifacts")
     for filename, checksum in checksums.items():
         path = directory / filename
         regular(path)
@@ -199,6 +199,9 @@ def verify(directory, value, name="Dunlin", bundle_id="dev.dunlin.ide"):
         dmg.seek(-512, 2)
         if dmg.read(4) != b"koly":
             raise ValueError("DMG is not a UDIF image")
+    with (directory / f"{name}-{value}-macos-arm64.pkg").open("rb") as pkg:
+        if pkg.read(4) != b"xar!":
+            raise ValueError("PKG is not a xar archive")
     return sorted(expected)
 
 
@@ -229,9 +232,9 @@ def main():
             if args.command == "metadata":
                 print(f"PASS: workspace, lockfile and changelog match {args.version}")
             else:
-                signing = {"ad-hoc": "Ad-hoc signed beta; NOT Apple-notarized. Gatekeeper approval may be required.",
-                           "developer-id": "Developer ID signed; NOT Apple-notarized.",
-                           "notarized": "Developer ID signed and Apple-notarized app/relay; stapled app/DMG."}[args.signing]
+                signing = {"ad-hoc": "Ad-hoc signed beta; NOT Apple-notarized. The .pkg installer is unsigned. Gatekeeper approval may be required.",
+                           "developer-id": "Developer ID signed app/relay; NOT Apple-notarized. The .pkg installer is unsigned unless an Installer identity is configured.",
+                           "notarized": "Developer ID signed and Apple-notarized app/relay; stapled app/DMG. The .pkg installer is signed only when an Installer identity is configured."}[args.signing]
                 print(f"Dunlin {args.version}\n\nmacOS 15+, Apple Silicon.\n\n{signing}\n\n{body}\n")
         elif args.command == "acceptance":
             print(acceptance_policy(ROOT, args.version))

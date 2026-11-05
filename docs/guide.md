@@ -563,10 +563,18 @@ The current beta is ad-hoc signed because there is no Apple Developer ID yet.
 macOS Gatekeeper may ask you to approve the app in
 **System Settings → Privacy & Security**.
 
+The quickest install is the Homebrew beta channel:
+
+```sh
+brew trust corapoid/tap
+brew install --cask corapoid/tap/dunlin@beta
+```
+
 Release artifacts are published on the
 [releases page](https://github.com/corapoid/dunlin/releases):
 
 - `Dunlin-<version>-macos-arm64.dmg`
+- `Dunlin-<version>-macos-arm64.pkg` (unsigned installer for `/Applications`)
 - `Dunlin-<version>-macos-arm64.zip`
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
