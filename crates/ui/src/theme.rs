@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
+use gpui_kit::component::{ActiveTheme, Colorize, Theme, ThemeMode};
 use gpui_kit::*;
 
 /// Monospaced text size shared by editors, diffs and code chips.
@@ -106,16 +106,41 @@ fn ha(hex: u32) -> Hsla {
     rgba(hex).into()
 }
 
+fn luminance(color: Hsla) -> f32 {
+    let color: Rgba = color.into();
+    let linear = |v: f32| {
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+}
+
+fn contrast_ink(fill: Hsla) -> Hsla {
+    if luminance(fill) > 0.179 {
+        h(0x000000)
+    } else {
+        h(0xffffff)
+    }
+}
+
+fn semantic_button_state(fill: Hsla, factor: f32) -> Hsla {
+    let away_from_ink = if luminance(fill) > 0.179 {
+        h(0xffffff)
+    } else {
+        h(0x000000)
+    };
+    fill.mix_oklab(away_from_ink, factor)
+}
+
 pub fn light() -> Palette {
     Palette {
-        bg: h(0xffffff),
+        bg: h(0xf8f8f9),
         panel: h(0xfafafa),
         sidebar: h(0xfafafa),
         card: h(0xffffff),
         titlebar: h(0xfbfbfc),
         statusbar: h(0xfafafa),
-        border: h(0xe6e6e9),
-        border_strong: h(0xd4d4d8),
+        border: h(0xdcdce1),
+        border_strong: h(0x8e8e98),
         fg: h(0x101012),
         muted_fg: h(0x71717a),
         muted: h(0xf4f4f5),
@@ -146,14 +171,14 @@ pub fn light() -> Palette {
 
 pub fn dark() -> Palette {
     Palette {
-        bg: h(0x0a0a0a),
+        bg: h(0x101012),
         panel: h(0x111113),
         sidebar: h(0x111113),
-        card: h(0x151517),
+        card: h(0x18181b),
         titlebar: h(0x101012),
         statusbar: h(0x101012),
-        border: ha(0xffffff14),
-        border_strong: h(0x2a2a2e),
+        border: h(0x343438),
+        border_strong: h(0x71717a),
         fg: h(0xf4f4f5),
         muted_fg: h(0xa1a1aa),
         muted: h(0x1d1d20),
@@ -218,8 +243,8 @@ pub fn apply(cx: &mut App) {
         theme.mono_font_family = code;
         theme.font_size = px(13.);
         theme.mono_font_size = px(f32::from_bits(CODE_FONT_SIZE.load(Ordering::Relaxed)));
-        theme.radius = px(10.);
-        theme.radius_lg = px(14.);
+        theme.radius = px(crate::scale::RADIUS_MD);
+        theme.radius_lg = px(crate::scale::RADIUS_LG);
         theme.focus_ring = false;
         // The fixed line-number gutter must remain opaque while source text
         // scrolls underneath it, including editors without form appearance.
@@ -232,7 +257,7 @@ pub fn apply(cx: &mut App) {
         c.background = p.bg;
         c.foreground = p.fg;
         c.border = p.border;
-        c.input = p.border;
+        c.input = p.border_strong;
         c.muted = p.muted;
         c.muted_foreground = p.muted_fg;
         c.secondary = p.muted;
@@ -242,13 +267,21 @@ pub fn apply(cx: &mut App) {
         c.accent = p.accent;
         c.accent_foreground = p.accent_fg;
         c.primary = p.primary;
-        c.primary_hover = p.primary;
-        c.primary_active = p.primary;
+        c.primary_hover = p.primary.mix_oklab(p.primary_fg, 0.9);
+        c.primary_active = p.primary.mix_oklab(p.primary_fg, 0.8);
         c.primary_foreground = p.primary_fg;
         c.button = p.card;
         c.button_hover = p.hover;
         c.button_active = p.accent;
         c.button_foreground = p.fg;
+        c.button_primary = c.primary;
+        c.button_primary_foreground = c.primary_foreground;
+        c.button_primary_hover = c.primary_hover;
+        c.button_primary_active = c.primary_active;
+        c.button_secondary = c.secondary;
+        c.button_secondary_foreground = c.secondary_foreground;
+        c.button_secondary_hover = c.secondary_hover;
+        c.button_secondary_active = c.secondary_active;
         c.sidebar = p.sidebar;
         c.sidebar_border = p.border;
         c.sidebar_foreground = p.fg;
@@ -281,6 +314,7 @@ pub fn apply(cx: &mut App) {
         c.popover = p.card;
         c.popover_foreground = p.fg;
         c.ring = p.blue;
+        c.switch = p.border_strong;
         c.selection = p.selection;
         c.caret = p.fg;
         c.progress_bar = p.muted;
@@ -290,13 +324,31 @@ pub fn apply(cx: &mut App) {
         c.scrollbar_thumb_hover = p.muted_fg.opacity(0.55);
         c.overlay = p.overlay;
         c.info = p.blue;
-        c.info_foreground = h(0xffffff);
+        c.info_foreground = contrast_ink(p.blue);
         c.success = p.green;
-        c.success_foreground = h(0xffffff);
+        c.success_foreground = contrast_ink(p.green);
         c.warning = p.amber;
-        c.warning_foreground = h(0xffffff);
+        c.warning_foreground = contrast_ink(p.amber);
         c.danger = p.red;
-        c.danger_foreground = h(0xffffff);
+        c.danger_foreground = contrast_ink(p.red);
+        c.danger_hover = semantic_button_state(p.red, 0.9);
+        c.danger_active = semantic_button_state(p.red, 0.8);
+        c.button_danger = c.danger;
+        c.button_danger_foreground = c.danger_foreground;
+        c.button_danger_hover = c.danger_hover;
+        c.button_danger_active = c.danger_active;
+        c.button_info = c.info;
+        c.button_info_foreground = c.info_foreground;
+        c.button_info_hover = semantic_button_state(p.blue, 0.9);
+        c.button_info_active = semantic_button_state(p.blue, 0.8);
+        c.button_success = c.success;
+        c.button_success_foreground = c.success_foreground;
+        c.button_success_hover = semantic_button_state(p.green, 0.9);
+        c.button_success_active = semantic_button_state(p.green, 0.8);
+        c.button_warning = c.warning;
+        c.button_warning_foreground = c.warning_foreground;
+        c.button_warning_hover = semantic_button_state(p.amber, 0.9);
+        c.button_warning_active = semantic_button_state(p.amber, 0.8);
         c.blue = p.blue;
         c.green = p.green;
         c.yellow = p.amber;
@@ -331,10 +383,31 @@ pub fn toggle_mode(window: &mut Window, cx: &mut App) {
 
 /// Card surface shared by panels, tool calls and graph nodes.
 pub fn card(cx: &App) -> Div {
-    let p = palette(cx);
-    div()
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    crate::card_surface(palette(cx))
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn reading_surfaces_inputs_and_all_filled_button_states_are_legible() {
+        for p in [light(), dark()] {
+            assert!(contrast(p.fg, p.card) >= 7.);
+            assert!(contrast(p.muted_fg, p.card) >= 4.5);
+            assert!(contrast(p.border_strong, p.card) >= 3.);
+            for factor in [1., 0.9, 0.8] {
+                assert!(contrast(p.primary.mix_oklab(p.primary_fg, factor), p.primary_fg) >= 4.5);
+                for fill in [p.blue, p.green, p.amber, p.red] {
+                    let ratio = contrast(semantic_button_state(fill, factor), contrast_ink(fill));
+                    assert!(ratio >= 4.5, "filled button contrast: {ratio}, factor {factor}");
+                }
+            }
+        }
+    }
 }
