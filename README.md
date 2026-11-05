@@ -91,6 +91,13 @@ brew trust corapoid/tap
 brew install --cask corapoid/tap/dunlin@beta
 ```
 
+The same files are published as an OCI artifact in
+[GitHub Packages](https://github.com/corapoid/dunlin/pkgs/container/dunlin):
+
+```sh
+oras pull ghcr.io/corapoid/dunlin:beta -o dunlin-beta
+```
+
 Or download the DMG, `.pkg` installer or ZIP from the
 [releases page](https://github.com/corapoid/dunlin/releases), or build it:
 

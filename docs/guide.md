@@ -582,6 +582,19 @@ Release artifacts are published on the
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
 supported in 0.1.
 
+### GitHub Packages (OCI)
+
+The release files are also published as an OCI artifact:
+
+```sh
+oras pull ghcr.io/corapoid/dunlin:beta -o dunlin-beta
+```
+
+Open the DMG or `.pkg` inside `dunlin-beta`, then verify the files against
+`SHA256SUMS`. The package page is
+[github.com/corapoid/dunlin/pkgs/container/dunlin](https://github.com/corapoid/dunlin/pkgs/container/dunlin).
+`oras` is available from [oras.land](https://oras.land) or Homebrew.
+
 ### Build from source
 
 Requirements:

@@ -292,3 +292,12 @@ jobs:
             --verify-tag \
             --target "$GITHUB_SHA" \
             "${RELEASE_FLAGS[@]}"
+
+  package:
+    needs: [release, publish]
+    uses: ./.github/workflows/package.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    permissions:
+      contents: read
+      packages: write
