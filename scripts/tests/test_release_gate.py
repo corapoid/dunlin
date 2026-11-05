@@ -48,6 +48,7 @@ class ReleaseGateTests(unittest.TestCase):
                 entry.size = len(data)
                 archive.addfile(entry, io.BytesIO(data))
         (self.root / f"Dunlin-{self.version}-macos-arm64.dmg").write_bytes(b"koly" + b"\0" * 508)
+        (self.root / f"Dunlin-{self.version}-macos-arm64.pkg").write_bytes(b"xar!" + b"\0" * 64)
         self.checksums()
 
     def checksums(self, prefix=""):
@@ -123,14 +124,21 @@ class ReleaseGateTests(unittest.TestCase):
 
     def test_valid_artifacts_and_legacy_manifest_prefix(self):
         self.archives()
-        self.assertEqual(len(gate.verify(self.root, self.version)), 3)
+        self.assertEqual(len(gate.verify(self.root, self.version)), 4)
         self.checksums("dist/")
-        self.assertEqual(len(gate.verify(self.root, self.version)), 3)
+        self.assertEqual(len(gate.verify(self.root, self.version)), 4)
 
     def test_modified_artifact_is_not_integrity_success(self):
         self.archives()
         (self.root / f"Dunlin-{self.version}-macos-arm64.dmg").write_bytes(b"changed")
         with self.assertRaisesRegex(ValueError, "Checksum"):
+            gate.verify(self.root, self.version)
+
+    def test_pkg_must_be_a_xar_installer(self):
+        self.archives()
+        (self.root / f"Dunlin-{self.version}-macos-arm64.pkg").write_bytes(b"not-a-pkg")
+        self.checksums()
+        with self.assertRaisesRegex(ValueError, "xar"):
             gate.verify(self.root, self.version)
 
     def test_manifest_cannot_omit_duplicate_or_escape(self):

@@ -84,7 +84,14 @@ The exact method and caveats are in [`docs/performance.md`](docs/performance.md)
 
 ## Start
 
-Download the latest beta from the
+Install the current beta with Homebrew:
+
+```sh
+brew trust corapoid/tap
+brew install --cask corapoid/tap/dunlin@beta
+```
+
+Or download the DMG, `.pkg` installer or ZIP from the
 [releases page](https://github.com/corapoid/dunlin/releases), or build it:
 
 ```sh
@@ -97,7 +104,8 @@ open dist/Dunlin.app
 Requirements: macOS 15+, Apple Silicon, Rust 1.92+ (`rustup`), and an ACP
 harness such as `opencode acp`. Development runs with `cargo run -p dunlin`.
 
-The current beta is ad-hoc signed; macOS may ask you to approve it in
+The current beta is ad-hoc signed and not Apple-notarized; the `.pkg` installer
+is unsigned. macOS may ask you to approve the app in
 **System Settings → Privacy & Security**.
 
 ## A quick look

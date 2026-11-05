@@ -41,10 +41,28 @@ import { site } from "../lib/site";
               Download DMG
               <span aria-hidden="true">↓</span>
             </a>
+            <a href={site.downloadPkg} class="btn-secondary" download>
+              Download .pkg
+              <span aria-hidden="true">↓</span>
+            </a>
             <a href={site.downloadZip} class="btn-secondary" download>
               Download ZIP
               <span aria-hidden="true">↓</span>
             </a>
+          </div>
+          <div
+            class="mt-6 max-w-[560px] rounded-xl border border-line bg-paper-soft px-4 py-3"
+            data-reveal
+            style="--reveal-delay: 200ms"
+          >
+            <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              Homebrew beta
+            </p>
+            <code class="mt-2 block font-mono text-xs leading-6 text-ink/75">
+              brew trust corapoid/tap
+              <br />
+              brew install --cask corapoid/tap/dunlin@beta
+            </code>
           </div>
           <p
             class="mt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-muted"

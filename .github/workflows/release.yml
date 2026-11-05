@@ -184,6 +184,7 @@ jobs:
           cp -R "$APP" dist/dmg/
           ln -s /Applications dist/dmg/Applications
           hdiutil create -volname "$APP_NAME" -srcfolder dist/dmg -ov -format UDZO "$DMG"
+          DUNLIN_VERSION="$VERSION" ./scripts/bundle-pkg.sh
 
       - name: Notarize final DMG
         if: steps.signing.outputs.notarize == 'true'
@@ -208,7 +209,8 @@ jobs:
           NOTARIZED: ${{ steps.signing.outputs.notarize }}
         run: |
           (cd dist && shasum -a 256 "$APP_NAME-$VERSION-macos-arm64.zip" \
-            "$APP_NAME-$VERSION-macos-arm64.dmg" "dunlin-relay-$VERSION-macos-arm64.tar.gz") > dist/SHA256SUMS
+            "$APP_NAME-$VERSION-macos-arm64.dmg" "$APP_NAME-$VERSION-macos-arm64.pkg" \
+            "dunlin-relay-$VERSION-macos-arm64.tar.gz") > dist/SHA256SUMS
           SIGNING=ad-hoc
           if [[ "$HAS_CERTIFICATE" == true ]]; then SIGNING=developer-id; fi
           if [[ "$NOTARIZED" == true ]]; then SIGNING=notarized; fi
@@ -222,6 +224,7 @@ jobs:
           subject-path: |
             dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}-macos-arm64.zip
             dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}-macos-arm64.dmg
+            dist/${{ env.APP_NAME }}-${{ steps.version.outputs.version }}-macos-arm64.pkg
             dist/dunlin-relay-${{ steps.version.outputs.version }}-macos-arm64.tar.gz
             dist/SHA256SUMS
 
@@ -233,6 +236,7 @@ jobs:
           path: |
             dist/*.zip
             dist/*.dmg
+            dist/*.pkg
             dist/*.tar.gz
             dist/SHA256SUMS
             dist/release-notes.md
@@ -280,6 +284,7 @@ jobs:
           gh release create "$TAG" \
             "dist/$APP_NAME-$VERSION-macos-arm64.zip" \
             "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
+            "dist/$APP_NAME-$VERSION-macos-arm64.pkg" \
             "dist/dunlin-relay-$VERSION-macos-arm64.tar.gz" \
             dist/SHA256SUMS \
             --title "$APP_NAME $VERSION" \
