@@ -26,6 +26,27 @@ pub(super) fn connect(
     cols: u16,
 ) -> Result<Session, String> {
     let request = request(workspace, rows, cols)?;
+    connect_request(request)
+}
+
+pub(super) fn connect_setup(
+    host: &crate::remote::RemoteHost,
+    token: &str,
+    agent: &str,
+) -> Result<Session, String> {
+    let request = build_request(
+        host,
+        token,
+        &format!("setup={}", encode(agent)),
+        dunlin_terminal::DEFAULT_ROWS,
+        dunlin_terminal::DEFAULT_COLS,
+    )?;
+    connect_request(request)
+}
+
+fn connect_request(
+    request: tokio_tungstenite::tungstenite::http::Request<()>,
+) -> Result<Session, String> {
     let (output_tx, output_rx) = async_channel::bounded(128);
     let (exit_tx, exit_rx) = async_channel::bounded(1);
     let (input_tx, input_rx) = async_channel::bounded(256);
@@ -63,16 +84,32 @@ fn request(
     rows: u16,
     cols: u16,
 ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, String> {
-    let parsed = validate_relay_url(&workspace.host.url)?;
-    let base = workspace.host.url.trim_end_matches('/');
+    build_request(
+        &workspace.host,
+        &workspace.token,
+        &format!("project={}", encode(&workspace.project.project_id)),
+        rows,
+        cols,
+    )
+}
+
+fn build_request(
+    host: &crate::remote::RemoteHost,
+    token: &str,
+    query: &str,
+    rows: u16,
+    cols: u16,
+) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, String> {
+    let parsed = validate_relay_url(&host.url)?;
+    let base = host.url.trim_end_matches('/');
     let ws = match parsed.scheme() {
         "https" => format!("wss://{}", base.strip_prefix("https://").unwrap_or(base)),
         "http" => format!("ws://{}", base.strip_prefix("http://").unwrap_or(base)),
         _ => return Err("Relay URL must use HTTPS or loopback HTTP".into()),
     };
     let endpoint = format!(
-        "{ws}/v1/terminal?project={}&rows={}&cols={}",
-        encode(&workspace.project.project_id),
+        "{ws}/v1/terminal?{}&rows={}&cols={}",
+        query,
         rows.clamp(4, 400),
         cols.clamp(20, 500),
     );
@@ -81,7 +118,7 @@ fn request(
         .map_err(|error| format!("Invalid relay terminal endpoint: {error}"))?;
     request.headers_mut().insert(
         "Authorization",
-        HeaderValue::from_str(&format!("Bearer {}", workspace.token))
+        HeaderValue::from_str(&format!("Bearer {token}"))
             .map_err(|_| "The relay token contains invalid header characters".to_string())?,
     );
     Ok(request)

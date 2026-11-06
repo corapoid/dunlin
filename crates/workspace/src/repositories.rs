@@ -15,6 +15,8 @@ const MAX_MANIFEST: u64 = 256 * 1024;
 #[derive(Clone, Debug)]
 pub struct LocalProject {
     pub path: PathBuf,
+    /// Explicitly selected collection containing this repository, not its scope.
+    pub collection: Option<PathBuf>,
     pub branch: Option<String>,
     pub monorepo: Option<String>,
 }
@@ -146,7 +148,20 @@ pub fn discover(selected: &[PathBuf]) -> Discovery {
             && !bare(&root)
             && added.insert(root.clone())
         {
-            result.projects.push(describe(root, false));
+            result.projects.push(describe(root.clone(), false));
+        }
+        // The closest explicitly selected parent wins, independent of picker order.
+        if !result.projects.iter().any(|project| project.path == root) {
+            for project in &mut result.projects {
+                if project.path.starts_with(&root)
+                    && project
+                        .collection
+                        .as_ref()
+                        .is_none_or(|current| root.starts_with(current))
+                {
+                    project.collection = Some(root.clone());
+                }
+            }
         }
         if result.limited
             && (entries >= MAX_ENTRIES
@@ -162,6 +177,7 @@ fn describe(path: PathBuf, repository: bool) -> LocalProject {
     let monorepo = repository.then(|| monorepo(&path)).flatten();
     LocalProject {
         path,
+        collection: None,
         branch: None,
         monorepo,
     }
@@ -348,6 +364,35 @@ mod tests {
         assert!(paths.contains(&fs::canonicalize(one).unwrap()));
         assert!(paths.contains(&fs::canonicalize(two).unwrap()));
         assert!(!paths.contains(&f.0));
+        let collection = fs::canonicalize(&f.0).unwrap();
+        assert!(
+            found
+                .projects
+                .iter()
+                .all(|project| project.collection.as_ref() == Some(&collection))
+        );
+    }
+    #[test]
+    fn selected_collections_follow_the_nearest_parent_in_either_picker_order() {
+        let f = Fixture::new();
+        let one = f.repo("one");
+        let two = f.repo("nested/two");
+        let nested = f.0.join("nested");
+        for selected in [
+            vec![one.clone(), two.clone(), f.0.clone(), nested.clone()],
+            vec![nested.clone(), f.0.clone(), two.clone(), one.clone()],
+        ] {
+            let result = discover(&selected);
+            assert_eq!(result.projects.len(), 2);
+            for project in result.projects {
+                let parent = if project.path == fs::canonicalize(&one).unwrap() {
+                    &f.0
+                } else {
+                    &nested
+                };
+                assert_eq!(project.collection, Some(fs::canonicalize(parent).unwrap()));
+            }
+        }
     }
     #[test]
     fn repository_and_monorepo_roots_stop_traversal_before_nested_repositories() {
@@ -362,10 +407,20 @@ mod tests {
         let before = fs::read(root.join(".git/HEAD")).unwrap();
         let result = discover(std::slice::from_ref(&root));
         assert_eq!(result.projects.len(), 1);
+        assert!(result.projects[0].collection.is_none());
         assert!(result.projects[0].monorepo.is_some());
         assert_eq!(fs::read(root.join(".git/HEAD")).unwrap(), before);
         assert!(!root.join(".git/FETCH_HEAD").exists());
         assert!(!root.join("AGENTS.md").exists());
+        let nested = root.join("packages/nested");
+        let explicit = discover(&[nested, root]);
+        assert_eq!(explicit.projects.len(), 2);
+        assert!(
+            explicit
+                .projects
+                .iter()
+                .all(|project| project.collection.is_none())
+        );
     }
     #[test]
     fn worktree_git_files_are_discovered_without_reinterpreting_them_as_collections() {
@@ -412,6 +467,7 @@ mod tests {
         fs::write(f.0.join("readme.md"), "not a repository").unwrap();
         let ordinary = discover(std::slice::from_ref(&f.0));
         assert_eq!(ordinary.projects.len(), 1);
+        assert!(ordinary.projects[0].collection.is_none());
         let mut deep = f.0.clone();
         for _ in 0..super::MAX_DEPTH + 1 {
             deep = deep.join("nested");

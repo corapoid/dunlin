@@ -1,5 +1,13 @@
 # Agent workbench and GitHub — accepted implementation scope
 
+> **Superseded scope, 2026-11-05:** the user removed PR and GitHub Actions support.
+> The application panels/polling, relay routes and workspace mutation/read APIs
+> for those features are gone. GitHub imports/topics remain, and the footer links
+> to validated GitHub/GitLab.com repositories. The CI/PR sections below are retained
+> as historical acceptance notes, not current functionality. `--github-smoke` was
+> removed; its non-GitHub context/review/check checks now live in `--workbench-smoke`.
+> Current scope/evidence: [workspace polish and usage](workspace-polish-and-usage.md).
+
 The user approved **all eight features**, plus GitHub CI and a full PR lifecycle.
 This is a staged implementation, not a claim that every stage is shipped.
 Implementation tests never replace the installed application/relay or perform
@@ -8,14 +16,22 @@ after explicit user approval; that does not install or restart local services.
 
 ## Current delivery (implementation present; manual acceptance pending)
 
-- **GitHub CI/PR core:** Repository history → **GitHub · CI / PR**. Pick an explicit
-  Git remote (default `origin`) and Load. The installed `gh` uses its existing
+- **Git navigation:** Chat/Graph/Trace is shown only on the agent surface (no new-session
+  `+`). Source Control opens History; the title bar replaces the agent switcher with
+  **History**, then **GitHub Actions** and **Pull Requests** after a successful GitHub
+  read for this project. The old branch-graph button in the sidebar is removed.
+- **GitHub CI/PR core:** Opening repository history attempts a read with remote
+  `origin`. If unavailable, **Connect GitHub…** allows choosing a named remote and
+  retrying; an unauthenticated/non-GitHub project has only the History tab.
+  The installed `gh` uses its existing
   GitHub.com authentication; no login/token extraction is performed. A missing,
   denied or old CLI fails explicitly. Remote projects have no local fallback.
-- Exact-commit Actions runs, attempt-pinned job/step hierarchy, status symbols and
-  colors, opt-in 15-second refresh while visible, browser links, completed-job logs
+- Recent repository-wide Actions runs, optional PR-head exact-commit filtering,
+  attempt-pinned job/step hierarchy, status symbols and colors, automatic 15-second
+  refresh while Actions is visible (with Pause), browser links, completed-job logs
   and selected evidence → existing composer draft. Logs are NOT advertised as a
-  live stream. Failures pause polling; empty results never mean CI passed.
+  live stream. Failures pause polling; empty results never mean CI passed. Actions
+  and PR lists/details are separate tabs; back/forward remembers the selected tab.
 - PRs: recent all-state list, description/head/base, files and bounded patches,
   checks/statuses, discussion/review/line comments; create draft/ready PR on already
   published **same-repository** branches, edit title/body, comment, approve/request
@@ -42,7 +58,7 @@ after explicit user approval; that does not install or restart local services.
   line comment plus bounded diff to the draft. Preexisting dirty/untracked saved
   contents are the baseline, not falsely attributed to the agent. Provenance and
   test coverage remain unknown unless independently established.
-  Selective one-file restore has a fresh byte/mode preview, native confirmation,
+  Selective one-file restore has a fresh byte/mode preview, themed in-app confirmation,
   content/identity/age guards and a shared Git-dir lock. Close all file tabs and
   stop agents before restoration; no automatic discard of buffers/undo occurs.
 - **Checks/problems v1:** composer → **Checks…**. Explicit JSON argv preview and
@@ -115,11 +131,44 @@ completion of every capability in the approved proposals.
 
 ### Bounds and acceptance notes
 
+#### Navigation contract evidence (2026-11-05)
+
+| Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
+| --- | --- | --- | --- | --- | --- |
+| Repository identity comes from a validated named GitHub.com remote, not the project label | `crates/workspace/src/github.rs`: `repository`, `repository_name`, `current` | beta.8 working tree | Confirmed | None | None |
+| Connected tabs require a successful authenticated, repository-scoped overview; a remote alone is not a connection | `apps/desktop/src/git_history/github.rs`: `detect_github`, `github_connected`; `crates/workspace/src/github.rs`: `account`, `load` | beta.8 working tree | Confirmed | Real-account acceptance | Manual acceptance below |
+| Runs are repo-wide by default, PR-head filtering stays exact-SHA, details pin ID/attempt/SHA | `crates/workspace/src/github.rs`: `load`, `read_runs`, `refresh_run`, `details`; `crates/workspace/src/github/tests.rs` | beta.8 working tree | Confirmed | None | None |
+| Remote reads use the relay host account, require admin and project access, and never fall back locally | `apps/desktop/src/git_history/github.rs`: `GithubBackend`; `apps/desktop/src/remote.rs`: `github_load`; `crates/relay/src/api.rs`: `github_load`, `github_runs`, `github_jobs` | beta.8 working tree | Confirmed | Deployed-relay acceptance | Manual acceptance below |
+
+Proven read path: active trusted project → named remote → validated owner/repository
+→ `gh api user` → `repos/{owner}/{repo}/actions/runs?per_page=20` and
+`pulls?state=all&sort=updated&direction=desc&per_page=50` → selected run ID/attempt/SHA
+or PR number → job/step or PR details. For remote projects the same operations run
+behind the existing admin/project authorization checks. No credentials enter UI
+state; CLI errors stay sanitized. Empty lists are explicit, lists are bounded
+(no claim of full pagination), and failed reads stop polling. Existing response
+shapes and write confirmations are unchanged. The retained explicit-remote form
+handles retry/non-`origin` repositories; it does not log in on the user's behalf.
+
+No unresolved implementation mapping remains. Real GitHub/deployed-relay and
+manual focus/accessibility acceptance remain with the application maintainer;
+run the isolated workspace tests, navigation tests and native GitHub smoke first.
+
+Validation for this navigation change: GitHub tests passed (17/17, single-threaded),
+the initial desktop build and native `--github-smoke` passed, and the original four
+navigation tests passed. Later assertions also cover tab history and returning to
+the agent switcher. Final desktop rebuild/test reruns are blocked by an unrelated,
+concurrently added `project_catalog.rs:135` `u64`/`usize` mismatch; those last
+assertions need rerunning once it is fixed. The broad workspace suite did not pass:
+it reported Git mutation/comparison failures and hit the 120-second command limit.
+Real-account and deployed-relay acceptance were not attempted.
+
 - GitHub read child limit: 20 seconds / 4 MiB response; writes: 30 seconds with
   bounded stdin/output and process-group cleanup. Raw CLI/server errors and tokens
   are not echoed. Native preview is capped at 65,000 encoded bytes; oversize
   requests fail rather than hiding part of the publication behind truncation.
-- API page caps: 20 exact-SHA runs, 50 updated PRs, 100 jobs/files/comments/checks.
+- API page caps: 20 recent runs (repository-wide or exact SHA), 50 updated PRs,
+  100 jobs/files/comments/checks.
   UI caps are labeled: 20 jobs, 100 steps/job, 20 files and 20 discussion entries;
   patches/bodies/logs have explicit truncation markers. Binary/unavailable patches
   are not presented as empty diffs. Log/PR text is plain, stripped of ANSI/OSC and
@@ -186,7 +235,7 @@ target/debug/dunlin --workbench-smoke "${TMPDIR%/}/dunlin-git-smoke-$(uuidgen)" 
    repository ownership; workflow → job → step statuses, attempt/SHA pinning,
    bounded logs and CI evidence added to a composer draft without sending it.
    PR list/details/files/diffs/checks/discussion/reviews; create/edit/comment/
-   review/close/reopen/merge with fresh preflight and native confirmation.
+   review/close/reopen/merge with fresh preflight and themed in-app confirmation.
    No implicit push/checkout, admin override or automatic retries. Live step
    status is polled; downloadable logs are not advertised as a live stream.
    Local `gh` must never act on a relay project as a fallback.

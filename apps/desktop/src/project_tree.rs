@@ -3,12 +3,31 @@ use dunlin_domain::{Project, ProjectGroup};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum View {
-    List,
-    #[default]
-    Tree,
+pub(crate) fn show_session(updated: &str, live: bool, running_only: bool, now: i64) -> bool {
+    live || (!running_only
+        && chrono::DateTime::parse_from_rfc3339(updated).is_ok_and(|date| {
+            let age = now.saturating_sub(date.timestamp_millis());
+            (0..=8 * 60 * 60 * 1000).contains(&age)
+        }))
 }
+
+#[cfg(test)]
+mod session_tests {
+    #[test]
+    fn recent_sessions_use_exact_eight_hour_boundary_and_live_state() {
+        let time = "2026-11-05T10:00:00Z";
+        let now = chrono::DateTime::parse_from_rfc3339(time)
+            .unwrap()
+            .timestamp_millis();
+        assert!(super::show_session(time, false, false, now + 28_800_000));
+        assert!(!super::show_session(time, false, false, now + 28_800_001));
+        assert!(!super::show_session(time, false, true, now));
+        assert!(!super::show_session("bad", false, false, now));
+        assert!(!super::show_session(time, false, false, now - 1));
+        assert!(super::show_session("bad", true, true, now));
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Sort {
     #[default]
@@ -76,12 +95,24 @@ pub(crate) fn sort_projects(
             .then_with(|| a.id.cmp(&b.id))
     });
 }
+#[cfg(test)]
 pub(crate) fn visible_groups(
     groups: &[ProjectGroup],
     projects: &[Project],
     collapsed: &[String],
     sort: Sort,
     modified: &HashMap<String, u64>,
+) -> Vec<(usize, usize)> {
+    visible_groups_ordered(groups, projects, collapsed, sort, modified, &[])
+}
+
+pub(crate) fn visible_groups_ordered(
+    groups: &[ProjectGroup],
+    projects: &[Project],
+    collapsed: &[String],
+    sort: Sort,
+    modified: &HashMap<String, u64>,
+    order: &[String],
 ) -> Vec<(usize, usize)> {
     let by_id: HashMap<_, _> = groups
         .iter()
@@ -159,20 +190,35 @@ pub(crate) fn visible_groups(
             }
         }
     }
+    let ranks: HashMap<_, _> = order
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
     for indices in children.iter_mut().chain(std::iter::once(&mut roots)) {
         indices.sort_by(|a, b| {
-            (if sort == Sort::Modified {
-                times[*b].cmp(&times[*a])
-            } else {
-                std::cmp::Ordering::Equal
-            })
-            .then_with(|| {
-                groups[*a]
-                    .name
-                    .to_lowercase()
-                    .cmp(&groups[*b].name.to_lowercase())
-            })
-            .then_with(|| groups[*a].id.cmp(&groups[*b].id))
+            let rank = |index: usize| {
+                ranks
+                    .get(groups[index].id.as_str())
+                    .copied()
+                    .unwrap_or(usize::MAX)
+            };
+            rank(*a)
+                .cmp(&rank(*b))
+                .then_with(|| {
+                    if sort == Sort::Modified {
+                        times[*b].cmp(&times[*a])
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                })
+                .then_with(|| {
+                    groups[*a]
+                        .name
+                        .to_lowercase()
+                        .cmp(&groups[*b].name.to_lowercase())
+                })
+                .then_with(|| groups[*a].id.cmp(&groups[*b].id))
         });
     }
     let mut stack: Vec<_> = roots.iter().rev().map(|i| (*i, 0)).collect();
@@ -192,6 +238,33 @@ pub(crate) fn visible_groups(
 }
 
 impl crate::app::DunlinApp {
+    pub(crate) fn reorder_group(
+        &mut self,
+        id: &str,
+        target: &str,
+        cx: &mut dunlin_ui::Context<Self>,
+    ) {
+        let Some(order) = reordered_groups(
+            &self.project_groups,
+            &self.project_group_order,
+            self.project_sort,
+            &self.projects,
+            &self
+                .repo_summaries
+                .values
+                .iter()
+                .map(|(id, s)| (id.clone(), s.activity.modified_ms))
+                .collect(),
+            id,
+            target,
+        ) else {
+            return;
+        };
+        self.project_group_order = order;
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
     pub(crate) fn open_subgroup_prompt(
         &mut self,
         parent: Option<String>,
@@ -256,6 +329,30 @@ impl crate::app::DunlinApp {
             cx,
         );
     }
+}
+
+fn reordered_groups(
+    groups: &[ProjectGroup],
+    order: &[String],
+    sort: Sort,
+    projects: &[Project],
+    modified: &HashMap<String, u64>,
+    id: &str,
+    target: &str,
+) -> Option<Vec<String>> {
+    let source = groups.iter().find(|g| g.id == id)?;
+    let destination = groups.iter().find(|g| g.id == target)?;
+    if id == target || source.parent_id != destination.parent_id {
+        return None;
+    }
+    let mut ids: Vec<_> = visible_groups_ordered(groups, projects, &[], sort, modified, order)
+        .into_iter()
+        .map(|(i, _)| groups[i].id.clone())
+        .collect();
+    ids.retain(|value| value != id);
+    let index = ids.iter().position(|value| value == target)?;
+    ids.insert(index, id.to_string());
+    Some(ids)
 }
 
 #[cfg(test)]
@@ -388,22 +485,118 @@ mod tests {
     }
     #[test]
     fn tree_preferences_and_sidebar_width_roundtrip_without_replacing_existing_preferences() {
-        let legacy: crate::app::StoredSettings =
-            serde_json::from_str(r#"{"dark":false,"editor_minimap":false}"#).unwrap();
+        let legacy: crate::app::StoredSettings = serde_json::from_str(
+            r#"{"dark":false,"editor_minimap":false,"project_view":"List","minimal_mode":true}"#,
+        )
+        .unwrap();
         assert!(!legacy.dark);
         assert!(!legacy.editor_minimap);
-        assert_eq!(legacy.project_view, super::View::Tree);
         assert_eq!(legacy.sidebar_width, 278.);
         let mut settings = legacy;
-        settings.project_view = super::View::List;
         settings.project_sort = Sort::Modified;
+        settings.project_group_order = vec!["work".into(), "private".into()];
         settings.sidebar_width = 403.;
         let saved: crate::app::StoredSettings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
-        assert_eq!(saved.project_view, super::View::List);
+        let json = serde_json::to_value(&saved).unwrap();
+        assert!(json.get("project_view").is_none());
+        assert!(json.get("minimal_mode").is_none());
         assert_eq!(saved.project_sort, Sort::Modified);
+        assert_eq!(saved.project_group_order, ["work", "private"]);
         assert_eq!(saved.sidebar_width, 403.);
         assert!(!saved.dark);
         assert!(!saved.editor_minimap);
+    }
+
+    #[test]
+    fn manual_order_preserves_hierarchy_collapsed_children_and_rejects_other_levels() {
+        let groups = vec![
+            group("a", None),
+            group("child", Some("a")),
+            group("b", None),
+            group("c", None),
+        ];
+        let order =
+            super::reordered_groups(&groups, &[], Sort::Name, &[], &Default::default(), "c", "a")
+                .unwrap();
+        assert_eq!(
+            super::visible_groups_ordered(
+                &groups,
+                &[],
+                &[],
+                Sort::Name,
+                &Default::default(),
+                &order
+            ),
+            [(3, 0), (0, 0), (1, 1), (2, 0)]
+        );
+        assert_eq!(
+            super::visible_groups_ordered(
+                &groups,
+                &[],
+                &["a".into()],
+                Sort::Modified,
+                &Default::default(),
+                &order
+            ),
+            [(3, 0), (0, 0), (2, 0)]
+        );
+        assert!(
+            super::reordered_groups(
+                &groups,
+                &order,
+                Sort::Name,
+                &[],
+                &Default::default(),
+                "child",
+                "b"
+            )
+            .is_none()
+        );
+        assert!(
+            super::reordered_groups(
+                &groups,
+                &order,
+                Sort::Name,
+                &[],
+                &Default::default(),
+                "a",
+                "a"
+            )
+            .is_none()
+        );
+        assert!(
+            super::reordered_groups(
+                &groups,
+                &order,
+                Sort::Name,
+                &[],
+                &Default::default(),
+                "missing",
+                "a"
+            )
+            .is_none()
+        );
+        let order = super::reordered_groups(
+            &groups,
+            &order,
+            Sort::Name,
+            &[],
+            &Default::default(),
+            "a",
+            "c",
+        )
+        .unwrap();
+        assert_eq!(
+            super::visible_groups_ordered(
+                &groups,
+                &[],
+                &[],
+                Sort::Name,
+                &Default::default(),
+                &order
+            ),
+            [(0, 0), (1, 1), (3, 0), (2, 0)]
+        );
     }
 }

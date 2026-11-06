@@ -143,10 +143,16 @@ impl PermissionMode {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProjectSettings {
+    /// Deferred checkout imported from a portable project catalog. Never inherited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_clone: Option<PendingClone>,
     /// Explicit user-selected bounded image, encoded as extension:base64.
     /// Embedded so moving/deleting the original file cannot break the icon.
     #[serde(default)]
     pub custom_icon: Option<String>,
+    /// Explicit RGBA dot color; overrides automatic project artwork.
+    #[serde(default)]
+    pub custom_color: Option<u32>,
     #[serde(default)]
     pub harness: Option<String>,
     #[serde(default)]
@@ -157,6 +163,12 @@ pub struct ProjectSettings {
     /// Literal local child-process overrides. Not credentials storage or relay config.
     #[serde(default)]
     pub environment: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingClone {
+    pub url: String,
+    pub destination: String,
 }
 
 /// A user-defined section in the project switcher, such as Private or Work.
@@ -190,6 +202,10 @@ impl ProjectGroup {
 }
 
 impl Project {
+    pub fn is_not_downloaded(&self) -> bool {
+        self.settings.pending_clone.is_some()
+    }
+
     pub fn path_tail(&self) -> &str {
         self.path
             .trim_end_matches('/')
@@ -254,6 +270,9 @@ impl SessionOrigin {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SessionSummary {
+    /// Recorded workspace at execution time, never inferred for imported history.
+    #[serde(default)]
+    pub workspace: Option<String>,
     pub id: Id,
     pub project_id: Id,
     pub title: String,

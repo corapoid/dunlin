@@ -93,7 +93,6 @@ impl DunlinApp {
         let v = self.git_history.view.as_mut().unwrap();
         v.hide_tools();
         v.context.visible = false;
-        v.github.visible = false;
         v.review.visible = false;
         v.checks.visible = true;
         match loaded {
@@ -339,8 +338,8 @@ impl DunlinApp {
             r.elapsed_ms,
             r.result,
             r.exit_code,
-            dunlin_workspace::github::display_text(&r.stdout, 30_000),
-            dunlin_workspace::github::display_text(&r.stderr, 30_000)
+            dunlin_workspace::checks::display_text(&r.stdout, 30_000),
+            dunlin_workspace::checks::display_text(&r.stderr, 30_000)
         );
         let old = self.composer.read(cx).value();
         if old.len() + evidence.len() > 100_000 {
@@ -396,7 +395,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let running = this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child(if v.project.is_remote() { "Explicit commands run on the relay host with that process's permissions and inherited environment. Not sandboxed. Logs may contain secrets; inspect before sharing. Exit status is recorded, never guessed from text. No automatic test discovery/execution." } else { "Explicit native commands only. Logs may contain secrets: inspect before sharing. Exit status is recorded, never guessed from text. Existing reports do not verify later source changes. No automatic test discovery/execution." })
-        .child(Input::new(&s.argv).small()).child(Button::new("check-prepare").small().label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
+        .child(Input::new(&s.argv).small()).child(dunlin_ui::button("check-prepare").label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
     if let Some((_, plan)) = &s.prepared {
         body = body
             .child(format!(
@@ -405,7 +404,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 serde_json::to_string(&plan.argv).unwrap_or_default()
             ))
             .child(
-                Button::new("check-confirm")
+                dunlin_ui::button("check-confirm")
                     .small()
                     .label("Review and confirm execution…")
                     .disabled(running)
@@ -420,7 +419,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 serde_json::to_string(argv).unwrap_or_default()
             ))
             .child(
-                Button::new("check-confirm-remote")
+                dunlin_ui::button("check-confirm-remote")
                     .small()
                     .label("Review and run on relay…")
                     .disabled(running)
@@ -429,7 +428,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if !s.reports.is_empty() {
         body = body.child(
-            Button::new("check-purge-reports")
+            dunlin_ui::button("check-purge-reports")
                 .ghost()
                 .small()
                 .label("Delete stored check reports…")
@@ -439,7 +438,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if this.git_history.cancel_check.is_some() {
         body = body.child(
-            Button::new("check-cancel")
+            dunlin_ui::button("check-cancel")
                 .ghost()
                 .small()
                 .label("Stop active check")
@@ -463,7 +462,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )),
             )
             .child(
-                Button::new(format!("check-evidence-{id}"))
+                dunlin_ui::button(format!("check-evidence-{id}"))
                     .ghost()
                     .small()
                     .label("Add report/error to agent draft")
@@ -472,7 +471,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     ),
             )
             .child(div().font_family("Menlo").text_size(px(11.)).child(
-                dunlin_workspace::github::display_text(
+                dunlin_workspace::checks::display_text(
                     &format!("STDOUT\n{}\nSTDERR\n{}", report.stdout, report.stderr),
                     40_000,
                 ),
@@ -481,7 +480,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             let path = diagnostic.path.clone();
             let line = diagnostic.line.min(u32::MAX as u64) as u32;
             body = body.child(
-                Button::new(format!("diagnostic-{}-{i}", report.id))
+                dunlin_ui::button(format!("diagnostic-{}-{i}", report.id))
                     .ghost()
                     .small()
                     .label(format!(
@@ -515,7 +514,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(6.))
                 .child("Checks & problems")
                 .child(
-                    Button::new("check-back")
+                    dunlin_ui::button("check-back")
                         .ghost()
                         .small()
                         .label("Commit history")

@@ -14,6 +14,7 @@ pub(super) struct State {
 }
 
 impl DunlinApp {
+    #[cfg(debug_assertions)]
     pub(super) fn open_git_overview(&mut self, cx: &mut Context<Self>) {
         if let Some(view) = &mut self.git_history.view {
             view.overview.visible = true;
@@ -196,10 +197,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             ));
             let path = tree.path.clone();
             let mut actions = div().flex().gap(px(4.)).child(
-                Button::new(format!("worktree-copy-{path}"))
+                dunlin_ui::button(format!("worktree-copy-{path}"))
                     .ghost()
                     .small()
-                    .rounded(px(4.))
                     .label(if view.project.is_remote() {
                         "Copy server path"
                     } else {
@@ -212,10 +212,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             if !view.project.is_remote() && !tree.bare && tree.prunable.is_none() {
                 let path = tree.path.clone();
                 actions = actions.child(
-                    Button::new(format!("worktree-open-{path}"))
+                    dunlin_ui::button(format!("worktree-open-{path}"))
                         .ghost()
                         .small()
-                        .rounded(px(4.))
                         .label("Open as project…")
                         .disabled(this.git_history.running)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -230,13 +229,13 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .bg(p.bg).text_color(p.fg).flex().flex_col().overflow_hidden()
         .child(div().p(px(10.)).flex().flex_wrap().items_center().gap(px(8.))
             .child(format!("Repository state · {}", view.project.name)).child(div().flex_1())
-            .child(Button::new("inventory-history").small().label("Commit history").on_click(cx.listener(|this, _, _, cx| {
+            .child(dunlin_ui::button("inventory-history").label("Commit history").on_click(cx.listener(|this, _, _, cx| {
                 if let Some(view) = &mut this.git_history.view { view.overview.visible = false; }
                 cx.notify();
             })))
-            .child(Button::new("inventory-refresh").small().label("Refresh state").disabled(state.loading || this.git_history.running)
+            .child(dunlin_ui::button("inventory-refresh").label("Refresh state").disabled(state.loading || this.git_history.running)
                 .on_click(cx.listener(|this, _, _, cx| this.load_git_overview(cx))))
-            .child(Button::new("inventory-close").small().label("Close tab").on_click(cx.listener(|this, _, window, cx| {
+            .child(dunlin_ui::button("inventory-close").label("Close tab").on_click(cx.listener(|this, _, window, cx| {
                 this.close_git_history(cx); this.focus_handle.focus(window, cx);
             }))))
         .child(div().px(px(12.)).pb(px(8.)).text_size(px(11.)).text_color(p.muted_fg)

@@ -23,9 +23,13 @@
 Dunlin is a calm, keyboard-driven workspace for coding with agents. It speaks
 the **Agent Client Protocol** directly, so tool calls, plans, diffs and permission
 requests are native UI — not terminal text to parse. Projects, sessions and
-history stay on your Mac.
+history stay on your Mac or your explicitly selected self-hosted server.
 
-**0.1.0-beta.8** · macOS 15+ · Apple Silicon · local + self-hosted relay
+**Source: 0.1.0-beta.9 (release pending)** · macOS 15+ · Apple Silicon desktop
+· macOS ARM64 / Linux x86_64 and ARM64 relay
+
+The latest published release is [0.1.0-beta.8](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.8).
+Download links remain on that version until beta.9 assets pass verification.
 
 ## What you won't find combined anywhere else
 
@@ -40,17 +44,28 @@ history stay on your Mac.
 - **Your history comes with you.** Import Claude Code, Codex and OpenCode
   sessions locally, including per-turn tokens and file-diff counts, with no
   cloud upload.
-- **Use-only credentials.** Short-lived API keys stay in the macOS Keychain;
-  agents can request an allowlisted HTTPS call, a named policy operation or a
-  fixed CLI recipe, but never receive the value. Auto-approved only within the
+- **Stored and use-only credentials.** Name/key pairs stay in the macOS Keychain
+  without agent access; explicitly configured short-lived policies let
+  agents request an allowlisted HTTPS call, a named policy operation or a
+  fixed CLI recipe without receiving the value. Auto-approved only within the
   key's host/method/grant scope, with optional per-use approval and a separate
   relay-side vault.
 - **A native Git workbench.** Graph/history, stash, worktrees, merge/rebase/
-  cherry-pick, inline blame, GitHub CI/PR and AI-assisted Conventional Commits.
+  cherry-pick, inline blame, read-only GitHub/GitLab repository links and
+  AI-assisted Conventional Commits. PR/Actions integration has been removed.
 - **Visual Markdown that is still a real editor.** Editable blocks, tables,
   code fences, raw mode, undo and save — no embedded browser or Monaco.
-- **A self-hosted relay.** Pairing codes, Keychain tokens, session takeover,
-  transcript snapshots and a macOS seatbelt around remote harnesses.
+- **A self-hosted server workspace.** Manage a named macOS/Linux relay without
+  a local agent, install and authorize OpenCode/Codex/Claude Code remotely,
+  clone repositories or copy a reviewed project snapshot with optional Git history.
+  Pair with a one-use, 15-minute code; harnesses use macOS seatbelt or Linux
+  bubblewrap, with server-side credential storage.
+- **Portable project organization.** Local collections and GitHub/GitLab imports,
+  plus settings/project-structure backup to JSON or an existing repository.
+  Imported catalog entries download only when explicitly requested.
+- **A flexible native workbench.** Two document panes, independent conversation
+  drafts, shared reading zoom, project search and recoverable generated-folder
+  cleanup, with refreshed light/dark chrome and keyboard controls.
 - **A terminal that goes the distance.** Local PTY, relay and SSH transports,
   draggable splits, mouse selection, OSC 8 links and zsh/bash shell integration
   with command/output actions.
@@ -91,7 +106,7 @@ brew trust corapoid/tap
 brew install --cask corapoid/tap/dunlin@beta
 ```
 
-The same files are published as an OCI artifact in
+The macOS packages are also published as an OCI artifact in
 [GitHub Packages](https://github.com/corapoid/dunlin/pkgs/container/dunlin):
 
 ```sh
@@ -108,12 +123,35 @@ cd dunlin
 open dist/Dunlin.app
 ```
 
-Requirements: macOS 15+, Apple Silicon, Rust 1.92+ (`rustup`), and an ACP
-harness such as `opencode acp`. Development runs with `cargo run -p dunlin`.
+Source-build requirements: macOS 15+, Apple Silicon and Rust 1.92+ (`rustup`).
+Local agent work needs an ACP harness such as `opencode acp`; a remote workspace
+uses the harness installed on its server instead. Development runs with
+`cargo run -p dunlin`.
 
 The current beta is ad-hoc signed and not Apple-notarized; the `.pkg` installer
 is unsigned. macOS may ask you to approve the app in
 **System Settings → Privacy & Security**.
+
+## Set up a remote server
+
+Beta.9 adds an interactive terminal installer that collects the server name,
+optional Tailscale, autostart, Git tools and harness choices before installation.
+It needs the new release's archives and checksums; **the published beta.8 does
+not contain these assets**. Until publication, follow the source-build route in
+the [full guide](docs/guide.md#remote-relay).
+
+Pair in **Settings → Remote**, then choose **Manage** or use the title-bar host
+switcher. Server tool settings and authorization stay remote; appearance stays
+local. Copying is a one-time, non-overwriting snapshot, not synchronization.
+Review files and history for secrets before uploading.
+
+Administration, cloning and copying require a relay administrator. Host Git
+authorization requires an administrator-only relay; separate OS accounts/services
+are needed for untrusted users. Existing macOS relays retain their agent homes
+until explicit `setup`; opting in may require sign-in and new conversations.
+
+See [Server setup and remote workspace](docs/relay-setup.md) for commands,
+Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 
 ## A quick look
 
@@ -145,7 +183,8 @@ is unsigned. macOS may ask you to approve the app in
 - [Full guide](docs/guide.md) — the detailed feature and operations reference.
 - [Roadmap](docs/ROADMAP.md) and [remaining work](docs/REMAINING-WORK.md).
 - [Changelog](CHANGELOG.md) · [Performance methodology](docs/performance.md).
-- [Session import](docs/session-import.md) · [Markdown editor](docs/markdown-editor.md) · [Remote relay](docs/guide.md#remote-relay).
+- [Project import](docs/project-import.md) · [Session import](docs/session-import.md) · [Markdown editor](docs/markdown-editor.md) · [Server setup](docs/relay-setup.md).
+- [Settings and project backup](docs/settings-project-backup.md) — JSON or GitHub/GitLab, with deferred repository downloads.
 - [R11 manual QA matrix](docs/r11-qa.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md).
 
 ## Status

@@ -19,6 +19,7 @@ pub(crate) enum InjectionKind {
 }
 
 pub(crate) struct Draft {
+    pub advanced: bool,
     pub secret_id: Option<String>,
     pub label: Entity<InputState>,
     pub description: Entity<InputState>,
@@ -140,6 +141,7 @@ impl Draft {
             }
         }
         Self {
+            advanced: secret.is_some_and(|secret| !secret.allowed_hosts.is_empty()),
             secret_id: secret.map(|secret| secret.id.clone()),
             label,
             description,
@@ -180,11 +182,16 @@ impl Draft {
             .map(str::to_string)
             .collect();
         NewSecret {
+            storage_only: !self.advanced,
             label: self.label.read(cx).value().to_string(),
             description: self.description.read(cx).value().to_string(),
             value: self.value.read(cx).value().to_string(),
             hosts,
-            path_prefix: self.path_prefix.read(cx).value().to_string(),
+            path_prefix: if self.advanced {
+                self.path_prefix.read(cx).value().to_string()
+            } else {
+                "/".into()
+            },
             injection: match self.injection_kind {
                 InjectionKind::Header => Injection::Header {
                     name: self.header_name.read(cx).value().to_string(),
@@ -361,22 +368,8 @@ impl RecipeDraft {
     }
 }
 
-fn chip(id: String, label: impl Into<SharedString>, active: bool, p: Palette) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(24.))
-        .px(px(8.))
-        .rounded(px(5.))
-        .border_1()
-        .border_color(if active { p.border_strong } else { p.border })
-        .bg(if active { p.card } else { p.bg })
-        .text_size(px(11.))
-        .text_color(if active { p.fg } else { p.muted_fg })
-        .flex()
-        .items_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
-        .child(label.into())
+fn chip(id: String, label: impl Into<SharedString>, active: bool, _p: Palette) -> Button {
+    segment_button(id, label, active)
 }
 
 fn section_label(text: &'static str, p: Palette) -> Div {
@@ -385,6 +378,46 @@ fn section_label(text: &'static str, p: Palette) -> Div {
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(p.muted_fg)
         .child(text)
+}
+
+pub(super) fn secret_field(label: &'static str, state: &Entity<InputState>, p: Palette) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .min_w(px(0.))
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe(label)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .child(section_label(label, p))
+        .child(
+            div()
+                .relative()
+                .w_full()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe(match label {
+                            "Name" => "vault-name-input",
+                            "Key" => "vault-key-input",
+                            _ => "vault-other-input",
+                        })
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .child(Input::new(state).aria_label(label).w_full()),
+        )
 }
 
 fn ttl_label(expires_at: Option<i64>) -> String {
@@ -409,7 +442,7 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let mut body = div()
-        .p(px(16.))
+        .px(px(24.)).py(px(20.))
         .flex()
         .flex_col()
         .gap(px(12.))
@@ -417,7 +450,7 @@ pub(crate) fn render(
             div()
                 .text_size(px(11.5))
                 .text_color(p.muted_fg)
-                .child("Values live in the macOS Keychain. Agents never receive them: they ask Dunlin to perform an HTTPS request or a fixed CLI recipe. Quick keys expire automatically."),
+                .child("Keys stay in the macOS Keychain, never in model context or project files. Configure agent access only when needed."),
         )
         .child(
             div()
@@ -425,7 +458,7 @@ pub(crate) fn render(
                 .flex_wrap()
                 .items_center()
                 .gap(px(8.))
-                .child(Button::new("vault-toggle").small().label(if this.vault.enabled {
+                .child(dunlin_ui::button("vault-toggle").label(if this.vault.enabled {
                     "Disable credential broker"
                 } else {
                     "Enable credential broker"
@@ -447,14 +480,14 @@ pub(crate) fn render(
                     )
                 })
                 .child(
-                    Button::new("vault-refresh")
+                    dunlin_ui::button("vault-refresh")
                         .ghost()
                         .small()
                         .label("Refresh")
                         .on_click(cx.listener(|this, _, _, cx| this.refresh_vault(cx))),
                 )
                 .child(
-                    Button::new("vault-revoke-all")
+                    dunlin_ui::button("vault-revoke-all")
                         .ghost()
                         .small()
                         .label("Revoke all")
@@ -481,7 +514,7 @@ pub(crate) fn render(
                 )
                 .when(this.vault_needs_harness_restart(), |view| {
                     view.child(
-                        Button::new("vault-restart-harness")
+                        dunlin_ui::button("vault-restart-harness")
                             .small()
                             .label("Restart harness to attach")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -562,13 +595,13 @@ pub(crate) fn render(
             )
             .child(
                 div().flex().gap(px(6.)).child(
-                    Button::new("save-vault-operation")
+                    dunlin_ui::button("save-vault-operation")
                         .primary()
                         .small()
                         .label("Save operation")
                         .on_click(cx.listener(|this, _, _, cx| this.save_vault_operation(cx))),
                 ).child(
-                    Button::new("cancel-vault-operation")
+                    dunlin_ui::button("cancel-vault-operation")
                         .ghost()
                         .small()
                         .label("Cancel")
@@ -601,13 +634,13 @@ pub(crate) fn render(
             )
             .child(
                 div().flex().gap(px(6.)).child(
-                    Button::new("save-vault-recipe")
+                    dunlin_ui::button("save-vault-recipe")
                         .primary()
                         .small()
                         .label("Save recipe")
                         .on_click(cx.listener(|this, _, _, cx| this.save_vault_recipe(cx))),
                 ).child(
-                    Button::new("cancel-vault-recipe")
+                    dunlin_ui::button("cancel-vault-recipe")
                         .ghost()
                         .small()
                         .label("Cancel")
@@ -621,7 +654,11 @@ pub(crate) fn render(
     }
     if let Some(draft) = &this.vault.ui.draft {
         let editing = draft.secret_id.is_some();
-        body = body
+        let form = div().flex().flex_col().gap(px(14.)).p(px(16.)).rounded(px(16.)).bg(p.card)
+            .relative().children({
+                #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("vault-secret-form") }
+                #[cfg(not(debug_assertions))] { None::<AnyElement> }
+            })
             .child(
                 div()
                     .text_size(px(13.))
@@ -632,15 +669,19 @@ pub(crate) fn render(
                         "New credential"
                     }),
             )
-            .child(
-                div()
-                    .flex()
-                    .gap(px(6.))
-                    .child(Input::new(&draft.label))
-                    .child(Input::new(&draft.hosts)),
-            )
-            .child(Input::new(&draft.description))
-            .child(Input::new(&draft.value))
+            .child(secret_field("Name", &draft.label, p))
+            .child(secret_field("Key", &draft.value, p))
+            .child(dunlin_ui::button("vault-advanced").ghost().small()
+                .label(if draft.advanced { "Store only · remove agent access" } else { "Configure agent access…" })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(draft) = &mut this.vault.ui.draft { draft.advanced = !draft.advanced; }
+                    cx.notify();
+                })))
+            .when(!draft.advanced, |body| body.child(div().text_size(px(11.)).text_color(p.muted_fg)
+                .child("Stored without expiry or agent access. You can configure access later.")))
+            .when(draft.advanced, |body| body
+            .child(secret_field("Allowed API hosts", &draft.hosts, p))
+            .child(secret_field("Description for the agent", &draft.description, p))
             .child(
                 div()
                     .flex()
@@ -677,8 +718,8 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.header_name))
-                        .child(Input::new(&draft.header_prefix)),
+                        .child(secret_field("Header name", &draft.header_name, p).flex_1())
+                        .child(secret_field("Header prefix", &draft.header_prefix, p).flex_1()),
                 )
             })
             .when(draft.injection_kind == InjectionKind::OAuth2, |view| {
@@ -686,8 +727,8 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.oauth_token_url))
-                        .child(Input::new(&draft.oauth_client_id)),
+                        .child(secret_field("Token URL", &draft.oauth_token_url, p).flex_1())
+                        .child(secret_field("Client ID", &draft.oauth_client_id, p).flex_1()),
                 )
                 .child(
                     div()
@@ -701,9 +742,9 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.aws_access_key_id))
-                        .child(Input::new(&draft.aws_region))
-                        .child(Input::new(&draft.aws_service)),
+                        .child(secret_field("Access key ID", &draft.aws_access_key_id, p).flex_1())
+                        .child(secret_field("Region", &draft.aws_region, p).flex_1())
+                        .child(secret_field("Service", &draft.aws_service, p).flex_1()),
                 )
                 .child(
                     div()
@@ -712,8 +753,8 @@ pub(crate) fn render(
                         .child("The stored value is the AWS secret access key. The broker signs each allowed request with SigV4; the secret never reaches the model."),
                 )
             })
-            .child(Input::new(&draft.path_prefix))
-            .child(Input::new(&draft.headers))
+            .child(secret_field("Allowed path prefix", &draft.path_prefix, p))
+            .child(secret_field("Allowed request headers", &draft.headers, p))
             .child(
                 div()
                     .flex()
@@ -806,19 +847,20 @@ pub(crate) fn render(
                             }),
                     ),
             )
+            )
             .child(
                 div()
                     .flex()
                     .gap(px(6.))
                     .child(
-                        Button::new("save-vault-secret")
+                        dunlin_ui::button("save-vault-secret")
                             .primary()
                             .small()
                             .label("Save credential")
                             .on_click(cx.listener(|this, _, _, cx| this.save_vault_draft(cx))),
                     )
                     .child(
-                        Button::new("cancel-vault-secret")
+                        dunlin_ui::button("cancel-vault-secret")
                             .ghost()
                             .small()
                             .label("Cancel")
@@ -828,11 +870,11 @@ pub(crate) fn render(
                             })),
                     ),
             );
-        return body.into_any_element();
+        return body.child(form).into_any_element();
     }
 
     body = body.child(
-        Button::new("add-vault-secret")
+        dunlin_ui::button("add-vault-secret")
             .primary()
             .small()
             .label("Add credential")
@@ -897,14 +939,14 @@ pub(crate) fn render(
                             .child(secret.alias.clone()),
                     )
                     .child(div().text_size(px(10.5)).text_color(if expired { p.red } else { p.muted_fg }).child(ttl_label(secret.expires_at)))
-                    .child(Button::new(format!("edit-vault-{id}")).ghost().small().label("Edit").on_click(cx.listener(move |this, _, window, cx| {
+                    .child(dunlin_ui::button(format!("edit-vault-{id}")).ghost().label("Edit").on_click(cx.listener(move |this, _, window, cx| {
                         let projects = this.vault_granted_projects(&edit.id).iter().map(|grant| grant.project_id.clone()).collect();
                         this.vault.ui.recipe_draft = None;
                         this.vault.ui.operation_draft = None;
                         this.vault.ui.draft = Some(Draft::new(window, cx, Some(&edit), projects));
                         cx.notify();
                     })))
-                    .child(Button::new(format!("delete-vault-{id}")).ghost().small().label("Delete").on_click(cx.listener(move |this, _, window, cx| {
+                    .child(dunlin_ui::button(format!("delete-vault-{id}")).ghost().label("Delete").on_click(cx.listener(move |this, _, window, cx| {
                         let answer = window.prompt(PromptLevel::Warning, "Delete credential?", Some("The value is removed from the macOS Keychain. This cannot be undone; rotate the key at the provider if needed."), &["Cancel", "Delete"], cx);
                         let answer = this.overlay_backdrop.track_native(answer, cx);
                         let id = delete.id.clone();
@@ -934,7 +976,7 @@ pub(crate) fn render(
                 div()
                     .text_size(px(10.5))
                     .text_color(p.muted_fg)
-                    .child(format!(
+                    .child(if secret.allowed_hosts.is_empty() { "Stored only · configure agent access to use this key".into() } else { format!(
                         "{} · {} · {}{}",
                         secret.allowed_hosts.join(", "),
                         secret
@@ -949,7 +991,7 @@ pub(crate) fn render(
                         } else {
                             " · requires approval"
                         }
-                    )),
+                    ) }),
             )
             .child(
                 div()
@@ -986,7 +1028,7 @@ pub(crate) fn render(
                             )),
                     )
                     .child(
-                        Button::new(format!("remove-recipe-{recipe_id}"))
+                        dunlin_ui::button(format!("remove-recipe-{recipe_id}"))
                             .ghost()
                             .small()
                             .label("Remove")
@@ -1002,7 +1044,7 @@ pub(crate) fn render(
             );
         }
         recipe_row = recipe_row.child(
-            Button::new(format!("add-recipe-{id}"))
+            dunlin_ui::button(format!("add-recipe-{id}"))
                 .ghost()
                 .small()
                 .label("Add CLI recipe")
@@ -1041,7 +1083,7 @@ pub(crate) fn render(
                             )),
                     )
                     .child(
-                        Button::new(format!("remove-operation-{operation_name}"))
+                        dunlin_ui::button(format!("remove-operation-{operation_name}"))
                             .ghost()
                             .small()
                             .label("Remove")
@@ -1059,7 +1101,7 @@ pub(crate) fn render(
             );
         }
         operation_row = operation_row.child(
-            Button::new(format!("add-operation-{}", secret.id))
+            dunlin_ui::button(format!("add-operation-{}", secret.id))
                 .ghost()
                 .small()
                 .label("Add HTTP operation")

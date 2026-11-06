@@ -6,6 +6,12 @@ use std::path::{Component, Path, PathBuf};
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_IMPORT_ENTRIES: usize = 20_000;
 
+/// Publish an already verified staging directory without replacing any destination.
+pub fn publish_directory(source: &Path, destination: &Path) -> Result<(), String> {
+    rename_new(source, destination)
+        .map_err(|e| format!("Could not publish without replacing an existing project: {e}"))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transferred {
     pub source: String,

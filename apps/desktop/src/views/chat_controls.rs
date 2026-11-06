@@ -1,6 +1,5 @@
 //! Inline, keyboard-accessible composer dropdowns. Only advertise features
 //! actually supported by the current environment and ACP harness.
-use dunlin_domain::PermissionMode;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::button::{Button, ButtonVariants};
 use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
@@ -16,7 +15,6 @@ enum Action {
     Settings(SettingsTab),
     Harness(String),
     Mode(String),
-    Permission(PermissionMode),
     Model(String),
     Provider(String),
     ConnectProvider,
@@ -27,7 +25,7 @@ enum Action {
 }
 
 fn trigger(id: &'static str, label: String, icon: IconName) -> Button {
-    Button::new(id)
+    dunlin_ui::button(id)
         .ghost()
         .small()
         .icon(icon)
@@ -105,9 +103,6 @@ fn item(
                 }
                 Action::Harness(name) => this.select_chat_harness(name, cx),
                 Action::Mode(id) => this.select_mode(id, cx),
-                Action::Permission(mode) => {
-                    this.set_project_permission(this.selected_project, Some(*mode), cx)
-                }
                 Action::Model(id) => this.select_model(id, cx),
                 Action::Provider(id) => this.select_provider(id, cx),
                 Action::ConnectProvider => this.connect_provider(window, cx),
@@ -117,7 +112,7 @@ fn item(
             }
             if matches!(
                 action,
-                Action::Mode(_) | Action::Permission(_) | Action::Model(_) | Action::Harness(_)
+                Action::Mode(_) | Action::Model(_) | Action::Harness(_)
             ) {
                 this.composer
                     .update(cx, |state, cx| state.focus(window, cx));
@@ -168,15 +163,19 @@ fn compact_item(
     })
 }
 
-pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let label = if this.project().is_remote() {
+pub(super) fn harness_label(this: &DunlinApp) -> String {
+    if this.project().is_remote() {
         match &this.harness.status {
             crate::harness::HarnessStatus::Ready { agent, .. } => agent.clone(),
             _ => "Relay harness".into(),
         }
     } else {
         this.session_harness()
-    };
+    }
+}
+
+pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let label = harness_label(this);
     let app = cx.entity().downgrade();
     trigger("composer-harness", label, IconName::Bot)
         .tooltip("Choose a harness for a new conversation")
@@ -199,23 +198,16 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 ));
             }
             menu = menu.label("Switching harness starts a new conversation");
-            let configured = crate::harness::configured_harness_names(&this.custom_harness_command);
+            let configured = this.visible_harness_names();
             if configured.is_empty() {
-                menu = menu.label("No harness is installed or configured");
+                menu = menu.label("No visible harness is installed or configured");
             }
             for name in configured {
                 let command = harness_command(&name, &this.custom_harness_command);
                 let available = command_available(&command);
                 menu = menu.item(item(
                     &app,
-                    (
-                        name.clone(),
-                        if available {
-                            command
-                        } else {
-                            format!("Not installed · {command}")
-                        },
-                    ),
+                    (name.clone(), String::new()),
                     IconName::Bot,
                     this.session_harness() == name,
                     this.chat_controls_busy() || !available,
@@ -224,10 +216,7 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
             }
             menu.separator().item(item(
                 &app,
-                (
-                    "Configure harnesses…".into(),
-                    "Custom commands and defaults".into(),
-                ),
+                ("Configure harnesses…".into(), String::new()),
                 IconName::Settings2,
                 false,
                 false,
@@ -239,17 +228,10 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
 }
 
 pub(crate) fn mode(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let permission = this.effective_permission_mode();
-    let label = if this.harness.mode_changing {
-        "Changing mode…".into()
-    } else if let Some(modes) = &this.harness.modes {
-        format!("{} · {}", modes.label(), permission_short(permission))
-    } else {
-        permission.label().into()
-    };
+    let label = mode_label(this.harness.modes.as_ref(), this.harness.mode_changing);
     let app = cx.entity().downgrade();
     trigger("composer-mode", label, IconName::ShieldCheck)
-        .tooltip("Agent mode and tool approval policy")
+        .tooltip("Shift+Tab: next agent mode · tool approval policy is in Permissions settings")
         .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
                 return menu;
@@ -271,49 +253,57 @@ pub(crate) fn mode(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                         Action::Mode(choice.id.clone()),
                     ));
                 }
-                menu = menu.separator();
             } else {
-                menu = menu.label("This harness has not advertised agent modes");
+                menu = menu
+                    .label("This harness has not advertised agent modes")
+                    .item(item(
+                        &app,
+                        (
+                            "Connect / retry harness".into(),
+                            "Discover the modes supported by this harness".into(),
+                        ),
+                        IconName::Plug,
+                        false,
+                        busy,
+                        Action::Connect,
+                    ));
             }
-            menu = menu.label("Tool permissions · Dunlin approval policy");
-            for (mode, description, icon) in [
-                (
-                    PermissionMode::Ask,
-                    "Ask before each tool permission request.",
-                    IconName::ShieldCheck,
-                ),
-                (
-                    PermissionMode::ReadOnly,
-                    "Reject tool permission requests. This is not a sandbox.",
-                    IconName::Lock,
-                ),
-                (
-                    PermissionMode::AutoApprove,
-                    "Approve requested tools automatically. They may edit files or run commands.",
-                    IconName::TriangleAlert,
-                ),
-            ] {
-                menu = menu.item(item(
+            menu.separator()
+                .item(item(
                     &app,
-                    (mode.label().into(), description.into()),
-                    icon,
-                    mode == this.effective_permission_mode(),
-                    busy,
-                    Action::Permission(mode),
-                ));
-            }
-            menu.scrollable(true).max_h(px(440.))
+                    (
+                        "Tool approval settings…".into(),
+                        "Dunlin safety restrictions are separate from the harness mode".into(),
+                    ),
+                    IconName::Settings2,
+                    false,
+                    false,
+                    Action::Settings(SettingsTab::Permissions),
+                ))
+                .scrollable(true)
+                .max_h(px(440.))
         })
         .on_open_change(track_menu(cx))
         .into_any_element()
 }
 
-fn permission_short(mode: PermissionMode) -> &'static str {
-    match mode {
-        PermissionMode::Ask => "Ask",
-        PermissionMode::ReadOnly => "Read-only",
-        PermissionMode::AutoApprove => "Auto-approve",
+fn mode_label(modes: Option<&dunlin_agent::SessionModes>, changing: bool) -> String {
+    if changing {
+        "Changing mode…".into()
+    } else {
+        modes
+            .map(|m| m.label().to_string())
+            .unwrap_or_else(|| "Agent mode unavailable".into())
     }
+}
+
+pub(crate) fn next_mode(modes: &dunlin_agent::SessionModes) -> Option<&str> {
+    let next = modes
+        .choices
+        .iter()
+        .position(|choice| choice.id == modes.current)
+        .map_or(0, |index| (index + 1) % modes.choices.len());
+    modes.choices.get(next).map(|choice| choice.id.as_str())
 }
 
 pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -333,7 +323,7 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             .unwrap_or_else(|| "Choose model".into())
     };
     let app = cx.entity().downgrade();
-    Button::new("composer-model").ghost().small().label(label).dropdown_caret(true).max_w(px(240.))
+    dunlin_ui::button("composer-model").ghost().label(label).dropdown_caret(true).max_w(px(240.))
         .tooltip("Choose a model from the connected harness")
         .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
@@ -479,7 +469,7 @@ pub(crate) fn provider_controls(
             .bg(p.card)
             .child(provider(this, cx))
             .when(!connected && !this.provider_catalog.loading && !this.harness.status.is_busy(), |view| view.child(div().w(px(1.)).h(px(14.)).bg(p.border)).child(
-                Button::new("composer-provider-sign-in")
+                dunlin_ui::button("composer-provider-sign-in")
                     .ghost()
                     .small()
                     .icon(IconName::KeyRound)
@@ -618,7 +608,7 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
                     .items_center()
                     .gap(px(8.))
                     .child(
-                        Button::new("provider-account-connect")
+                        dunlin_ui::button("provider-account-connect")
                             .label(if this.provider_connected() {
                                 "Add / reconnect account…"
                             } else {
@@ -631,7 +621,7 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
                             .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))),
                     )
                     .child(
-                        Button::new("provider-account-refresh")
+                        dunlin_ui::button("provider-account-refresh")
                             .label("Refresh providers / models")
                             .small()
                             .h(px(28.))
@@ -648,4 +638,52 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
             "Select a local OpenCode conversation to manage its providers. For remote conversations, connect the provider on the relay."
         )))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod mode_tests {
+    #[test]
+    fn mode_cycle_wraps_and_handles_missing_current_and_empty_choices() {
+        let mut modes = dunlin_agent::SessionModes {
+            config_id: None,
+            current: "a".into(),
+            choices: vec![
+                dunlin_agent::ModelChoice {
+                    id: "a".into(),
+                    name: "A".into(),
+                    description: None,
+                },
+                dunlin_agent::ModelChoice {
+                    id: "b".into(),
+                    name: "B".into(),
+                    description: None,
+                },
+            ],
+        };
+        assert_eq!(super::next_mode(&modes), Some("b"));
+        modes.current = "b".into();
+        assert_eq!(super::next_mode(&modes), Some("a"));
+        modes.current = "unknown".into();
+        assert_eq!(super::next_mode(&modes), Some("a"));
+        modes.choices.clear();
+        assert_eq!(super::next_mode(&modes), None);
+    }
+    #[test]
+    fn auto_is_only_the_harness_mode_and_unknown_modes_are_never_invented() {
+        let mut modes = dunlin_agent::SessionModes {
+            config_id: Some("agent-mode".into()),
+            current: "auto".into(),
+            choices: vec![dunlin_agent::ModelChoice {
+                id: "auto".into(),
+                name: "Auto".into(),
+                description: None,
+            }],
+        };
+        assert_eq!(super::mode_label(Some(&modes), false), "Auto");
+        assert_eq!(super::mode_label(Some(&modes), true), "Changing mode…");
+        modes.current = "new-wire-mode".into();
+        assert_eq!(super::mode_label(Some(&modes), false), "new-wire-mode");
+        assert_eq!(modes.choices.len(), 1);
+        assert_eq!(super::mode_label(None, false), "Agent mode unavailable");
+    }
 }

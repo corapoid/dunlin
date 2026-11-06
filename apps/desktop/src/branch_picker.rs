@@ -1,21 +1,20 @@
 //! Explicit, scope-owned branch checkout. No stash/reset/force or automatic AI.
-use crate::{
-    app::{DunlinApp, EditorConflict},
-    remote::WorkspaceBackend,
-};
+use crate::{app::DunlinApp, remote::WorkspaceBackend};
 use dunlin_domain::Project;
+use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     assets::IconName,
     component::{
         Icon, Sizable,
+        button::ButtonVariants,
         input::{Input, InputEvent, InputState},
     },
     *,
 };
 use dunlin_workspace::git::BranchContext;
 
-pub(crate) const STATUS_BAR_HEIGHT: f32 = 27.;
+pub(crate) const STATUS_BAR_HEIGHT: f32 = 32.;
 pub(crate) const STATUS_BAR_INSET: f32 = 11.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,13 +33,7 @@ struct Layout {
     row: f32,
 }
 impl Presentation {
-    fn radius(self) -> f32 {
-        match self {
-            Self::Modal => 12.,
-            Self::StatusBar => 8.,
-        }
-    }
-    // Geometry never depends on loading state, errors, filtering or row count.
+    // Filtering keeps the loaded panel size stable.
     fn layout(self) -> Layout {
         match self {
             Self::Modal => Layout {
@@ -65,6 +58,14 @@ impl Presentation {
     }
 }
 impl Layout {
+    fn for_branches(mut self, count: usize, available_height: f32) -> Self {
+        if self.header == 0. {
+            let desired =
+                self.search + self.footer + 2. + 12. + count.min(10) as f32 * (self.row + 2.);
+            self.height = desired.max(self.height).min(available_height.max(110.));
+        }
+        self
+    }
     fn list_height(self) -> f32 {
         self.height - 2. - self.header - self.summary - self.search - self.footer
     }
@@ -86,7 +87,6 @@ struct Picker {
     id: uuid::Uuid,
     project: Project,
     backend: WorkspaceBackend,
-    navigation: u64,
     presentation: Presentation,
     filter: Entity<InputState>,
     context: Option<BranchContext>,
@@ -96,15 +96,25 @@ struct Picker {
     scroll: ScrollHandle,
     _subscription: Subscription,
 }
-#[derive(Clone)]
-struct Request {
-    id: uuid::Uuid,
-    project: Project,
-    backend: WorkspaceBackend,
-    navigation: u64,
-    branch: String,
+impl Picker {
+    fn layout(&self, window: &Window) -> Layout {
+        self.presentation.layout().for_branches(
+            self.context
+                .as_ref()
+                .map_or(0, |context| context.branches.len()),
+            f32::from(window.viewport_size().height) - STATUS_BAR_HEIGHT - 32.,
+        )
+    }
 }
 impl State {
+    pub(crate) fn begin(&mut self, id: uuid::Uuid, project: String) {
+        self.job = Some(Job { id, project });
+    }
+    pub(crate) fn finish(&mut self, id: uuid::Uuid) {
+        if self.job.as_ref().is_some_and(|job| job.id == id) {
+            self.job = None;
+        }
+    }
     pub(crate) fn input_focus(&self, cx: &App) -> Option<FocusHandle> {
         self.picker
             .as_ref()
@@ -223,7 +233,6 @@ impl DunlinApp {
             id,
             project: project.clone(),
             backend: backend.clone(),
-            navigation,
             presentation,
             filter: filter.clone(),
             context: None,
@@ -294,17 +303,14 @@ impl DunlinApp {
             .as_ref()
             .map(|context| filtered(context, &picker.filter.read(cx).value()))
             .unwrap_or_default();
+        let layout = picker.layout(window);
         match key {
             "up" | "down" if !rows.is_empty() => {
                 picker.selected = (picker.selected as isize + if key == "up" { -1 } else { 1 })
                     .rem_euclid(rows.len() as isize) as usize;
-                picker.scroll.set_offset(point(
-                    px(0.),
-                    -px(picker
-                        .presentation
-                        .layout()
-                        .selected_offset(picker.selected)),
-                ));
+                picker
+                    .scroll
+                    .set_offset(point(px(0.), -px(layout.selected_offset(picker.selected))));
                 cx.stop_propagation();
                 cx.notify();
             }
@@ -315,61 +321,6 @@ impl DunlinApp {
             }
             _ => {}
         }
-    }
-    fn branch_request_valid(&self, request: &Request) -> bool {
-        self.navigation_epoch() == request.navigation
-            && match &request.backend {
-                WorkspaceBackend::Local { .. } => true,
-                WorkspaceBackend::Remote(remote) => self
-                    .remote_host(&remote.host.id)
-                    .is_some_and(|host| host.url == remote.host.url),
-            }
-            && self
-                .projects
-                .iter()
-                .any(|p| same_project(&request.project, p))
-            && self
-                .branch_ui
-                .picker
-                .as_ref()
-                .is_some_and(|p| p.id == request.id)
-    }
-    fn branch_checkout_guard(
-        &self,
-        project: &Project,
-        allow_dirty_tabs: bool,
-    ) -> Result<(), String> {
-        if !self.projects.iter().any(|p| same_project(project, p)) {
-            return Err("The project changed; reopen the branch picker".into());
-        }
-        if self.branch_ui.job.is_some()
-            || self.ai_commit_locks_project_id(&project.id)
-            || self.git_mutation_in_flight(&project.id)
-            || self.explorer.busy
-        {
-            return Err("Finish the current repository operation before switching branches".into());
-        }
-        if self.live_agents().iter().any(|(owner, session, _)| {
-            owner == &project.id
-                || self
-                    .group_contexts
-                    .get(session)
-                    .is_some_and(|group| group.roots.iter().any(|root| root.id == project.id))
-        }) {
-            return Err(
-                "Finish or cancel agents working in this repository before switching branches"
-                    .into(),
-            );
-        }
-        if self.workbench.tabs.iter().any(|tab| {
-            tab.project == project.id && (tab.loading || (!allow_dirty_tabs && tab.dirty))
-        }) || (!allow_dirty_tabs && self.project().id == project.id && self.editor_dirty)
-        {
-            return Err(
-                "Save affected buffers and wait for file loading before switching branches".into(),
-            );
-        }
-        Ok(())
     }
     fn branch_error(&mut self, error: String, cx: &mut Context<Self>) {
         if let Some(picker) = &mut self.branch_ui.picker {
@@ -400,120 +351,19 @@ impl DunlinApp {
             self.close_branch_picker(window, cx);
             return;
         }
-        let request = Request {
-            id: picker.id,
-            project: picker.project.clone(),
-            backend: picker.backend.clone(),
-            navigation: picker.navigation,
-            branch: branch.into(),
-        };
-        self.stash_editor_tab();
-        if let Err(e) = self.branch_checkout_guard(&request.project, true) {
-            self.branch_error(e, cx);
-            return;
-        }
-        let dirty = self
-            .workbench
-            .tabs
-            .iter()
-            .any(|tab| tab.project == request.project.id && tab.dirty);
-        if let Some(picker) = &mut self.branch_ui.picker {
-            picker.busy = true;
-            picker.error = None;
-        }
-        let answer = dirty.then(|| {
-            let answer = window.prompt(PromptLevel::Warning, "Save buffers before switching branch?", Some("Save all unsaved files in this project, then review the Git changes. Nothing will be discarded or stashed automatically."), &["Cancel", "Save all and continue"], cx);
-            self.overlay_backdrop.track_native(answer, cx)
-        });
-        cx.spawn_in(window, async move |this, cx| {
-            if let Some(answer) = answer {
-                let approved = answer.await == Ok(1);
-                if !approved {
-                    let _ = this.update(cx, |this, cx| { if this.branch_request_valid(&request) { this.branch_error("Branch switch canceled; buffers are unchanged".into(), cx); } });
-                    return;
-                }
-                let saved = this.update(cx, |this, cx| {
-                    if !this.branch_request_valid(&request) { return false; }
-                    if let Err(e) = this.branch_checkout_guard(&request.project, true) { this.branch_error(e, cx); return false; }
-                    this.save_tabs_for_project(Some(&request.project.id), cx)
-                }).unwrap_or(false);
-                if !saved {
-                    let _ = this.update(cx, |this, cx| { if this.branch_request_valid(&request) { this.branch_error("Branch switch stopped. Resolve unsaved files or save conflicts first.".into(), cx); } });
-                    return;
-                }
-            }
-            if !this.read_with(cx, |this, _| this.branch_request_valid(&request)).unwrap_or(false) { return; }
-            let backend = request.backend.clone();
-            let context = cx.background_executor().spawn(async move { backend.branch_context() }).await;
-            let context = match context {
-                Ok(context) => context,
-                Err(error) => { let _ = this.update(cx, |this, cx| { if this.branch_request_valid(&request) { this.branch_error(error, cx); } }); return; }
-            };
-            let confirmation = this.update_in(cx, |this, window, cx| {
-                if !this.branch_request_valid(&request) { return None; }
-                if let Err(e) = this.branch_checkout_guard(&request.project, false) { this.branch_error(e, cx); return None; }
-                if let Some(picker) = &mut this.branch_ui.picker { picker.context = Some(context.clone()); }
-                let description = format!("{} → {}. Changes: {} staged, {} unstaged, {} untracked. Git will carry compatible changes to the destination branch and refuse conflicts or overwrites, including ignored files. No stash, reset, merge or commit will be created. To keep this work separate, cancel and commit or stash it yourself first.", context.current, request.branch, context.staged, context.unstaged, context.untracked);
-                Some(context.dirty().then(|| {
-                    let answer = window.prompt(PromptLevel::Warning, "Keep uncommitted changes while switching?", Some(&description), &["Cancel", "Keep changes and switch"], cx);
-                    this.overlay_backdrop.track_native(answer, cx)
-                }))
-            }).ok().flatten();
-            let Some(confirmation) = confirmation else { return; };
-            if let Some(answer) = confirmation && answer.await != Ok(1) {
-                let _ = this.update(cx, |this, cx| { if this.branch_request_valid(&request) { this.branch_error("Branch switch canceled; Git changes are unchanged".into(), cx); } });
-                return;
-            }
-            let started = this.update(cx, |this, cx| {
-                if !this.branch_request_valid(&request) { return false; }
-                this.stash_editor_tab();
-                if let Err(e) = this.branch_checkout_guard(&request.project, false) { this.branch_error(e, cx); return false; }
-                this.begin_git_mutation(&request.project.id);
-                this.repo_summaries.invalidate();
-                this.branch_ui.job = Some(Job { id: request.id, project: request.project.id.clone() });
-                cx.notify(); true
-            }).unwrap_or(false);
-            if !started { return; }
-            let backend = request.backend.clone(); let branch = request.branch.clone();
-            let keep_changes = context.dirty();
-            let result = cx.background_executor().spawn(async move {
-                backend.switch_branch_checked(&branch, &context, keep_changes)?;
-                Ok::<_, String>(backend.git_status().ok())
-            }).await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                this.finish_git_mutation(&request.project.id);
-                this.repo_summaries.invalidate();
-                if this.branch_ui.job.as_ref().is_some_and(|job| job.id == request.id) { this.branch_ui.job = None; }
-                if !this.projects.iter().any(|p| same_project(&request.project, p)) { cx.notify(); return; }
-                match result {
-                    Ok(status) => {
-                        if this.branch_ui.picker.as_ref().is_some_and(|p| p.id == request.id) { this.branch_ui.picker = None; this.focus_handle.focus(window, cx); }
-                        let branch = status.as_ref().filter(|s| s.error.is_none() && !s.branch.is_empty()).map(|s| s.branch.clone()).unwrap_or(request.branch);
-                        if let Some(project) = this.projects.iter_mut().find(|p| p.id == request.project.id) {
-                            project.branch = Some(branch.clone());
-                            let project = project.clone();
-                            if let Some(store) = &this.store && let Err(error) = store.upsert_project(&project) { this.report_storage_error("save branch selection", error); }
-                        }
-                        this.repo_summaries.values.insert(request.project.id.clone(), crate::project_groups::RepoSummary { path: request.project.path.clone(), branch: Some(branch.clone()), changes: status.as_ref().map(|s| s.changes.len()), activity: Default::default(), monorepo: None, languages: None, size_bytes: None });
-                        if this.project().id == request.project.id && this.project().path == request.project.path {
-                            this.diff_view = None;
-                            if this.editor_dirty {
-                                this.editor_conflict = Some(EditorConflict { path: this.inspector.as_ref().map(|i| i.path.clone()).unwrap_or_default(), message: "The branch changed while this buffer was edited. Its text is preserved; reload or save explicitly.".into() });
-                            } else { this.close_inspector(); }
-                            this.refresh_file_tree(cx); this.refresh_git_status(cx); this.invalidate_project_icon();
-                        }
-                        this.workbench.tabs.retain(|tab| tab.project != request.project.id || tab.dirty);
-                        this.file_notice(format!("Switched {} to {branch} · local changes preserved", request.project.name), cx);
-                    }
-                    Err(error) => {
-                        if this.branch_ui.picker.as_ref().is_some_and(|p| p.id == request.id) { this.branch_error(error, cx); }
-                        else { this.file_notice(error, cx); }
-                    }
-                }
-                cx.notify();
-            });
-        }).detach();
-        cx.notify();
+        let project = picker.project.clone();
+        let backend = picker.backend.clone();
+        self.close_branch_picker(window, cx);
+        self.prepare_git_action(
+            project,
+            backend,
+            dunlin_workspace::git::operations::Action::Switch {
+                branch: branch.into(),
+                discard: false,
+            },
+            window,
+            cx,
+        );
     }
 }
 
@@ -558,6 +408,21 @@ fn branch_badge(
     };
     div()
         .id(id)
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                if presentation == Presentation::StatusBar {
+                    crate::workspace_ui_smoke::probe("status-branch-picker")
+                } else {
+                    None
+                }
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .aria_label(format!("Switch Git branch · {label}"))
         .px(px(6.))
         .py(px(3.))
@@ -567,6 +432,9 @@ fn branch_badge(
         .gap(px(5.))
         .text_size(px(11.))
         .text_color(p.muted_fg)
+        .when(presentation == Presentation::StatusBar, |badge| {
+            badge.text_color(p.fg)
+        })
         .cursor_pointer()
         .hover(move |style| style.bg(p.hover).text_color(p.fg))
         .on_click(cx.listener(move |this, _, window, cx| {
@@ -578,13 +446,13 @@ fn branch_badge(
         .child(Icon::new(IconName::ChevronDown).size(px(10.)))
         .into_any_element()
 }
-pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn render(this: &DunlinApp, window: &Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let Some(picker) = &this.branch_ui.picker else {
         return div().into_any_element();
     };
     let p = palette(cx);
     let compact = picker.presentation == Presentation::StatusBar;
-    let layout = picker.presentation.layout();
+    let layout = picker.layout(window);
     let mut rows = div().flex().flex_col().gap(px(2.)).p(px(6.));
     if let Some(error) = &picker.error {
         rows = rows.child(
@@ -660,10 +528,8 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     let panel = div()
         .id("branch-picker-panel")
-        .child(crate::effects::rounded_probe(
-            &this.overlay_backdrop,
-            picker.presentation.radius(),
-        ))
+        .popover_style(cx)
+        .occlude()
         .aria_label(if compact {
             "Local branches"
         } else {
@@ -675,11 +541,6 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .max_w_full()
         .flex()
         .flex_col()
-        .rounded(px(picker.presentation.radius()))
-        .bg(crate::effects::panel_fill(&this.overlay_backdrop, p.card))
-        .shadow(crate::effects::panel_shadow())
-        .border_1()
-        .border_color(crate::effects::panel_border(&this.overlay_backdrop, &p))
         .overflow_hidden()
         .on_click(|_, _, cx| cx.stop_propagation())
         .when(!compact, |panel| {
@@ -700,18 +561,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .child(format!("Switch branch · {}", picker.project.name)),
                     )
                     .child(
-                        div()
-                            .id("branch-picker-close")
-                            .px(px(8.))
-                            .py(px(4.))
-                            .rounded(px(5.))
-                            .text_size(px(11.))
-                            .cursor_pointer()
-                            .hover(move |style| style.bg(p.hover))
+                        dunlin_ui::button("branch-picker-close")
+                            .ghost()
+                            .label("Close")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_branch_picker(window, cx)
-                            }))
-                            .child("Close"),
+                            })),
                     ),
             )
         })
@@ -775,18 +630,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     "Local branches only · no automatic stash or discarded changes · Esc closes"
                 })),
         );
-    // Render outside the status bar's clipped layout, aligned to the branch
-    // trigger at its left edge. Both presentations use the shared backdrop;
-    // the dismiss layer itself must not add a second dimming pass.
+    // Keep the popup outside the clipped status bar, without a modal backdrop.
     let panel = if compact {
         panel
             .absolute()
             .left(px(STATUS_BAR_INSET))
             .bottom(px(STATUS_BAR_HEIGHT + 4.))
-            .shadow(vec![
-                BoxShadow::new(px(0.), px(4.), dunlin_ui::black().opacity(0.16))
-                    .blur_radius(px(16.)),
-            ])
     } else {
         panel
     };
@@ -807,6 +656,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 #[cfg(test)]
 mod tests {
     use super::{Presentation, filtered};
+    #[test]
+    fn compact_list_grows_to_ten_branches_then_scrolls_within_the_window() {
+        let base = Presentation::StatusBar.layout();
+        assert_eq!(base.for_branches(1, 700.).height, 170.);
+        assert!(base.for_branches(7, 700.).height > 250.);
+        assert_eq!(base.for_branches(10, 700.), base.for_branches(1000, 700.));
+        assert_eq!(base.for_branches(1000, 220.).height, 220.);
+    }
     #[test]
     fn fixed_panel_geometry_reserves_the_same_scroll_area_before_and_after_loading() {
         for presentation in [Presentation::Modal, Presentation::StatusBar] {
@@ -840,10 +697,6 @@ mod tests {
         assert!(compact.height < modal.height / 2.);
         assert_eq!((compact.header, compact.summary), (0., 0.));
         assert!(compact.row < modal.row);
-        // One radius value is used by both the panel and backdrop measurement;
-        // never leave a square unblurred/undimmed hole behind rounded corners.
-        assert_eq!(Presentation::Modal.radius(), 12.);
-        assert_eq!(Presentation::StatusBar.radius(), 8.);
     }
     #[test]
     fn keyboard_selection_remains_inside_each_fixed_scroll_viewport() {

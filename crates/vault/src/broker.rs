@@ -681,6 +681,52 @@ mod tests {
     }
 
     #[test]
+    fn stored_only_keys_are_valid_but_unlisted_and_unusable_without_reading_the_value() {
+        let (store, secret, mut policy) = prepared();
+        policy.allowed_hosts.clear();
+        policy.allowed_methods.clear();
+        policy.project_ids.clear();
+        policy.auto_approve = false;
+        policy.expires_at = None;
+        assert!(policy.is_storage_only());
+        assert!(policy.validate().is_ok());
+        let json = serde_json::to_string(&policy).unwrap();
+        assert!(
+            serde_json::from_str::<SecretPolicy>(&json)
+                .unwrap()
+                .is_storage_only()
+        );
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "fixture-key");
+        let http = FakeHttp::new("");
+        let recipes = FakeRecipe;
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &recipes,
+            approver: &AutoApprove,
+            session: &context,
+        };
+        assert!(broker.list().unwrap().is_empty());
+        assert!(matches!(
+            broker.http(http_input()),
+            Err(BrokerError::Denied(_))
+        ));
+        assert_eq!(secrets.reads(), 0);
+        assert!(http.plan.lock().unwrap().is_none());
+        policy.project_ids.push("project".into());
+        assert!(
+            policy.validate().is_err(),
+            "stored-only keys cannot acquire grants without a valid destination policy"
+        );
+        policy.project_ids.clear();
+        policy.auto_approve = true;
+        assert!(policy.validate().is_err());
+    }
+
+    #[test]
     fn managed_auto_approve_injects_and_redacts_the_value() {
         let (store, secret, policy) = prepared();
         let secrets = CountingStore::new();

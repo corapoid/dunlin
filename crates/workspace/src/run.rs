@@ -10,6 +10,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+mod dependencies;
+pub use dependencies::Dependency;
+
 pub const MAX_CANDIDATES: usize = 80;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_DIRS: usize = 40;
@@ -54,6 +57,8 @@ fn shell_quote(value: &str) -> String {
 pub struct Detection {
     pub candidates: Vec<RunCandidate>,
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub dependencies: Vec<Dependency>,
 }
 
 impl Detection {
@@ -201,6 +206,24 @@ fn manifest_dirs(root: &Path) -> Vec<PathBuf> {
 }
 
 fn package_manager(dir: &Path) -> &'static str {
+    if let Some(manager) = read_limited(&dir.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| {
+            value
+                .get("packageManager")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+    {
+        match manager.split('@').next().unwrap_or("") {
+            "npm" => return "npm",
+            "pnpm" => return "pnpm",
+            "yarn" => return "yarn",
+            "bun" => return "bun",
+            _ => {}
+        }
+    }
     if dir.join("pnpm-lock.yaml").is_file() {
         "pnpm"
     } else if dir.join("yarn.lock").is_file() {
@@ -237,7 +260,8 @@ fn package_json(root: &Path, dir: &Path, detection: &mut Detection, seen: &mut B
             return;
         }
     };
-    let manager = package_manager(dir);
+    let manager = package_manager(&dependencies::install_dir(root, dir));
+    dependencies::detect_node(root, dir, &value, detection);
     if let Some(scripts) = value.get("scripts").and_then(serde_json::Value::as_object) {
         for name in scripts.keys().take(64) {
             if name.is_empty()
@@ -744,8 +768,8 @@ pub fn detect(root: &str) -> Detection {
         Ok(root) if root.is_dir() => root,
         _ => {
             return Detection {
-                candidates: Vec::new(),
                 warnings: vec!["Project folder is not available".into()],
+                ..Default::default()
             };
         }
     };
@@ -943,7 +967,7 @@ pub fn grouped(candidates: &[RunCandidate]) -> BTreeMap<&str, Vec<&RunCandidate>
 mod tests {
     use super::*;
 
-    fn fixture(name: &str) -> PathBuf {
+    pub(super) fn fixture(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "dunlin-run-{name}-{}-{}",
             std::process::id(),

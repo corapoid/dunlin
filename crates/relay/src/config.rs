@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug)]
 pub struct Config {
+    pub name: String,
     pub listen: String,
     pub db: PathBuf,
     pub harness: String,
@@ -20,6 +21,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            name: "Dunlin server".into(),
             listen: "127.0.0.1:8787".into(),
             db: default_db(),
             harness: "opencode acp".into(),
@@ -27,7 +29,7 @@ impl Default for Config {
             idle_timeout_secs: 15 * 60,
             lease_secs: 120,
             linger_secs: 15 * 60,
-            sandbox: cfg!(target_os = "macos"),
+            sandbox: cfg!(any(target_os = "macos", target_os = "linux")),
             store_transcripts: true,
         }
     }
@@ -36,6 +38,7 @@ impl Default for Config {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct FileConfig {
+    name: Option<String>,
     listen: Option<String>,
     db: Option<PathBuf>,
     harness: Option<String>,
@@ -54,6 +57,9 @@ impl Config {
         let file: FileConfig =
             toml::from_str(&text).map_err(|error| format!("Could not parse config: {error}"))?;
         let mut config = Self::default();
+        if let Some(name) = file.name {
+            config.name = name;
+        }
         if let Some(value) = file.listen {
             config.listen = value;
         }

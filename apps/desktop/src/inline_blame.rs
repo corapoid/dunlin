@@ -1,6 +1,7 @@
 //! Source-editor inline blame. Cache is scoped to tab/backend/root/path/HEAD;
 //! only exact equal diff runs receive attribution, never edited or inserted lines.
 use crate::app::DunlinApp;
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     component::{
         Sizable,
@@ -17,7 +18,6 @@ use std::{
 
 #[derive(Default)]
 pub(crate) struct State {
-    enabled: bool,
     busy: bool,
     request: uuid::Uuid,
     last_check: Option<Instant>,
@@ -31,9 +31,6 @@ pub(crate) struct State {
     pending_map: Option<String>,
 }
 impl State {
-    pub(crate) fn enabled(&self) -> bool {
-        self.enabled
-    }
     pub fn invalidate(&mut self) {
         self.request = uuid::Uuid::now_v7();
         self.busy = false;
@@ -93,21 +90,20 @@ fn scope_current(this: &DunlinApp, tab: &crate::workbench::Tab) -> bool {
 }
 impl DunlinApp {
     pub(crate) fn toggle_inline_blame(&mut self, cx: &mut Context<Self>) {
-        if let Some(id) = self.active_file_tab().map(|t| t.id.clone())
-            && let Some(tab) = self.workbench.tabs.iter_mut().find(|t| t.id == id)
-        {
-            tab.blame.enabled = !tab.blame.enabled;
+        self.inline_blame = !self.inline_blame;
+        for tab in &mut self.workbench.tabs {
             tab.blame.invalidate();
         }
+        self.persist_settings(cx);
         cx.notify();
     }
     pub(crate) fn refresh_inline_blame(&mut self, cx: &mut Context<Self>) {
-        if !raw_editor(self) {
+        if !self.inline_blame || !raw_editor(self) {
             return;
         }
         let Some(tab) = self
             .active_file_tab()
-            .filter(|t| t.blame.enabled && !t.loading && scope_current(self, t))
+            .filter(|t| !t.loading && scope_current(self, t))
         else {
             return;
         };
@@ -144,7 +140,7 @@ impl DunlinApp {
                         .tabs
                         .iter()
                         .find(|t| t.id == id)
-                        .is_some_and(|t| scope_current(this, t));
+                        .is_some_and(|t| this.inline_blame && scope_current(this, t));
                     if let Some(tab) = this
                         .workbench
                         .tabs
@@ -153,7 +149,6 @@ impl DunlinApp {
                     {
                         tab.blame.pending_map = None;
                         if valid
-                            && tab.blame.enabled
                             && tab.blame.value.as_ref().is_some_and(|v| v.head == head)
                             && *tab.editor.read(cx).text() == text
                         {
@@ -206,7 +201,7 @@ impl DunlinApp {
                     .tabs
                     .iter()
                     .find(|t| t.id == id && t.project == project && t.root == root)
-                    .is_some_and(|t| scope_current(this, t));
+                    .is_some_and(|t| this.inline_blame && scope_current(this, t));
                 let Some(tab) = this
                     .workbench
                     .tabs
@@ -216,7 +211,7 @@ impl DunlinApp {
                     return;
                 };
                 tab.blame.busy = false;
-                if valid && tab.blame.enabled {
+                if valid {
                     match result {
                         Ok((scope, value)) => {
                             tab.blame.scope = Some(scope);
@@ -262,7 +257,7 @@ fn current<'a>(this: &'a DunlinApp, cx: &App) -> Option<(&'a Blame, &'a Line)> {
         return None;
     }
     let tab = this.active_file_tab()?;
-    if !tab.blame.enabled
+    if !this.inline_blame
         || !scope_current(this, tab)
         || tab.blame.path.as_ref() != Some(&tab.inspector.path)
     {
@@ -286,19 +281,24 @@ fn current<'a>(this: &'a DunlinApp, cx: &App) -> Option<(&'a Blame, &'a Line)> {
 pub(crate) fn smoke_attribution(this: &DunlinApp, cx: &App) -> Option<String> {
     current(this, cx).map(|(_, line)| line.author.clone())
 }
-fn info(value: &Blame, line: &Line) -> String {
-    let date = chrono::DateTime::from_timestamp(line.timestamp, 0)
+fn date(line: &Line) -> String {
+    chrono::DateTime::from_timestamp(line.timestamp, 0)
         .map(|d| {
             d.with_timezone(&chrono::Local)
                 .format("%Y-%m-%d %H:%M")
                 .to_string()
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| "Unknown date".into())
+}
+fn label(line: &Line) -> String {
+    format!("{} · {}", line.author, date(line))
+}
+fn info(value: &Blame, line: &Line) -> String {
     format!(
         "{}\n{} · {}\n{}\n{}:{}\nSnapshot HEAD {}\nClick to inspect this commit (read-only)",
         line.oid,
         line.author.escape_debug(),
-        date,
+        date(line),
         line.summary.escape_debug(),
         line.original_path.escape_debug(),
         line.original_line,
@@ -306,13 +306,19 @@ fn info(value: &Blame, line: &Line) -> String {
     )
 }
 pub(crate) fn toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Button {
-    let enabled = this.active_file_tab().is_some_and(|t| t.blame.enabled);
-    Button::new("editor-inline-blame-toggle")
+    let enabled = this.inline_blame;
+    dunlin_ui::button("editor-inline-blame-toggle")
         .ghost()
         .small()
         .rounded(px(4.))
-        .label(if enabled { "Blame ✓" } else { "Blame" })
-        .tooltip("Toggle HEAD attribution for unchanged source lines")
+        .icon(assets::IconName::GitCommitHorizontal)
+        .accessibility_label(if enabled {
+            "Disable inline blame"
+        } else {
+            "Enable inline blame"
+        })
+        .when(enabled, |button| button.bg(palette(cx).accent))
+        .tooltip("Inline blame for unchanged lines in all source files")
         .on_click(cx.listener(|this, _, _, cx| this.toggle_inline_blame(cx)))
 }
 pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -341,11 +347,6 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
     }
     let tooltip = info(value, line);
     let oid = line.oid.clone();
-    let label = format!(
-        "{} · {}",
-        line.author,
-        line.oid.chars().take(8).collect::<String>()
-    );
     div()
         .absolute()
         .left(bounds.right() - input.left() + px(24.))
@@ -353,14 +354,14 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
         .max_w(available)
         .overflow_hidden()
         .child(
-            Button::new("editor-inline-blame")
+            dunlin_ui::button("editor-inline-blame")
                 .ghost()
                 .small()
                 .h(px(18.))
                 .rounded(px(2.))
-                .text_size(px(11.))
-                .text_color(palette(cx).muted_fg)
-                .label(label)
+                .text_size(px(10.5))
+                .text_color(palette(cx).muted_fg.opacity(0.6))
+                .label(label(line))
                 .tooltip(tooltip)
                 .on_click(
                     cx.listener(move |this, _, w, cx| this.open_blame_commit(oid.clone(), w, cx)),
@@ -370,17 +371,19 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
 }
 pub(crate) fn status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElement> {
     let tab = this.active_file_tab()?;
-    if !raw_editor(this) || !tab.blame.enabled {
+    if !raw_editor(this) || !this.inline_blame {
         return None;
     }
     let p = palette(cx);
     let content = if let Some((value, line)) = current(this, cx) {
         let oid = line.oid.clone();
-        Button::new("blame-current-line-details")
+        dunlin_ui::button("blame-current-line-details")
             .ghost()
             .small()
             .h(px(22.))
-            .label(format!("{} · {}", line.author, line.summary))
+            .text_size(px(10.5))
+            .text_color(p.muted_fg.opacity(0.75))
+            .label(label(line))
             .tooltip(info(value, line))
             .on_click(cx.listener(move |this, _, w, cx| this.open_blame_commit(oid.clone(), w, cx)))
             .into_any_element()
@@ -403,7 +406,7 @@ pub(crate) fn status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
             .flex_shrink_0()
             .flex()
             .items_center()
-            .text_color(p.muted_fg)
+            .text_color(p.muted_fg.opacity(0.75))
             .border_t_1()
             .border_color(p.border)
             .child(content)
@@ -412,7 +415,30 @@ pub(crate) fn status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
 }
 #[cfg(test)]
 mod tests {
-    use super::map_lines;
+    use super::{label, map_lines};
+    use dunlin_workspace::git::blame::Line;
+
+    #[test]
+    fn label_shows_author_and_local_modification_date_not_commit() {
+        let timestamp = 1_700_000_000;
+        let mut line = Line {
+            oid: "a".repeat(40),
+            author: "Test Author".into(),
+            timestamp,
+            summary: "Commit subject".into(),
+            original_line: 1,
+            original_path: "file.rs".into(),
+            text: "text".into(),
+        };
+        let expected_date = chrono::DateTime::from_timestamp(timestamp, 0)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d %H:%M");
+        assert_eq!(label(&line), format!("Test Author · {expected_date}"));
+        line.timestamp = i64::MAX;
+        assert_eq!(label(&line), "Test Author · Unknown date");
+    }
+
     #[test]
     fn never_attributes_inserted_or_modified_lines_and_recovers_after_undo() {
         let head = "one\ntwo\nthree\n";

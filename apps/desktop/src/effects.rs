@@ -3,28 +3,9 @@ use std::time::Instant;
 
 mod backdrop;
 pub(crate) use backdrop::{
-    OverlayBackdrop, for_panel_window, for_window, menu_item, menu_surface, rounded_probe,
-    rounded_scroll_probe,
+    ControlGlass, OverlayBackdrop, borderless_probe, for_panel_window, for_window, menu_item,
+    menu_surface, rounded_probe, rounded_scroll_probe,
 };
-
-pub(crate) fn panel_fill(backdrop: &OverlayBackdrop, color: dunlin_ui::Hsla) -> dunlin_ui::Hsla {
-    if backdrop.is_panel_plane() {
-        color.opacity(0.14)
-    } else {
-        color
-    }
-}
-pub(crate) fn panel_border(backdrop: &OverlayBackdrop, p: &dunlin_ui::Palette) -> dunlin_ui::Hsla {
-    if backdrop.is_panel_plane() {
-        p.fg.opacity(0.14)
-    } else {
-        p.border_strong
-    }
-}
-pub(crate) fn panel_shadow() -> Vec<dunlin_ui::BoxShadow> {
-    use dunlin_ui::{BoxShadow, black, px};
-    vec![BoxShadow::new(px(0.), px(8.), black().opacity(0.16)).blur_radius(px(24.))]
-}
 
 #[derive(Default)]
 pub(crate) struct SidebarMotion {

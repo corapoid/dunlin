@@ -127,6 +127,45 @@ async fn prepared_stash_is_read_only_until_execute_and_token_is_one_use() {
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(fs::read_to_string(f.root.join("file")).unwrap(), "dirty\n");
 }
+
+#[tokio::test]
+async fn source_control_actions_share_scoped_one_use_consent_and_stale_checks() {
+    let f = Fixture::new();
+    repo(&f);
+    git(&f, &["branch", "feature"]);
+    fs::write(f.root.join("file"), "staged\n").unwrap();
+    git(&f, &["add", "file"]);
+    let (status, plan) = prepare(&f, json!({"kind":"unstage_all"})).await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::OK);
+    assert!(git(&f, &["diff", "--cached"]).is_empty());
+    assert_eq!(fs::read_to_string(f.root.join("file")).unwrap(), "staged\n");
+    let (_, plan) = prepare(&f, json!({"kind":"ignore", "path":"file"})).await;
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::OK);
+    assert_eq!(
+        fs::read_to_string(f.root.join(".gitignore")).unwrap(),
+        "/file\n"
+    );
+    let (_, plan) = prepare(&f, json!({"kind":"discard", "paths":["file"]})).await;
+    fs::write(f.root.join("file"), "newer\n").unwrap();
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::CONFLICT);
+    assert_eq!(fs::read_to_string(f.root.join("file")).unwrap(), "newer\n");
+    let (status, plan) = prepare(
+        &f,
+        json!({"kind":"switch", "branch":"feature", "discard":true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    assert_eq!(git(&f, &["branch", "--show-current"]).trim(), "main");
+    let (status, result) = execute(&f, &plan["id"]).await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert_eq!(git(&f, &["branch", "--show-current"]).trim(), "feature");
+    assert_eq!(
+        fs::read_to_string(f.root.join("file")).unwrap(),
+        "one\ntwo\n"
+    );
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::CONFLICT);
+}
 #[tokio::test]
 async fn stale_expired_and_other_device_confirmations_never_mutate() {
     let f = Fixture::new();

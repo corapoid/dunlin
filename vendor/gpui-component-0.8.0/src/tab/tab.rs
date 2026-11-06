@@ -559,6 +559,7 @@ pub struct Tab {
     /// there rather than in a hover group, which would replace the caller's.
     pub(super) hovered: bool,
     pub(super) max_width: Option<Pixels>,
+    background_motion: bool,
     pub(super) on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -614,6 +615,7 @@ impl Default for Tab {
             variant: TabVariant::default(),
             size: Size::default(),
             max_width: None,
+            background_motion: true,
             on_click: None,
         }
     }
@@ -680,6 +682,12 @@ impl Tab {
     /// Use Folder variant.
     pub fn folder(mut self) -> Self {
         self.variant = TabVariant::Folder;
+        self
+    }
+
+    /// Animate only a folder tab's fill; text and close controls remain stable.
+    pub fn background_motion(mut self, enabled: bool) -> Self {
+        self.background_motion = enabled;
         self
     }
 
@@ -769,7 +777,7 @@ impl Sizable for Tab {
 }
 
 impl RenderOnce for Tab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut normal_style = self.variant.normal(cx);
         let mut selected_style = self.variant.selected(cx);
         let mut disabled_style = self.variant.disabled(self.selected, cx);
@@ -803,6 +811,16 @@ impl RenderOnce for Tab {
         let folder = self.variant == TabVariant::Folder;
         let metrics = FolderTabMetrics::new(self.size, cx);
         let has_prefix = self.prefix.is_some();
+        let has_suffix = self.suffix.is_some();
+        let background_opacity = if folder {
+            gpui_base::spring(
+                ElementId::NamedInteger("folder-tab-background".into(), self.ix as u64),
+                if self.selected { 1.0_f32 } else { 0.0 },
+                gpui_base::Spring::new(Duration::from_millis(220)).with_travel(self.background_motion),
+                window,
+                cx,
+            ).clamp(0., 1.)
+        } else { 0. };
 
         let segmented_indicator_active =
             self.variant == TabVariant::Segmented && self.indicator_active;
@@ -967,6 +985,7 @@ impl RenderOnce for Tab {
             .when(folder, |this| {
                 this.px(metrics.padding_x).pb(metrics.top_padding)
             })
+            .when(folder && has_suffix, |this| this.pr(px(2.)))
             .when(!self.selected && !self.disabled, |this| {
                 this.text_color(normal_style.fg)
                     .bg(normal_style.bg)
@@ -992,10 +1011,10 @@ impl RenderOnce for Tab {
                     .border_color(hover_style.border_color)
                     .rounded(radius)
             })
-            .when(folder && self.selected, |this| {
+            .when(folder && background_opacity > 0., |this| {
                 this.child(folder_tab_shape(
                     metrics,
-                    cx.theme().tokens.tab_active.into(),
+                    cx.theme().tokens.tab_active.opacity(background_opacity).into(),
                 ))
             })
             .when(

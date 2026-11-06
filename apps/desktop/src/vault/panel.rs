@@ -1,9 +1,10 @@
-//! Bottom-panel quick credentials. Optimized for short-lived keys.
+//! Bottom-panel keys, with optional short-lived agent access.
 
 use dunlin_domain::vault::now_secs;
 use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
-use dunlin_ui::component::input::{Input, InputState};
+use dunlin_ui::component::button::ButtonVariants;
+use dunlin_ui::component::input::InputState;
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::DunlinApp;
@@ -11,6 +12,7 @@ use crate::vault::{NewSecret, TTL_OPTIONS};
 
 #[derive(Default)]
 pub(crate) struct State {
+    pub advanced: bool,
     pub label: Option<Entity<InputState>>,
     pub value: Option<Entity<InputState>>,
     pub host: Option<Entity<InputState>>,
@@ -42,22 +44,13 @@ impl State {
     }
 }
 
-fn pill(id: String, label: impl Into<SharedString>, active: bool, p: Palette) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(22.))
-        .px(px(7.))
-        .rounded(px(5.))
-        .border_1()
-        .border_color(if active { p.border_strong } else { p.border })
-        .bg(if active { p.card } else { p.bg })
-        .text_size(px(10.))
-        .text_color(if active { p.fg } else { p.muted_fg })
-        .flex()
-        .items_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover))
-        .child(label.into())
+fn pill(
+    id: String,
+    label: impl Into<SharedString>,
+    active: bool,
+    _p: Palette,
+) -> dunlin_ui::component::button::Button {
+    segment_button(id, label, active).with_size(dunlin_ui::component::Size::Medium)
 }
 
 fn remaining(expires_at: Option<i64>) -> String {
@@ -84,7 +77,19 @@ pub(crate) fn render(
     let project = this.project().clone();
     let mut body = div()
         .id("vault-panel")
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("vault-panel")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .size_full()
+        .min_w(px(0.))
         .p(px(10.))
         .flex()
         .flex_col()
@@ -93,25 +98,32 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
+                .flex_wrap()
+                .w_full()
+                .min_w(px(0.))
                 .items_center()
                 .gap(px(8.))
                 .child(
                     div()
+                        .flex_grow(1.)
+                        .flex_basis(px(180.))
+                        .min_w(px(0.))
                         .text_size(px(11.))
                         .font_weight(FontWeight::MEDIUM)
                         .child("Quick credentials"),
                 )
                 .child(
                     div()
+                        .flex_grow(1.)
+                        .flex_basis(px(180.))
+                        .min_w(px(0.))
                         .text_size(px(10.))
                         .text_color(p.muted_fg)
-                        .child("Use-only: the agent sees the name, never the key."),
+                        .child("Stored in Keychain · agent access is optional."),
                 )
-                .child(div().flex_1())
                 .child(
-                    Button::new("vault-open-settings")
+                    dunlin_ui::button("vault-open-settings")
                         .ghost()
-                        .small()
                         .label("Manage in Settings…")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.settings_open = true;
@@ -176,7 +188,7 @@ pub(crate) fn render(
                         .child("This harness started without vault access. Restart it to attach the credential MCP server."),
                 )
                 .child(
-                    Button::new("vault-panel-restart-harness")
+                    dunlin_ui::button("vault-panel-restart-harness")
                         .small()
                         .label("Restart harness")
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -206,11 +218,31 @@ pub(crate) fn render(
         .child(
             div()
                 .flex()
+                .flex_wrap()
+                .min_w(px(0.))
+                .w_full()
                 .items_center()
                 .gap(px(6.))
-                .child(div().flex_1().min_w(px(0.)).child(Input::new(label)))
-                .child(div().flex_1().min_w(px(0.)).child(Input::new(value)))
-                .child(div().flex_1().min_w(px(0.)).child(Input::new(host))),
+                .child(
+                    super::settings::secret_field("Name", label, p)
+                        .flex_1()
+                        .flex_basis(px(180.))
+                        .max_w_full(),
+                )
+                .child(
+                    super::settings::secret_field("Key", value, p)
+                        .flex_1()
+                        .flex_basis(px(180.))
+                        .max_w_full(),
+                )
+                .when(panel.advanced, |row| {
+                    row.child(
+                        super::settings::secret_field("Allowed API hosts", host, p)
+                            .flex_1()
+                            .flex_basis(px(180.))
+                            .max_w_full(),
+                    )
+                }),
         )
         .child(
             div()
@@ -218,37 +250,75 @@ pub(crate) fn render(
                 .flex_wrap()
                 .items_center()
                 .gap(px(5.))
-                .child(div().text_size(px(9.5)).text_color(p.muted_fg).child("TTL"))
-                .children(TTL_OPTIONS.into_iter().map(|(ttl, label)| {
-                    pill(
-                        format!("vault-panel-ttl-{ttl}"),
-                        label,
-                        this.vault.ui.panel.ttl_secs == ttl,
-                        p,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.vault.ui.panel.ttl_secs = ttl;
-                        cx.notify();
-                    }))
-                    .into_any_element()
-                }))
                 .child(
-                    pill(
-                        "vault-panel-writes".into(),
-                        "allow writes",
-                        this.vault.ui.panel.allow_writes,
-                        p,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.vault.ui.panel.allow_writes = !this.vault.ui.panel.allow_writes;
-                        cx.notify();
-                    })),
+                    dunlin_ui::button("vault-panel-advanced")
+                        .ghost()
+                        .label(if panel.advanced {
+                            "Store only"
+                        } else {
+                            "Configure agent access…"
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.vault.ui.panel.advanced = !this.vault.ui.panel.advanced;
+                            cx.notify();
+                        })),
                 )
+                .when(!panel.advanced, |row| {
+                    row.child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(p.muted_fg)
+                            .child("No expiry · no agent access"),
+                    )
+                })
+                .when(panel.advanced, |row| {
+                    row.child(div().text_size(px(9.5)).text_color(p.muted_fg).child("TTL"))
+                        .children(TTL_OPTIONS.into_iter().map(|(ttl, label)| {
+                            pill(
+                                format!("vault-panel-ttl-{ttl}"),
+                                label,
+                                this.vault.ui.panel.ttl_secs == ttl,
+                                p,
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.vault.ui.panel.ttl_secs = ttl;
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                        }))
+                        .child(
+                            pill(
+                                "vault-panel-writes".into(),
+                                "allow writes",
+                                this.vault.ui.panel.allow_writes,
+                                p,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.vault.ui.panel.allow_writes =
+                                    !this.vault.ui.panel.allow_writes;
+                                cx.notify();
+                            })),
+                        )
+                })
                 .child(
-                    Button::new("vault-panel-create")
+                    dunlin_ui::button("vault-panel-create")
+                        .relative()
+                        .children({
+                            #[cfg(debug_assertions)]
+                            {
+                                crate::workspace_ui_smoke::probe("vault-create")
+                            }
+                            #[cfg(not(debug_assertions))]
+                            {
+                                None::<AnyElement>
+                            }
+                        })
                         .primary()
-                        .small()
-                        .label("Create quick key")
+                        .label(if panel.advanced {
+                            "Create quick key"
+                        } else {
+                            "Save key"
+                        })
                         .on_click(cx.listener(|this, _, window, cx| {
                             let panel = &this.vault.ui.panel;
                             let Some(label) = &panel.label else {
@@ -261,6 +331,7 @@ pub(crate) fn render(
                                 return;
                             };
                             let input = NewSecret {
+                                storage_only: !panel.advanced,
                                 label: label.read(cx).value().trim().to_string(),
                                 description: "Quick credential created from the Secrets panel."
                                     .into(),
@@ -380,7 +451,7 @@ pub(crate) fn render(
                         .text_color(if secret.is_expired(now_secs()) { p.red } else { p.muted_fg })
                         .child(remaining(secret.expires_at)),
                 )
-                .child(Button::new(format!("vault-panel-revoke-{id}")).ghost().small().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
+                .child(dunlin_ui::button(format!("vault-panel-revoke-{id}")).ghost().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
                     let answer = window.prompt(PromptLevel::Warning, "Revoke this quick key?", Some("The value is removed from the macOS Keychain immediately. The agent can no longer use it."), &["Cancel", "Revoke"], cx);
                     let answer = this.overlay_backdrop.track_native(answer, cx);
                     let id = id.clone();

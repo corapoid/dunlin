@@ -239,7 +239,7 @@ pub(super) fn refresh_visible(app: &mut DunlinApp, cx: &mut Context<DunlinApp>) 
 fn symbol_link(symbol: &Symbol, busy: bool, cx: &mut Context<DunlinApp>) -> Button {
     let file = symbol.file.clone();
     let line = symbol.line;
-    Button::new(format!("impact-open-{}", symbol.id))
+    dunlin_ui::button(format!("impact-open-{}", symbol.id))
         .ghost()
         .small()
         .label(format!("{} · {}:{}", symbol.name, symbol.file, line))
@@ -257,7 +257,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let stale = s.dirty || s.loading || s.error.is_some();
     let filter = s.filter.read(cx).value().to_lowercase();
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.)).child("Rust AST / lexical dependency map. No build scripts, macros or project code are executed. NOT compiler/type/cfg-complete references. Candidate tests are not proven coverage; non-Rust and unresolved externals are outside this index.")
-        .child(Input::new(&s.filter).small()).child(Button::new("impact-refresh").ghost().small().label(if s.loading{"Indexing…"}else{"Refresh source index"}).disabled(s.loading).on_click(cx.listener(|this,_,_,cx|this.build_impact_map(cx))));
+        .child(Input::new(&s.filter).small()).child(dunlin_ui::button("impact-refresh").ghost().label(if s.loading{"Indexing…"}else{"Refresh source index"}).disabled(s.loading).on_click(cx.listener(|this,_,_,cx|this.build_impact_map(cx))));
     if let Some(index) = &s.index {
         body = body.child(format!(
             "HEAD {} · {} symbols / {} lexical edges · parsed {} / reused {} · {}",
@@ -280,7 +280,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         {
             let id = symbol.id.clone();
             body = body.child(
-                Button::new(format!("impact-select-{id}"))
+                dunlin_ui::button(format!("impact-select-{id}"))
                     .ghost()
                     .small()
                     .label(format!(
@@ -338,7 +338,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             );
         }
         body = body.child(
-            Button::new("impact-evidence")
+            dunlin_ui::button("impact-evidence")
                 .ghost()
                 .small()
                 .label("Add source-verified impact evidence to draft…")
@@ -364,7 +364,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(8.))
                 .child("Impact map · Rust AST")
                 .child(
-                    Button::new("impact-back")
+                    dunlin_ui::button("impact-back")
                         .ghost()
                         .small()
                         .label("Commit history")

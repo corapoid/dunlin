@@ -163,7 +163,7 @@ fn diff(c: &Change) -> String {
             before.as_deref().unwrap_or(""),
             after.as_deref().unwrap_or(""),
         );
-    dunlin_workspace::github::display_text(
+    dunlin_workspace::checks::display_text(
         &d.unified_diff()
             .context_radius(3)
             .header("checkpoint", "current saved file")
@@ -189,7 +189,6 @@ impl DunlinApp {
         let v = self.git_history.view.as_mut().unwrap();
         v.hide_tools();
         v.context.visible = false;
-        v.github.visible = false;
         v.review.visible = true;
         v.checks.visible = false;
         match loaded {
@@ -674,7 +673,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let busy = s.loading || this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Capture BEFORE a task. Review is an observed diff, not agent authorship. Unsaved buffers, ignored files and Git index/refs are NOT backed up. Baseline HEAD objects must remain available. Local snapshots may contain secrets; never published automatically.")
-        .child(Input::new(&s.label).small()).child(Button::new("capture-task-checkpoint").small().label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
+        .child(Input::new(&s.label).small()).child(dunlin_ui::button("capture-task-checkpoint").label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
     for point in &s.checkpoints {
         let id = point.id.clone();
         let delete = id.clone();
@@ -688,7 +687,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     point.label, point.created_ms, point.head
                 ))
                 .child(
-                    Button::new(format!("review-checkpoint-{id}"))
+                    dunlin_ui::button(format!("review-checkpoint-{id}"))
                         .ghost()
                         .small()
                         .label("Review changes")
@@ -698,7 +697,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         ),
                 )
                 .child(
-                    Button::new(format!("delete-checkpoint-{delete}"))
+                    dunlin_ui::button(format!("delete-checkpoint-{delete}"))
                         .ghost()
                         .small()
                         .label("Delete baseline…")
@@ -722,7 +721,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .flex_wrap()
                 .gap(px(6.))
                 .child(
-                    Button::new(format!("task-diff-{name}"))
+                    dunlin_ui::button(format!("task-diff-{name}"))
                         .ghost()
                         .small()
                         .label(name.clone())
@@ -732,7 +731,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         })),
                 )
                 .child(
-                    Button::new(format!("task-restore-{restore}"))
+                    dunlin_ui::button(format!("task-restore-{restore}"))
                         .ghost()
                         .small()
                         .label("Preview restore…")
@@ -758,7 +757,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .child(Input::new(&s.line).small())
             .child(Input::new(&s.comment).small())
             .child(
-                Button::new("task-review-comment")
+                dunlin_ui::button("task-review-comment")
                     .ghost()
                     .small()
                     .label("Add file/line review to agent draft")
@@ -767,7 +766,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if s.pending.is_some() {
         body = body.child(
-            Button::new("task-restore-confirm")
+            dunlin_ui::button("task-restore-confirm")
                 .small()
                 .label("Confirm this one-file restore…")
                 .disabled(busy)
@@ -792,7 +791,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(6.))
                 .child("Task review & checkpoints")
                 .child(
-                    Button::new("task-review-back")
+                    dunlin_ui::button("task-review-back")
                         .ghost()
                         .small()
                         .label("Commit history")

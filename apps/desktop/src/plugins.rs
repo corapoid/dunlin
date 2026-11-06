@@ -4,7 +4,7 @@
 use crate::app::DunlinApp;
 use dunlin_plugin::{LoadedPack, Source};
 use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -240,15 +240,7 @@ impl State {
 }
 
 fn card(p: &Palette) -> Div {
-    div()
-        .p(px(14.))
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .flex()
-        .flex_col()
-        .gap(px(7.))
+    card_surface(*p).p(px(14.)).flex().flex_col().gap(px(7.))
 }
 
 fn badge(label: impl Into<SharedString>, color: Hsla, p: &Palette) -> Div {
@@ -332,7 +324,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .flex()
                         .gap(px(6.))
                         .child(
-                            Button::new("extensions-scope")
+                            dunlin_ui::button("extensions-scope")
                                 .ghost()
                                 .small()
                                 .label(if this.plugins.scope_project {
@@ -346,7 +338,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 })),
                         )
                         .child(
-                            Button::new("extensions-refresh")
+                            dunlin_ui::button("extensions-refresh")
                                 .ghost()
                                 .small()
                                 .label("Refresh")
@@ -357,7 +349,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 })),
                         )
                         .child(
-                            Button::new("extensions-open-folder")
+                            dunlin_ui::button("extensions-open-folder")
                                 .ghost()
                                 .small()
                                 .label("Open plugins folder")
@@ -434,7 +426,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         )
                         .child(badge(if enabled { "enabled" } else { "off" }, color, &p))
                         .child(
-                            Button::new(format!("extension-toggle:{index}"))
+                            dunlin_ui::button(format!("extension-toggle:{index}"))
                                 .ghost()
                                 .small()
                                 .label(if enabled { "Disable" } else { "Enable" })

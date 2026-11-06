@@ -7,6 +7,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::{app::DunlinApp, providers, remote};
 
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Scope {
     pub location: String,
@@ -42,7 +44,7 @@ impl Cache {
     pub(crate) fn fresh(&self, scope: &Scope) -> bool {
         self.entries
             .iter()
-            .any(|(key, _, at)| key == scope && at.elapsed() < Duration::from_secs(60))
+            .any(|(key, _, at)| key == scope && at.elapsed() < CACHE_TTL)
     }
 
     pub(crate) fn record(&mut self, scope: Scope, mut rows: Vec<ProviderUsage>) {
@@ -78,6 +80,31 @@ fn model_scope(provider: Option<&str>, model: Option<&str>) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Account allowance is independent of session cost and ACP context occupancy.
+pub(crate) fn account_status(usages: &[ProviderUsage]) -> String {
+    usages
+        .iter()
+        .flat_map(|usage| usage.windows.iter().map(move |window| (usage, window)))
+        .filter(|(_, window)| {
+            window.source == UsageSource::Live
+                && window.used_percent.is_finite()
+                && (0.0..=100.0).contains(&window.used_percent)
+        })
+        .max_by(|a, b| a.1.used_percent.total_cmp(&b.1.used_percent))
+        .map(|(usage, window)| {
+            format!(
+                "Account {:.0}%{}",
+                window.used_percent,
+                if usage.plan.ends_with(" · cached") {
+                    " · cached"
+                } else {
+                    ""
+                }
+            )
+        })
+        .unwrap_or_else(|| "Account —".into())
 }
 
 impl Scope {
@@ -265,12 +292,23 @@ impl DunlinApp {
         cx.spawn(async move |this, cx| {
             let report = cx
                 .background_executor()
-                .spawn(async move { dunlin_usage::billing::scan_all() })
+                .spawn(async move {
+                    use dunlin_usage::billing::{TimeRange, scan_all, summarize, summarize_range};
+                    let report = scan_all();
+                    let now = dunlin_usage::billing::now_ms();
+                    let ranges = TimeRange::ALL
+                        .into_iter()
+                        .filter(|range| *range != TimeRange::All)
+                        .map(|range| summarize_range(&report, range, now))
+                        .collect::<Vec<_>>();
+                    (summarize(report), ranges)
+                })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.billing_loading = false;
                 this.billing_checked = Some(Instant::now());
-                this.billing = Some(dunlin_usage::billing::summarize(report));
+                this.billing = Some(report.0);
+                this.billing_ranges = report.1;
                 cx.notify();
             });
         })
@@ -279,11 +317,10 @@ impl DunlinApp {
     }
 
     pub(crate) fn ensure_billing(&mut self, cx: &mut Context<Self>) {
-        if self.billing.is_none()
-            && !self.billing_loading
+        if !self.billing_loading
             && self
                 .billing_checked
-                .is_none_or(|checked| checked.elapsed() > Duration::from_secs(120))
+                .is_none_or(|checked| checked.elapsed() >= CACHE_TTL)
         {
             self.refresh_billing(cx);
         }
@@ -592,6 +629,35 @@ mod tests {
     }
 
     #[test]
+    fn status_uses_real_account_limits_never_session_context_or_missing_data() {
+        assert_eq!(account_status(&[]), "Account —");
+        for source in [
+            UsageSource::Session,
+            UsageSource::Estimated,
+            UsageSource::Unavailable,
+        ] {
+            assert_eq!(account_status(&[account("Test", source)]), "Account —");
+        }
+        let mut usage = account("Test", UsageSource::Live);
+        usage.windows.push(UsageWindow {
+            label: "Weekly".into(),
+            used_percent: 91.,
+            resets_in: "2d".into(),
+            source: UsageSource::Live,
+        });
+        assert_eq!(account_status(&[usage.clone()]), "Account 91%");
+        usage.plan.push_str(" · cached");
+        assert_eq!(account_status(&[usage.clone()]), "Account 91% · cached");
+        for invalid in [f32::NAN, f32::INFINITY, -1., 101.] {
+            usage
+                .windows
+                .iter_mut()
+                .for_each(|window| window.used_percent = invalid);
+            assert_eq!(account_status(&[usage.clone()]), "Account —");
+        }
+    }
+
+    #[test]
     fn legacy_relay_rows_are_filtered_by_harness_not_provider_brand() {
         let rows = vec![
             account("Claude Code", UsageSource::Live),
@@ -750,6 +816,21 @@ mod tests {
         assert!(cache.get(&go).unwrap()[0].windows.is_empty());
         cache.clear();
         assert!(cache.get(&go).is_none());
+    }
+
+    #[test]
+    fn account_cache_is_fresh_for_five_minutes() {
+        let scope = scope("OpenCode", Some(providers::GO));
+        let mut cache = Cache::default();
+        cache.record(scope.clone(), vec![account("Go", UsageSource::Live)]);
+        cache.entries[0].2 = Instant::now() - Duration::from_secs(299);
+        assert!(cache.fresh(&scope));
+        cache.entries[0].2 = Instant::now() - Duration::from_secs(300);
+        assert!(!cache.fresh(&scope));
+        assert!(
+            cache.get(&scope).is_some(),
+            "stale data stays visible during refresh"
+        );
     }
 
     #[test]

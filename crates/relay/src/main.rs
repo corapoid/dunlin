@@ -10,6 +10,7 @@ mod acp;
 mod api;
 mod auth;
 mod config;
+mod management;
 mod store;
 mod terminal;
 mod vault;
@@ -40,6 +41,7 @@ fn main() {
         "revoke" => cmd_revoke(&args[1..]),
         "serve" => cmd_serve(&args[1..]),
         "vault" => cmd_vault(&args[1..]),
+        "setup" => management::setup(&args[1..]),
         other => Err(format!("Unknown command: {other}")),
     };
 
@@ -64,6 +66,7 @@ fn print_help() {
            dunlin-relay devices USER\n\
            dunlin-relay revoke DEVICE_ID\n\
            dunlin-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD]\n\
+           dunlin-relay setup [--name NAME] [--db PATH]\n\
          \n\
          Relay vault (HTTP keys; values stay in this host's Keychain):\n\
            dunlin-relay vault add ALIAS --host HOST --project PROJECT [--ttl MINUTES] [--writes] [--header NAME] [--prefix PREFIX] [--db PATH]\n\
@@ -94,7 +97,7 @@ fn cmd_init(args: &[String]) -> Result<(), String> {
         .create_user("admin", "admin")
         .map_err(|error| error.to_string())?;
     let (code, expires) = store
-        .create_pairing_code(&admin.id, 30 * 60)
+        .create_pairing_code(&admin.id, 15 * 60)
         .map_err(|error| error.to_string())?;
     println!("Created {}", db.display());
     println!("Admin user: {} ({})", admin.name, admin.id);
@@ -120,6 +123,16 @@ fn cmd_user(args: &[String]) -> Result<(), String> {
             } else {
                 "member"
             };
+            let config = Config {
+                db: flag(args, "--db")
+                    .map(PathBuf::from)
+                    .or_else(|| std::env::var_os("DUNLIN_RELAY_DB").map(PathBuf::from))
+                    .unwrap_or_else(config::default_db),
+                ..Config::default()
+            };
+            if role == "member" && management::host_accounts(&config) {
+                return Err("This relay has host-level Git accounts. Run a separate relay service/OS account for non-admin members.".into());
+            }
             let user = db
                 .create_user(name, role)
                 .map_err(|error| error.to_string())?;
@@ -215,8 +228,8 @@ fn cmd_pair(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| "pair needs a user name".to_string())?;
     let ttl = flag(args, "--ttl")
         .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(10)
-        .clamp(1, 24 * 60);
+        .unwrap_or(15)
+        .clamp(1, 15);
     let user = db
         .find_user_by_name(name)
         .map_err(|error| error.to_string())?
@@ -563,6 +576,16 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         config.harness = harness;
     }
     config.apply_env();
+    if !config.db.is_absolute() {
+        config.db = std::env::current_dir()
+            .map_err(|e| e.to_string())?
+            .join(&config.db);
+    }
+    management::private_dir(&management::root(&config))?;
+    // This is the single-threaded startup boundary, before vault/runtime workers.
+    unsafe {
+        std::env::set_var("PATH", management::path(&config));
+    }
 
     let store = Store::open(&config.db).map_err(|error| error.to_string())?;
     let relay_vault = match vault::RelayVault::start(&config.db) {
@@ -601,7 +624,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
             config.harness
         );
         if config.sandbox {
-            eprintln!("[relay] macOS sandbox enabled · other projects and credentials are denied");
+            eprintln!("[relay] harness sandbox enabled · missing platform support fails closed");
         }
         eprintln!(
             "[relay] {} · no prompt logging",

@@ -96,12 +96,6 @@ pub(crate) struct RemoteAuditRun {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct RemoteGithubPlan {
-    pub id: String,
-    pub summary: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 pub(crate) struct RemoteRestorePreview {
     pub id: String,
     pub change: dunlin_workspace::task_review::Change,
@@ -465,6 +459,21 @@ pub(crate) fn delete_token(host_id: &str) {
     delete_token_for(LEGACY_KEYCHAIN_SERVICE, host_id);
 }
 
+/// Factory reset must report Keychain failures instead of forgetting their IDs.
+pub(crate) fn delete_token_checked(host_id: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    for service in [KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE] {
+        match security_framework::passwords::delete_generic_password(service, host_id) {
+            Ok(()) => {}
+            Err(error) if error.code() == -25300 => {}
+            Err(_) => return Err("Could not remove a relay pairing from the Keychain. Unlock the Keychain and retry.".into()),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = host_id;
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 fn delete_token_for(service: &str, host_id: &str) {
     let _ = security_framework::passwords::delete_generic_password(service, host_id);
@@ -481,6 +490,12 @@ pub(crate) struct RemoteWorkspace {
 }
 
 impl RemoteWorkspace {
+    pub(crate) fn storage_size(&self) -> Result<Option<u64>, String> {
+        self.get(&format!(
+            "/v1/fs/storage?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
     pub fn tree(&self) -> Result<FileTree, String> {
         self.get(&format!(
             "/v1/fs/tree?project={}",
@@ -584,16 +599,6 @@ impl RemoteWorkspace {
             &serde_json::json!({
                 "project": self.project.project_id,
                 "message": message,
-            }),
-        )
-    }
-
-    pub fn git_discard(&self, path: &str) -> Result<(), String> {
-        self.post_empty(
-            "/v1/git/discard",
-            &serde_json::json!({
-                "project": self.project.project_id,
-                "file": entry_relative(&self.project.path, path)?,
             }),
         )
     }
@@ -741,79 +746,10 @@ impl RemoteWorkspace {
         )
     }
 
-    pub fn github_load(&self, remote: &str) -> Result<dunlin_workspace::github::Overview, String> {
+    pub(crate) fn github_metadata(&self) -> Result<dunlin_workspace::github::Metadata, String> {
         self.post(
-            "/v1/github/load",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote}),
-        )
-    }
-
-    pub fn github_runs(
-        &self,
-        remote: &str,
-        head: &str,
-    ) -> Result<Vec<dunlin_workspace::github::Run>, String> {
-        self.post(
-            "/v1/github/runs",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote, "head": head}),
-        )
-    }
-
-    pub fn github_jobs(
-        &self,
-        remote: &str,
-        run: &dunlin_workspace::github::Run,
-    ) -> Result<
-        (
-            dunlin_workspace::github::Run,
-            Vec<dunlin_workspace::github::Job>,
-        ),
-        String,
-    > {
-        self.post(
-            "/v1/github/jobs",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote, "run": run}),
-        )
-    }
-
-    pub fn github_pull(
-        &self,
-        remote: &str,
-        number: u64,
-    ) -> Result<dunlin_workspace::github::PullDetails, String> {
-        self.post(
-            "/v1/github/pull",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote, "number": number}),
-        )
-    }
-
-    pub fn github_log(
-        &self,
-        remote: &str,
-        run: &dunlin_workspace::github::Run,
-        job: &dunlin_workspace::github::Job,
-    ) -> Result<String, String> {
-        self.post(
-            "/v1/github/log",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote, "run": run, "job": job}),
-        )
-    }
-
-    pub fn github_prepare(
-        &self,
-        remote: &str,
-        action: dunlin_workspace::github::Action,
-    ) -> Result<RemoteGithubPlan, String> {
-        self.post(
-            "/v1/github/prepare",
-            &serde_json::json!({"project": self.project.project_id, "remote": remote, "action": action}),
-        )
-    }
-
-    pub fn github_execute(&self, id: &str) -> Result<String, String> {
-        self.post(
-            "/v1/github/execute",
-            &serde_json::json!({"project": self.project.project_id, "id": id}),
+            "/v1/github/metadata",
+            &serde_json::json!({"project": self.project.project_id, "remote": "origin"}),
         )
     }
 
@@ -925,18 +861,6 @@ impl WorkspaceBackend {
                 .map_err(branch_relay_error),
         }
     }
-    pub fn switch_branch_checked(
-        &self,
-        branch: &str,
-        expected: &git::BranchContext,
-        keep_changes: bool,
-    ) -> Result<(), String> {
-        match self {
-            Self::Local { root } => git::switch_branch_checked(root, branch, expected, keep_changes),
-            Self::Remote(remote) => remote.post_empty("/v1/git/switch-safe", &serde_json::json!({"project": remote.project.project_id, "branch": branch, "expected": expected, "keep_changes": keep_changes})).map_err(branch_relay_error),
-        }
-    }
-
     /// Create one ref from an exact commit on the local or relay repository.
     /// Never checks out, fetches or moves the current branch.
     pub fn create_branch_at(&self, scope: &str, oid: &str, name: &str) -> Result<(), String> {
@@ -959,20 +883,6 @@ impl WorkspaceBackend {
         }
     }
 
-    /// Checkout one exact commit only for a local project. Remote history stays
-    /// read-only until the relay exposes an explicit checkout capability.
-    pub fn checkout_commit_at(&self, scope: &str, oid: &str) -> Result<(), String> {
-        match self {
-            Self::Local { root } => {
-                let root = git::history::repository_root(root, Some(scope))?;
-                let expected = git::branch_context(&root)?;
-                git::checkout_commit_checked(&root, oid, &expected)
-            }
-            Self::Remote(_) => {
-                Err("Commit checkout is local-only; remote history remains read-only".into())
-            }
-        }
-    }
     pub fn editor_baseline(&self, path: &str) -> Option<String> {
         match self {
             Self::Local { root } => git::head_file(root, &entry_relative(root, path).ok()?)
@@ -1116,15 +1026,6 @@ impl WorkspaceBackend {
         match self {
             WorkspaceBackend::Local { root } => git::amend(root, message),
             WorkspaceBackend::Remote(remote) => remote.git_amend(message),
-        }
-    }
-
-    pub fn git_discard(&self, path: &str) -> Result<(), String> {
-        match self {
-            WorkspaceBackend::Local { root } => {
-                git::discard_file(root, &entry_relative(root, path)?)
-            }
-            WorkspaceBackend::Remote(remote) => remote.git_discard(path),
         }
     }
 

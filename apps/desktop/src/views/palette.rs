@@ -3,6 +3,7 @@
 
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
+use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::component::input::Input;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -15,6 +16,7 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    let projects_only = this.command_projects_only;
     let show_shortcuts = this.show_shortcut_hints;
     let items = this.filtered_commands();
     let selected = if items.is_empty() {
@@ -46,33 +48,49 @@ pub(crate) fn render(
 
     let mut list = div().flex().flex_col().gap(px(1.)).p(px(5.));
     if items.is_empty() {
-        list = list.child(
-            div()
-                .h(px(74.))
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap(px(4.))
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .text_color(p.muted_fg)
-                        .child("No matching commands"),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg.opacity(0.65))
-                        .child("Try “chat”, “folder”, or a project name"),
-                ),
-        );
+        list =
+            list.child(
+                div()
+                    .h(px(74.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(4.))
+                    .child(div().text_size(px(13.0)).text_color(p.muted_fg).child(
+                        if projects_only {
+                            "No matching projects"
+                        } else {
+                            "No matching commands"
+                        },
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .font_family(dunlin_ui::theme::code_font())
+                            .text_color(p.muted_fg.opacity(0.65))
+                            .child(if projects_only {
+                                "Search by project name or path"
+                            } else {
+                                "Try “chat”, “folder”, or a project name"
+                            }),
+                    ),
+            );
     } else {
         for (index, item) in items.iter().enumerate() {
             let active = index == selected;
             let command = item.command;
             let label = item.label.clone();
+            let path = if projects_only {
+                match command {
+                    crate::app::Command::SwitchProject(index) => {
+                        this.projects.get(index).map(|project| project.path.clone())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
             let hint = if show_shortcuts {
                 item.hint.clone()
             } else {
@@ -82,7 +100,7 @@ pub(crate) fn render(
             list = list.child(
                 div()
                     .id(format!("command-row:{index}"))
-                    .h(px(38.))
+                    .h(px(if projects_only { 48. } else { 38. }))
                     .px(px(7.))
                     .rounded(px(7.))
                     .flex()
@@ -112,7 +130,8 @@ pub(crate) fn render(
                         div()
                             .flex_1()
                             .min_w(px(0.))
-                            .truncate()
+                            .flex()
+                            .flex_col()
                             .text_size(px(12.5))
                             .font_weight(if active {
                                 FontWeight::MEDIUM
@@ -120,7 +139,16 @@ pub(crate) fn render(
                                 FontWeight::NORMAL
                             })
                             .text_color(p.fg)
-                            .child(label),
+                            .child(div().truncate().child(label))
+                            .when_some(path, |row, path| {
+                                row.child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .text_color(p.muted_fg)
+                                        .truncate()
+                                        .child(path),
+                                )
+                            }),
                     )
                     .children(hint.map(|hint| kbd(hint, p))),
             );
@@ -144,17 +172,23 @@ pub(crate) fn render(
                 .text_size(px(11.0))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg.opacity(0.6))
-                .child(format!("{} commands", items.len())),
+                .child(format!(
+                    "{} {}",
+                    items.len(),
+                    if projects_only {
+                        "projects"
+                    } else {
+                        "commands"
+                    }
+                )),
         );
 
     let panel = div()
         .id("command-palette")
-        .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
+        .popover_style(cx)
+        .occlude()
         .w(px(590.))
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.border_strong)
-        .bg(p.card)
+        .max_w(relative(0.95))
         .overflow_hidden()
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(search)
@@ -175,6 +209,7 @@ pub(crate) fn render(
         .top_0()
         .left_0()
         .size_full()
+        .bg(black().opacity(0.14))
         .flex()
         .justify_center()
         .items_start()

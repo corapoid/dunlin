@@ -2889,6 +2889,11 @@ impl App {
         self.active_drag.is_some()
     }
 
+    /// Whether the current drag carries this payload type.
+    pub fn has_active_drag_of<T: 'static>(&self) -> bool {
+        self.active_drag.as_ref().is_some_and(|drag| drag.value.is::<T>())
+    }
+
     /// Gets the cursor style of the currently active drag operation.
     pub fn active_drag_cursor_style(&self) -> Option<CursorStyle> {
         self.active_drag.as_ref().and_then(|drag| drag.cursor_style)

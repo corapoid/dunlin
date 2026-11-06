@@ -21,7 +21,6 @@ mod checks;
 mod compare;
 mod context;
 mod details;
-mod github;
 mod impact;
 mod mutations;
 mod overview;
@@ -37,16 +36,13 @@ pub(crate) struct State {
     pub view: Option<View>,
     pub running: bool,
     pub active: bool,
-    mutation_project: Option<String>,
-    mutation_global: bool,
+    pub(crate) mutation_project: Option<String>,
+    pub(crate) mutation_global: bool,
     pub(crate) cancel_check: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 impl State {
     pub(crate) fn tab_label(&self) -> &'static str {
         if let Some(v) = &self.view {
-            if v.github.visible {
-                return "GitHub · CI / PR";
-            }
             if v.context.visible {
                 return "Context & decisions";
             }
@@ -115,10 +111,9 @@ pub(crate) struct View {
     patch_loading: bool,
     diff: Entity<DiffState>,
     lanes: Vec<LaneRow>,
-    scroll: ScrollHandle,
+    scroll: UniformListScrollHandle,
     focus: FocusHandle,
     mutations: mutations::Form,
-    github: github::State,
     context: context::State,
     review: review::State,
     checks: checks::State,
@@ -130,7 +125,6 @@ pub(crate) struct View {
 impl View {
     fn hide_tools(&mut self) {
         self.impact.visible = false;
-        self.github.visible = false;
         self.context.visible = false;
         self.review.visible = false;
         self.checks.visible = false;
@@ -224,14 +218,6 @@ fn layout(commits: &[Commit]) -> Vec<LaneRow> {
 }
 
 impl DunlinApp {
-    pub(crate) fn selected_github_evidence(&self) -> Vec<(String, String, String)> {
-        self.git_history
-            .view
-            .as_ref()
-            .map(|view| view.github.attachable_evidence())
-            .unwrap_or_default()
-    }
-
     pub(crate) fn open_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.projects.is_empty() {
             self.file_notice("Open a project first", cx);
@@ -261,6 +247,7 @@ impl DunlinApp {
             return;
         }
         self.branch_ui.dismiss();
+        self.remember_workspace_tab();
         self.project_settings_target = None;
         self.project_runtime_draft = None;
         self.group_settings_draft = None;
@@ -274,6 +261,7 @@ impl DunlinApp {
         self.section = dunlin_domain::SidebarSection::SourceControl;
         if self.git_history.is_open_for(&project) {
             self.git_history.active = true;
+            self.remember_workspace_tab();
             if let Some(view) = &self.git_history.view {
                 view.focus.focus(window, cx);
             }
@@ -315,10 +303,9 @@ impl DunlinApp {
             patch_loading: false,
             diff: cx.new(|cx| DiffState::new(Vec::new(), cx)),
             lanes: Vec::new(),
-            scroll: ScrollHandle::new(),
+            scroll: UniformListScrollHandle::new(),
             focus: cx.focus_handle(),
             mutations: mutations::Form::new(window, cx),
-            github: github::State::new(window, cx),
             context: context::State::new(window, cx),
             review: review::State::new(window, cx),
             checks: checks::State::new(window, cx),
@@ -328,6 +315,12 @@ impl DunlinApp {
             impact: impact::State::new(window, cx),
         });
         self.git_history.active = true;
+        self.remember_workspace_tab();
+        self.workbench
+            .panes
+            .opened(crate::workspace_panes::TabKey::Git(
+                self.project().id.clone(),
+            ));
         self.git_history
             .view
             .as_ref()
@@ -336,7 +329,22 @@ impl DunlinApp {
             .focus(window, cx);
         self.load_git_history(cx);
     }
+    pub(crate) fn show_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_git_history(window, cx);
+        if let Some(view) = &mut self.git_history.view {
+            view.hide_tools();
+            view.overview.visible = false;
+        }
+        cx.notify();
+    }
     pub(crate) fn close_git_history(&mut self, cx: &mut Context<Self>) {
+        if let Some(view) = &self.git_history.view {
+            self.workbench
+                .panes
+                .closed(&crate::workspace_panes::TabKey::Git(
+                    view.project.id.clone(),
+                ));
+        }
         // Mutation ownership lives outside the view, so closing a read tab must
         // never release the in-flight ref lock or the quit guard.
         self.git_history.active = false;
@@ -392,7 +400,7 @@ impl DunlinApp {
                             }
                             view.lanes = lanes;
                             view.rows = rows;
-                            view.scroll.set_offset(point(px(0.), px(0.)));
+                            view.scroll.scroll_to_item_strict(0, ScrollStrategy::Top);
                             select = !view.rows.is_empty();
                             view.error = None;
                         }
@@ -425,7 +433,7 @@ impl DunlinApp {
         let backend = view.backend.clone();
         let id = view.id;
         view.selected = Some(index);
-        view.scroll.scroll_to_item(index);
+        view.scroll.scroll_to_item(index, ScrollStrategy::Nearest);
         view.parent = parent;
         view.detail = None;
         view.detail_error = None;
@@ -589,153 +597,6 @@ impl DunlinApp {
         .detach();
         cx.notify();
     }
-    pub(crate) fn checkout_history_commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(view) = self.git_history.view.as_ref() else {
-            return;
-        };
-        if view.project.is_remote() {
-            self.file_notice(
-                "Commit checkout is local-only; remote history remains read-only",
-                cx,
-            );
-            return;
-        }
-        let Some(commit) = view.selected.and_then(|i| view.rows.get(i)) else {
-            return;
-        };
-        let project = view.project.clone();
-        let id = view.id;
-        let oid = commit.oid.clone();
-        let short = oid.chars().take(10).collect::<String>();
-        let Some(scope) = view.scope.clone() else {
-            return;
-        };
-        let backend = match self.backend() {
-            Ok(backend) => backend,
-            Err(error) => {
-                self.file_notice(error, cx);
-                return;
-            }
-        };
-        let blocked = self.git_history.running
-            || self.branch_ui.running()
-            || self.git_mutation_in_flight(&project.id)
-            || self.ai_commit_locks_project_id(&project.id)
-            || self.explorer.busy
-            || self.editor_dirty
-            || self
-                .workbench
-                .tabs
-                .iter()
-                .any(|tab| tab.project == project.id && (tab.loading || tab.dirty))
-            || !self.projects.iter().any(|p| {
-                p.id == project.id && p.path == project.path && p.trusted && !p.is_remote()
-            })
-            || self.live_agents().iter().any(|(owner, session, _)| {
-                owner == &project.id
-                    || self
-                        .group_contexts
-                        .get(session)
-                        .is_some_and(|g| g.roots.iter().any(|r| r.id == project.id))
-            });
-        if blocked {
-            if let Some(v) = &mut self.git_history.view {
-                v.error = Some("Save buffers and finish repository operations/agents first; commit checkout requires a clean worktree".into());
-            }
-            cx.notify();
-            return;
-        }
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            "Checkout this commit?",
-            Some(&format!(
-                "Detach HEAD at {short} in {}? The worktree must be clean; no files are discarded or stashed. You can return to a branch with the branch picker or create a branch from this commit.",
-                project.name
-            )),
-            &["Cancel", "Checkout commit"],
-            cx,
-        );
-        let answer = self.overlay_backdrop.track_native(answer, cx);
-        cx.spawn_in(window, async move |this, cx| {
-            if answer.await != Ok(1) {
-                return;
-            }
-            let started = this
-                .update(cx, |this, cx| {
-                    if !this
-                        .projects
-                        .iter()
-                        .any(|p| p.id == project.id && p.path == project.path && p.trusted)
-                        || this.git_history.running
-                        || this.branch_ui.running()
-                        || this.editor_dirty
-                        || this
-                            .workbench
-                            .tabs
-                            .iter()
-                            .any(|tab| tab.project == project.id && (tab.loading || tab.dirty))
-                    {
-                        return false;
-                    }
-                    this.git_history.running = true;
-                    this.git_history.mutation_project = Some(project.id.clone());
-                    this.begin_git_mutation(&project.id);
-                    this.stash_editor_tab();
-                    cx.notify();
-                    true
-                })
-                .unwrap_or(false);
-            if !started {
-                return;
-            }
-            let backend = backend.clone();
-            let result = cx
-                .background_executor()
-                .spawn(async move { backend.checkout_commit_at(&scope, &oid) })
-                .await;
-            let _ = this.update_in(cx, |this, window, cx| {
-                this.git_history.running = false;
-                this.git_history.mutation_project = None;
-                this.finish_git_mutation(&project.id);
-                match result {
-                    Ok(()) => {
-                        this.repo_summaries.invalidate();
-                        this.close_inspector();
-                        this.workbench
-                            .tabs
-                            .retain(|tab| tab.project != project.id || tab.dirty);
-                        this.refresh_file_tree(cx);
-                        this.refresh_git_status(cx);
-                        this.editor_stale = true;
-                        this.file_notice(
-                            format!(
-                                "Checked out {short} in {} · detached HEAD; branches unchanged",
-                                project.name
-                            ),
-                            cx,
-                        );
-                        if this.git_history.view.as_ref().is_some_and(|v| v.id == id) {
-                            this.load_git_history(cx);
-                        }
-                        window.request_animation_frame();
-                    }
-                    Err(error) => {
-                        if let Some(v) = this.git_history.view.as_mut().filter(|v| v.id == id) {
-                            v.error = Some(error.clone());
-                        }
-                        this.file_notice(
-                            format!("Could not checkout commit in {}: {error}", project.name),
-                            cx,
-                        );
-                    }
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-        cx.notify();
-    }
-
     fn create_history_branch(&mut self, cx: &mut Context<Self>) {
         let Some(view) = self.git_history.view.as_ref() else {
             return;
@@ -917,15 +778,6 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     {
         return context::render(this, cx);
     }
-    if this
-        .git_history
-        .view
-        .as_ref()
-        .is_some_and(|v| v.github.visible)
-    {
-        github::refresh_visible(this, cx);
-        return github::render(this, cx);
-    }
     let p = palette(cx);
     let Some(view) = this
         .git_history
@@ -935,78 +787,114 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     else {
         return div().into_any_element();
     };
-    let width = (view.lanes.iter().map(|r| r.width).max().unwrap_or(1) as f32 * 16. + 24.).max(70.);
+    let width = (view.lanes.iter().map(|r| r.width).max().unwrap_or(1) as f32 * 16. + 24.).max(44.);
     if view.overview.visible {
         return overview::render(this, cx);
     }
-    let mut list = div()
-        .id("git-history-list")
-        .flex_1()
-        .min_h(px(0.))
-        .overflow_scroll()
-        .track_scroll(&view.scroll)
-        .flex()
-        .flex_col();
-    for (i, (commit, lane)) in view.rows.iter().zip(&view.lanes).enumerate() {
-        let selected = view.selected == Some(i);
-        let date = chrono::DateTime::from_timestamp(commit.timestamp, 0)
-            .map(|d| {
-                d.with_timezone(&chrono::Local)
-                    .format("%Y-%m-%d %H:%M")
-                    .to_string()
-            })
-            .unwrap_or_default();
-        list = list.child(
-            div()
-                .id(("history-commit", i))
-                .h(px(32.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .px(px(8.))
-                .cursor_pointer()
-                .when(selected, |s| s.bg(p.blue_soft))
-                .hover(move |s| s.bg(p.hover))
-                .aria_label(format!("Commit {}: {}", commit.oid, commit.subject))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    if let Some(view) = &this.git_history.view {
-                        view.focus.focus(window, cx);
-                    }
-                    this.select_history_commit(i, 0, cx);
-                }))
-                .child(graph_cell(lane.clone(), width, p.blue))
-                .child(
+    let list = uniform_list(
+        "git-history-list",
+        view.rows.len(),
+        cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+            let Some(view) = &this.git_history.view else {
+                return Vec::new();
+            };
+            range
+                .filter_map(|i| Some((i, view.rows.get(i)?, view.lanes.get(i)?)))
+                .map(|(i, commit, lane)| {
+                    let selected = view.selected == Some(i);
+                    let date = chrono::DateTime::from_timestamp(commit.timestamp, 0)
+                        .map(|d| {
+                            d.with_timezone(&chrono::Local)
+                                .format("%Y-%m-%d %H:%M")
+                                .to_string()
+                        })
+                        .unwrap_or_default();
                     div()
-                        .text_size(px(11.))
-                        .text_color(p.muted_fg)
-                        .child(commit.oid.chars().take(8).collect::<String>()),
-                )
-                .child(
-                    div()
-                        .min_w(px(160.))
-                        .flex_1()
-                        .text_size(px(12.))
-                        .truncate()
-                        .child(commit.subject.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(p.blue)
-                        .child(commit.refs.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(p.muted_fg)
-                        .child(format!("{} · {date}", commit.author)),
-                ),
-        );
-    }
+                        .id(("history-commit", i))
+                        .h(px(32.))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .min_w(px(0.))
+                        .w_full()
+                        .overflow_hidden()
+                        .gap(px(8.))
+                        .px(px(8.))
+                        .cursor_pointer()
+                        .when(selected, |s| s.bg(p.blue_soft))
+                        .hover(move |s| s.bg(p.hover))
+                        .aria_label(format!("Commit {}: {}", commit.oid, commit.subject))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if let Some(view) = &this.git_history.view {
+                                view.focus.focus(window, cx);
+                            }
+                            this.select_history_commit(i, 0, cx);
+                        }))
+                        .child(
+                            div()
+                                .w(px(width))
+                                .flex_shrink_0()
+                                .overflow_hidden()
+                                .child(graph_cell(lane.clone(), width, p.blue)),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .w(px(60.))
+                                .flex_shrink_0()
+                                .text_color(p.muted_fg)
+                                .child(commit.oid.chars().take(8).collect::<String>()),
+                        )
+                        .child(
+                            div()
+                                .min_w(px(0.))
+                                .flex_1()
+                                .text_size(px(12.))
+                                .truncate()
+                                .child(commit.subject.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .min_w(px(0.))
+                                .max_w(px(220.))
+                                .truncate()
+                                .text_color(p.blue)
+                                .child(commit.refs.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(p.muted_fg)
+                                .max_w(px(120.))
+                                .truncate()
+                                .child(commit.author.clone()),
+                        )
+                        .child(
+                            div()
+                                .w(px(106.))
+                                .flex_shrink_0()
+                                .text_size(px(10.))
+                                .text_color(p.muted_fg)
+                                .child(date),
+                        )
+                        .into_any_element()
+                })
+                .collect::<Vec<_>>()
+        }),
+    )
+    .track_scroll(&view.scroll)
+    .flex_1()
+    .min_h(px(0.))
+    .min_w(px(0.));
     let selected = view.selected.and_then(|i| view.rows.get(i));
     let detail_panel = details::render(this, cx);
-    div().id("git-history-panel").track_focus(&view.focus).flex_1().min_w(px(0.)).min_h(px(0.)).bg(p.bg).text_color(p.fg).flex().flex_col().overflow_hidden()
+    div().id("git-history-panel").relative().children({
+        #[cfg(debug_assertions)]
+        { crate::workspace_ui_smoke::probe("git-history-panel") }
+        #[cfg(not(debug_assertions))]
+        { None::<AnyElement> }
+    }).track_focus(&view.focus).flex_1().min_w(px(0.)).min_h(px(0.)).text_color(p.fg).flex().flex_col().overflow_hidden()
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 let Some(view) = this.git_history.view.as_ref() else { return; };
                 if !view.focus.is_focused(window) || event.keystroke.modifiers.platform { return; }
@@ -1024,27 +912,18 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                   .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("History"))
                   .child(div().text_size(px(11.)).text_color(p.muted_fg).child(view.project.name.clone()))
                   .child(div().flex_1())
-                    .child(Button::new("history-inventory").ghost().small().rounded(px(4.)).label("Repository state").tooltip("Stashes, worktrees and operations").on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))))
-                    .child(Button::new("history-github").ghost().small().rounded(px(4.)).label("GitHub · CI / PR").on_click(cx.listener(|this,_,_,cx|this.open_github(cx))))
-                   .child(Button::new("history-selected-operation").ghost().small().rounded(px(4.)).label("Merge / rebase / pick…").tooltip("Review an operation using the selected commit").disabled(selected.is_none()||view.loading||this.git_history.running).on_click(cx.listener(|this,_,window,cx|this.operate_on_history_commit(window,cx))))
-                  .when(!view.project.is_remote(), |toolbar| toolbar.child(Button::new("history-checkout").ghost().small().rounded(px(4.)).label("Checkout commit…").tooltip("Detach HEAD at the selected commit; requires a clean worktree").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, window, cx| this.checkout_history_commit(window, cx)))))
-                  .child(Button::new("history-branch-form").ghost().small().rounded(px(4.)).label("Create branch…").disabled(selected.is_none() || view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| {
-                      if let Some(view) = &mut this.git_history.view { view.branch_form_open = !view.branch_form_open; }
-                      cx.notify();
-                  })))
-                  .child(Button::new("history-refresh").ghost().small().rounded(px(4.)).label("Refresh").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx))))
-                  .child(Button::new("history-more").ghost().small().rounded(px(4.)).label("Load more").tooltip("Load up to 2,000 commits").disabled(view.loading || this.git_history.running || view.limit >= 2000).on_click(cx.listener(|this, _, _, cx| { if let Some(v) = &mut this.git_history.view { v.limit = (v.limit + 500).min(2000); } this.load_git_history(cx); }))))
-              .child(div().px(px(12.)).pb(px(6.)).flex_shrink_0().text_size(px(11.)).text_color(p.muted_fg).child(if view.loading { "Loading history…".to_string() } else { format!("{} commits · {} snapshot · cached refs · no fetch", view.rows.len(), if view.project.is_remote() { "relay" } else { "local" }) }))
+                  .child(div().text_size(px(10.)).text_color(p.muted_fg).child(if view.loading { "Loading…".into() } else { format!("{} commits · cached {} snapshot", view.rows.len(), if view.project.is_remote() { "relay" } else { "local" }) }))
+                   )
             .child(div().px(px(12.)).pb(px(8.)).flex().gap(px(8.))
                 .child(Input::new(&view.revision).flex_1())
-                  .child(Button::new("history-revision").ghost().small().rounded(px(4.)).label("Show history").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx)))))
+                  .child(dunlin_ui::button("history-revision").ghost().label("Show history").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx)))))
              .child(div().flex_1().min_h(px(80.)).flex().flex_col().overflow_hidden().child(list))
              .child(detail_panel)
               .when(view.branch_form_open, |panel| panel.child(
                   div().px(px(12.)).py(px(8.)).flex_shrink_0().flex().flex_col().gap(px(6.)).border_t_1().border_color(p.border)
                       .child(div().flex().items_center().gap(px(8.))
                           .child(Input::new(&view.name).flex_1())
-                          .child(Button::new("history-create").small().rounded(px(4.)).primary().label(if this.git_history.running { "Creating…" } else { "Create branch" }).disabled(selected.is_none() || this.git_history.running || view.loading).on_click(cx.listener(|this, _, _, cx| this.create_history_branch(cx)))))
+                          .child(dunlin_ui::button("history-create").primary().label(if this.git_history.running { "Creating…" } else { "Create branch" }).disabled(selected.is_none() || this.git_history.running || view.loading).on_click(cx.listener(|this, _, _, cx| this.create_history_branch(cx)))))
                       .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Creates a branch on the local or relay repository from the selected commit only — no checkout or changes to files/staging."))))
               .when_some(view.error.as_ref(), |panel, error| panel.child(div().px(px(12.)).py(px(6.)).flex_shrink_0().text_size(px(12.)).text_color(p.red).child(error.clone())))
           .into_any_element()

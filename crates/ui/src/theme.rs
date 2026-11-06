@@ -7,8 +7,9 @@
 use std::borrow::Cow;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
-use gpui_kit::component::{ActiveTheme, Theme, ThemeMode};
+use gpui_kit::component::{ActiveTheme, Colorize, Theme, ThemeMode};
 use gpui_kit::*;
 
 /// Monospaced text size shared by editors, diffs and code chips.
@@ -65,6 +66,7 @@ pub fn set_font_families(ui: &str, code: &str, cx: &mut App) {
 pub struct Palette {
     pub bg: Hsla,
     pub panel: Hsla,
+    pub chrome: Hsla,
     pub sidebar: Hsla,
     pub card: Hsla,
     pub titlebar: Hsla,
@@ -106,25 +108,55 @@ fn ha(hex: u32) -> Hsla {
     rgba(hex).into()
 }
 
+fn luminance(color: Hsla) -> f32 {
+    let color: Rgba = color.into();
+    let linear = |v: f32| {
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+}
+
+fn contrast_ink(fill: Hsla) -> Hsla {
+    if luminance(fill) > 0.179 {
+        h(0x000000)
+    } else {
+        h(0xffffff)
+    }
+}
+
+fn semantic_button_state(fill: Hsla, factor: f32) -> Hsla {
+    let away_from_ink = if luminance(fill) > 0.179 {
+        h(0xffffff)
+    } else {
+        h(0x000000)
+    };
+    fill.mix_oklab(away_from_ink, factor)
+}
+
 pub fn light() -> Palette {
     Palette {
-        bg: h(0xffffff),
-        panel: h(0xfafafa),
-        sidebar: h(0xfafafa),
-        card: h(0xffffff),
-        titlebar: h(0xfbfbfc),
-        statusbar: h(0xfafafa),
-        border: h(0xe6e6e9),
-        border_strong: h(0xd4d4d8),
-        fg: h(0x101012),
-        muted_fg: h(0x71717a),
-        muted: h(0xf4f4f5),
-        subtle: h(0xf8f8f9),
-        accent: h(0xf2f2f4),
+        bg: h(0xe3e7ee),
+        panel: h(0xeeeeee),
+        chrome: h(0xeeeeee).opacity(0.84),
+        sidebar: h(0xeeeeee),
+        card: h(0xedf0f4),
+        titlebar: h(0xeeeeee),
+        statusbar: h(0xeeeeee),
+        border: h(0xcdd3dd),
+        border_strong: h(0x7a8494),
+        fg: h(0x252b35),
+        muted_fg: h(0x48525f),
+        muted: h(0xdce2ea),
+        subtle: h(0xe2e7ee),
+        accent: h(0xd3dbe6),
         accent_fg: h(0x18181b),
         primary: h(0x18181b),
         primary_fg: h(0xfafafa),
-        hover: h(0xf4f4f5),
+        hover: h(0xd6dfeb),
         overlay: ha(0x0000002e),
         selection: h(0xdbeafe),
         blue: h(0x2563eb),
@@ -146,23 +178,24 @@ pub fn light() -> Palette {
 
 pub fn dark() -> Palette {
     Palette {
-        bg: h(0x0a0a0a),
-        panel: h(0x111113),
-        sidebar: h(0x111113),
-        card: h(0x151517),
-        titlebar: h(0x101012),
-        statusbar: h(0x101012),
-        border: ha(0xffffff14),
-        border_strong: h(0x2a2a2e),
+        bg: h(0x191d25),
+        panel: h(0x1c2025),
+        chrome: h(0x1c2025).opacity(0.82),
+        sidebar: h(0x1c2025),
+        card: h(0x1d212a),
+        titlebar: h(0x1c2025),
+        statusbar: h(0x1c2025),
+        border: h(0x30343d),
+        border_strong: h(0x707b8e),
         fg: h(0xf4f4f5),
         muted_fg: h(0xa1a1aa),
-        muted: h(0x1d1d20),
-        subtle: h(0x141416),
-        accent: h(0x26262a),
+        muted: h(0x292f39),
+        subtle: h(0x242a34),
+        accent: h(0x343e4c),
         accent_fg: h(0xf4f4f5),
         primary: h(0xfafafa),
         primary_fg: h(0x18181b),
-        hover: h(0x202024),
+        hover: h(0x303946),
         overlay: ha(0x0000002e),
         selection: h(0x1e3a5f),
         blue: h(0x60a5fa),
@@ -183,6 +216,12 @@ pub fn dark() -> Palette {
 }
 
 pub fn palette(cx: &App) -> Palette {
+    if let Some(palette) = cx
+        .try_global::<ThemeTransition>()
+        .and_then(|state| state.palette)
+    {
+        return palette;
+    }
     if cx.theme().is_dark() {
         dark()
     } else {
@@ -190,13 +229,161 @@ pub fn palette(cx: &App) -> Palette {
     }
 }
 
-const FONTS: [&[u8]; 6] = [
+#[derive(Default)]
+struct ThemeTransition {
+    palette: Option<Palette>,
+    generation: u64,
+}
+impl Global for ThemeTransition {}
+
+impl Palette {
+    fn mix(self, target: Self, progress: f32) -> Self {
+        if progress <= 0. {
+            return self;
+        }
+        if progress >= 1. {
+            return target;
+        }
+        macro_rules! colors {
+            ($($field:ident),+ $(,)?) => {
+                Self { $($field: self.$field.mix_oklab(target.$field, 1. - progress)),+ }
+            };
+        }
+        colors!(
+            bg,
+            panel,
+            chrome,
+            sidebar,
+            card,
+            titlebar,
+            statusbar,
+            border,
+            border_strong,
+            fg,
+            muted_fg,
+            muted,
+            subtle,
+            accent,
+            accent_fg,
+            primary,
+            primary_fg,
+            hover,
+            overlay,
+            selection,
+            blue,
+            blue_soft,
+            green,
+            green_soft,
+            amber,
+            amber_soft,
+            red,
+            red_soft,
+            violet,
+            violet_soft,
+            teal,
+            graph_grid,
+            graph_edge,
+            graph_ring
+        )
+    }
+}
+
+pub fn is_transitioning(cx: &App) -> bool {
+    cx.try_global::<ThemeTransition>()
+        .is_some_and(|state| state.palette.is_some())
+}
+
+#[cfg(test)]
+mod palette_contrast_tests {
+    use super::*;
+    fn luminance(color: Hsla) -> f32 {
+        let color: Rgba = color.into();
+        let linear = |v: f32| {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let a = luminance(a);
+        let b = luminance(b);
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+    #[test]
+    fn both_palettes_keep_quiet_dividers_and_accessible_inputs() {
+        for p in [light(), dark()] {
+            assert!(contrast(p.border, p.card) > 1. && contrast(p.border, p.card) < 2.);
+            assert!(contrast(p.border_strong, p.card) >= 3.);
+            assert!(contrast(p.fg, p.card) >= 7.);
+            assert_ne!(p.panel, p.card);
+        }
+    }
+
+    #[test]
+    fn light_surfaces_are_softened_and_status_metadata_is_readable() {
+        let p = light();
+        assert!(luminance(p.card) < 0.9);
+        assert!(luminance(p.card) > luminance(p.subtle));
+        for p in [p, dark()] {
+            assert_eq!(p.statusbar.a, 1.);
+            assert!(contrast(p.muted_fg, p.statusbar) >= 4.5);
+            assert!(contrast(p.fg, p.statusbar) >= 7.);
+        }
+    }
+
+    #[test]
+    fn shared_chrome_is_readable_over_any_backdrop_and_light_tint_is_translucent_gray() {
+        let tint: Rgba = light().chrome.into();
+        assert!((tint.r - tint.g).abs() < 0.001 && (tint.g - tint.b).abs() < 0.001);
+        assert!((0.8..=0.85).contains(&tint.a));
+        for p in [light(), dark()] {
+            let tint: Rgba = p.chrome.into();
+            for backdrop in [0., 1.] {
+                let background: Hsla = Rgba {
+                    r: tint.r * tint.a + backdrop * (1. - tint.a),
+                    g: tint.g * tint.a + backdrop * (1. - tint.a),
+                    b: tint.b * tint.a + backdrop * (1. - tint.a),
+                    a: 1.,
+                }
+                .into();
+                assert!(contrast(p.fg, background) >= 7.);
+                if p.card.l > 0.5 {
+                    assert!(contrast(p.muted_fg, background) >= 4.5);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn theme_transition_blends_surfaces_ink_and_glass_without_endpoint_jumps() {
+        let light = light();
+        let dark = dark();
+        let middle = light.mix(dark, 0.5);
+        assert_eq!(light.mix(dark, 0.).card, light.card);
+        assert_eq!(light.mix(dark, 1.).card, dark.card);
+        assert!(middle.card.l > dark.card.l && middle.card.l < light.card.l);
+        assert!(light.mix(dark, 0.25).card.l > light.mix(dark, 0.75).card.l);
+        assert!((light.mix(dark, 0.001).card.l - light.card.l).abs() < 0.01);
+        assert!((light.mix(dark, 0.999).card.l - dark.card.l).abs() < 0.01);
+        assert!(middle.fg.l > light.fg.l && middle.fg.l < dark.fg.l);
+        assert!((middle.chrome.a - (light.chrome.a + dark.chrome.a) / 2.).abs() < 0.01);
+        assert_eq!(middle.mix(light, 0.).chrome, middle.chrome);
+        assert_eq!(middle.mix(light, 1.).chrome, light.chrome);
+        assert!(dark.hover.l > dark.card.l && (dark.hover.h - dark.accent.h).abs() < 0.03);
+    }
+}
+
+const FONTS: [&[u8]; 7] = [
     include_bytes!("../../../assets/fonts/Geist-Regular.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Medium.ttf"),
     include_bytes!("../../../assets/fonts/Geist-SemiBold.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Bold.ttf"),
     include_bytes!("../../../assets/fonts/GeistMono-Regular.ttf"),
     include_bytes!("../../../assets/fonts/GeistMono-Medium.ttf"),
+    include_bytes!("../../../assets/fonts/SymbolsNerdFontMono-Regular.ttf"),
 ];
 
 /// Register bundled fonts and install Dunlin's tokens over GPUI Kit.
@@ -218,8 +405,8 @@ pub fn apply(cx: &mut App) {
         theme.mono_font_family = code;
         theme.font_size = px(13.);
         theme.mono_font_size = px(f32::from_bits(CODE_FONT_SIZE.load(Ordering::Relaxed)));
-        theme.radius = px(10.);
-        theme.radius_lg = px(14.);
+        theme.radius = px(crate::scale::RADIUS_MD);
+        theme.radius_lg = px(crate::scale::RADIUS_LG);
         theme.focus_ring = false;
         // The fixed line-number gutter must remain opaque while source text
         // scrolls underneath it, including editors without form appearance.
@@ -232,7 +419,7 @@ pub fn apply(cx: &mut App) {
         c.background = p.bg;
         c.foreground = p.fg;
         c.border = p.border;
-        c.input = p.border;
+        c.input = p.border_strong;
         c.muted = p.muted;
         c.muted_foreground = p.muted_fg;
         c.secondary = p.muted;
@@ -242,13 +429,21 @@ pub fn apply(cx: &mut App) {
         c.accent = p.accent;
         c.accent_foreground = p.accent_fg;
         c.primary = p.primary;
-        c.primary_hover = p.primary;
-        c.primary_active = p.primary;
+        c.primary_hover = p.primary.mix_oklab(p.primary_fg, 0.9);
+        c.primary_active = p.primary.mix_oklab(p.primary_fg, 0.8);
         c.primary_foreground = p.primary_fg;
         c.button = p.card;
         c.button_hover = p.hover;
         c.button_active = p.accent;
         c.button_foreground = p.fg;
+        c.button_primary = c.primary;
+        c.button_primary_foreground = c.primary_foreground;
+        c.button_primary_hover = c.primary_hover;
+        c.button_primary_active = c.primary_active;
+        c.button_secondary = c.secondary;
+        c.button_secondary_foreground = c.secondary_foreground;
+        c.button_secondary_hover = c.secondary_hover;
+        c.button_secondary_active = c.secondary_active;
         c.sidebar = p.sidebar;
         c.sidebar_border = p.border;
         c.sidebar_foreground = p.fg;
@@ -281,6 +476,7 @@ pub fn apply(cx: &mut App) {
         c.popover = p.card;
         c.popover_foreground = p.fg;
         c.ring = p.blue;
+        c.switch = p.border_strong;
         c.selection = p.selection;
         c.caret = p.fg;
         c.progress_bar = p.muted;
@@ -290,13 +486,31 @@ pub fn apply(cx: &mut App) {
         c.scrollbar_thumb_hover = p.muted_fg.opacity(0.55);
         c.overlay = p.overlay;
         c.info = p.blue;
-        c.info_foreground = h(0xffffff);
+        c.info_foreground = contrast_ink(p.blue);
         c.success = p.green;
-        c.success_foreground = h(0xffffff);
+        c.success_foreground = contrast_ink(p.green);
         c.warning = p.amber;
-        c.warning_foreground = h(0xffffff);
+        c.warning_foreground = contrast_ink(p.amber);
         c.danger = p.red;
-        c.danger_foreground = h(0xffffff);
+        c.danger_foreground = contrast_ink(p.red);
+        c.danger_hover = semantic_button_state(p.red, 0.9);
+        c.danger_active = semantic_button_state(p.red, 0.8);
+        c.button_danger = c.danger;
+        c.button_danger_foreground = c.danger_foreground;
+        c.button_danger_hover = c.danger_hover;
+        c.button_danger_active = c.danger_active;
+        c.button_info = c.info;
+        c.button_info_foreground = c.info_foreground;
+        c.button_info_hover = semantic_button_state(p.blue, 0.9);
+        c.button_info_active = semantic_button_state(p.blue, 0.8);
+        c.button_success = c.success;
+        c.button_success_foreground = c.success_foreground;
+        c.button_success_hover = semantic_button_state(p.green, 0.9);
+        c.button_success_active = semantic_button_state(p.green, 0.8);
+        c.button_warning = c.warning;
+        c.button_warning_foreground = c.warning_foreground;
+        c.button_warning_hover = semantic_button_state(p.amber, 0.9);
+        c.button_warning_active = semantic_button_state(p.amber, 0.8);
         c.blue = p.blue;
         c.green = p.green;
         c.yellow = p.amber;
@@ -307,8 +521,50 @@ pub fn apply(cx: &mut App) {
 
 /// Switch appearance, then restore Dunlin's tokens over the loaded theme.
 pub fn set_mode(mode: ThemeMode, window: Option<&mut Window>, cx: &mut App) {
+    let state = cx.default_global::<ThemeTransition>();
+    state.generation += 1;
+    state.palette = None;
     Theme::change(mode, window, cx);
     apply(cx);
+}
+
+/// Interpolate shared surfaces and component tokens; interrupted switches start at the visible colors.
+pub fn set_mode_animated(mode: ThemeMode, window: &mut Window, reduce_motion: bool, cx: &mut App) {
+    if cx.theme().mode == mode {
+        return;
+    }
+    let from = palette(cx);
+    set_mode(mode, Some(window), cx);
+    if reduce_motion {
+        return;
+    }
+    let target = palette(cx);
+    let state = cx.default_global::<ThemeTransition>();
+    state.palette = Some(from);
+    let generation = state.generation;
+    apply(cx);
+    let started = Instant::now();
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor()
+                .timer(Duration::from_millis(16))
+                .await;
+            let done = cx.update(|cx| {
+                if cx.global::<ThemeTransition>().generation != generation {
+                    return true;
+                }
+                let t = (started.elapsed().as_secs_f32() / 0.24).min(1.);
+                cx.global_mut::<ThemeTransition>().palette =
+                    (t < 1.).then(|| from.mix(target, t * t * (3. - 2. * t)));
+                apply(cx);
+                t >= 1.
+            });
+            if done {
+                break;
+            }
+        }
+    })
+    .detach();
 }
 
 /// Set the monospaced text size used by editors, diffs and code metadata.
@@ -331,10 +587,34 @@ pub fn toggle_mode(window: &mut Window, cx: &mut App) {
 
 /// Card surface shared by panels, tool calls and graph nodes.
 pub fn card(cx: &App) -> Div {
-    let p = palette(cx);
-    div()
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    crate::card_surface(palette(cx))
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn reading_surfaces_inputs_and_all_filled_button_states_are_legible() {
+        for p in [light(), dark()] {
+            assert!(contrast(p.fg, p.card) >= 7.);
+            assert!(contrast(p.muted_fg, p.card) >= 4.5);
+            assert!(contrast(p.border_strong, p.card) >= 3.);
+            for factor in [1., 0.9, 0.8] {
+                assert!(contrast(p.primary.mix_oklab(p.primary_fg, factor), p.primary_fg) >= 4.5);
+                for fill in [p.blue, p.green, p.amber, p.red] {
+                    let ratio = contrast(semantic_button_state(fill, factor), contrast_ink(fill));
+                    assert!(
+                        ratio >= 4.5,
+                        "filled button contrast: {ratio}, factor {factor}"
+                    );
+                }
+            }
+        }
+    }
 }

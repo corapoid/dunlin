@@ -421,7 +421,7 @@ impl RenderOnce for TabBar {
                 (cx.theme().transparent.into(), Edges::all(px(0.)), gap)
             }
             TabVariant::Folder => (
-                cx.theme().tokens.tab_bar.into(),
+                cx.theme().transparent.into(),
                 Edges::all(px(0.)),
                 FOLDER_TAB_GAP,
             ),

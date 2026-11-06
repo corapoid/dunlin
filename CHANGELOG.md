@@ -6,13 +6,87 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-beta.9] — 2026-11-06
+
 ### Added
 
+- Project-independent remote server workspace: named relays, server-side harness
+  installation/defaults and sandboxed agent sign-in, hosting CLI device
+  authorization, non-overwriting project copies with checksums and optional
+  portable Git history, and explicit local/server settings boundaries.
+- Interactive relay bootstrap for macOS Apple Silicon and apt/dnf Linux,
+  optional current-stable Tailscale, launchd/systemd user services, managed
+  OpenCode/Codex/Claude CLI and ACP installations, 15-minute one-use pairing,
+  Linux Secret Service storage and fail-closed bubblewrap agent startup.
+- Native Linux x86_64/ARM64 relay release jobs, archive architecture checks and
+  separately checksummed bootstrap assets. See `docs/relay-setup.md` for trust
+  restrictions and the required real-machine acceptance checks.
+- Portable settings and project-structure export/import through JSON or an
+  existing GitHub/GitLab repository, with preview, revision-bound updates,
+  transactional catalog import and explicit individual/group downloads. Secrets,
+  machine paths, trust and relay projects are excluded.
+- Two document panes sharing canonical file buffers and session runtimes,
+  independent conversation drafts, workspace terminals, project search (`⌘⌥P`),
+  reading zoom (`⌘+`, `⌘−`, `⌘0`) and last-visited-tab restoration.
+- Local collection discovery, opt-in project-folder watching, GitLab repository
+  imports, provider profile display and project/group appearance controls.
+- Group cleanup previews for allowlisted ignored/untracked generated folders,
+  revalidation before recoverable system Trash, dependency readiness checks and
+  explicit relay/SSH connection modes with optional SSH identity selection.
 - macOS `.pkg` installer for `/Applications`, included in release checksums,
   provenance attestations and publication verification.
 - Homebrew beta channel (`corapoid/tap/dunlin@beta`) pinned to the verified DMG.
 - OCI artifact in GitHub Packages (`ghcr.io/corapoid/dunlin:beta`) containing
   the DMG, `.pkg`, ZIP, relay tarball, checksums and install notes.
+
+### Changed
+
+- Refreshed native shell, shared controls, light/dark reading surfaces and glass,
+  browser-style tabs, project context menus and Settings navigation. Harness
+  visibility preferences hide choices without uninstalling tools or rewriting
+  existing conversations.
+- Session imports stage full histories on private temporary disk storage and
+  stream writes transactionally instead of retaining all histories in memory.
+  Removed aggregate file/session-count limits while retaining per-history bounds;
+  previews allow reassignment of imported project/workspace metadata.
+- Secrets now default to Name + Key storage without expiry or agent access;
+  agent access remains an explicit policy with host, TTL and grants. Existing
+  policies are retained rather than silently revoked or rewritten.
+- Usage separates live account limits from local billing, adds rolling
+  day/week/month/all filters and five-minute caches, and streams historical
+  JSONL/SQLite evidence with bounded metadata parsing.
+
+### Fixed
+
+- GitHub import pagination follows actual next-page evidence, retains native
+  queries, rejects incomplete/oversized results and cancels obsolete preview
+  subprocesses without deleting started clones.
+- Billing scan continuation, cache/context-tier cost attribution, large token
+  labels and archive daily totals; unknown model aliases remain unpriced rather
+  than being reported as free.
+- Focused keyboard actions, terminal Tab/Shift+Tab delivery, pane/tab ownership,
+  dirty-close cancellation, narrow Secrets forms and virtualized Git history.
+
+### Removed
+
+- PR and GitHub Actions workspace integration; read-only GitHub/GitLab repository
+  links and hosting CLI import/authentication remain available.
+
+### Upgrade and acceptance
+
+- Pairing codes are single-use and capped at 15 minutes; already paired device
+  tokens remain valid until revoked.
+- Existing macOS relays retain legacy agent homes until explicit `setup`.
+  Dedicated homes do not copy host credentials/history and can require fresh
+  authorization and new conversations. Existing files are retained.
+- Host Git authorization refuses mixed-trust relays and then disables non-admin
+  access/addition. Linux authorization requires an unlocked Secret Service
+  keyring. Project copies flatten staging and omit remotes/hooks/credentials;
+  exclusions do not remove secrets from Git history.
+- Manual GUI, real-provider login, clean Linux installation and reboot acceptance
+  remain deferred, not passed. Automated release/security gates remain mandatory;
+  see [release acceptance](docs/release-acceptance.md) and
+  [server setup](docs/relay-setup.md).
 
 ## [0.1.0-beta.8] — 2026-11-04
 
@@ -773,7 +847,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...HEAD
+[0.1.0-beta.9]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...v0.1.0-beta.9
 [0.1.0-beta.8]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.8
 [0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6
 [0.1.0-beta.4]: https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.4

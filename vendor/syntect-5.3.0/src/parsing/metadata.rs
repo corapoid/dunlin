@@ -2,7 +2,9 @@
 //! rules, comment markers, and other syntax-specific things.
 
 use std::collections::BTreeMap;
+#[cfg(any(feature = "yaml-load", test))]
 use std::fs::File;
+#[cfg(any(feature = "yaml-load", test))]
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -13,6 +15,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use super::super::highlighting::settings::*;
 use super::super::highlighting::ScopeSelectors;
+#[cfg(any(feature = "yaml-load", test))]
 use super::super::LoadingError;
 use super::regex::Regex;
 use super::scope::{MatchPower, Scope};
@@ -103,6 +106,7 @@ impl LoadMetadata {
     ///
     /// [`Metadata`]: struct.Metadata.html
     /// [`RawMetadataEntry`]: struct.RawMetadataEntry.html
+    #[cfg(any(feature = "yaml-load", test))]
     pub fn add_raw(&mut self, raw: RawMetadataEntry) {
         self.loaded.push(raw);
     }
@@ -423,6 +427,7 @@ impl<'a> ScopedMetadata<'a> {
     }
 }
 
+#[cfg(any(feature = "yaml-load", test))]
 impl RawMetadataEntry {
     pub fn load<P: Into<PathBuf>>(path: P) -> Result<Self, LoadingError> {
         let path: PathBuf = path.into();

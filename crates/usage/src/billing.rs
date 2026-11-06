@@ -6,20 +6,21 @@
 //! unknown models stay explicitly `unpriced`.
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
+mod jsonl;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{BufRead, BufReader, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
 
 const MAX_FILES: usize = 2_000;
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
-const MAX_LINE: usize = 1024 * 1024;
+const MAX_LINE: usize = 32 * 1024 * 1024;
 const MAX_EVENTS: usize = 200_000;
-const MAX_SEEN: usize = 200_000;
-const MAX_OPENCODE_ROWS: u64 = 100_000;
+// shortcut: dedupe retains at most the relay's million-event capacity; use a disk index for larger archives.
+const MAX_SEEN: usize = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -110,9 +111,46 @@ struct Price {
 }
 
 /// USD per million tokens. Unknown models deliberately return `None`.
-fn price(model: &str, huge_context: bool) -> Option<Price> {
-    let model = model.to_ascii_lowercase();
-    if model.contains("opus-4-5") || model.contains("opus-4.5") {
+fn price(model: &str, context_tokens: u64) -> Option<Price> {
+    let normalized = model.to_ascii_lowercase().replace('.', "-");
+    let model = normalized.strip_prefix("anthropic/").unwrap_or(&normalized);
+    let model = model
+        .rsplit_once('-')
+        .filter(|(_, suffix)| suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_digit()))
+        .map_or(model, |(base, _)| base);
+    // platform.claude.com/docs/en/models/{sonnet,haiku}-5-5/overview, verified 2026-11-06.
+    if matches!(model, "claude-opus-5-5" | "opus-5-5") {
+        Some(Price {
+            input: 4.,
+            output: 20.,
+            cache_read: 0.2,
+            cache_write: 5.,
+        })
+    } else if matches!(model, "claude-sonnet-5-5" | "sonnet-5-5") {
+        Some(Price {
+            input: 2.,
+            output: 10.,
+            cache_read: 0.1,
+            cache_write: 2.5,
+        })
+    } else if matches!(model, "claude-haiku-5-5" | "haiku-5-5") {
+        let multiplier = if context_tokens > 100_000 { 5. } else { 1. };
+        Some(Price {
+            input: 0.1 * multiplier,
+            output: 0.5 * multiplier,
+            cache_read: 0.01 * multiplier,
+            cache_write: 0.125 * multiplier,
+        })
+    } else if matches!(
+        model,
+        "claude-opus-5"
+            | "opus-5"
+            | "claude-opus-4-5"
+            | "claude-opus-4-6"
+            | "claude-opus-4-7"
+            | "claude-opus-4-8"
+            | "opus-4-5"
+    ) {
         Some(Price {
             input: 5.,
             output: 25.,
@@ -127,7 +165,7 @@ fn price(model: &str, huge_context: bool) -> Option<Price> {
             cache_write: 18.75,
         })
     } else if model.contains("sonnet-4") {
-        if huge_context {
+        if context_tokens > 200_000 {
             Some(Price {
                 input: 6.,
                 output: 22.5,
@@ -196,8 +234,10 @@ fn priced_cost(
     cache_read: u64,
     cache_write: u64,
 ) -> Option<f64> {
-    let huge = input.saturating_add(cache_read) > 200_000;
-    let price = price(model, huge)?;
+    let price = price(
+        model,
+        input.saturating_add(cache_read).saturating_add(cache_write),
+    )?;
     Some(
         (input as f64 * price.input
             + output as f64 * price.output
@@ -331,8 +371,30 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
         output_tokens,
         cache_read_tokens,
         cache_write_tokens,
-    );
+    )
+    .map(|cost| {
+        let one_hour = number(usage.pointer("/cache_creation/ephemeral_1h_input_tokens"))
+            .min(cache_write_tokens);
+        let price = price(
+            &model,
+            input_tokens
+                .saturating_add(cache_read_tokens)
+                .saturating_add(cache_write_tokens),
+        )
+        .unwrap();
+        cost + one_hour as f64 * (price.input * 2. - price.cache_write).max(0.) / 1_000_000.
+    });
     let attribution = claude_attribution(value, &model);
+    let cost = if model == "<synthetic>"
+        && input_tokens == 0
+        && output_tokens == 0
+        && cache_read_tokens == 0
+        && cache_write_tokens == 0
+    {
+        Some(0.)
+    } else {
+        cost
+    };
     Some(BillingEvent {
         key: format!("claude:{key}"),
         at_ms,
@@ -355,7 +417,7 @@ fn claude_event(value: &serde_json::Value) -> Option<BillingEvent> {
     })
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct CodexState {
     model: String,
     project: Option<String>,
@@ -499,6 +561,12 @@ pub struct FileCheckpoint {
     pub offset: u64,
     pub size: u64,
     pub mtime_ms: u64,
+    #[serde(default)]
+    line: u64,
+    #[serde(default)]
+    state: CodexState,
+    #[serde(default)]
+    skipping_line: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -551,7 +619,13 @@ fn mtime_ms(metadata: &fs::Metadata) -> u64 {
         .unwrap_or(0)
 }
 
-fn files(root: &Path, extension: &str, out: &mut Vec<PathBuf>, depth: usize) {
+fn files(
+    root: &Path,
+    extension: &str,
+    out: &mut Vec<PathBuf>,
+    depth: usize,
+    checkpoint: &Checkpoint,
+) {
     if out.len() >= MAX_FILES || depth > 6 {
         return;
     }
@@ -570,8 +644,19 @@ fn files(root: &Path, extension: &str, out: &mut Vec<PathBuf>, depth: usize) {
             continue;
         }
         if metadata.is_dir() {
-            files(&path, extension, out, depth + 1);
+            files(&path, extension, out, depth + 1, checkpoint);
         } else if metadata.is_file() && path.extension().is_some_and(|ext| ext == extension) {
+            if checkpoint
+                .files
+                .get(path.to_string_lossy().as_ref())
+                .is_some_and(|previous| {
+                    previous.offset == metadata.len()
+                        && previous.size == metadata.len()
+                        && previous.mtime_ms == mtime_ms(&metadata)
+                })
+            {
+                continue;
+            }
             out.push(path);
         }
     }
@@ -582,7 +667,7 @@ fn scan_jsonl(
     paths: Vec<PathBuf>,
     checkpoint: &mut Checkpoint,
     report: &mut ScanReport,
-    mut parse: impl FnMut(&serde_json::Value, &Path, u64, &mut ScanReport) -> Option<BillingEvent>,
+    mut parse: impl FnMut(&serde_json::Value, &Path, u64, &mut CodexState) -> Option<BillingEvent>,
 ) {
     for path in paths {
         if report.events.len() >= MAX_EVENTS {
@@ -598,13 +683,7 @@ fn scan_jsonl(
         let Ok(metadata) = fs::metadata(&path) else {
             continue;
         };
-        if report.bytes.saturating_add(metadata.len()) > MAX_BYTES {
-            report.truncated = true;
-            report.warn("Byte limit reached; remaining provider logs were not read.");
-            break;
-        }
         report.files += 1;
-        report.bytes = report.bytes.saturating_add(metadata.len());
         let key = path.to_string_lossy().to_string();
         let previous = checkpoint.files.get(&key).cloned().unwrap_or_default();
         let size = metadata.len();
@@ -618,7 +697,7 @@ fn scan_jsonl(
             events: 0,
             state: "scanned".into(),
         };
-        if previous.size == size && previous.mtime_ms == modified {
+        if previous.size == size && previous.mtime_ms == modified && previous.offset == size {
             source.state = "cached".into();
             report.sources.push(source);
             continue;
@@ -639,29 +718,67 @@ fn scan_jsonl(
             let _ = file.seek(SeekFrom::Start(0));
         }
         let mut reader = BufReader::new(file);
-        let mut line = String::new();
-        let mut line_number = 0u64;
+        let resume = previous.offset <= size;
+        let mut line_number = if resume { previous.line } else { 0 };
+        let mut state = if resume {
+            previous.state.clone()
+        } else {
+            CodexState::default()
+        };
+        let mut skipping = resume && previous.skipping_line;
         loop {
-            line.clear();
-            let Ok(read) = reader.read_line(&mut line) else {
+            if report.bytes >= MAX_BYTES
+                || report.events.len() >= MAX_EVENTS
+                || checkpoint.seen.len() >= MAX_SEEN
+            {
+                report.truncated = true;
+                report.warn("Scan batch limit reached; additional provider logs remain.");
                 break;
+            }
+            let mut line = jsonl::Line::new(&mut reader);
+            let value = if skipping {
+                None
+            } else {
+                serde_json::from_reader::<_, jsonl::Metadata>(
+                    line.by_ref().take(MAX_LINE as u64 + 1),
+                )
+                .ok()
             };
+            let remaining = (MAX_LINE as u64 + 1).saturating_sub(line.bytes);
+            if std::io::copy(&mut line.by_ref().take(remaining), &mut std::io::sink()).is_err() {
+                report.warn(format!("Could not decode {provider} log"));
+                break;
+            }
+            let read = line.bytes;
+            report.bytes += read;
             if read == 0 {
                 break;
             }
-            line_number += 1;
-            if !line.ends_with('\n') {
+            if !line.complete {
+                if read > MAX_LINE as u64 || skipping {
+                    offset += read;
+                    skipping = true;
+                    report.warn(
+                        "Oversized provider log line skipped; billing evidence may be incomplete.",
+                    );
+                    continue;
+                }
                 // Keep a partial last line for the next incremental scan.
                 break;
             }
-            offset = offset.saturating_add(read as u64);
-            if line.len() > MAX_LINE {
+            line_number += 1;
+            offset = offset.saturating_add(read);
+            if read > MAX_LINE as u64 || skipping {
+                skipping = false;
+                report.warn(
+                    "Oversized provider log line skipped; billing evidence may be incomplete.",
+                );
                 continue;
             }
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            let Some(value) = value.and_then(|value| serde_json::to_value(value).ok()) else {
                 continue;
             };
-            let Some(event) = parse(&value, &path, line_number, report) else {
+            let Some(event) = parse(&value, &path, line_number, &mut state) else {
                 continue;
             };
             if checkpoint.seen.len() >= MAX_SEEN {
@@ -681,15 +798,18 @@ fn scan_jsonl(
                 offset,
                 size,
                 mtime_ms: modified,
+                line: line_number,
+                state,
+                skipping_line: skipping,
             },
         );
         report.sources.push(source);
     }
 }
 
-fn claude_paths(root: &Path) -> Vec<PathBuf> {
+fn claude_paths(root: &Path, checkpoint: &Checkpoint) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    files(root, "jsonl", &mut paths, 0);
+    files(root, "jsonl", &mut paths, 0, checkpoint);
     paths
 }
 
@@ -703,7 +823,11 @@ pub fn scan_claude(root: &Path) -> Vec<BillingEvent> {
 /// partial final line and dedupes provider message ids across files.
 pub fn scan_claude_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport {
     let mut report = ScanReport::default();
-    let paths = claude_paths(root);
+    let paths = claude_paths(root, checkpoint);
+    if paths.len() == MAX_FILES {
+        report.truncated = true;
+        report.warn("File discovery limit reached; additional logs may remain.");
+    }
     scan_jsonl(
         "Claude Code",
         paths,
@@ -725,22 +849,12 @@ pub fn scan_claude_incremental(root: &Path, checkpoint: &mut Checkpoint) -> Vec<
 pub fn scan_codex_report(root: &Path, checkpoint: &mut Checkpoint) -> ScanReport {
     let mut report = ScanReport::default();
     let mut paths = Vec::new();
-    files(root, "jsonl", &mut paths, 0);
-    let mut state = CodexState::default();
-    let mut current_file = PathBuf::new();
-    scan_jsonl(
-        "OpenAI Codex",
-        paths,
-        checkpoint,
-        &mut report,
-        |value, path, line, _| {
-            if path != current_file {
-                state = CodexState::default();
-                current_file = path.to_path_buf();
-            }
-            codex_event(value, path, line, &mut state)
-        },
-    );
+    files(root, "jsonl", &mut paths, 0, checkpoint);
+    if paths.len() == MAX_FILES {
+        report.truncated = true;
+        report.warn("File discovery limit reached; additional logs may remain.");
+    }
+    scan_jsonl("OpenAI Codex", paths, checkpoint, &mut report, codex_event);
     checkpoint.last_scan_ms = now_ms();
     report.events.sort_by_key(|event| event.at_ms);
     report
@@ -759,10 +873,42 @@ struct OpenCodeSession {
     project: Option<String>,
     parent: Option<String>,
     title: Option<String>,
+    model: Option<String>,
 }
 
-fn session_projects(connection: &Connection) -> BTreeMap<String, OpenCodeSession> {
+fn session_projects(connection: &Connection, v2: bool) -> BTreeMap<String, OpenCodeSession> {
     let mut result = BTreeMap::new();
+    let table = if v2 { "session_v2" } else { "session" };
+    if let Ok(mut statement) = connection
+        .prepare(&format!(
+            "SELECT id, directory, parent_id, title, model FROM {table}"
+        ))
+        .or_else(|_| {
+            connection.prepare(&format!(
+                "SELECT id, directory, parent_id, title, NULL FROM {table}"
+            ))
+        })
+    {
+        if let Ok(rows) = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                OpenCodeSession {
+                    project: row.get(1)?,
+                    parent: row.get(2)?,
+                    title: row.get(3)?,
+                    model: row.get::<_, Option<String>>(4)?.map(|model| {
+                        serde_json::from_str::<serde_json::Value>(&model)
+                            .ok()
+                            .and_then(|v| v.get("id").and_then(|s| s.as_str()).map(str::to_owned))
+                            .unwrap_or(model)
+                    }),
+                },
+            ))
+        }) {
+            result.extend(rows.flatten());
+        }
+        return result;
+    }
     let Ok(mut statement) = connection.prepare("SELECT id, data FROM session") else {
         return result;
     };
@@ -781,6 +927,7 @@ fn session_projects(connection: &Connection) -> BTreeMap<String, OpenCodeSession
                         .or_else(|| string(value.pointer("/project/path"))),
                     parent: first_string(&value, &["/parentID", "/parent_id", "/parentId"]),
                     title: string(value.get("title")),
+                    model: string(value.get("modelID")).or_else(|| string(value.get("model"))),
                 },
             );
         }
@@ -809,25 +956,26 @@ fn opencode_event(
     if input == 0 && output == 0 && cache_read == 0 && cache_write == 0 {
         return None;
     }
-    let model = string(data.get("modelID"))
-        .or_else(|| string(data.get("model")))
-        .or_else(|| string(data.pointer("/model/id")))
-        .unwrap_or_else(|| "unknown".into());
-    let provider = string(data.get("providerID")).unwrap_or_else(|| "OpenCode".into());
-    let at_ms = timestamp_value(data.pointer("/time/created"))
-        .or_else(|| timestamp_value(data.get("created")))
-        .unwrap_or(at_fallback);
     let session = data
         .get("sessionID")
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
     let session_info = session.as_deref().and_then(|session| projects.get(session));
+    let model = string(data.get("modelID"))
+        .or_else(|| string(data.get("model")))
+        .or_else(|| string(data.pointer("/model/id")))
+        .or_else(|| session_info.and_then(|session| session.model.clone()))
+        .unwrap_or_else(|| "unknown".into());
+    let provider = string(data.get("providerID")).unwrap_or_else(|| "OpenCode".into());
+    let at_ms = timestamp_value(data.pointer("/time/created"))
+        .or_else(|| timestamp_value(data.get("created")))
+        .unwrap_or(at_fallback);
     let project = string(data.get("directory"))
         .or_else(|| string(data.get("path")))
         .or_else(|| session_info.and_then(|session| session.project.clone()));
     let recorded = float(data.get("cost"));
     let cost = recorded.or_else(|| priced_cost(&model, input, output, cache_read, cache_write));
-    let mut attribution = Attribution::new(if session.is_some() {
+    let mut attribution = Attribution::new(if session_info.is_some() {
         WorkKind::Main
     } else {
         WorkKind::Unknown
@@ -874,31 +1022,69 @@ pub fn scan_opencode_db(path: &Path) -> Result<Vec<BillingEvent>, String> {
     )
     .map_err(|_| "OpenCode database is locked or unavailable".to_string())?;
     let _ = connection.busy_timeout(std::time::Duration::from_secs(2));
-    let projects = session_projects(&connection);
-    let mut statement = connection
-        .prepare("SELECT id, data, time_created FROM message ORDER BY time_created DESC LIMIT ?1")
-        .or_else(|_| connection.prepare("SELECT id, data, 0 FROM message LIMIT ?1"))
-        .map_err(|_| "OpenCode message schema is not recognized".to_string())?;
+    connection
+        .execute_batch("BEGIN")
+        .map_err(|_| "Could not open an OpenCode billing snapshot".to_string())?;
+    let v2 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_message WHERE type = 'assistant')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    let projects = session_projects(&connection, v2);
+    let queries = if v2 {
+        vec![
+            "SELECT id, data, time_created, session_id, type FROM session_message WHERE type = 'assistant'",
+            "SELECT CAST(rowid AS TEXT), data, 0, session_id, type FROM session_message WHERE type = 'assistant'",
+        ]
+    } else {
+        vec![
+            "SELECT id, data, time_created, session_id, '' FROM message",
+            "SELECT id, data, 0, session_id, '' FROM message",
+            "SELECT id, data, time_created, NULL, '' FROM message",
+            "SELECT id, data, 0, NULL, '' FROM message",
+        ]
+    };
+    let mut statement = queries
+        .into_iter()
+        .find_map(|query| connection.prepare(query).ok())
+        .ok_or_else(|| "OpenCode message schema is not recognized".to_string())?;
     let rows = statement
-        .query_map([MAX_OPENCODE_ROWS], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(|_| "OpenCode messages could not be read".to_string())?;
     let mut events = Vec::new();
-    for row in rows.flatten() {
-        let Ok(data) = serde_json::from_str::<serde_json::Value>(&row.1) else {
+    for row in rows {
+        let row = row.map_err(|_| "An OpenCode billing row could not be read".to_string())?;
+        let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&row.1) else {
             continue;
         };
+        if !data.is_object() {
+            continue;
+        }
+        if data.get("sessionID").and_then(|s| s.as_str()).is_none() {
+            data["sessionID"] = row.3.clone().into();
+        }
+        if data.get("role").is_none() && !row.4.is_empty() {
+            data["role"] = row.4.clone().into();
+        }
         let fallback = if row.2 < 10_000_000_000 && row.2 > 0 {
             row.2 as u64 * 1000
         } else {
             row.2.max(0) as u64
         };
         if let Some(event) = opencode_event(&row.0, &data, fallback, &projects) {
+            if events.len() >= MAX_SEEN {
+                return Err("OpenCode billing exceeds the million-event safety limit".into());
+            }
             events.push(event);
         }
     }
@@ -1044,6 +1230,38 @@ pub struct Day {
     pub totals: Totals,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TimeRange {
+    Day,
+    Week,
+    Month,
+    #[default]
+    All,
+}
+
+impl TimeRange {
+    pub const ALL: [Self; 4] = [Self::Day, Self::Week, Self::Month, Self::All];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Day => "1d",
+            Self::Week => "7d",
+            Self::Month => "30d",
+            Self::All => "all",
+        }
+    }
+
+    fn includes(self, at_ms: u64, now: u64) -> bool {
+        let days = match self {
+            Self::Day => 1,
+            Self::Week => 7,
+            Self::Month => 30,
+            Self::All => return true,
+        };
+        at_ms > 0 && at_ms <= now && at_ms >= now.saturating_sub(days * 86_400_000)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AlertLevel {
@@ -1102,6 +1320,10 @@ fn slices(map: BTreeMap<String, Totals>) -> Vec<Slice> {
 }
 
 pub fn summarize(report: ScanReport) -> Summary {
+    summarize_range(&report, TimeRange::All, now_ms())
+}
+
+pub fn summarize_range(report: &ScanReport, range: TimeRange, now: u64) -> Summary {
     let mut totals = Totals::default();
     let mut by_provider = BTreeMap::new();
     let mut by_harness = BTreeMap::new();
@@ -1110,7 +1332,11 @@ pub fn summarize(report: ScanReport) -> Summary {
     let mut by_attribution = BTreeMap::new();
     let mut by_day = BTreeMap::new();
     let mut unpriced = BTreeSet::new();
-    for event in &report.events {
+    for event in report
+        .events
+        .iter()
+        .filter(|event| range.includes(event.at_ms, now))
+    {
         totals.add(event);
         push_slice(&mut by_provider, Some(&event.provider), event);
         push_slice(&mut by_harness, Some(&event.harness), event);
@@ -1124,7 +1350,9 @@ pub fn summarize(report: ScanReport) -> Summary {
         if event.cost_usd.is_none() {
             unpriced.insert(event.model.clone());
         }
-        let date = chrono::DateTime::from_timestamp_millis(event.at_ms as i64)
+        let date = (event.at_ms > 0)
+            .then(|| chrono::DateTime::from_timestamp_millis(event.at_ms as i64))
+            .flatten()
             .map(|at| at.format("%Y-%m-%d").to_string())
             .unwrap_or_else(|| "unknown".into());
         by_day
@@ -1138,9 +1366,8 @@ pub fn summarize(report: ScanReport) -> Summary {
     }
     let mut by_day = by_day.into_values().collect::<Vec<_>>();
     by_day.sort_by(|a, b| b.date.cmp(&a.date));
-    by_day.truncate(90);
     Summary {
-        generated_ms: now_ms(),
+        generated_ms: now,
         totals,
         by_provider: slices(by_provider),
         by_harness: slices(by_harness),
@@ -1148,10 +1375,10 @@ pub fn summarize(report: ScanReport) -> Summary {
         by_project: slices(by_project),
         by_attribution: slices(by_attribution),
         by_day,
-        sources: report.sources,
+        sources: report.sources.clone(),
         last_scan_ms: report.checkpoint.last_scan_ms,
         unpriced_models: unpriced.into_iter().collect(),
-        warnings: report.warnings,
+        warnings: report.warnings.clone(),
         files: report.files,
         bytes: report.bytes,
         truncated: report.truncated,
@@ -1176,7 +1403,7 @@ impl Summary {
         if self.totals.events == 0 {
             alerts.push(Alert {
                 level: AlertLevel::Info,
-                message: "No Claude Code, Codex or OpenCode billing logs were found in the default locations.".into(),
+                message: "No billing events found in this period.".into(),
             });
         }
         if self.totals.unpriced_events > 0 {
@@ -1202,7 +1429,12 @@ impl Summary {
                 ),
             });
         }
-        if self.truncated {
+        if self.truncated
+            && !self
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("limit reached"))
+        {
             alerts.push(Alert {
                 level: AlertLevel::Warning,
                 message: "The scan reached a file, byte or event bound. The summary is incomplete."
@@ -1210,11 +1442,20 @@ impl Summary {
             });
         }
         for warning in &self.warnings {
+            if alerts.iter().any(|alert| &alert.message == warning) {
+                continue;
+            }
             alerts.push(Alert {
                 level: AlertLevel::Warning,
                 message: warning.clone(),
             });
         }
+        alerts.extend(self.budget_alerts(monthly_budget_usd));
+        alerts
+    }
+
+    pub fn budget_alerts(&self, monthly_budget_usd: Option<f64>) -> Vec<Alert> {
+        let mut alerts = Vec::new();
         if let Some(limit) = monthly_budget_usd.filter(|limit| limit.is_finite() && *limit > 0.) {
             let spent = self.month_to_date_cost();
             let percent = spent / limit * 100.;
@@ -1324,7 +1565,10 @@ pub struct Evidence {
 impl Evidence {
     pub const VERSION: u32 = 1;
 
-    pub fn new(device: impl Into<String>, summary: Summary) -> Self {
+    pub fn new(device: impl Into<String>, mut summary: Summary) -> Self {
+        // The relay accepts bounded diagnostics; aggregate totals still cover the full archive.
+        summary.by_day.truncate(400);
+        summary.sources.truncate(4_000);
         Self {
             version: Self::VERSION,
             device: device.into(),
@@ -1362,15 +1606,62 @@ impl Evidence {
     }
 }
 
-/// Scan every supported local source with the default bounds.
+fn scan_batches(root: &Path, scanner: fn(&Path, &mut Checkpoint) -> ScanReport) -> ScanReport {
+    let mut checkpoint = Checkpoint::default();
+    let mut result = ScanReport::default();
+    let mut sources = BTreeMap::<String, SourceFile>::new();
+    loop {
+        let before = (
+            checkpoint.files.len(),
+            checkpoint.files.values().map(|f| f.offset).sum::<u64>(),
+        );
+        let mut batch = scanner(root, &mut checkpoint);
+        let pending = batch.truncated;
+        result.bytes += batch.bytes;
+        result.events.append(&mut batch.events);
+        for mut source in batch.sources {
+            if let Some(previous) = sources.get(&source.path) {
+                source.events += previous.events;
+            }
+            sources.insert(source.path.clone(), source);
+        }
+        for warning in batch.warnings {
+            if !matches!(
+                warning.as_str(),
+                "Scan batch limit reached; additional provider logs remain."
+                    | "File discovery limit reached; additional logs may remain."
+                    | "Event limit reached; older or additional log lines were not read."
+                    | "File limit reached; additional provider logs were not read."
+            ) {
+                result.warn(warning);
+            }
+        }
+        let after = (
+            checkpoint.files.len(),
+            checkpoint.files.values().map(|f| f.offset).sum::<u64>(),
+        );
+        if !pending || after == before || checkpoint.seen.len() >= MAX_SEEN {
+            result.truncated = pending;
+            if pending {
+                result.warn("Scan limit reached; the summary is incomplete. Remaining logs were not included.");
+            }
+            break;
+        }
+    }
+    result.files = sources.len();
+    result.sources = sources.into_values().collect();
+    result.checkpoint = checkpoint;
+    result
+}
+
+/// Scan supported sources in bounded batches; cached bytes never consume the next batch.
 pub fn scan_all() -> ScanReport {
     let mut report = ScanReport::default();
     let mut checkpoint = Checkpoint::default();
     if let Some(root) = default_claude_root() {
-        let mut claude_checkpoint = Checkpoint::default();
-        let mut claude = scan_claude_report(&root, &mut claude_checkpoint);
-        checkpoint.files.extend(claude_checkpoint.files);
-        checkpoint.seen.extend(claude_checkpoint.seen);
+        let mut claude = scan_batches(&root, scan_claude_report);
+        checkpoint.files.append(&mut claude.checkpoint.files);
+        checkpoint.seen.append(&mut claude.checkpoint.seen);
         report.events.append(&mut claude.events);
         report.sources.append(&mut claude.sources);
         report.warnings.append(&mut claude.warnings);
@@ -1379,10 +1670,9 @@ pub fn scan_all() -> ScanReport {
         report.truncated |= claude.truncated;
     }
     if let Some(root) = default_codex_root() {
-        let mut codex_checkpoint = Checkpoint::default();
-        let mut codex = scan_codex_report(&root, &mut codex_checkpoint);
-        checkpoint.files.extend(codex_checkpoint.files);
-        checkpoint.seen.extend(codex_checkpoint.seen);
+        let mut codex = scan_batches(&root, scan_codex_report);
+        checkpoint.files.append(&mut codex.checkpoint.files);
+        checkpoint.seen.append(&mut codex.checkpoint.seen);
         report.events.append(&mut codex.events);
         report.sources.append(&mut codex.sources);
         report.warnings.append(&mut codex.warnings);
@@ -1411,6 +1701,7 @@ pub fn scan_all() -> ScanReport {
                             offset: 0,
                             size: metadata.len(),
                             mtime_ms: mtime_ms(&metadata),
+                            ..Default::default()
                         },
                     );
                     report.sources.push(SourceFile {
@@ -1506,6 +1797,365 @@ mod tests {
         assert_eq!(summary.by_project.len(), 2);
         assert_eq!(summary.unpriced_models, vec!["unknown-model"]);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opus_55_uses_verified_prices_and_one_hour_cache_writes() {
+        let value = serde_json::json!({"type":"assistant", "sessionId":"main", "timestamp":"2026-11-05T10:00:00Z",
+            "message":{"id":"opus55", "model":"claude-opus-5-5", "usage":{"input_tokens":1000000, "output_tokens":1000000,
+                "cache_read_input_tokens":1000000, "cache_creation_input_tokens":1000000,
+                "cache_creation":{"ephemeral_1h_input_tokens":1000000}}}});
+        assert!((claude_event(&value).unwrap().cost_usd.unwrap() - 32.2).abs() < 1e-9);
+        assert_eq!(price("claude-opus-4-6", 0).unwrap().input, 5.);
+        assert!(price("claude-opus-5-6", 0).is_none());
+    }
+
+    #[test]
+    fn sonnet_and_haiku_55_prices_include_cache_and_context_tiers() {
+        let sonnet = price("anthropic/claude-sonnet-5.5-20260928", 1_000_000).unwrap();
+        assert_eq!(
+            (
+                sonnet.input,
+                sonnet.output,
+                sonnet.cache_read,
+                sonnet.cache_write
+            ),
+            (2., 10., 0.1, 2.5)
+        );
+        let low = price("claude-haiku-5-5", 100_000).unwrap();
+        let high = price("claude-haiku-5-5", 100_001).unwrap();
+        assert_eq!(
+            (low.input, low.output, low.cache_read, low.cache_write),
+            (0.1, 0.5, 0.01, 0.125)
+        );
+        assert_eq!(
+            (high.input, high.output, high.cache_read, high.cache_write),
+            (0.5, 2.5, 0.05, 0.625)
+        );
+        let value = serde_json::json!({"type":"assistant","timestamp":"2026-11-06T10:00:00Z",
+            "message":{"id":"cache","model":"claude-haiku-5-5","usage":{
+                "input_tokens":1,"cache_creation_input_tokens":100000,
+                "cache_creation":{"ephemeral_1h_input_tokens":100000}}}});
+        assert!((claude_event(&value).unwrap().cost_usd.unwrap() - 0.1000005).abs() < 1e-9);
+        assert!(
+            price("codex-auto-review", 100).is_none(),
+            "a backend alias is not proof of API pricing"
+        );
+    }
+
+    #[test]
+    fn only_zero_token_synthetic_events_are_known_to_be_free() {
+        let mut value = serde_json::json!({"type":"assistant","timestamp":"2026-11-06T10:00:00Z",
+            "message":{"id":"synthetic","model":"<synthetic>","usage":{}}});
+        let free = claude_event(&value).unwrap();
+        assert_eq!(free.cost_usd, Some(0.));
+        assert_eq!(free.attribution.kind, WorkKind::Internal);
+        value["message"]["usage"]["input_tokens"] = 1.into();
+        assert!(claude_event(&value).unwrap().cost_usd.is_none());
+        value["message"]["model"] = "unknown-model".into();
+        value["message"]["usage"]["input_tokens"] = 0.into();
+        assert!(claude_event(&value).unwrap().cost_usd.is_none());
+    }
+
+    #[test]
+    fn ranges_filter_every_breakdown_at_exact_rolling_boundaries() {
+        let now = timestamp_ms("2026-11-06T12:00:00Z").unwrap();
+        let day = 86_400_000;
+        let event = claude_event(
+            &serde_json::json!({"type":"assistant","timestamp":"2026-11-06T10:00:00Z",
+            "cwd":"/fixture","sessionId":"s","message":{"id":"m","model":"claude-sonnet-5-5",
+            "usage":{"input_tokens":1000}}}),
+        )
+        .unwrap();
+        let dates = [
+            now,
+            now - day,
+            now - day - 1,
+            now - 7 * day,
+            now - 7 * day - 1,
+            now - 30 * day,
+            now - 30 * day - 1,
+            0,
+            now + 1,
+        ];
+        let report = ScanReport {
+            events: dates
+                .into_iter()
+                .map(|at_ms| BillingEvent {
+                    at_ms,
+                    ..event.clone()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        for (range, count) in [
+            (TimeRange::Day, 2),
+            (TimeRange::Week, 4),
+            (TimeRange::Month, 6),
+            (TimeRange::All, 9),
+        ] {
+            let summary = summarize_range(&report, range, now);
+            assert_eq!(summary.totals.events, count);
+            for slices in [
+                &summary.by_harness,
+                &summary.by_model,
+                &summary.by_provider,
+                &summary.by_project,
+                &summary.by_attribution,
+            ] {
+                assert_eq!(
+                    slices.iter().map(|slice| slice.totals.events).sum::<u64>(),
+                    count
+                );
+            }
+            assert_eq!(
+                summary
+                    .by_day
+                    .iter()
+                    .map(|day| day.totals.events)
+                    .sum::<u64>(),
+                count
+            );
+        }
+        assert!(
+            summarize_range(&report, TimeRange::All, now)
+                .by_day
+                .iter()
+                .any(|day| day.date == "unknown")
+        );
+    }
+
+    #[test]
+    fn all_keeps_old_daily_totals_while_relay_diagnostics_stay_bounded() {
+        let now = timestamp_ms("2026-11-06T12:00:00Z").unwrap();
+        let event = claude_event(
+            &serde_json::json!({"type":"assistant","timestamp":"2026-11-06T10:00:00Z",
+            "message":{"id":"m","model":"claude-sonnet-5-5","usage":{"input_tokens":1}}}),
+        )
+        .unwrap();
+        let report = ScanReport {
+            events: (0..450)
+                .map(|days| BillingEvent {
+                    at_ms: now - days * 86_400_000,
+                    ..event.clone()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let summary = summarize_range(&report, TimeRange::All, now);
+        assert_eq!(summary.by_day.len(), 450);
+        let totals = summary.totals.clone();
+        let evidence = Evidence::new("fixture", summary);
+        evidence.validate().unwrap();
+        assert_eq!(evidence.summary.by_day.len(), 400);
+        assert_eq!(evidence.summary.totals, totals);
+    }
+
+    #[test]
+    fn metadata_projection_reads_large_claude_records_without_retaining_content() {
+        let root = fixture("large-record");
+        let value = serde_json::json!({"type":"assistant","timestamp":"2026-11-06T10:00:00Z",
+            "session_id":"child","agent_id":"worker","cwd":"/fixture",
+            "message":{"id":"large","model":"claude-sonnet-5-5","usage":{"input_tokens":100},
+                "content":[{"type":"text","text":"private text".repeat(200_000)}]}});
+        let text = value.to_string();
+        assert!(text.len() > 1024 * 1024);
+        let metadata: jsonl::Metadata = serde_json::from_str(&text).unwrap();
+        let projected = serde_json::to_value(metadata).unwrap();
+        assert!(!projected.to_string().contains("private text"));
+        assert!(projected.get("payload").is_none());
+        assert_eq!(claude_event(&value), claude_event(&projected));
+        fs::write(root.join("large.jsonl"), format!("{text}\n")).unwrap();
+        let report = scan_batches(&root, scan_claude_report);
+        assert_eq!(report.events.len(), 1);
+        assert_eq!(report.events[0].input_tokens, 100);
+        assert!(report.warnings.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn file_discovery_continues_past_one_batch_without_duplicates() {
+        let root = fixture("file-pages");
+        for id in 0..MAX_FILES + 3 {
+            fs::write(
+                root.join(format!("{id}.jsonl")),
+                format!(
+                    "{}\n",
+                    serde_json::json!({
+                "type":"assistant","timestamp":"2026-11-06T10:00:00Z", "message":{
+                    "id":id.to_string(),"model":"claude-sonnet-5-5","usage":{"input_tokens":1}}})
+                ),
+            )
+            .unwrap();
+        }
+        let report = scan_batches(&root, scan_claude_report);
+        assert_eq!(report.events.len(), MAX_FILES + 3);
+        assert_eq!(report.files, MAX_FILES + 3);
+        assert!(!report.truncated);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sqlite_billing_streams_past_100k_rows_even_with_identical_timestamps() {
+        let root = fixture("sqlite-pages");
+        let path = root.join("opencode.db");
+        let mut connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE message (id TEXT PRIMARY KEY, data TEXT, time_created INTEGER);",
+            )
+            .unwrap();
+        let transaction = connection.transaction().unwrap();
+        let data = serde_json::json!({"role":"assistant","modelID":"claude-sonnet-5-5","tokens":{"input":1},"cost":0.1}).to_string();
+        for id in 0..100_007 {
+            transaction
+                .execute(
+                    "INSERT INTO message VALUES (?1,?2,1762426800000)",
+                    [id.to_string(), data.clone()],
+                )
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        let events = scan_opencode_db(&path).unwrap();
+        assert_eq!(events.len(), 100_007);
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| &event.key)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            events.len()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn large_jsonl_files_resume_in_bounded_batches_and_cached_bytes_are_free() {
+        let root = fixture("large-batches");
+        let mut file = fs::File::create(root.join("large.jsonl")).unwrap();
+        let padding = "x".repeat(256 * 1024);
+        for id in 0..160 {
+            writeln!(file, "{}", serde_json::json!({"type":"assistant", "timestamp":"2026-11-05T10:00:00Z", "padding":padding,
+                "message":{"id":format!("m{id}"),"model":"claude-opus-5-5","usage":{"input_tokens":1}}})).unwrap();
+        }
+        let mut checkpoint = Checkpoint::default();
+        let first = scan_claude_report(&root, &mut checkpoint);
+        assert!(
+            first.truncated
+                && !first.events.is_empty()
+                && first.bytes <= MAX_BYTES + MAX_LINE as u64
+        );
+        let second = scan_claude_report(&root, &mut checkpoint);
+        assert_eq!(first.events.len() + second.events.len(), 160);
+        assert!(!second.truncated);
+        assert_eq!(scan_claude_report(&root, &mut checkpoint).bytes, 0);
+        let all = scan_batches(&root, scan_claude_report);
+        assert_eq!(all.events.len(), 160);
+        assert!(!all.truncated);
+        assert!(all.warnings.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn incremental_codex_preserves_model_attribution_totals_and_line_identity() {
+        let root = fixture("codex-resume");
+        let path = root.join("rollout.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "{}", serde_json::json!({"type":"session_meta","payload":{"id":"main","model":"gpt-5","cwd":"/code"}})).unwrap();
+        let mut checkpoint = Checkpoint::default();
+        for total in [100, 120, 140] {
+            writeln!(file, "{}", serde_json::json!({"type":"event_msg", "timestamp":"2026-11-05T10:00:00Z",
+                "payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":total,"output_tokens":total}}}})).unwrap();
+            let events = scan_codex_report(&root, &mut checkpoint).events;
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].model, "gpt-5");
+            assert_eq!(events[0].input_tokens, if total == 100 { 100 } else { 20 });
+            assert_eq!(events[0].attribution.kind, WorkKind::Main);
+        }
+        assert_eq!(checkpoint.seen.len(), 3);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_and_partial_lines_resume_without_losing_the_next_event() {
+        let root = fixture("oversized-partial");
+        let path = root.join("log.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(&vec![b'x'; MAX_LINE + 100]).unwrap();
+        let mut checkpoint = Checkpoint::default();
+        let first = scan_claude_report(&root, &mut checkpoint);
+        assert!(first.events.is_empty());
+        assert!(
+            first
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("Oversized"))
+        );
+        let event = serde_json::json!({"type":"assistant", "timestamp":"2026-11-05T10:00:00Z",
+            "message":{"id":"after-oversized","model":"claude-opus-5-5","usage":{"input_tokens":1}}}).to_string();
+        write!(file, "\n{event}").unwrap();
+        assert!(scan_claude_report(&root, &mut checkpoint).events.is_empty());
+        writeln!(file).unwrap();
+        let events = scan_claude_report(&root, &mut checkpoint).events;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].input_tokens, 1);
+        assert_eq!(scan_claude_report(&root, &mut checkpoint).bytes, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn relational_opencode_v1_and_v2_supply_session_identity_and_parent() {
+        let root = fixture("relational-opencode");
+        for v2 in [false, true] {
+            let path = root.join(if v2 { "v2.db" } else { "v1.db" });
+            let c = Connection::open(&path).unwrap();
+            let table = if v2 { "session_v2" } else { "session" };
+            c.execute_batch(&format!("CREATE TABLE {table} (id TEXT, directory TEXT, parent_id TEXT, title TEXT);
+                INSERT INTO {table} VALUES ('main','/repo',NULL,'Main'),('child','/repo','main','Child');")).unwrap();
+            let data = serde_json::json!({"role":"assistant", "modelID":"claude-opus-5-5", "tokens":{"input":1000000,"output":1000000}}).to_string();
+            if v2 {
+                c.execute_batch("CREATE TABLE session_message (id TEXT, session_id TEXT, type TEXT, seq INTEGER, data TEXT, time_created INTEGER);").unwrap();
+                c.execute("INSERT INTO session_message VALUES ('m','child','assistant',1,?1,1762336800000)", [&data]).unwrap();
+            } else {
+                c.execute_batch("CREATE TABLE message (id TEXT, data TEXT, time_created INTEGER, session_id TEXT);").unwrap();
+                c.execute(
+                    "INSERT INTO message VALUES ('m',?1,1762336800000,'child')",
+                    [&data],
+                )
+                .unwrap();
+            }
+            let events = scan_opencode_db(&path).unwrap();
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].attribution.kind, WorkKind::Subagent);
+            assert_eq!(events[0].attribution.parent.as_deref(), Some("main"));
+            assert_eq!(events[0].project.as_deref(), Some("/repo"));
+            assert_eq!(events[0].cost_usd, Some(24.));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_limit_alerts_are_not_repeated_or_hidden() {
+        let warning = "Byte limit reached; remaining provider logs were not read.".to_string();
+        let summary = summarize(ScanReport {
+            truncated: true,
+            warnings: vec![warning.clone(), warning.clone()],
+            ..Default::default()
+        });
+        let alerts = summary.alerts(None);
+        assert_eq!(
+            alerts
+                .iter()
+                .filter(|alert| alert.message == warning)
+                .count(),
+            1
+        );
+        assert!(
+            !alerts
+                .iter()
+                .any(|alert| alert.message.contains("file, byte or event bound"))
+        );
     }
 
     #[test]
@@ -1716,8 +2366,8 @@ mod tests {
     #[test]
     fn long_context_and_alert_budgets_are_explicit() {
         assert!(
-            price("claude-sonnet-4-5", true).unwrap().input
-                > price("claude-sonnet-4-5", false).unwrap().input
+            price("claude-sonnet-4-5", 200_001).unwrap().input
+                > price("claude-sonnet-4-5", 200_000).unwrap().input
         );
         let mut summary = Summary {
             totals: Totals {

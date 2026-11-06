@@ -7,6 +7,7 @@ pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod titlebar;
 pub(crate) mod trace;
+mod view_switcher;
 
 /// Empty conversations have no execution data, not a sample agent run.
 pub(crate) fn empty_activity(
@@ -28,18 +29,17 @@ pub(crate) fn empty_activity(
         .justify_center()
         .gap(px(10.))
         .p(px(24.))
-        .bg(p.bg)
         .child(Icon::new(icon_name).size(px(28.)).text_color(p.muted_fg))
         .child(
             div()
-                .text_size(px(14.))
+                .text_size(crate::workspace_text::size(14., cx))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
                 .child(title),
         )
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(crate::workspace_text::size(12., cx))
                 .text_color(p.muted_fg)
                 .text_center()
                 .child(description),

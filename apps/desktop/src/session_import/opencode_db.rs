@@ -12,14 +12,15 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-const MAX_SESSIONS: usize = 256;
 const MAX_MESSAGES_PER_SESSION: usize = 30_000;
 const MAX_PARTS_PER_SESSION: usize = 60_000;
 
+#[cfg(test)]
 pub(super) fn load(path: &Path) -> Result<(Vec<Candidate>, Vec<String>), String> {
     load_inner(path, None)
 }
 
+#[cfg(test)]
 pub(super) fn load_selected(
     path: &Path,
     ids: &HashSet<String>,
@@ -27,43 +28,73 @@ pub(super) fn load_selected(
     load_inner(path, Some(ids))
 }
 
+#[cfg(test)]
 fn load_inner(
     path: &Path,
     filter: Option<&HashSet<String>>,
 ) -> Result<(Vec<Candidate>, Vec<String>), String> {
+    let mut candidates = Vec::new();
+    let warnings = visit(
+        path,
+        filter,
+        &mut |candidate| {
+            candidates.push(candidate);
+            Ok(())
+        },
+        &mut |_, _| {},
+    )?;
+    Ok((candidates, warnings))
+}
+
+pub(super) fn visit(
+    path: &Path,
+    filter: Option<&HashSet<String>>,
+    candidate: &mut dyn FnMut(Candidate) -> Result<(), String>,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Vec<String>, String> {
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .map_err(|_| "OpenCode database is locked or unavailable".to_string())?;
     let _ = connection.busy_timeout(std::time::Duration::from_secs(2));
-    if connection
-        .prepare("SELECT 1 FROM session_v2 LIMIT 1")
-        .is_ok()
-        && let Ok((candidates, warnings)) = load_v2(&connection, filter)
-        && !candidates.is_empty()
+    let v2 = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM session_v2 WHERE parent_id IS NULL)",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if v2
+        && connection
+            .prepare("SELECT type, data FROM session_message LIMIT 0")
+            .is_ok()
     {
-        return Ok((candidates, warnings));
+        let (warnings, emitted) = load_v2(&connection, filter, candidate, progress)?;
+        if emitted > 0 || connection.prepare("SELECT 1 FROM session LIMIT 0").is_err() {
+            return Ok(warnings);
+        }
     }
-    load_v1(&connection, filter)
+    load_v1(&connection, filter, candidate, progress)
 }
 
 fn load_v2(
     connection: &Connection,
     filter: Option<&HashSet<String>>,
-) -> Result<(Vec<Candidate>, Vec<String>), String> {
+    candidate: &mut dyn FnMut(Candidate) -> Result<(), String>,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<(Vec<String>, usize), String> {
     let mut warnings = Vec::new();
     let mut session_statement = connection
         .prepare(
             "SELECT id, title, directory, model, time_updated
              FROM session_v2
              WHERE parent_id IS NULL
-             ORDER BY time_updated DESC
-             LIMIT ?1",
+             ORDER BY time_updated DESC",
         )
         .map_err(|_| "OpenCode v2 session schema is not recognized".to_string())?;
-    let mut sessions = session_statement
-        .query_map([MAX_SESSIONS], |row| {
+    let sessions = session_statement
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, Option<String>>(1)?,
@@ -72,14 +103,20 @@ fn load_v2(
                 row.get::<_, i64>(4)?,
             ))
         })
-        .map_err(|_| "OpenCode v2 sessions could not be read".to_string())?;
+        .map_err(|_| "OpenCode v2 sessions could not be read".to_string())?
+        .filter(|row| {
+            row.as_ref()
+                .map_or(true, |row| filter.is_none_or(|ids| ids.contains(&row.0)))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "OpenCode v2 sessions could not be decoded".to_string())?;
 
-    let mut candidates = Vec::new();
+    let total = sessions.len();
+    progress(0, total);
     let mut skipped = 0usize;
-    while let Some(Ok((id, title, directory, model, updated))) = sessions.next() {
-        if filter.is_some_and(|ids| !ids.contains(&id)) {
-            continue;
-        }
+    let mut emitted = 0usize;
+    for (index, (id, title, directory, model, updated)) in sessions.into_iter().enumerate() {
+        progress(index + 1, total);
         let mut message_statement = match connection.prepare(
             "SELECT type, data FROM session_message
              WHERE session_id = ?1
@@ -210,47 +247,48 @@ fn load_v2(
                     })
                     .unwrap_or_else(|| "Imported conversation".into())
             });
-        candidates.push(Candidate {
+        candidate(Candidate {
             source_id: id,
             title,
             directory: (!directory.trim().is_empty()).then_some(directory),
             model: model_name(model.as_deref()),
             transcript,
             at_ms: ms(Some(updated)),
-        });
+        })?;
+        emitted += 1;
     }
     if skipped > 0 {
         warnings.push(format!(
             "Skipped {skipped} OpenCode sessions without readable text or tool history"
         ));
     }
-    Ok((candidates, warnings))
+    Ok((warnings, emitted))
 }
 
 fn load_v1(
     connection: &Connection,
     filter: Option<&HashSet<String>>,
-) -> Result<(Vec<Candidate>, Vec<String>), String> {
+    candidate: &mut dyn FnMut(Candidate) -> Result<(), String>,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Vec<String>, String> {
     let mut warnings = Vec::new();
     let mut session_statement = connection
         .prepare(
             "SELECT id, title, directory, model, time_updated
              FROM session
              WHERE parent_id IS NULL
-             ORDER BY time_updated DESC
-             LIMIT ?1",
+             ORDER BY time_updated DESC",
         )
         .or_else(|_| {
             connection.prepare(
                 "SELECT id, title, directory, model, time_updated
                  FROM session
-                 ORDER BY time_updated DESC
-                 LIMIT ?1",
+                 ORDER BY time_updated DESC",
             )
         })
         .map_err(|_| "OpenCode session schema is not recognized".to_string())?;
-    let mut sessions = session_statement
-        .query_map([MAX_SESSIONS], |row| {
+    let sessions = session_statement
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -259,13 +297,18 @@ fn load_v1(
                 row.get::<_, i64>(4)?,
             ))
         })
-        .map_err(|_| "OpenCode sessions could not be read".to_string())?;
+        .map_err(|_| "OpenCode sessions could not be read".to_string())?
+        .filter(|row| {
+            row.as_ref()
+                .map_or(true, |row| filter.is_none_or(|ids| ids.contains(&row.0)))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "OpenCode sessions could not be decoded".to_string())?;
 
-    let mut candidates = Vec::new();
-    while let Some(Ok((id, title, directory, model, updated))) = sessions.next() {
-        if filter.is_some_and(|ids| !ids.contains(&id)) {
-            continue;
-        }
+    let total = sessions.len();
+    progress(0, total);
+    for (index, (id, title, directory, model, updated)) in sessions.into_iter().enumerate() {
+        progress(index + 1, total);
         let mut messages = match connection.prepare(
             "SELECT id, data FROM message
              WHERE session_id = ?1
@@ -404,16 +447,16 @@ fn load_v1(
             warnings.push(format!("{title}: no readable transcript"));
             continue;
         }
-        candidates.push(Candidate {
+        candidate(Candidate {
             source_id: id,
             title,
             directory: (!directory.trim().is_empty()).then_some(directory),
             model: model_name(model.as_deref()),
             transcript,
             at_ms: ms(Some(updated)),
-        });
+        })?;
     }
-    Ok((candidates, warnings))
+    Ok(warnings)
 }
 
 fn text_item(role: &str, text: &str, at: u64) -> ChatItem {
@@ -534,6 +577,7 @@ fn finish_turn(
         elapsed_ms: finished.and_then(|end| end.checked_sub(started)),
         usage: Some(cumulative.snapshot()),
         usage_before: Some(before.snapshot()),
+        speaker: None,
     });
 }
 
@@ -726,6 +770,114 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
+    fn both_database_schemas_read_all_sessions_including_old_selected_histories() {
+        for v2 in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("opencode.db");
+            let connection = Connection::open(&path).unwrap();
+            connection.execute_batch(if v2 {
+                "CREATE TABLE session_v2 (id TEXT PRIMARY KEY, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+                 CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, data TEXT);"
+            } else {
+                "CREATE TABLE session (id TEXT PRIMARY KEY, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+                 CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT, data TEXT, time_created INTEGER);
+                 CREATE TABLE part (id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT, data TEXT, time_created INTEGER);"
+            }).unwrap();
+            let transaction = connection.unchecked_transaction().unwrap();
+            for index in 0..600 {
+                let id = format!("s{index}");
+                transaction
+                    .execute(
+                        &format!(
+                            "INSERT INTO {} VALUES (?1, ?1, '/repo', NULL, NULL, ?2)",
+                            if v2 { "session_v2" } else { "session" }
+                        ),
+                        rusqlite::params![id, index],
+                    )
+                    .unwrap();
+                if v2 {
+                    transaction.execute("INSERT INTO session_message VALUES (?1, ?1, 'user', 1, '{\"text\":\"hello\"}')", [&id]).unwrap();
+                } else {
+                    transaction
+                        .execute(
+                            "INSERT INTO message VALUES (?1, ?1, '{\"role\":\"user\"}', 1)",
+                            [&id],
+                        )
+                        .unwrap();
+                    transaction.execute("INSERT INTO part VALUES (?1, ?1, ?1, '{\"type\":\"text\",\"text\":\"hello\"}', 1)", [&id]).unwrap();
+                }
+            }
+            transaction.commit().unwrap();
+            let mut progress = Vec::new();
+            let mut count = 0;
+            let warnings = super::visit(
+                &path,
+                None,
+                &mut |_| {
+                    count += 1;
+                    Ok(())
+                },
+                &mut |done, total| progress.push((done, total)),
+            )
+            .unwrap();
+            assert_eq!(count, 600);
+            assert!(warnings.is_empty());
+            assert_eq!(progress.first(), Some(&(0, 600)));
+            assert_eq!(progress.last(), Some(&(600, 600)));
+            let (sessions, warnings) = load_selected(&path, &HashSet::from(["s0".into()])).unwrap();
+            assert!(warnings.is_empty());
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(
+                sessions[0].source_id, "s0",
+                "selection is applied before limiting/reading transcripts"
+            );
+        }
+    }
+
+    #[test]
+    fn visitor_failure_is_not_swallowed_or_retried_against_another_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("opencode.db");
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE session_v2 (id TEXT, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE session_message (session_id TEXT, type TEXT, seq INTEGER, data TEXT);
+             INSERT INTO session_v2 VALUES ('s1', 'Test', '/repo', NULL, NULL, 1);
+             INSERT INTO session_message VALUES ('s1', 'user', 1, '{\"text\":\"hello\"}');"
+        ).unwrap();
+        let error = super::visit(
+            &path,
+            None,
+            &mut |_| Err("Import cache is full".into()),
+            &mut |_, _| {},
+        )
+        .unwrap_err();
+        assert_eq!(error, "Import cache is full");
+    }
+
+    #[test]
+    fn empty_v2_histories_still_fall_back_to_readable_legacy_sessions() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("opencode.db");
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE session_v2 (id TEXT, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE session_message (session_id TEXT, type TEXT, seq INTEGER, data TEXT);
+             INSERT INTO session_v2 VALUES ('empty', 'Empty', '/repo', NULL, NULL, 1);
+             CREATE TABLE session (id TEXT, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE message (id TEXT, session_id TEXT, data TEXT, time_created INTEGER);
+             CREATE TABLE part (message_id TEXT, session_id TEXT, id TEXT, data TEXT, time_created INTEGER);
+             INSERT INTO session VALUES ('legacy', 'Legacy', '/repo', NULL, NULL, 1);
+             INSERT INTO message VALUES ('message', 'legacy', '{\"role\":\"user\"}', 1);
+             INSERT INTO part VALUES ('message', 'legacy', 'part', '{\"type\":\"text\",\"text\":\"hello\"}', 1);"
+        ).unwrap();
+        let (sessions, warnings) = load(&path).unwrap();
+        assert!(warnings.is_empty());
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].source_id, "legacy");
+    }
+
+    #[test]
     fn reads_top_level_sessions_text_reasoning_and_tool_parts() {
         let path = std::env::temp_dir().join(format!(
             "dunlin-opencode-sessions-{}.db",
@@ -773,7 +925,7 @@ mod tests {
             .transcript
             .iter()
             .find_map(|item| match item {
-                ChatItem::User { timing, .. } => *timing,
+                ChatItem::User { timing, .. } => timing.clone(),
                 _ => None,
             })
             .expect("user turn timing");
@@ -829,7 +981,7 @@ mod tests {
             .transcript
             .iter()
             .find_map(|item| match item {
-                ChatItem::User { timing, .. } => *timing,
+                ChatItem::User { timing, .. } => timing.clone(),
                 _ => None,
             })
             .expect("user turn timing");

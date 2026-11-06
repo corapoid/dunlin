@@ -143,6 +143,7 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     let settings: StoredSettings =
         serde_json::from_str(r#"{"default_harness":"Claude Code"}"#).unwrap();
     assert_eq!(settings.default_harness, "Claude Code");
+    assert!(settings.hidden_harnesses.is_empty());
     assert_eq!(settings.permission_mode, PermissionMode::Ask);
     assert!(settings.auto_connect);
     assert!(settings.restore_session);
@@ -163,14 +164,12 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     assert!(!settings.chat_timestamps);
     assert!(!settings.chat_duration);
     assert!(settings.chat_logo);
-    assert!(!settings.minimal_mode);
     let mut changed = settings;
     changed.final_answer_only = true;
     changed.stream_responses = false;
     changed.chat_timestamps = true;
     changed.chat_duration = true;
     changed.chat_logo = false;
-    changed.minimal_mode = true;
     changed.ui_font_family = "Helvetica Neue".into();
     changed.code_font_family = "Menlo".into();
     changed.code_font_size = 17.0;
@@ -181,7 +180,6 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     assert!(restored.chat_timestamps);
     assert!(restored.chat_duration);
     assert!(!restored.chat_logo);
-    assert!(restored.minimal_mode);
     assert_eq!(restored.ui_font_family, "Helvetica Neue");
     assert_eq!(restored.code_font_family, "Menlo");
     assert_eq!(restored.code_font_size, 17.0);
@@ -199,6 +197,40 @@ fn unavailable_saved_fonts_fall_back_to_bundled_faces() {
         "Geist Mono"
     );
     assert_eq!(super::available_font("", "Geist", &installed), "Geist");
+}
+
+#[test]
+fn system_theme_and_global_blame_roundtrip_without_resetting_legacy_theme() {
+    use super::Appearance;
+    use dunlin_ui::{WindowAppearance, component::ThemeMode};
+    let legacy: StoredSettings =
+        serde_json::from_str(r#"{"dark":false,"minimal_mode":true,"project_view":"List"}"#)
+            .unwrap();
+    assert_eq!(legacy.appearance, None);
+    assert!(!legacy.dark && !legacy.inline_blame);
+    let mut saved = StoredSettings::default();
+    assert_eq!(saved.appearance, Some(Appearance::System));
+    saved.inline_blame = true;
+    let restored: StoredSettings =
+        serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    assert!(restored.inline_blame);
+    assert_eq!(restored.appearance, Some(Appearance::System));
+    assert_eq!(
+        Appearance::System.mode(WindowAppearance::Dark),
+        ThemeMode::Dark
+    );
+    assert_eq!(
+        Appearance::System.mode(WindowAppearance::Light),
+        ThemeMode::Light
+    );
+    assert_eq!(
+        Appearance::Light.mode(WindowAppearance::Dark),
+        ThemeMode::Light
+    );
+    assert_eq!(
+        Appearance::Dark.mode(WindowAppearance::Light),
+        ThemeMode::Dark
+    );
 }
 
 #[test]

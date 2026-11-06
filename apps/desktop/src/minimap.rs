@@ -194,6 +194,16 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let click_snapshot = snapshot.clone();
     div()
         .id("editor-minimap")
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("editor-minimap")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .aria_label("File map: Git changes and unsaved edits; click to navigate")
         .w(px(100.))
         .h_full()
@@ -203,6 +213,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .border_l_1()
         .border_color(p.border)
         .bg(p.subtle)
+        .rounded_r(px(dunlin_ui::scale::WORKSPACE_RADIUS))
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
             let bounds = hit_bounds.get();
@@ -292,7 +303,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         let viewport = Bounds::new(
                             bounds.origin + point(px(7.), px(top)),
                             size(
-                                (bounds.size.width - px(7.)).max(px(0.)),
+                                // The canvas has a rectangular clip; leave the curved right edge to its background.
+                                (bounds.size.width - px(7. + dunlin_ui::scale::WORKSPACE_RADIUS))
+                                    .max(px(0.)),
                                 px(((end.saturating_sub(start)) as f32 * scale)
                                     .max(4.)
                                     .min((height - top).max(0.))),

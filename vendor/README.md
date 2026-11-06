@@ -6,20 +6,21 @@ are explicit in the workspace `[patch.crates-io]` table. They are not published
 to crates.io. Upstream licenses, notices and sources are retained.
 
 `provenance.json` records the SHA-256 of each original crates.io archive from
-the beta.3 lockfile, every modified file's before/after hash, and the complete
+the application lockfile, every modified file's before/after hash, and the complete
 patched tree digest. `python3 scripts/verify_vendor.py` fails on unreviewed tree
 changes, unregistered patches, symlinks or reintroduction of any of the five old
 packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 
 | Local fork | Change |
 | --- | --- |
+| block 0.1.6 | Use inhabited `c_void` for the opaque runtime class instead of an empty enum and spell out the existing C ABI; fixes Rust's `uninhabited_static` future incompatibility and `missing_abi` warnings without changing the ABI |
 | gpui-base 0.8.0 | `instant` → existing maintained `web-time`; same clock/duration API; opt-out `scrollable` flag so embedded visual editors forward wheel input to the document |
-| gpui-component 0.8.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49 |
-| gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser; re-export the test attribute as `gpui_test` so it cannot shadow the built-in `#[test]` |
+| gpui-component 0.8.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49; transparent folder strips, spring-animated selection fill (text stays still), reduced-motion opt-out and compact trailing close-control padding |
+| gpui-pre 0.3.9 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser; re-export the test attribute as `gpui_test` so it cannot shadow the built-in `#[test]`; typed active-drag query keeps unrelated project/tab drop affordances isolated; expose existing painted-quad inspection in debug builds for native corner regression checks |
 | metal 0.33.0 / pulp 0.22.3 / rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |
 | rav1e 0.8.1 C API | Fail-closed null-context/frame/buffer guards, checked nullable test views and bounded rate-control decoding; five isolated C API tests pass (this feature is not enabled in Dunlin) |
 | cosmic-text 0.19.0 | fontdb 0.24, preventing the non-macOS graph from retaining old ttf-parser |
-| syntect 5.3.0 | Replace bincode dumps with a versioned MessagePack envelope (`DLSYNP01`), bounded reader and explicit compression finalization |
+| syntect 5.3.0 | Replace bincode dumps with a versioned MessagePack envelope (`DLSYNP01`), bounded reader and explicit compression finalization; compile metadata file loaders only with `yaml-load` or tests |
 | two-face 0.4.5 | Migrate bundled syntax, nested lazy-context/theme and license dumps to the new codec |
 
 The application's own resvg is also 0.49. All five packages (`bincode`, `instant`,

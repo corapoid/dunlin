@@ -260,7 +260,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Durable client-request/time budgets. Reported USD is optional and can be unknown; it is not a guaranteed provider billing cap. Queued/retried client sends share the ledger; opaque harness child work is not falsely priced at zero.")
         .child(Input::new(&s.label).small()).child(Input::new(&s.requests).small()).child(Input::new(&s.seconds).small()).child(Input::new(&s.usd).small())
-        .child(Button::new("budget-arm").small().label("Review and approve session limits…").on_click(cx.listener(|this,_,w,cx|this.arm_session_budget(w,cx))));
+        .child(dunlin_ui::button("budget-arm").label("Review and approve session limits…").on_click(cx.listener(|this,_,w,cx|this.arm_session_budget(w,cx))));
     if let Some(e) = &this.task_budgets.error {
         body = body.child(div().text_color(p.red).child(e.clone()));
     }
@@ -294,7 +294,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )),
             )
             .child(
-                Button::new(format!("budget-stop-{id}"))
+                dunlin_ui::button(format!("budget-stop-{id}"))
                     .ghost()
                     .small()
                     .label("Stop assigned work…")
@@ -303,7 +303,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     })),
             )
             .child(
-                Button::new(format!("budget-release-{release}"))
+                dunlin_ui::button(format!("budget-release-{release}"))
                     .ghost()
                     .small()
                     .label("Release limits…")
@@ -312,7 +312,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     })),
             );
         body = body.child(
-            Button::new(format!("budget-forget-{forget}"))
+            dunlin_ui::button(format!("budget-forget-{forget}"))
                 .ghost()
                 .small()
                 .label("Forget released history…")
@@ -350,7 +350,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .gap(px(8.))
                 .child("Task budgets")
                 .child(
-                    Button::new("budgets-back")
+                    dunlin_ui::button("budgets-back")
                         .ghost()
                         .small()
                         .label("Commit history")

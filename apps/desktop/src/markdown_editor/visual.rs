@@ -9,7 +9,7 @@ use crate::app::DunlinApp;
 use dunlin_ui::{
     component::{
         ActiveTheme, Disableable, Sizable,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         input::{
             Backspace, Delete, Editor, EditorState, Enter, IndentInline, InputEvent, OutdentInline,
             Redo, TextDecoration, TextDecorationCollection, Undo,
@@ -1349,16 +1349,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         match block.kind {
             Kind::Task(checked, offset) => {
                 row = row.child(
-                    Button::new(format!("visual-task-{index}"))
-                        .ghost()
-                        .small()
-                        .rounded(px(3.))
-                        .label(if checked { "☑" } else { "☐" })
-                        .accessibility_label(if checked {
-                            "Uncheck task"
-                        } else {
-                            "Check task"
-                        })
+                    dunlin_ui::checkbox(format!("visual-task-{index}"), "Task completion", checked)
                         .disabled(!editable(this, tab))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.toggle_visual_task(offset, checked, window, cx)
@@ -1416,7 +1407,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     root.child(
         div().flex().gap(px(4.)).child(
-            Button::new("visual-add-paragraph")
+            dunlin_ui::button("visual-add-paragraph")
                 .ghost()
                 .small()
                 .rounded(px(4.))

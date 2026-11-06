@@ -78,7 +78,9 @@ unavailable, and the rest of the relay keeps running.
 
 ## Lifetime and grants
 
-- Every key is a quick key: default 1 hour, maximum 24 hours. Expiry is enforced
+- Plain **Name + Key** entries are storage-only, without expiry or agent access.
+  They have no destinations, methods, project grants, recipes or operations.
+- Configured quick keys default to 1 hour, maximum 24 hours. Expiry is enforced
   by the broker from the Keychain policy. The desktop app and relay purge expired
   values and policies at most once a minute while running and on the next launch.
 - A key is inert until it is granted to a project. The grant list is part of the
@@ -86,7 +88,7 @@ unavailable, and the rest of the relay keeps running.
   the next request.
 - Managed keys (`managed: true` in the Keychain policy) are auto-approved only
   within their host/path/method/grant/operation scope. Keys without that marker,
-  or with `auto_approve: false`, open a native approval prompt with **Deny**,
+  or with `auto_approve: false`, open a themed in-app approval prompt with **Deny**,
   **Allow once** and **Allow for this session**. The session allowance is keyed
   by session, alias and policy revision, so editing the key, its hosts, methods,
   operations or grants invalidates existing allowances.
@@ -100,12 +102,16 @@ unavailable, and the rest of the relay keeps running.
   metadata. The create/edit form can require approval for every use instead of
   auto-approving a managed key. Policy and audit reads run on the background
   executor, so a locked Keychain does not stall the window.
+  New entries ask only for **Name** and **Key**; **Configure agent access…** opens
+  the scope/injection/TTL controls. Existing scoped entries open with those controls
+  visible. Saving an existing entry as **Store only** removes its agent access.
 - An **HTTP operation** is a named, pre-approved method + host + path template
   with declared parameters (for example `issues-list`:
   `GET https://api.github.com/repos/{owner}/{repo}/issues`). Parameter values are
   percent-encoded; the model cannot substitute another host, method or path.
-- **Secrets** in the bottom panel is the quick path: paste a key, choose a host,
-  TTL and read/write scope, and create it for the current project. The value field
+- **Secrets** in the bottom panel also defaults to **Name + Key**. Enable
+  **Configure agent access…** to choose a host, TTL and read/write scope and create
+  a quick key for the current project. The value field
   is dropped after creation; the value is never displayed again.
 - Deleting a credential removes the value, its policy and its SQLite row. Audit
   history remains, without the value, body, query string or headers.

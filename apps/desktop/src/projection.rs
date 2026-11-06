@@ -859,6 +859,7 @@ mod tests {
 
     fn session() -> SessionSummary {
         SessionSummary {
+            workspace: None,
             id: "ses-1".into(),
             project_id: "dunlin".into(),
             title: "Fix the build".into(),
@@ -923,6 +924,7 @@ mod tests {
                     elapsed_ms: Some(3_000),
                     usage: None,
                     usage_before: None,
+                    speaker: None,
                 }),
             },
             ChatItem::AgentText {
@@ -1143,6 +1145,7 @@ mod tests {
                     total,
                     ..Default::default()
                 }),
+                speaker: None,
             }),
         };
         for (total, baseline, expected) in [

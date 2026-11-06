@@ -128,6 +128,33 @@ impl FileTree {
 
 const MAX_ENTRIES: usize = 20_000;
 
+/// Whole-folder allocated storage, including generated files and Git metadata.
+/// `du -P` counts symlinks themselves, never their targets; incomplete scans stay unknown.
+pub fn storage_size(root: &Path) -> Option<u64> {
+    let root = fs::canonicalize(root).ok()?;
+    if !root.is_dir() {
+        return None;
+    }
+    let mut command = std::process::Command::new("/usr/bin/du");
+    command
+        .args(["-s", "-k", "-P"])
+        .arg(&root)
+        .env("LC_ALL", "C");
+    let (status, bytes) =
+        crate::github::process::run(command, None, std::time::Duration::from_secs(8), 65536)
+            .ok()?;
+    if !status.success() {
+        return None;
+    }
+    let value = std::str::from_utf8(&bytes)
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse::<u64>()
+        .ok()?;
+    value.checked_mul(1024)
+}
+
 fn is_skipped(name: &str) -> bool {
     matches!(
         name,
@@ -253,6 +280,24 @@ fn size_dir(dir: &Path, depth: u32, total: &mut u64, count: &mut usize) {
 mod tests {
     use super::FileTree;
     use std::fs;
+
+    #[cfg(unix)]
+    #[test]
+    fn storage_includes_generated_and_hidden_files_without_following_links() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("node_modules")).unwrap();
+        fs::create_dir(root.path().join(".git")).unwrap();
+        fs::write(root.path().join("source.rs"), "fn main() {}").unwrap();
+        fs::write(root.path().join("node_modules/generated"), vec![1; 131_072]).unwrap();
+        fs::write(root.path().join(".git/object"), vec![1; 65_536]).unwrap();
+        fs::write(outside.path().join("external"), vec![1; 2_097_152]).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("outside-link")).unwrap();
+        let storage = super::storage_size(root.path()).unwrap();
+        assert!((196_608..2_097_152).contains(&storage), "storage={storage}");
+        assert!(super::project_size(root.path()).unwrap() < storage);
+        assert!(super::storage_size(&root.path().join("missing")).is_none());
+    }
 
     #[cfg(unix)]
     #[test]

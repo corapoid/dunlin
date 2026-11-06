@@ -2,10 +2,7 @@
 use super::{Format, Mode, table::Operation};
 use crate::app::{DunlinApp, StoredSettings};
 use dunlin_ui::{
-    component::{
-        TitleBar,
-        input::{Redo, Undo},
-    },
+    component::input::{Redo, Undo},
     *,
 };
 use std::{
@@ -112,7 +109,7 @@ pub(crate) fn run() {
         cx.set_app_identity("dev.dunlin.ide.markdown-smoke", "Dunlin Markdown Smoke");
         dunlin_ui::init(cx); crate::logging::init();
         let (window, owner) = open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(
-             Bounds::new(point(px(90.), px(90.)), size(px(if light_narrow {760.} else {1200.}), px(800.))))), ..TitleBar::window_options() }, cx,
+              Bounds::new(point(px(90.), px(90.)), size(px(if light_narrow {760.} else {1200.}), px(800.))))), ..dunlin_ui::window_options() }, cx,
             |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         window.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
             app.section = dunlin_domain::SidebarSection::Files;

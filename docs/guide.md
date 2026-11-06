@@ -10,8 +10,28 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.8`; see [CHANGELOG.md](../CHANGELOG.md).
+release. Source builds are now `0.1.0-beta.9` (release pending); see
+[CHANGELOG.md](../CHANGELOG.md). The latest published beta is `0.1.0-beta.8`.
 Website download links are advanced only after release assets are verified.
+
+### Beta.9 highlights
+
+- [Server setup](relay-setup.md): interactive macOS/Linux bootstrap, optional
+  private Tailscale HTTPS, server-owned harness installation/authorization,
+  repository cloning and reviewed project copies with optional Git history.
+- [Settings/project backup](settings-project-backup.md): portable JSON or an
+  existing GitHub/GitLab repository, import preview and deferred code downloads.
+- [Project imports](project-import.md) and [session imports](session-import.md):
+  local collections, GitHub/GitLab search, cancellable previews and disk-staged
+  history imports with transactional writes.
+- Two in-memory document panes share canonical file buffers and agent runtimes;
+  moving tabs does not duplicate files or stop conversations. Pane layout is not
+  restored after restart. Project search and reading zoom preserve focused input.
+- Usage adds rolling billing ranges and cached account limits; Secrets defaults
+  to storage-only keys until agent access is explicitly configured.
+
+This is a prepared beta, not a claim of completed clean-machine acceptance.
+See [release acceptance](release-acceptance.md) for the publication boundary.
 
 ## Why Dunlin
 
@@ -21,11 +41,12 @@ Website download links are advanced only after release assets are verified.
 - **ACP first.** Dunlin speaks the structured Agent Client Protocol directly.
   Tool calls and permission requests become real cards and diffs, not ANSI
   text to parse.
-- **Local-first.** Projects, sessions and transcripts stay on your Mac. There
-  is no telemetry, no bundled model and no account.
+- **Local-first.** Projects, sessions and transcripts stay on your Mac or the
+  self-hosted server you select. There is no telemetry, bundled model or Dunlin
+  cloud account; external agents and hosting providers have their own accounts.
 - **Built for follow-ups.** Queue prompts while a turn is running, edit or
   retry a message, copy the agent's answer, and revisit the transcript later.
-- **Self-hosted remote.** Pair another Mac or iPhone with your own relay.
+- **Self-hosted remote.** Pair the Mac client with your own macOS/Linux relay.
   Sessions keep running on the relay, and another device can take over.
 
 ## A tour
@@ -54,6 +75,24 @@ Website download links are advanced only after release assets are verified.
 </table>
 
 ## Features
+
+### Back and forward
+
+Use the title-bar arrows, **View → Back / Forward**, or **⌘[ / ⌘]** to revisit
+views, sidebar sections, projects, sessions, open file tabs and settings tabs.
+New navigation after going back replaces the forward branch. Removed projects,
+sessions and closed file tabs are skipped. History keeps the last 100 destinations
+for the current app run; it does not undo edits or discard unsaved buffers.
+Save or close the current file before navigating to another project.
+
+### Settings reset and floating lists
+
+Floating lists share the host menu's neutral popover style, without dimming the
+workspace. **Settings → Advanced → About → Reset…** restores defaults and removes
+local project/group/history/harness records and Dunlin-owned credentials after an
+explicit warning with **No / Yes, reset Dunlin**. Close other Dunlin instances first.
+Repository files and installed agents are never deleted. The app closes after
+success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-factory-reset.md).
 
 ### Chat and harnesses
 
@@ -99,6 +138,35 @@ Website download links are advanced only after release assets are verified.
 
 ### Workspace
 
+- **+** beside conversation tabs (or `⌘N`) opens a separate session tab. Tabs use
+  session titles, updated from the first prompt. Switching preserves each draft,
+  scroll position, transcript and running agent. Closing a tab hides it only;
+  reopen it from session history. An agent awaiting approval stays paused until
+  you return to its tab. Tabs/drafts are in-memory; history remains persisted.
+- Closing a selected tab returns to the last visited, still-open tab in the same
+  pane, rather than the first tab or Chat. Closing an inactive tab keeps selection.
+- **⌘⌥P** or the magnifier beside Projects' **+** searches projects by name/path;
+  Enter or a result click switches projects, while Escape cancels. The title-bar
+  project dropdown uses flat rows; hierarchy indentation remains in the sidebar.
+- The title-bar project dropdown only switches projects. Right-click a project in
+  the sidebar for its actions (settings, trust, pin, reveal/copy path, locate or
+  remove), plus group creation and local/remote project import. **Move to group…**
+  opens a separate dialog; project rows no longer have an ellipsis button.
+- **⌘+**, **⌘−** and **⌘0** enlarge, shrink and reset workspace text for this run
+  (70–200%). Chat, code editors and terminals share the reading zoom; the sidebar
+  and Settings keep their normal size. No terminal configuration files change.
+- Response headers use the harness and dispatch-time model, for example
+  **Claude Code: Opus 5.5 (31.5s)** when turn duration is enabled. Old messages
+  without recorded model metadata say **Model not recorded**, not today's model.
+  Response logos identify the harness (bundled Claude, Codex, OpenCode, Copilot,
+  Gemini and Hermes marks); other/custom harnesses use initials.
+- **Settings → Design → Application → System** follows native appearance changes.
+  Light/Dark remain explicit overrides. Drag the Settings header to reposition
+  the panel; it stays inside the viewport. Compact density also tightens project,
+  session and Explorer rows. QA details have a **Close** action like ACP logs.
+- The top-bar Search shortcut and minimalist mode were removed. The command
+  palette remains available with `⌘K`; source files use their existing tabs
+  instead of duplicate filename/editor headers.
 - File explorer with a debounced watcher and missing-folder recovery.
 - **Settings → Harnesses → Import sessions…** scans the standard Claude Code and
   Codex session folders and reads OpenCode's local `opencode.db` read-only, then
@@ -134,22 +202,24 @@ Website download links are advanced only after release assets are verified.
   restart and can reopen the worktree as a project. It never starts an agent,
   merges, pushes or acts as a sandbox.
   [Scope and limits](standalone-chat-worktree-usage.md).
-- **Blame** in a source editor header shows unchanged-line author/commit details
+- **Inline blame** in the Explorer toolbar (also Settings → Editor) is remembered
+  across files and app restarts. Subtle inline text shows unchanged-line author/commit details
   on hover and opens the commit in history. Unsaved/modified lines get no author.
   HEAD/file/backend caching and relay support are bounded and opt-in.
   [Git operation/blame scope and QA](git-operations-and-blame.md).
-- **GitHub · CI / PR** in repository history uses installed `gh`: polled workflow/
-  job/step statuses, completed-job logs, PR review/diffs/checks and explicitly
-  confirmed publication/merge actions. No automatic push, checkout or admin override.
+- Source Control shows **History**. PR and GitHub Actions integration was removed.
+  A GitHub/GitLab.com repository link appears before the branch in the bottom-left
+  status bar; other or ambiguous remotes show a neutral placeholder. Link detection
+  reads Git configuration only and does not authenticate or contact the host.
   Composer **Context… / Review… / Checks…** opens client-context provenance,
   approved decision memory, explicit saved-file checkpoints/selective restore and
   confirmed local check commands with evidence → draft, never automatic prompts.
   **Budget… / Compare… / Impact…** adds durable request/time/reported-USD limits,
   separately authorized same-commit A/B worktrees with shared limits, and incremental
   Rust AST references/candidate tests. **On a relay project**, the same review,
-  comparison, context and GitHub surfaces use explicit server-side endpoints;
-  remote GitHub remains administrator-only because it uses the host's `gh`
-  account rather than a per-member token. Unknown cost/coverage is not zero;
+  comparison and context surfaces use explicit server-side endpoints.
+  GitHub topics/import support remains separate from the removed PR/Actions UI.
+  Unknown cost/coverage is not zero;
   worktrees are not sandboxes and impact is not compiler/LSP-complete. No paid
   comparison replay on restart, automatic merge or buffer discard.
   [Bounds and pending acceptance](agent-workbench-and-github.md).
@@ -182,13 +252,36 @@ Website download links are advanced only after release assets are verified.
   system's local clock/timezone, including while the app remains open. Native
   macOS menus expose Settings, project files, navigation and repository actions,
   with unavailable project actions disabled by context.
-- Open multiple local folders at once, or select a collection directory to discover
-  its repositories. Canonical roots are deduplicated without overwriting existing
-  names, groups, trust, pins or settings; batch imports do not activate every repo.
+- **Add Projects…** (`⌘O`) offers **Local folder** and **GitHub URL or filter**.
+  The in-app folder explorer previews how many repositories the selected directory
+  contains before import. Collections with multiple repositories offer optional
+  root tracking: every 30 seconds while Dunlin runs, new repositories are imported
+  without changing the active project or automatically granting trust. Tracking
+  survives restart; stop it in **Settings → General → Project imports**. A single
+  repository does not offer tracking. Select a collection directory to discover
+  its repositories. A selected collection becomes a logical group named after that
+  folder; discovered repositories become its projects, not a parent workspace.
+  Reimport reuses that group and adds newly discovered repositories. Existing
+  ungrouped projects join it; manual group assignments, names, trust, pins and
+  settings are preserved. Same-named folders in different locations stay separate.
+  With overlapping selections, the closest explicitly selected collection owns
+  new projects. Ordinary project/repository roots do not create wrapper groups.
+  Canonical roots are deduplicated; batch imports do not activate every repo.
   Discovery stops at Git/worktree roots, skips generated/hidden directories and
   implicit symlinks, and never fetches or executes repository scripts. Limits:
   8 directory levels, 20,000 entries, 256 projects and 8 seconds; partial imports
   report limits/errors until dismissed. Ordinary non-Git folders remain supported.
+  GitHub import accepts a direct repository URL or native repository-search query,
+  for example `org:example archived:false language:Rust`. It previews the complete
+  result list/count before explicit download via `gh repo clone`. Incomplete
+  searches and searches exceeding GitHub's 1000-result limit require a narrower
+  filter. Choose a destination with the same explorer, or use the default
+  `~/Library/Application Support/Dunlin/repositories`; clones are stored beneath
+  `<owner>/<repo>`. Existing folders are never overwritten. Failed clone files
+  remain for inspection. GitHub imports require project trust before agent use.
+  **Settings → General** reports gh installation and active github.com authorization;
+  install/authenticate outside Dunlin and use **Check again** to refresh. Details
+  and the isolated acceptance command: [project import](project-import.md).
   Declared npm/Yarn, pnpm, Cargo and Go workspaces, or multi-package Nx/Turbo/Lerna
   layouts, get a **Monorepo** badge on projects/tiles; packages stay within one
   root. Project rows keep that marker on the right, show the dominant repository
@@ -252,10 +345,10 @@ Website download links are advanced only after release assets are verified.
   Git completes. External editors/Git clients and repository hooks are not sandboxed.
 - Agent graph and trace waterfall projected from the live transcript.
 - Nested logical project groups, pinned ordering and per-project settings.
-  Switch **List / Tree** and sort by **Name ↑ / Modified ↓** in Projects; modification
+  Projects use the group tree only; sort by **Name ↑ / Modified ↓**. Modification
   sorting uses cached Git/worktree timestamps rather than a recursive file scan.
-  List mode retains assignments and shows full group paths. Right-click the
-  **Projects** heading or its list for **New group… / Open local folders…**;
+  Group membership is unchanged. Right-click the
+  **Projects** heading or its list for **New group… / Add projects…**;
   right-click a group for **New subgroup…**, rename/delete and **Move group to…**.
   Drag group headers to reparent them; cycles are rejected. Deleting a group
   promotes direct projects and subgroups one level. Undo restores eligible members
@@ -270,7 +363,12 @@ Website download links are advanced only after release assets are verified.
   in the group heading. New conversations include descendant groups' projects.
   The group's agent action creates a conversation with a frozen manifest of
   1–32 trusted local project roots, attached to every request without reading
-  their files or automatically sending a prompt. The strictest member approval
+  their files or automatically sending a prompt. A short context prefix explains
+  that the group is one logical multi-repository project, names its repositories
+  and gives their absolute paths. It is client-supplied context in the ACP user
+  message, not an override of the harness's system prompt. Each repository's Git
+  state remains independent; the parent folder is not an extra filesystem grant.
+  The strictest member approval
   policy applies. This is explicit agent context, not a filesystem sandbox;
   it does not widen remote grants or include future group members.
 - Dashboard is the first sidebar destination, with live working/waiting/connecting
@@ -309,6 +407,12 @@ Website download links are advanced only after release assets are verified.
   The Sessions sidebar and its count hide unstarted drafts, including adapter-only
   failures, until a user message is recorded. Drafts are not deleted; existing
   histories remain available when transcript reads fail or remote data is loading.
+  The list separates **General sessions** (standalone chats and group conversations,
+  labelled with their context) from **Project · name** (the current repository's
+  own conversations). General sessions remain visible when switching projects;
+  opening one selects its owning workspace and transcript. Each section sorts
+  newest first. Deletion still requires confirmation and does not change the
+  current conversation when deleting history from another workspace.
   Metrics use recorded requests, reported token deltas and tool-reported diffs
   only, not context occupancy or inferred Git history. Missing data stays unknown.
   Settings → General chooses visible widgets and Dashboard/last-project startup.
@@ -404,11 +508,11 @@ pending AI commit requests are not resumed after restarting Dunlin.
 
 ### Secrets
 
-**Settings → Secrets** stores temporary API credentials in the macOS Keychain and
-lets an agent use them without receiving the value. The **Secrets** tab in the
-bottom panel is the quick path: name, paste, host, TTL and optional write methods.
-Every key is short-lived (default 1 hour, maximum 24 hours) and inert until it is
-granted to a project. Managed quick keys are auto-approved only for their exact
+**Settings → Secrets** and the bottom **Secrets** panel save **Name + Key** pairs
+in the macOS Keychain, without expiry or agent access. **Configure agent access…**
+adds host, TTL, injection and optional write methods so an agent can use a key
+without receiving its value. Configured quick keys are short-lived (default
+1 hour, maximum 24 hours) and inert until granted to a project. Managed quick keys are auto-approved only for their exact
 host/path/method/operation scope. Enable **require approval** to prompt for each
 use with **Deny**, **Allow once** and **Allow for this session**; editing the key
 invalidates existing session allowances. Read-only mode allows GET/HEAD only and
@@ -538,7 +642,10 @@ the plugin requires a Codex/OpenAI harness.
 ### Remote relay
 
 - Self-hosted `dunlin-relay` with accounts, devices and project grants.
-- One-time pairing codes; device tokens live in the macOS Keychain.
+- One-time pairing codes valid for at most 15 minutes; device tokens live in the
+  macOS Keychain and remain valid until revoked.
+- A named server workspace manages server-owned harnesses and accounts even
+  before a project or harness exists; no local agent installation is needed.
 - ACP over WebSocket with session leases and explicit takeover.
 - Transcript snapshots so another device can show history.
 - Explorer file/folder creation, internal moves and Git initialization require
@@ -552,8 +659,9 @@ the plugin requires a Codex/OpenAI harness.
 - Optional aggregate billing evidence sync: members may `POST
   /v1/billing/evidence` (bounded, no raw logs/prompts); only relay administrators
   may read the per-device aggregate. Upload is always an explicit Usage action.
-- macOS seatbelt sandbox for the harness, denying other projects and common
-  credential stores.
+- macOS seatbelt or Linux bubblewrap for harness isolation. Managed agent homes
+  and tools have separate server directories; see the migration/trust boundaries
+  in [server setup](relay-setup.md).
 
 ## Install
 
@@ -579,12 +687,19 @@ Release artifacts are published on the
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
 
+Starting with beta.9, the release workflow also builds
+`dunlin-relay-<version>-linux-x86_64.tar.gz` and
+`dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
+`install-harness.sh` and `RELAY-SHA256SUMS`. These are pending publication and
+are not present in beta.8. `RELAY-SHA256SUMS` covers all three relay archives and
+the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
+
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
 supported in 0.1.
 
 ### GitHub Packages (OCI)
 
-The release files are also published as an OCI artifact:
+The macOS release packages are also published as an OCI artifact:
 
 ```sh
 oras pull ghcr.io/corapoid/dunlin:beta -o dunlin-beta
@@ -638,6 +753,17 @@ Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit 
 custom ACP command. Dunlin checks whether each command is installed and
 connects when a project opens.
 
+Onboarding lists detected agents, including CLI-only installations marked
+**CLI detected · adapter needed**. **Set up…** opens in-app setup instructions;
+**Choose another / Show all** expands the supported catalog. In onboarding, only
+detected ACP adapters can be set as the default. Use **Scan again** after installation;
+onboarding also rescans when you return to Dunlin. Detection checks the executable,
+not whether the adapter can connect or is signed in.
+
+Permission statuses refresh in the background when you return from System
+Settings. Onboarding's notification card and **Settings → Permissions** also
+provide **Recheck**, without requesting new permissions.
+
 | Harness | Command |
 | --- | --- |
 | OpenCode | `opencode acp` |
@@ -683,8 +809,11 @@ start with a centered composer. **Enter** sends a message; **Shift+Enter** inser
 a new line (`⌘Enter` also sends). Agent modes (for example Plan or Build) come
 from the harness, not from hard-coded prompts; unsupported modes are not offered.
 Changing the local harness starts a new conversation and preserves the old one.
-The harness picker lists installed adapters and a configured Custom ACP command;
-Settings → Harnesses owns the full catalog. A repository-context picker for
+The harness picker shows names only for installed adapters and a configured Custom
+ACP command. **Settings → Harnesses → Shown / Hidden** controls visibility in
+selection lists, including project/group defaults. This preference is saved and
+included in settings backups; it does not uninstall adapters or alter existing
+conversations/defaults. Settings retains the full catalog. A repository-context picker for
 project-independent chat is planned under Standalone chat in the roadmap.
 
 ### OpenCode accounts, Free and Go
@@ -800,8 +929,9 @@ matching nodes and their ancestor path visible. **Save SVG** exports the current
 disclosed tree through a native save dialog, including offscreen nodes. The
 viewport creates elements only for visible cards/edges; the minimap aggregates
 10k+ nodes into a bounded status grid. **Fit** scales and centres the current
-graph. A compact minimap and zoom controls provide orientation; `⌘+`, `⌘−` and
-`⌘0` work without moving keyboard focus away from chat. Trace defaults to user
+graph. A compact minimap and geometry zoom controls provide orientation; `⌘+`,
+`⌘−` and `⌘0` control workspace text without moving keyboard focus away from chat.
+Trace defaults to user
 requests, with per-request disclosure, **Requests** to collapse details,
 **Expand all**, search, sticky axis labels and row-density zoom. Rows are
 virtualized, so a 10k-row run asks the renderer only for the visible slice. Kind
@@ -874,11 +1004,25 @@ Successful reauthorization clears the cache. Trace rows reserve room for both
 label lines and padding at every zoom level.
 
 Harness settings automatically detect supported CLIs and ACP adapters on PATH
-and in common Homebrew/user installation directories, with a **Scan again**
-action. A CLI without its ACP adapter is labeled separately and links to setup
+and in common Homebrew/user installation directories, including NVM's installed
+Node versions (`NVM_DIR` or `~/.nvm`). **Scan again** rechecks the filesystem and
+reports the number of detected adapters. A CLI without its ACP adapter is labeled
+separately and links to setup
 instructions. No discovery command runs an agent, installs software, signs in or
-changes the active conversation. Choose an installed adapter as the default for
-new conversations; remote harnesses remain configured on the relay.
+changes the active conversation. Every radio in Settings can choose the default
+for new conversations, including an adapter you still need to install or configure;
+launch remains blocked until its executable is available. Existing conversations
+keep their harness. Remote harnesses remain configured on the relay.
+
+**Set up…** shows instructions without launching a browser or installing anything.
+For Claude Code, it provides a copyable global install command:
+`npm install -g @agentclientprotocol/claude-agent-acp@preview` (Node.js 22+).
+Without `-g`, npm installs locally under the current folder. Dunlin also checks
+`~/node_modules/.bin`, so an installation from your home directory is detected.
+Other project-local installations require an absolute executable path in
+**Custom ACP**; repository dependencies are not automatically trusted or scanned.
+Scanning runs in the background with a visible result. **Open setup guide** opens
+the browser off the UI thread, with a timeout and visible errors.
 
 To remove a configured project, use **… → Remove project…** beside its entry in
 the Projects sidebar, or right-click the project. This removes its local session
@@ -887,9 +1031,13 @@ project does not delete it from the relay. You can remove the last project too.
 
 ## Remote relay
 
+For the interactive installer, Linux deployment, remote account authorization
+and project copying, see [Server setup and remote workspace](relay-setup.md).
+The relay itself does not require OpenCode or any other harness to start.
+
 `dunlin-relay` is a small self-hosted server. It stores accounts, devices,
-project grants, a session index and, by default, transcript snapshots. OpenCode
-remains the source of truth for live sessions; the relay's snapshot lets another
+project grants, a session index and, by default, transcript snapshots. The selected
+server harness remains the source of truth for live sessions; the relay's snapshot lets another
 device show history and provides a backup.
 
 Build and initialise it on the machine that has the repositories:
@@ -897,9 +1045,10 @@ Build and initialise it on the machine that has the repositories:
 ```sh
 cargo build -p dunlin-relay
 ./target/debug/dunlin-relay init
+./target/debug/dunlin-relay setup --name studio-server
 ./target/debug/dunlin-relay user add marek
 ./target/debug/dunlin-relay project add dunlin /Users/me/git/dunlin --user marek
-./target/debug/dunlin-relay pair marek --ttl 10
+./target/debug/dunlin-relay pair marek --ttl 15
 ./target/debug/dunlin-relay serve
 ```
 
@@ -907,16 +1056,17 @@ Optional `~/.config/dunlin/relay.toml`:
 
 ```toml
 listen = "127.0.0.1:8787"
+name = "Studio server"
 harness = "opencode acp"
 linger_secs = 900       # keep an in-flight turn alive after the client leaves
-sandbox = true          # macOS seatbelt: deny other projects and credentials
+sandbox = true          # macOS seatbelt / Linux bubblewrap; missing support fails closed
 store_transcripts = true
 ```
 
 `serve --config ~/.config/dunlin/relay.toml` uses it. CLI flags and
 `DUNLIN_RELAY_*` environment variables override the file.
 
-`serve` listens on `127.0.0.1:8787` by default. For a phone or another Mac,
+`serve` listens on `127.0.0.1:8787` by default. For another Mac,
 expose it over Tailscale:
 
 ```sh
@@ -924,7 +1074,8 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 ```
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
-**Settings → Remote** on macOS, or in the iOS app. A paired device receives its
+**Settings → Remote** on macOS. The iOS scaffold is not a supported release client.
+A paired device receives its
 own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
 admin-only because it describes the host account, not a per-project grant.
 Non-admin members see an explicit **Admin-only** state without a relay request
@@ -935,7 +1086,7 @@ instead of inventing percentages.
 Remote projects support the full macOS surface: explorer, editor with save,
 search, source control, diffs, chat, permissions, graph and trace. A session can
 be opened on one device at a time; if another device is active, use **Take over
-session** in the session context menu or the **Take over** button on iOS. Composer
+session** in the session context menu. Composer
 attachments are uploaded to `.dunlin/attachments` on the relay and kept out of
 `git status` through `.git/info/exclude`.
 
@@ -945,23 +1096,25 @@ result is persisted. Permission requests raised during that window are
 auto-cancelled. Set `linger_secs` or `DUNLIN_RELAY_LINGER_SECS` to change the
 window.
 
-Users are isolated: each account sees only granted projects and its own
-sessions. All relay users currently share the OpenCode credentials installed on
-the server. The macOS relay runs each harness under a seatbelt profile that
-denies other project roots, the relay database/application data and common
-credential stores (`.ssh`, `.gnupg`, `.aws`, browser profiles,
-Documents/Desktop/Downloads). This is a best-effort privacy boundary, not a
-container; a harness can still read its own runtime state (for example
-OpenCode's session database), so use separate OS accounts or containers for
-hard isolation.
+Project/session APIs are scoped to grants and account ownership; this is not
+full operating-system isolation. Managed setups use per-relay-user agent homes
+and macOS seatbelt/Linux bubblewrap. Existing macOS relays keep their legacy host
+agent home until explicit `setup`; opting in retains old data but can require
+fresh sign-in and new conversations. `gh`/`glab` credentials belong to the host
+OS account: authorizing them requires an administrator-only relay and disables
+non-admin access/addition afterward. Run separate OS accounts/services for
+untrusted users. See [server setup](relay-setup.md) for exact limits and the
+Linux keyring requirements; never infer isolation from project grants alone.
 
 The relay database is not encrypted at rest. Set `store_transcripts = false` to
-keep only metadata, and use FileVault or an encrypted volume on the relay host.
+keep only metadata, and use FileVault or equivalent full-disk encryption on the
+relay host.
 
 The relay can also own a use-only credential vault on the relay host. It uses
-separate Keychain services (`dev.dunlin.relay-secrets`,
+separate macOS Keychain services (`dev.dunlin.relay-secrets`,
 `dev.dunlin.relay-secret-policies`) and `vault.db`, so it never shares items with
-the desktop app. Manage it with the relay CLI:
+the desktop app. Linux uses Secret Service through `secret-tool` with a separate
+relay namespace and requires an unlocked keyring. Manage it with the relay CLI:
 
 ```sh
 dunlin-relay vault add github-work --host api.github.com --project dunlin --ttl 60

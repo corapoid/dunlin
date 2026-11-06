@@ -85,6 +85,27 @@ impl Store {
             .connection
             .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?)
     }
+
+    /// Clear local application records atomically, without touching project files.
+    pub fn factory_reset(&self) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute_batch(
+            "DELETE FROM task_evidence;
+             DELETE FROM artifact_index;
+             DELETE FROM artifact_approvals;
+             DELETE FROM secret_audit;
+             DELETE FROM secret_grants;
+             DELETE FROM secret_recipes;
+             DELETE FROM secrets;
+             DELETE FROM transcripts;
+             DELETE FROM sessions;
+             DELETE FROM projects;
+             DELETE FROM project_groups;
+             DELETE FROM settings;",
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
     /// Open (or create) a database, enabling WAL and foreign keys.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -386,6 +407,66 @@ impl Store {
             )?;
             transaction.commit()?;
         }
+        if version < 14 {
+            let transaction = self.connection.unchecked_transaction()?;
+            let exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'workspace'",
+                [],
+                |row| row.get(0),
+            )?;
+            if exists == 0 {
+                transaction.execute_batch("ALTER TABLE sessions ADD COLUMN workspace TEXT;")?;
+            }
+            // Legacy display labels were not timestamps; use the last persisted transcript instead.
+            transaction.execute_batch("UPDATE sessions SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', COALESCE((SELECT updated_at FROM transcripts WHERE session_id = sessions.id), created_at), 'unixepoch') WHERE updated_at = 'now' OR updated_at GLOB '[0-9]*m ago' OR updated_at GLOB '[0-9]*h ago' OR updated_at GLOB '[0-9]*d ago'; PRAGMA user_version = 14;")?;
+            transaction.commit()?;
+        }
+        Ok(())
+    }
+
+    /// Commit an additive catalog import and preferences together, or nothing.
+    pub fn import_catalog(
+        &self,
+        groups: &[ProjectGroup],
+        projects: &[Project],
+        settings: Option<&serde_json::Value>,
+    ) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let mut all = self.project_groups()?;
+        let mut ids: std::collections::HashSet<_> =
+            all.iter().map(|group| group.id.clone()).collect();
+        all.extend_from_slice(groups);
+        for group in groups {
+            if !ids.insert(group.id.clone()) {
+                return Err(StoreError::InvalidGroup(
+                    "Imported group already exists".into(),
+                ));
+            }
+            group
+                .validate_parent(&all)
+                .map_err(StoreError::InvalidGroup)?;
+        }
+        // Input is parent-first; existing catalog entries are never overwritten.
+        for group in groups {
+            self.write_project_group(group)?;
+        }
+        for project in projects {
+            let exists: bool = self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+                [&project.id],
+                |r| r.get(0),
+            )?;
+            if exists {
+                return Err(StoreError::InvalidGroup(
+                    "Imported project already exists".into(),
+                ));
+            }
+            self.upsert_project(project)?;
+        }
+        if let Some(settings) = settings {
+            self.save_setting("app", settings)?;
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -578,9 +659,9 @@ impl Store {
             r#"
             INSERT INTO sessions (
                 id, project_id, title, status, harness, model, branch,
-                updated_at, cost_usd, duration_secs, tokens, summary, origin, acp_session_id
+                updated_at, cost_usd, duration_secs, tokens, summary, origin, acp_session_id, workspace
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 status = excluded.status,
@@ -593,7 +674,8 @@ impl Store {
                 tokens = excluded.tokens,
                 summary = excluded.summary,
                 origin = excluded.origin,
-                acp_session_id = excluded.acp_session_id
+                acp_session_id = excluded.acp_session_id,
+                workspace = excluded.workspace
             "#,
             params![
                 session.id,
@@ -610,7 +692,22 @@ impl Store {
                 session.summary,
                 origin,
                 session.acp_session_id,
+                session.workspace,
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Update only the recorded location, preserving conversation metadata and turns.
+    pub fn update_session_location(
+        &self,
+        id: &str,
+        project_id: &str,
+        workspace: Option<&str>,
+    ) -> Result<()> {
+        self.connection.execute(
+            "UPDATE sessions SET project_id = ?2, workspace = COALESCE(?3, workspace) WHERE id = ?1",
+            params![id, project_id, workspace],
         )?;
         Ok(())
     }
@@ -621,20 +718,34 @@ impl Store {
         &self,
         rows: &[(SessionSummary, T)],
     ) -> Result<Vec<String>> {
+        self.import_session_stream(
+            rows.iter()
+                .map(|(session, transcript)| Ok((session.clone(), transcript))),
+            |_| {},
+        )
+    }
+
+    /// Stream histories through one transaction, retaining only one transcript at a time.
+    pub fn import_session_stream<T: Serialize>(
+        &self,
+        rows: impl IntoIterator<Item = Result<(SessionSummary, T)>>,
+        mut progress: impl FnMut(usize),
+    ) -> Result<Vec<String>> {
         let transaction = self.connection.unchecked_transaction()?;
         let mut inserted = Vec::new();
-        for (session, transcript) in rows {
+        for (index, row) in rows.into_iter().enumerate() {
+            let (session, transcript) = row?;
             let exists: bool = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
                 [&session.id],
                 |r| r.get(0),
             )?;
-            if exists {
-                continue;
+            if !exists {
+                self.upsert_session(&session)?;
+                self.save_transcript(&session.id, &transcript)?;
+                inserted.push(session.id.clone());
             }
-            self.upsert_session(session)?;
-            self.save_transcript(&session.id, transcript)?;
-            inserted.push(session.id.clone());
+            progress(index + 1);
         }
         transaction.commit()?;
         Ok(inserted)
@@ -644,12 +755,12 @@ impl Store {
         let sql = match project_id {
             Some(_) => {
                 "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
-                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id FROM sessions \
+                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id, workspace FROM sessions \
                  WHERE project_id = ?1 ORDER BY created_at DESC"
             }
             None => {
                 "SELECT id, project_id, title, status, harness, model, branch, updated_at, \
-                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id FROM sessions \
+                 cost_usd, duration_secs, tokens, summary, origin, acp_session_id, workspace FROM sessions \
                  ORDER BY created_at DESC"
             }
         };
@@ -673,6 +784,7 @@ impl Store {
                 origin: serde_json::from_str(&origin)
                     .unwrap_or(dunlin_domain::SessionOrigin::Local),
                 acp_session_id: row.get(13)?,
+                workspace: row.get(14)?,
             })
         };
         let rows = match project_id {
@@ -1380,6 +1492,7 @@ mod tests {
 
     fn session() -> SessionSummary {
         SessionSummary {
+            workspace: None,
             id: "ses-1".into(),
             project_id: "dunlin".into(),
             title: "Verify permissions".into(),
@@ -1395,6 +1508,268 @@ mod tests {
             origin: SessionOrigin::Local,
             acp_session_id: None,
         }
+    }
+
+    #[test]
+    fn catalog_import_is_atomic_additive_and_preserves_deferred_checkout_after_reopen() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("dunlin-catalog-import-{unique}.db"));
+        let store = Store::open(&path).unwrap();
+        let existing = project();
+        store.upsert_project(&existing).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .save_setting("app", &serde_json::json!({"chat_logo":true}))
+            .unwrap();
+        let root = ProjectGroup {
+            id: "root".into(),
+            name: "Root".into(),
+            parent_id: None,
+            tone: ProjectTone::Teal,
+            settings: Default::default(),
+        };
+        let child = ProjectGroup {
+            id: "child".into(),
+            name: "Child".into(),
+            parent_id: Some(root.id.clone()),
+            tone: ProjectTone::Blue,
+            settings: Default::default(),
+        };
+        let mut pending = existing.clone();
+        pending.id = "imported".into();
+        pending.trusted = false;
+        pending.path = "/chosen/github.com/o/r".into();
+        pending.group_id = Some(child.id.clone());
+        pending.settings.pending_clone = Some(dunlin_domain::PendingClone {
+            url: "https://github.com/o/r".into(),
+            destination: "/chosen".into(),
+        });
+        let settings = serde_json::json!({"chat_logo":false});
+        assert!(
+            store
+                .import_catalog(
+                    &[root.clone(), child.clone()],
+                    &[pending.clone(), existing.clone()],
+                    Some(&settings)
+                )
+                .is_err()
+        );
+        assert!(store.project_groups().unwrap().is_empty());
+        assert_eq!(store.projects().unwrap().len(), 1);
+        assert_eq!(
+            store
+                .load_setting::<serde_json::Value>("app")
+                .unwrap()
+                .unwrap()["chat_logo"],
+            true
+        );
+        store
+            .import_catalog(&[root, child], &[pending.clone()], Some(&settings))
+            .unwrap();
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let projects = store.projects().unwrap();
+        assert_eq!(projects.len(), 2);
+        let loaded = projects.iter().find(|p| p.id == pending.id).unwrap();
+        assert!(loaded.is_not_downloaded() && !loaded.trusted);
+        assert_eq!(
+            loaded.settings.pending_clone,
+            pending.settings.pending_clone
+        );
+        assert_eq!(store.project_groups().unwrap().len(), 2);
+        assert_eq!(
+            store
+                .load_setting::<serde_json::Value>("app")
+                .unwrap()
+                .unwrap(),
+            settings
+        );
+        let old = projects.iter().find(|p| p.id == existing.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(old).unwrap(),
+            serde_json::to_value(existing).unwrap()
+        );
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn correcting_session_location_preserves_history_and_other_metadata() {
+        let store = Store::open_in_memory().unwrap();
+        let source = project();
+        let mut target = source.clone();
+        target.id = "other-repo".into();
+        target.path = "/work/other-repo".into();
+        store.upsert_project(&source).unwrap();
+        store.upsert_project(&target).unwrap();
+        let mut imported = session();
+        imported.id = "import-history".into();
+        let transcript = vec!["imported conversation", "local follow-up"];
+        store
+            .import_sessions(&[(imported.clone(), transcript.clone())])
+            .unwrap();
+
+        store
+            .update_session_location(&imported.id, &target.id, Some("/work/other-repo/src"))
+            .unwrap();
+        assert!(store.sessions(Some(&source.id)).unwrap().is_empty());
+        let moved = store.sessions(Some(&target.id)).unwrap().pop().unwrap();
+        imported.project_id = target.id.clone();
+        imported.workspace = Some("/work/other-repo/src".into());
+        assert_eq!(
+            serde_json::to_value(&moved).unwrap(),
+            serde_json::to_value(&imported).unwrap()
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&imported.id)
+                .unwrap()
+                .unwrap(),
+            transcript
+        );
+
+        store
+            .update_session_location(&imported.id, &target.id, None)
+            .unwrap();
+        assert_eq!(
+            store.sessions(Some(&target.id)).unwrap()[0].workspace,
+            imported.workspace
+        );
+        assert!(
+            store
+                .update_session_location(&imported.id, "missing-project", Some("/wrong"))
+                .is_err()
+        );
+        let unchanged = store.sessions(Some(&target.id)).unwrap().pop().unwrap();
+        assert_eq!(
+            serde_json::to_value(unchanged).unwrap(),
+            serde_json::to_value(imported).unwrap()
+        );
+    }
+
+    fn seed_factory_reset(store: &Store) {
+        store
+            .upsert_project_group(&group("reset-group", None))
+            .unwrap();
+        let mut project = project();
+        project.group_id = Some("reset-group".into());
+        project.settings.harness = Some("Custom ACP".into());
+        store.upsert_project(&project).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_transcript("ses-1", &vec!["history"]).unwrap();
+        store.save_setting("app", &"custom settings").unwrap();
+        store
+            .replace_artifact_index("dunlin", &[indexed_artifact("spec.md")])
+            .unwrap();
+        store.connection.execute_batch(
+            "INSERT INTO secrets (id, namespace, alias, label, injection)
+                VALUES ('secret', 'external', 'test', 'Test', '{\"type\":\"basic\",\"username\":\"test\"}');
+             INSERT INTO secret_grants (secret_id, project_id) VALUES ('secret', 'dunlin');
+             INSERT INTO secret_recipes (id, secret_id, name, program)
+                VALUES ('recipe', 'secret', 'Test', '/usr/bin/true');
+             INSERT INTO secret_audit (alias, operation, detail, decision)
+                VALUES ('test', 'request', 'test', 'deny');
+             INSERT INTO artifact_approvals (project_id, path, revision, status, actor)
+                VALUES ('dunlin', 'spec.md', 'hash', 'approved', 'user');
+             INSERT INTO task_evidence (project_id, task_id, kind, reference)
+                VALUES ('dunlin', 'T001', 'commit', 'hash');"
+        ).unwrap();
+    }
+
+    #[test]
+    fn factory_reset_clears_every_app_table_and_remains_usable_after_reopening() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("dunlin-factory-reset-{unique}.db"));
+        let store = Store::open(&path).unwrap();
+        seed_factory_reset(&store);
+        let tables = store
+            .connection
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+            )
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            tables.len(),
+            12,
+            "include new app tables in reset and this fixture"
+        );
+        for table in &tables {
+            let count: i64 = store
+                .connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 1, "fixture must populate {table}");
+        }
+        store.factory_reset().unwrap();
+        store.factory_reset().unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        for table in tables {
+            let count: i64 = store
+                .connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "reset left records in {table}");
+        }
+        assert_eq!(store.quick_check().unwrap(), "ok");
+        store.upsert_project(&project()).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store.save_setting("app", &"new defaults").unwrap();
+        assert_eq!(store.projects().unwrap().len(), 1);
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn factory_reset_rolls_back_all_deletions_if_any_table_fails() {
+        let store = Store::open_in_memory().unwrap();
+        seed_factory_reset(&store);
+        store
+            .connection
+            .execute_batch(
+                "CREATE TRIGGER fail_reset BEFORE DELETE ON settings
+             BEGIN SELECT RAISE(ABORT, 'injected reset failure'); END;",
+            )
+            .unwrap();
+        assert!(store.factory_reset().is_err());
+        assert_eq!(store.projects().unwrap().len(), 1);
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        assert_eq!(store.project_groups().unwrap().len(), 1);
+        assert_eq!(store.secrets().unwrap().len(), 1);
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>("ses-1")
+                .unwrap()
+                .unwrap(),
+            ["history"]
+        );
+        assert_eq!(
+            store.load_setting::<String>("app").unwrap().as_deref(),
+            Some("custom settings")
+        );
+        assert_eq!(store.task_evidence("dunlin").unwrap().len(), 1);
+        assert_eq!(store.artifact_index("dunlin").unwrap().len(), 1);
+        store
+            .connection
+            .execute_batch("DROP TRIGGER fail_reset")
+            .unwrap();
+        store.factory_reset().unwrap();
+        assert!(store.projects().unwrap().is_empty());
     }
 
     #[test]
@@ -1458,6 +1833,59 @@ mod tests {
                 .is_none()
         );
         assert_eq!(store.sessions(None).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn streamed_import_reports_duplicates_and_rolls_back_on_a_source_read_failure() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        let original = session();
+        store.upsert_session(&original).unwrap();
+        store
+            .save_transcript(&original.id, &vec!["original"])
+            .unwrap();
+        let mut new = original.clone();
+        new.id = "streamed-new".into();
+        let mut progress = Vec::new();
+        let rows = vec![
+            Ok((original.clone(), vec!["must not overwrite"])),
+            Ok((new.clone(), vec!["new transcript"])),
+            Err(StoreError::Io(std::io::Error::other(
+                "import cache read failed",
+            ))),
+        ];
+        assert!(
+            store
+                .import_session_stream(rows, |done| progress.push(done))
+                .is_err()
+        );
+        assert_eq!(progress, [1, 2]);
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        assert!(
+            store
+                .load_transcript::<Vec<String>>(&new.id)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&original.id)
+                .unwrap()
+                .unwrap(),
+            ["original"]
+        );
+        progress.clear();
+        let rows = vec![
+            Ok((original, vec!["unchanged"])),
+            Ok((new.clone(), vec!["new transcript"])),
+        ];
+        assert_eq!(
+            store
+                .import_session_stream(rows, |done| progress.push(done))
+                .unwrap(),
+            [new.id]
+        );
+        assert_eq!(progress, [1, 2]);
     }
 
     #[test]
@@ -1865,7 +2293,58 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            13
+            14
+        );
+    }
+
+    #[test]
+    fn v14_session_workspace_and_activity_migration_preserves_unknown_history() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+        let mut row = session();
+        row.workspace = Some("/recorded/worktree".into());
+        store.upsert_session(&row).unwrap();
+        assert_eq!(store.sessions(None).unwrap()[0].workspace, row.workspace);
+        store.save_transcript(&row.id, &vec!["history"]).unwrap();
+        store.connection.execute_batch("ALTER TABLE sessions DROP COLUMN workspace; UPDATE sessions SET updated_at = 'now'; UPDATE transcripts SET updated_at = 1762344000; PRAGMA user_version = 13;").unwrap();
+        store.migrate().unwrap();
+        store.migrate().unwrap();
+        let migrated = &store.sessions(None).unwrap()[0];
+        assert!(migrated.workspace.is_none());
+        assert_eq!(migrated.updated_at, "2025-11-05T12:00:00Z");
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&row.id)
+                .unwrap()
+                .unwrap(),
+            ["history"]
+        );
+        row.updated_at = "Imported".into();
+        store.upsert_session(&row).unwrap();
+        store
+            .connection
+            .execute_batch("PRAGMA user_version = 13;")
+            .unwrap();
+        store.migrate().unwrap();
+        assert_eq!(store.sessions(None).unwrap()[0].updated_at, "Imported");
+    }
+
+    #[test]
+    fn group_color_and_icon_roundtrip_without_changing_runtime_defaults() {
+        let store = Store::open_in_memory().unwrap();
+        let mut row = group("visual-group", None);
+        row.tone = dunlin_domain::ProjectTone::Rose;
+        row.settings.icon = Some("aws-lambda".into());
+        row.settings.harness = Some("Custom ACP".into());
+        store.upsert_project_group(&row).unwrap();
+        let saved = store.project_groups().unwrap().pop().unwrap();
+        assert_eq!(saved.tone, row.tone);
+        assert_eq!(saved.settings, row.settings);
+        row.settings.icon = Some("png:embedded-fixture".into());
+        store.upsert_project_group(&row).unwrap();
+        assert_eq!(
+            store.project_groups().unwrap()[0].settings.icon,
+            row.settings.icon
         );
     }
 
@@ -2361,7 +2840,7 @@ mod tests {
     #[test]
     fn reports_schema_version_and_quick_check_for_release_qa() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), 13);
+        assert_eq!(store.schema_version().unwrap(), 14);
         assert_eq!(store.quick_check().unwrap(), "ok");
     }
 

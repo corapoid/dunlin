@@ -224,50 +224,20 @@ impl DunlinApp {
     }
 }
 
-fn action(id: impl Into<ElementId>, label: impl Into<SharedString>, p: Palette) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(28.))
-        .px(px(11.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .text_color(p.fg)
-        .text_size(px(11.5))
-        .font_weight(FontWeight::MEDIUM)
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover).border_color(p.border_strong))
-        .child(label.into())
+fn action(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    _p: Palette,
+) -> dunlin_ui::component::button::Button {
+    dunlin_ui::button(id).label(label)
 }
 
 fn card(p: &Palette) -> Div {
-    div()
-        .p(px(16.))
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .flex()
-        .flex_col()
-        .gap(px(10.))
+    card_surface(*p).p(px(16.)).flex().flex_col().gap(px(10.))
 }
 
 fn badge(label: impl Into<SharedString>, p: &Palette) -> Div {
-    div()
-        .h(px(18.))
-        .px(px(6.))
-        .rounded(px(4.))
-        .bg(p.muted)
-        .flex()
-        .items_center()
-        .text_size(px(9.5))
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(p.muted_fg)
-        .child(label.into())
+    dunlin_ui::badge(label, p.muted_fg, p.muted, *p)
 }
 
 fn sync_remote_runs(
@@ -2523,7 +2493,7 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .p(px(10.))
                 .rounded(px(8.))
-                .bg(p.card)
+                .bg(p.fg.opacity(0.045))
                 .flex()
                 .flex_col()
                 .gap(px(4.))
@@ -2561,7 +2531,7 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .p(px(10.))
                 .rounded(px(8.))
-                .bg(p.card)
+                .bg(p.fg.opacity(0.045))
                 .flex()
                 .flex_col()
                 .gap(px(4.))

@@ -10,12 +10,12 @@ use std::sync::Arc;
 
 use dunlin_agent::McpServerConfig;
 use dunlin_domain::vault::{
-    GrantPolicy, HttpMethod, Injection, MAX_SECRET_TTL_SECS, Recipe, Secret, SecretAudit,
-    SecretGrant, SecretPolicy, normalize_ttl, now_secs,
+    GrantPolicy, HttpMethod, Injection, Recipe, Secret, SecretAudit, SecretGrant, SecretPolicy,
+    normalize_ttl, now_secs,
 };
 use dunlin_domain::{PermissionMode, Project};
 use dunlin_storage::Store;
-use dunlin_ui::{Context, PromptLevel, Window};
+use dunlin_ui::{Context, PromptButton, PromptLevel, Window};
 use dunlin_vault::store::{KeychainStore, SecretStore};
 
 use crate::app::DunlinApp;
@@ -178,6 +178,7 @@ fn load_vault_snapshot() -> VaultSnapshot {
 /// Values entered in the settings or bottom-panel form. The value is moved into
 /// the Keychain immediately and is never retained in app state.
 pub(crate) struct NewSecret {
+    pub storage_only: bool,
     pub label: String,
     pub description: String,
     pub value: String,
@@ -430,7 +431,11 @@ impl DunlinApp {
         if input.value.len() > 8192 {
             return Err("The credential value is too large".into());
         }
-        let hosts = validate_hosts(&input.hosts)?;
+        let hosts = if input.storage_only {
+            Vec::new()
+        } else {
+            validate_hosts(&input.hosts)?
+        };
         let path_prefix = validate_path_prefix(&input.path_prefix)?;
         validate_headers(&input.allowed_headers)?;
         let ttl = normalize_ttl(input.ttl_secs)?;
@@ -449,8 +454,12 @@ impl DunlinApp {
         let alias = unique_alias(store, &label, None);
         let id = format!("dunlin/{}", uuid::Uuid::now_v7().simple());
         let now = now_secs();
-        let mut methods = vec![HttpMethod::Get, HttpMethod::Head];
-        if input.allow_writes {
+        let mut methods = if input.storage_only {
+            Vec::new()
+        } else {
+            vec![HttpMethod::Get, HttpMethod::Head]
+        };
+        if !input.storage_only && input.allow_writes {
             methods.extend([
                 HttpMethod::Post,
                 HttpMethod::Put,
@@ -469,13 +478,21 @@ impl DunlinApp {
             path_prefix,
             allowed_methods: methods,
             allowed_headers: normalized_headers(&input.allowed_headers),
-            auto_approve: input.auto_approve,
-            expires_at: Some(now + ttl),
+            auto_approve: !input.storage_only && input.auto_approve,
+            expires_at: (!input.storage_only).then_some(now + ttl),
             created_at: now,
             updated_at: now,
             last_used_at: None,
         };
-        let policy = secret.policy(input.project_ids.clone(), Vec::new(), Vec::new());
+        let policy = secret.policy(
+            if input.storage_only {
+                Vec::new()
+            } else {
+                input.project_ids.clone()
+            },
+            Vec::new(),
+            Vec::new(),
+        );
         policy.validate()?;
         let policy_json = policy_json(&policy)?;
         if let Err(error) = store.upsert_secret(&secret) {
@@ -492,8 +509,12 @@ impl DunlinApp {
         }
         self.refresh_vault(cx);
         self.vault.ui.message = Some(format!(
-            "Created '{alias}'. It expires {}.",
-            expiry_label(ttl)
+            "Created '{alias}'. {}",
+            if input.storage_only {
+                "Stored in Keychain; agent access is not configured.".into()
+            } else {
+                format!("It expires {}.", expiry_label(ttl))
+            }
         ));
         Ok(alias)
     }
@@ -512,7 +533,11 @@ impl DunlinApp {
         if input.description.len() > 1024 {
             return Err("The agent description must fit in 1,024 bytes".into());
         }
-        let hosts = validate_hosts(&input.hosts)?;
+        let hosts = if input.storage_only {
+            Vec::new()
+        } else {
+            validate_hosts(&input.hosts)?
+        };
         let path_prefix = validate_path_prefix(&input.path_prefix)?;
         validate_headers(&input.allowed_headers)?;
         let ttl = normalize_ttl(input.ttl_secs)?;
@@ -542,8 +567,12 @@ impl DunlinApp {
             .map(|policy| policy.managed)
             .unwrap_or(true);
         let now = now_secs();
-        let mut methods = vec![HttpMethod::Get, HttpMethod::Head];
-        if input.allow_writes {
+        let mut methods = if input.storage_only {
+            Vec::new()
+        } else {
+            vec![HttpMethod::Get, HttpMethod::Head]
+        };
+        if !input.storage_only && input.allow_writes {
             methods.extend([
                 HttpMethod::Post,
                 HttpMethod::Put,
@@ -567,13 +596,17 @@ impl DunlinApp {
             path_prefix,
             allowed_methods: methods,
             allowed_headers: normalized_headers(&input.allowed_headers),
-            auto_approve: input.auto_approve,
-            expires_at: Some(now + ttl),
+            auto_approve: !input.storage_only && input.auto_approve,
+            expires_at: (!input.storage_only).then_some(now + ttl),
             created_at: existing.created_at,
             updated_at: now,
             last_used_at: existing.last_used_at,
         };
-        let policy = secret.policy(input.project_ids.clone(), recipes, operations);
+        let policy = if input.storage_only {
+            secret.policy(Vec::new(), Vec::new(), Vec::new())
+        } else {
+            secret.policy(input.project_ids.clone(), recipes, operations)
+        };
         policy.validate()?;
         let policy_json = policy_json(&policy)?;
         KeychainStore
@@ -942,7 +975,7 @@ impl DunlinApp {
                         PromptLevel::Warning,
                         "Agent wants to use a credential",
                         Some(text.as_str()),
-                        &["Deny", "Allow once", "Allow for this session"],
+                        &[PromptButton::cancel("Deny"), PromptButton::new("Allow once"), PromptButton::new("Allow for this session")],
                         cx,
                     );
                     let prompt = this.overlay_backdrop.track_native(prompt, cx);
@@ -1010,16 +1043,13 @@ fn expiry_label(ttl_secs: i64) -> String {
     }
 }
 
-pub(crate) const TTL_OPTIONS: [(i64, &str); 4] = [
-    (15 * 60, "15 min"),
-    (60 * 60, "1 h"),
-    (8 * 60 * 60, "8 h"),
-    (MAX_SECRET_TTL_SECS, "24 h"),
-];
+pub(crate) const TTL_OPTIONS: [(i64, &str); 3] =
+    [(15 * 60, "15 min"), (60 * 60, "1 h"), (8 * 60 * 60, "8 h")];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dunlin_domain::vault::MAX_SECRET_TTL_SECS;
 
     #[test]
     fn slugs_are_public_safe_and_bounded() {
@@ -1059,6 +1089,7 @@ mod tests {
 
     #[test]
     fn ttl_options_are_within_the_bound() {
+        assert_eq!(TTL_OPTIONS.map(|(ttl, _)| ttl), [900, 3600, 28800]);
         for (ttl, _) in TTL_OPTIONS {
             assert!(normalize_ttl(ttl).is_ok());
         }

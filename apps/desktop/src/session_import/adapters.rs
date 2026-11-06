@@ -4,7 +4,6 @@ use serde_json::Value;
 use std::path::{Component, Path};
 
 pub const MAX_FILE: u64 = 16 * 1024 * 1024;
-pub const MAX_SESSIONS: usize = 256;
 #[derive(Clone)]
 pub struct Candidate {
     pub source_id: String,
@@ -99,9 +98,6 @@ pub fn parse(harness: &str, bytes: &[u8]) -> Result<Vec<Candidate>, String> {
         vec![jsonl(harness, source)?]
     } else if let Some(value) = single {
         let values = value.as_array().cloned().unwrap_or_else(|| vec![value]);
-        if values.len() > MAX_SESSIONS {
-            return Err("At most 256 sessions per preview".into());
-        }
         values
             .iter()
             .map(|v| match harness {
@@ -344,6 +340,20 @@ pub fn match_project(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    #[test]
+    fn portable_arrays_are_not_limited_to_256_sessions() {
+        let sessions: Vec<_> = (0..600)
+            .map(|index| {
+                json!({
+                    "format": "dunlin.session.v1", "id": format!("session-{index}"),
+                    "messages": [{"role":"user","content":"Keep all sessions"}]
+                })
+            })
+            .collect();
+        let rows = super::parse("Custom ACP", &serde_json::to_vec(&sessions).unwrap()).unwrap();
+        assert_eq!(rows.len(), 600);
+        assert_eq!(rows[599].source_id, "session-599");
+    }
     #[test]
     fn matching_uses_canonical_containment_not_names_and_rejects_ambiguity() {
         use std::fs;

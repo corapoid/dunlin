@@ -6,7 +6,7 @@ use std::time::Duration;
 use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, ToolKind};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
-use dunlin_ui::component::button::{Button, ButtonVariants};
+use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::Input;
 use dunlin_ui::component::{ActiveTheme, Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -67,7 +67,7 @@ pub(crate) fn render(
         );
     }
     let zoom = this.activity.graph_zoom.clamp(0.5, 1.8);
-    scale_nodes(&mut visible_nodes, zoom);
+    scale_nodes(&mut visible_nodes, zoom * crate::workspace_text::scale(cx));
     let selected = this.selected_node.clone();
     let scroll = this.activity.graph_scroll.clone();
     let focus = this.activity_focus.clone();
@@ -158,7 +158,7 @@ pub(crate) fn render(
             ),
         )
         .child(
-            Button::new("graph-zoom-out")
+            dunlin_ui::button("graph-zoom-out")
                 .ghost()
                 .small()
                 .label("−")
@@ -179,7 +179,7 @@ pub(crate) fn render(
                 .child(format!("{:.0}%", zoom * 100.)),
         )
         .child(
-            Button::new("graph-zoom-in")
+            dunlin_ui::button("graph-zoom-in")
                 .ghost()
                 .small()
                 .label("+")
@@ -191,7 +191,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            Button::new("graph-zoom-reset")
+            dunlin_ui::button("graph-zoom-reset")
                 .ghost()
                 .small()
                 .label("Fit")
@@ -200,32 +200,11 @@ pub(crate) fn render(
         )
         .child(div().flex_1())
         .child(
-            div()
-                .id("graph-export-svg")
-                .role(Role::Button)
-                .aria_label("Save graph as SVG")
-                .h(px(23.))
-                .px(px(7.))
-                .rounded(px(5.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.card)
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .cursor_pointer()
-                .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx)))
-                .child(
-                    Icon::new(IconName::Download)
-                        .size(px(11.))
-                        .text_color(p.muted_fg),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(p.muted_fg)
-                        .child("Save SVG"),
-                ),
+            dunlin_ui::button("graph-export-svg")
+                .icon(IconName::Download)
+                .label("Save SVG")
+                .accessibility_label("Save graph as SVG")
+                .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx))),
         );
 
     let content = graph_canvas(
@@ -279,7 +258,7 @@ pub(crate) fn render(
         .flex_1()
         .min_w(px(0.))
         .min_h(px(0.))
-        .bg(p.bg)
+        .bg(p.card)
         .child(toolbar)
         .child(content)
         .child(legend)
@@ -523,7 +502,6 @@ fn graph_canvas(
         .w(px(width))
         .h(px(height))
         .flex_shrink_0()
-        .child(dot_grid(grid))
         .child(edge_layer);
 
     let visible = crate::activity::visible_graph_indices(nodes, viewport);
@@ -542,7 +520,7 @@ fn graph_canvas(
         ));
     }
 
-    div()
+    let viewport = div()
         .id("graph-scroll")
         .role(Role::Tree)
         .aria_label("Agent graph")
@@ -566,7 +544,18 @@ fn graph_canvas(
         .min_w(px(0.))
         .overflow_scroll()
         .child(layer)
-        .into_any_element()
+        .into_any_element();
+    let background = div()
+        .relative()
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .flex()
+        .child(dot_grid(grid))
+        .child(viewport);
+    #[cfg(debug_assertions)]
+    let background = background.children(crate::workspace_ui_smoke::probe("graph-background"));
+    background.into_any_element()
 }
 
 fn graph_viewport(scroll: &ScrollHandle, window: &Window) -> crate::activity::Viewport {
@@ -720,7 +709,7 @@ fn node_card(
     let mut card = card
         .child(
             div()
-                .h(px(30.))
+                .h(crate::workspace_text::size(30., cx))
                 .px(px(9.))
                 .flex()
                 .items_center()
@@ -741,7 +730,7 @@ fn node_card(
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(12.0))
+                        .text_size(crate::workspace_text::size(12., cx))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .truncate()
@@ -773,9 +762,9 @@ fn node_card(
                 .gap(px(6.))
                 .child(
                     div()
-                        .h(px(34.))
+                        .h(crate::workspace_text::size(34., cx))
                         .overflow_hidden()
-                        .text_size(px(11.0))
+                        .text_size(crate::workspace_text::size(11., cx))
                         .line_height(relative(1.45))
                         .text_color(if is_tool {
                             p.muted_fg
@@ -975,22 +964,12 @@ fn node_detail(
                 )
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id("close-node-detail")
-                        .role(Role::Button)
-                        .aria_label("Close agent details")
-                        .size(px(18.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
-                        .on_click(cx.listener(|this, _, _, cx| {
+                    icon_button("close-node-detail", IconName::X, "Close agent details").on_click(
+                        cx.listener(|this, _, _, cx| {
                             this.selected_node = None;
                             cx.notify();
-                        }))
-                        .child(Icon::new(IconName::X).size(px(11.)).text_color(p.muted_fg)),
+                        }),
+                    ),
                 ),
         )
         .child(
@@ -1028,35 +1007,14 @@ fn node_detail(
                 .children(node.tools.iter().map(|kind| tool_chip(*kind, p)))
                 .child(div().flex_1())
                 .child(
-                    div()
-                        .id("open-node-session")
-                        .role(Role::Button)
-                        .aria_label("Open the live transcript for this node")
-                        .h(px(21.))
-                        .px(px(6.))
-                        .rounded(px(4.))
-                        .border_1()
-                        .border_color(p.border)
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(p.hover))
+                    dunlin_ui::button("open-node-session")
+                        .icon(IconName::ArrowUpRight)
+                        .label("Transcript")
+                        .accessibility_label("Open the live transcript for this node")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.set_view(MainView::Chat, cx);
                             this.set_notice("Opened the live transcript", cx);
-                        }))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(p.muted_fg)
-                                .child("Transcript"),
-                        )
-                        .child(
-                            Icon::new(IconName::ArrowUpRight)
-                                .size(px(9.5))
-                                .text_color(p.muted_fg),
-                        ),
+                        })),
                 ),
         );
 

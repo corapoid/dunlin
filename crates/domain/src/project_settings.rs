@@ -11,6 +11,9 @@ const MAX_ENV_BYTES: usize = 64 * 1024;
 /// inherited, and these preferences do not configure a relay server.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupSettings {
+    /// Visual identity only; never inherited into descendant runtime settings.
+    #[serde(default)]
+    pub icon: Option<String>,
     #[serde(default)]
     pub harness: Option<String>,
     #[serde(default)]
@@ -34,6 +37,7 @@ impl GroupSettings {
 impl From<&ProjectSettings> for GroupSettings {
     fn from(settings: &ProjectSettings) -> Self {
         Self {
+            icon: None,
             harness: settings.harness.clone(),
             permission_mode: settings.permission_mode,
             default_models: settings.default_models.clone(),

@@ -3,7 +3,9 @@ use super::syntax_definition::*;
 use super::ParsingError;
 
 #[cfg(feature = "metadata")]
-use super::metadata::{LoadMetadata, Metadata, RawMetadataEntry};
+use super::metadata::{LoadMetadata, Metadata};
+#[cfg(all(feature = "metadata", feature = "yaml-load"))]
+use super::metadata::RawMetadataEntry;
 
 #[cfg(feature = "yaml-load")]
 use super::super::LoadingError;

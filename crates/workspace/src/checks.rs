@@ -13,6 +13,66 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 const OUTPUT_LIMIT: u64 = 512 * 1024;
+pub fn display_text(value: &str, limit: usize) -> String {
+    let mut out = String::new();
+    let mut escape = 0u8;
+    for c in value.chars() {
+        if out.len() >= limit {
+            out.push_str("\n[truncated; inspect full output]");
+            break;
+        }
+        match escape {
+            1 => {
+                escape = if c == '[' {
+                    2
+                } else if c == ']' {
+                    3
+                } else {
+                    0
+                };
+                continue;
+            }
+            2 => {
+                if ('@'..='~').contains(&c) {
+                    escape = 0;
+                }
+                continue;
+            }
+            3 => {
+                if c == '\x07' {
+                    escape = 0;
+                } else if c == '\x1b' {
+                    escape = 4;
+                }
+                continue;
+            }
+            4 => {
+                escape = if c == '\\' { 0 } else { 3 };
+                continue;
+            }
+            _ => {}
+        }
+        if c == '\x1b' {
+            escape = 1;
+            continue;
+        }
+        if (c.is_control() && !matches!(c, '\n' | '\t'))
+            || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        {
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+#[test]
+fn output_strips_terminal_and_bidi_controls_without_losing_unicode() {
+    assert_eq!(
+        display_text("\x1b[31mżółć\x1b[0m\u{202e}\x1b]0;title\x07\n", 1024),
+        "żółć\n"
+    );
+    assert!(display_text("abcdef", 3).starts_with("abc\n[truncated"));
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub path: String,
@@ -217,8 +277,8 @@ fn run_timeout(
         elapsed_ms: start.elapsed().as_millis() as u64,
         result: result.into(),
         exit_code,
-        stdout: crate::github::display_text(&stdout, OUTPUT_LIMIT as usize),
-        stderr: crate::github::display_text(&stderr, OUTPUT_LIMIT as usize),
+        stdout: display_text(&stdout, OUTPUT_LIMIT as usize),
+        stderr: display_text(&stderr, OUTPUT_LIMIT as usize),
         diagnostics,
     })
 }
@@ -260,10 +320,7 @@ fn diagnostics(root: &str, text: &str) -> Vec<Diagnostic> {
             result.push(Diagnostic {
                 path: relative.to_string_lossy().into_owned(),
                 line: span["line_start"].as_u64().unwrap_or(1),
-                message: crate::github::display_text(
-                    message["message"].as_str().unwrap_or("Diagnostic"),
-                    4000,
-                ),
+                message: display_text(message["message"].as_str().unwrap_or("Diagnostic"), 4000),
                 level: message["level"].as_str().unwrap_or("unknown").into(),
             });
         }

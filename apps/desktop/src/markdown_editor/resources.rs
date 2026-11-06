@@ -4,7 +4,7 @@ use crate::app::DunlinApp;
 use dunlin_ui::{
     component::{
         Disableable, Sizable,
-        button::{Button, ButtonVariants},
+        button::ButtonVariants,
         input::{Input, InputState},
     },
     prelude::FluentBuilder as _,
@@ -607,7 +607,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                     .flex()
                     .gap(px(6.))
                     .child(
-                        Button::new("markdown-resource-apply")
+                        dunlin_ui::button("markdown-resource-apply")
                             .ghost()
                             .small()
                             .label("Apply")
@@ -617,7 +617,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                             ),
                     )
                     .child(
-                        Button::new("markdown-resource-open")
+                        dunlin_ui::button("markdown-resource-open")
                             .ghost()
                             .small()
                             .label(if pending {
@@ -633,7 +633,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                             ),
                     )
                     .child(
-                        Button::new("markdown-resource-cancel")
+                        dunlin_ui::button("markdown-resource-cancel")
                             .ghost()
                             .small()
                             .label("Close")

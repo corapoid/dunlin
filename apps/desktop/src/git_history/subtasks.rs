@@ -374,7 +374,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         .child(Input::new(&s.name).small())
         .child(Input::new(&s.revision).small())
         .child(
-            Button::new("subtask-create")
+            dunlin_ui::button("subtask-create")
                 .small()
                 .primary()
                 .label(if s.busy {
@@ -464,7 +464,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .flex()
                         .gap(px(6.))
                         .child(
-                            Button::new(format!("subtask-open-{open}"))
+                            dunlin_ui::button(format!("subtask-open-{open}"))
                                 .ghost()
                                 .small()
                                 .label("Open as project")
@@ -474,7 +474,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 })),
                         )
                         .child(
-                            Button::new(format!("subtask-remove-{remove}"))
+                            dunlin_ui::button(format!("subtask-remove-{remove}"))
                                 .ghost()
                                 .small()
                                 .label("Remove worktree…")

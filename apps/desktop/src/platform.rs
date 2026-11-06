@@ -2,6 +2,19 @@
 
 use dunlin_ui::*;
 
+/// Query on render so changes to the system accessibility setting take effect
+/// without relaunching. AppKit owns the underlying native window material.
+pub(crate) fn reduce_transparency() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PermissionKind {
     Notifications,

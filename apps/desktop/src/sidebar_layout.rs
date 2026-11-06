@@ -3,6 +3,10 @@ use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 pub(crate) const DEFAULT_WIDTH: f32 = 278.;
+
+pub(crate) fn project_row_options(width: f32, compact: bool, wrap_names: bool) -> (bool, bool) {
+    (width >= 320., !compact && wrap_names && width >= 260.)
+}
 pub(crate) fn width(saved: f32, viewport: f32) -> f32 {
     let saved = if saved.is_finite() {
         saved
@@ -54,6 +58,22 @@ pub(crate) fn handle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn narrow_rows_reserve_space_for_names_instead_of_badges_or_letter_towers() {
+        for width in [100., 180., 220., 250.] {
+            assert_eq!(
+                super::project_row_options(width, false, true),
+                (false, false)
+            );
+        }
+        assert_eq!(super::project_row_options(280., false, true), (false, true));
+        assert_eq!(super::project_row_options(340., false, true), (true, true));
+        assert_eq!(super::project_row_options(340., true, true), (true, false));
+        assert_eq!(
+            super::project_row_options(340., false, false),
+            (true, false)
+        );
+    }
     #[test]
     fn widths_are_finite_and_leave_space_for_the_main_panel() {
         assert_eq!(super::width(f32::NAN, 1360.), 278.);
