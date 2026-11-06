@@ -132,6 +132,64 @@ impl SpawnOptions {
             shell_integration: false,
         })
     }
+
+    pub fn ssh_with_identity(
+        target: &str,
+        local_cwd: PathBuf,
+        remote_path: Option<&str>,
+        identity: Option<&Path>,
+        port: Option<u16>,
+    ) -> Result<Self, String> {
+        let mut options = Self::ssh(target, local_cwd, remote_path)?;
+        if let Some(identity) = identity {
+            let metadata = std::fs::symlink_metadata(identity)
+                .map_err(|_| "SSH private key is unavailable")?;
+            if !identity.is_absolute()
+                || !metadata.is_file()
+                || metadata.file_type().is_symlink()
+                || metadata.len() > 65536
+            {
+                return Err(
+                    "Choose an absolute, regular SSH private-key file (not a symlink)".into(),
+                );
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if metadata.permissions().mode() & 0o077 != 0 {
+                    return Err(
+                        "SSH private key permissions must exclude group/other access (chmod 600)"
+                            .into(),
+                    );
+                }
+            }
+            let identity = identity
+                .to_str()
+                .filter(|p| !p.chars().any(char::is_control))
+                .ok_or("Invalid SSH key path")?;
+            options.args.splice(
+                0..0,
+                [
+                    "-i",
+                    identity,
+                    "-o",
+                    "IdentitiesOnly=yes",
+                    "-o",
+                    "ControlMaster=no",
+                    "-o",
+                    "ControlPath=none",
+                ]
+                .map(str::to_string),
+            );
+        }
+        if let Some(port) = port {
+            if port == 0 {
+                return Err("SSH port must be between 1 and 65535".into());
+            }
+            options.args.splice(0..0, ["-p".into(), port.to_string()]);
+        }
+        Ok(options)
+    }
 }
 
 fn effective_env(key: &str, env: &[(String, String)]) -> Option<String> {
@@ -1359,6 +1417,94 @@ mod tests {
         assert!(options.shell_integration);
         let run = SpawnOptions::command(std::env::temp_dir(), "/bin/sh", Vec::new());
         assert!(!run.shell_integration);
+    }
+
+    #[test]
+    fn ssh_identity_and_port_are_explicit_validated_and_do_not_reuse_other_credentials() {
+        let key = std::env::temp_dir().join(format!(
+            "dunlin-key-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&key)
+            .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .unwrap();
+        }
+        let result = SpawnOptions::ssh_with_identity(
+            "dev@example.test",
+            std::env::temp_dir(),
+            Some("/srv/my project's"),
+            Some(&key),
+            Some(2222),
+        );
+        let options = result.unwrap();
+        assert_eq!(&options.args[..2], &["-p", "2222"]);
+        for expected in ["IdentitiesOnly=yes", "ControlMaster=no", "ControlPath=none"] {
+            assert!(options.args.iter().any(|arg| arg == expected));
+        }
+        assert!(options.env.is_empty());
+        assert!(
+            !options
+                .args
+                .iter()
+                .any(|arg| arg.contains("StrictHostKeyChecking=no"))
+        );
+        assert!(
+            SpawnOptions::ssh_with_identity("host", std::env::temp_dir(), None, None, Some(0))
+                .is_err()
+        );
+        assert!(
+            SpawnOptions::ssh_with_identity(
+                "host",
+                std::env::temp_dir(),
+                None,
+                Some(Path::new("relative")),
+                None
+            )
+            .is_err()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o644))
+                .unwrap();
+            assert!(
+                SpawnOptions::ssh_with_identity(
+                    "host",
+                    std::env::temp_dir(),
+                    None,
+                    Some(&key),
+                    None
+                )
+                .is_err()
+            );
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))
+                .unwrap();
+            let link = key.with_extension("link");
+            std::os::unix::fs::symlink(&key, &link).unwrap();
+            assert!(
+                SpawnOptions::ssh_with_identity(
+                    "host",
+                    std::env::temp_dir(),
+                    None,
+                    Some(&link),
+                    None
+                )
+                .is_err()
+            );
+            std::fs::remove_file(link).unwrap();
+        }
+        std::fs::remove_file(key).unwrap();
     }
 
     #[test]

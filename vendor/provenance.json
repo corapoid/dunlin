@@ -1,7 +1,27 @@
 {
   "schema": 1,
-  "basis": "Checksum-verified crates.io archives from the published beta.3 lockfile; no advisory exemptions",
+  "basis": "Checksum-verified crates.io archives from the application lockfile; no advisory exemptions",
   "packages": [
+    {
+      "name": "block",
+      "version": "0.1.6",
+      "upstream_repository": "https://github.com/SSheldon/rust-block",
+      "registry_archive_sha256": "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a",
+      "tree_sha256": "8d83f3ea45d1b00f62aaa10654ee729a56f6eff3908c2f175d2a127c68e3b713",
+      "files": 5,
+      "changes": [
+        {
+          "path": "src/lib.rs",
+          "upstream_sha256": "eb31678adf63b53109d9b94eba23699fd5f9ebfdb950f6e1a57ad51bb6a146fa",
+          "patched_sha256": "660f423f8a543c4a877122618533a469c9be07b53472fa73944d19fed2abc421"
+        },
+        {
+          "path": "tests/stack_block.rs",
+          "upstream_sha256": null,
+          "patched_sha256": "7ab6c8d75ee1aaed84e33869d1494323f7d1ce749824d821d317f4981bb8ebc0"
+        }
+      ]
+    },
     {
       "name": "cosmic-text",
       "version": "0.19.0",
@@ -82,13 +102,23 @@
       "version": "0.8.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "4097e161cc81e86323b439664be0cdd4f7c56148e867ed6f67fd72b966b6c2d1",
-      "tree_sha256": "bef9e1e4679439c91f880ddd6631bdd3d85d68d7d2579a7d74e4bd860c59d83c",
+      "tree_sha256": "45011052fc21ac432cd1047b88fac8503b19b80f0a3f249b6499296fe2c6f6fe",
       "files": 280,
       "changes": [
         {
           "path": "Cargo.toml",
           "upstream_sha256": "a8062e5260b0826f095d62857abc3c4c8734846459e2e6dd15ede813b1e4f053",
           "patched_sha256": "2f0a2e926d01f01958399843c1ec5159acc6bff6f3a9b5fce04a5c4e8e654f03"
+        },
+        {
+          "path": "src/tab/tab.rs",
+          "upstream_sha256": "936e7c460695b3222bb8dbcc2b2e0bfd27675eb941999baef2b75b7bc1872b08",
+          "patched_sha256": "6ecea64eecf7a0ddbaaac4040fc012591d487f838925c58d44062cde2c4c435b"
+        },
+        {
+          "path": "src/tab/tab_bar.rs",
+          "upstream_sha256": "49e96968a222446580405469201b4505544f2f38a77eb2a21b61ce5e08a6c1b8",
+          "patched_sha256": "cd8e6c39be3737f75553dd28039d5a239a7a81c778d7ebffae2ff53823f5c820"
         }
       ]
     },
@@ -97,7 +127,7 @@
       "version": "0.3.9",
       "upstream_repository": "https://github.com/zed-industries/zed",
       "registry_archive_sha256": "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0",
-      "tree_sha256": "c3b6978fc4d931df12a207cbf2ee4d7dddb966db2d8c17a1d3b144dd00698a39",
+      "tree_sha256": "21ad17b6a9c12f50397dc2cdb31eb5d9e8c1090f7575b0b97388bee3b8b1630f",
       "files": 159,
       "changes": [
         {
@@ -114,6 +144,16 @@
           "path": "src/svg_renderer.rs",
           "upstream_sha256": "fb12dae87c0cd4c5f5a1fbbd2f9548d52fde9440c21e3d576dfeb0233eda88a6",
           "patched_sha256": "a9d8efd7b23e64790ce625f311f2e54fc552eefdbedefc3f39cbfb9028ada6f7"
+        },
+        {
+          "path": "src/app.rs",
+          "upstream_sha256": "dcde9e61f8f13da16d045d7d977731add76e317b3c6283fb61deb299b6e8418b",
+          "patched_sha256": "b47948086c12a7ce3d9f0f539c092ba08ca6a299bb54e0fe58c10be7aa1a5070"
+        },
+        {
+          "path": "src/window.rs",
+          "upstream_sha256": "44f32319b9385fa6dbc15c36b3edea00a26208309b37283ae4f9bd4bead674f8",
+          "patched_sha256": "c6d6ea6789f6c9cf1f7aab1d10f5b033c653ac0175679c77686541962b74fa6b"
         }
       ]
     },
@@ -172,7 +212,7 @@
       "version": "5.3.0",
       "upstream_repository": "https://github.com/trishume/syntect",
       "registry_archive_sha256": "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925",
-      "tree_sha256": "2587d0ff23991434e03560a601ef484768bd4c51de5a714fc1e86ab17c00adc3",
+      "tree_sha256": "ef35db256d3c1f33d10cf487ba3e85b5652a734d88a72be91617dfa945693ac1",
       "files": 58,
       "changes": [
         {
@@ -204,6 +244,21 @@
           "path": "src/dumps.rs",
           "upstream_sha256": "237719802be45db966a6e2e5de2f58baa970ac84f83fb375dbdd90592e704e91",
           "patched_sha256": "f1c6e0c2017a867809ae9bef6e2841740aca065cd17e86ec223c4874832599d1"
+        },
+        {
+          "path": "src/parsing/metadata.rs",
+          "upstream_sha256": "16bd6210525e53032f96234564cdc4cce5d3146ae221e371b3e06e477a89ca25",
+          "patched_sha256": "140bec7a1325543c4d212215d6fdf10f6b5814568ea995d06b028d8e096d071b"
+        },
+        {
+          "path": "src/parsing/syntax_set.rs",
+          "upstream_sha256": "4e0d28195acdffb3434e143ff9c8a0a3df59c749414e7de74e96a70332d9464a",
+          "patched_sha256": "94a13069b35cc8e640a471fa7f8f0ba93b42c6d48f6e3a973fbb841fc09e2942"
+        },
+        {
+          "path": "src/parsing/yaml_load.rs",
+          "upstream_sha256": "c35df4fa48d29e542432a1b5af5a0ecf7f1d03721c7b62fb4a2f2ea707ea2227",
+          "patched_sha256": "c22fb045160c0d66d7b4789b03bbacaddbbad588f2d4589709922caa95e7de05"
         }
       ]
     },

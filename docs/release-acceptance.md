@@ -1,4 +1,41 @@
-# Release acceptance / hardening — 0.1.0-beta.4 (2026-11-01)
+# Release acceptance / hardening
+
+## 0.1.0-beta.9 preparation — 2026-11-06
+
+**Status: prepared locally, not published or accepted.** The requested scope is
+the complete current working tree and the seven local commits ahead of
+`origin/main`, explicitly confirmed during this release session. Scope approval
+does not waive any release check or authorize a claim of passed manual tests.
+
+- Workspace/lockfile version and release notes target `0.1.0-beta.9`.
+- README/guide cover UI, imports, configuration backups, usage, secrets and the
+  macOS/Linux server workflow. Server migration and account restrictions are in
+  [relay setup](relay-setup.md); older acceptance evidence below is historical.
+- The latest published release and website downloads remain beta.8. Advance
+  `web/src/lib/site.ts` and remove pending-publication notices only after beta.9
+  assets/checksums are published and independently verified.
+- GitHub write access was restored by the operator during preparation. The
+  read-only repository-policy audit passed and main had no open CodeQL alerts.
+  Publication still requires the signed merge and checks described below.
+- Release source must still be a GitHub-verified mainline squash merge with
+  successful required PR/main CI and security checks. Local test results are not
+  substitutes for `scripts/release_source.py` or artifact verification.
+- Manual GUI/provider/Tailscale/clean Linux/reboot acceptance remains explicitly
+  deferred under the existing beta policy, **not passed**. Linux jobs and new
+  distribution artifacts have not been verified by a published workflow run.
+- The terminal/workbench/workspace-pane Clippy warnings were fixed without
+  changing behavior, and workspace Rust formatting was normalized. Full
+  `cargo clippy --workspace --all-targets --offline --locked -- -D warnings`
+  passed. Existing component test evidence in feature docs is scoped to those
+  runs, not a substitute for final CI.
+- Preparation checks: release metadata/lockfile validation, all 30 release-tooling
+  tests, vendor integrity (10 reviewed trees), actionlint, local documentation
+  links and `git diff --check` passed. `cargo check -p dunlin -p dunlin-relay
+  --tests --offline --locked` passed after the beta.9 version bump.
+  The initial format check failed; `cargo fmt --all` corrected that release
+  blocker. Neither format nor lint was waived by the manual beta deferral.
+
+## Historical beta.4 acceptance — 2026-11-01
 
 ## Status: automatic beta hardening accepted; manual matrix explicitly deferred
 

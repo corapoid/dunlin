@@ -202,7 +202,9 @@ pub(crate) fn remote_session_summary(
         harness: "Remote".into(),
         model: "Auto".into(),
         branch: None,
-        updated_at: chrono::DateTime::from_timestamp(row.updated_at, 0).map(|d| d.to_rfc3339()).unwrap_or_default(),
+        updated_at: chrono::DateTime::from_timestamp(row.updated_at, 0)
+            .map(|d| d.to_rfc3339())
+            .unwrap_or_default(),
         cost_usd: 0.0,
         duration_secs: 0,
         tokens: 0,
@@ -215,22 +217,12 @@ pub(crate) fn remote_session_summary(
 }
 
 pub(crate) fn format_session_date(value: &str) -> String {
-    use chrono::{DateTime, Datelike, Local};
+    use chrono::{DateTime, Local};
     let Ok(parsed) = DateTime::parse_from_rfc3339(value) else {
         return value.trim().to_string();
     };
     let local = parsed.with_timezone(&Local);
-    let date = local.date_naive();
-    let today = Local::now().date_naive();
-    if date == today {
-        "Today".into()
-    } else if date == today.pred_opt().unwrap_or(today) {
-        "Yesterday".into()
-    } else if date.year() == today.year() {
-        date.format("%d %b").to_string()
-    } else {
-        date.format("%d %b %Y").to_string()
-    }
+    local.format("%Y-%m-%d %H:%M").to_string()
 }
 
 pub(crate) fn metadata_mtime_ms(metadata: &fs::Metadata) -> u64 {
@@ -400,12 +392,29 @@ pub(crate) fn format_duration(seconds: u64) -> String {
 }
 
 pub(crate) fn format_tokens(tokens: u64) -> String {
-    if tokens >= 1_000_000 {
+    if tokens >= 1_000_000_000_000 {
+        format!("{:.2}T", tokens as f64 / 1_000_000_000_000.)
+    } else if tokens >= 1_000_000_000 {
+        format!("{:.2}B", tokens as f64 / 1_000_000_000.)
+    } else if tokens >= 1_000_000 {
         format!("{:.1}M", tokens as f64 / 1_000_000.0)
     } else if tokens >= 1_000 {
         format!("{:.1}k", tokens as f64 / 1_000.0)
     } else {
         tokens.to_string()
+    }
+}
+
+#[test]
+fn token_labels_scale_through_trillions() {
+    for (tokens, label) in [
+        (999, "999"),
+        (1_000, "1.0k"),
+        (1_000_000, "1.0M"),
+        (19_963_900_000, "19.96B"),
+        (1_000_000_000_000, "1.00T"),
+    ] {
+        assert_eq!(format_tokens(tokens), label);
     }
 }
 
@@ -489,11 +498,17 @@ pub(crate) fn format_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn session_dates_are_compact_and_leave_relative_labels_untouched() {
+    fn session_dates_include_local_date_and_time_and_preserve_unknown_values() {
         assert_eq!(super::format_session_date("not a date"), "not a date");
         assert_eq!(
             super::format_session_date("2020-01-02T03:04:05Z"),
-            "02 Jan 2020"
+            chrono::DateTime::parse_from_rfc3339("2020-01-02T03:04:05Z")
+                .unwrap()
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
         );
+        let now = chrono::Utc::now().to_rfc3339();
+        assert_eq!(super::format_session_date(&now).len(), 16);
     }
 }

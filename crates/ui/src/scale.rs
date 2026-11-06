@@ -72,5 +72,26 @@ pub const RADIUS_LG: f32 = 12.0;
 
 pub const WORKSPACE_RADIUS: f32 = 16.;
 pub const WORKSPACE_INSET: f32 = 10.;
-pub const TITLEBAR_HEIGHT: f32 = 52.;
+pub const TITLEBAR_HEIGHT: f32 = 38.;
 pub const HEADER_HEIGHT: f32 = 36.;
+
+/// Project rows need a stronger density change than ordinary form controls.
+pub fn project_row_height(density: Density) -> f32 {
+    match density {
+        Density::Comfortable => 46.,
+        Density::Compact => 32.,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_project_rows_save_space_without_shrinking_text_targets() {
+        assert_eq!(project_row_height(Density::Compact), 32.);
+        assert!(
+            project_row_height(Density::Compact) <= project_row_height(Density::Comfortable) * 0.7
+        );
+    }
+}

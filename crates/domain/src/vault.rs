@@ -188,12 +188,23 @@ fn default_policy_version() -> u32 {
 }
 
 impl SecretPolicy {
+    /// A stored key has no destinations or grants until the user configures access.
+    pub fn is_storage_only(&self) -> bool {
+        self.allowed_hosts.is_empty()
+            && self.allowed_methods.is_empty()
+            && self.project_ids.is_empty()
+            && self.recipes.is_empty()
+            && self.operations.is_empty()
+            && !self.auto_approve
+    }
+
     #[allow(clippy::collapsible_match)]
     pub fn validate(&self) -> Result<(), String> {
         if self.version != default_policy_version() {
             return Err("Unsupported credential policy version".into());
         }
-        if self.allowed_hosts.is_empty() || self.allowed_hosts.len() > 16 {
+        let storage_only = self.is_storage_only();
+        if (!storage_only && self.allowed_hosts.is_empty()) || self.allowed_hosts.len() > 16 {
             return Err("A credential policy needs 1–16 hostnames".into());
         }
         for host in &self.allowed_hosts {
@@ -217,7 +228,7 @@ impl SecretPolicy {
         {
             return Err("The credential policy has an unsafe path prefix".into());
         }
-        if self.allowed_methods.is_empty() {
+        if !storage_only && self.allowed_methods.is_empty() {
             return Err("A credential policy needs at least one HTTP method".into());
         }
         for header in &self.allowed_headers {

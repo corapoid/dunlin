@@ -27,6 +27,8 @@ struct Controls {
     row_bounds: Probe,
     menu_bounds: Probe,
     menu_marker: Probe,
+    link_bounds: [Probe; 2],
+    links: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 fn marker(probe: Probe) -> impl IntoElement + Styled {
@@ -134,10 +136,32 @@ impl Render for Controls {
                 self.row_bounds.clone(),
             ))
             .child(measured(
-                menu_button("smoke-menu", "Menu item").w(px(300.))
+                menu_button("smoke-menu", "Menu item")
+                    .w(px(300.))
                     .child(marker(self.menu_marker.clone()).w(px(8.)).h(px(16.))),
                 self.menu_bounds.clone(),
             ))
+            .children(
+                [
+                    "https://example.com/plain",
+                    "[Documentation](https://example.com/docs)",
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, text)| {
+                    let links = self.links.clone();
+                    measured(
+                        crate::views::chat::markdown_text(
+                            format!("response-link:{index}"),
+                            text.into(),
+                        )
+                        .on_link_click(move |url, _, _, _| {
+                            links.lock().unwrap().push(url.to_string())
+                        }),
+                        self.link_bounds[index].clone(),
+                    )
+                }),
+            )
     }
 }
 
@@ -189,7 +213,7 @@ pub(crate) fn run() {
         dunlin_ui::init(cx);
         set_mode(ThemeMode::Light, None, cx);
         let (window, owner) = open_window(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.), px(80.)), size(px(640.), px(480.))))),
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.), px(80.)), size(px(640.), px(580.))))),
             ..dunlin_ui::window_options()
         }, cx, |_, cx| cx.new(|_| Controls::default())).unwrap();
         cx.spawn(async move |cx| {
@@ -220,11 +244,22 @@ pub(crate) fn run() {
                                 let marker = controls.menu_marker.get().unwrap();
                                 let inset = menu.right() - marker.right();
                                 assert!(inset >= px(0.) && inset <= px(14.), "menu label did not fill its row");
-                                if dark { return true; }
+                                 let probe = controls.link_bounds[0].clone();
+                                 click(window, cx, &probe);
+                             }
+                             9 => {
+                                 assert_eq!(*owner.read(cx).links.lock().unwrap(), ["https://example.com/plain"]);
+                                 let probe = owner.read(cx).link_bounds[1].clone();
+                                 click(window, cx, &probe);
+                             }
+                             10 => {
+                                 assert_eq!(*owner.read(cx).links.lock().unwrap(), ["https://example.com/plain", "https://example.com/docs"]);
+                                 if dark { return true; }
                                 set_mode(ThemeMode::Dark, Some(window), cx);
                                 owner.update(cx, |this, cx| {
                                     this.actions = 0; this.disabled_actions = 0; this.row_actions = 0; this.closed = 0;
-                                    this.toggled = false; this.checked = false; cx.notify();
+                                     this.toggled = false; this.checked = false; cx.notify();
+                                     this.links.lock().unwrap().clear();
                                 });
                                 dark = true;
                             }
@@ -234,11 +269,11 @@ pub(crate) fn run() {
                     }).unwrap()
                 });
                 if done {
-                    println!("PASS: native controls in light/dark themes: Enter/Space activation, disabled traversal and clicks, checkbox state, tab selection, isolated close action, rich row action and menu label layout");
+                    println!("PASS: native controls in light/dark themes: keyboard/disabled controls, isolated tab close, menu layout, bare and labeled agent links");
                     cx.update(|cx| cx.quit());
                     break;
                 }
-                stage = if stage == 8 { 0 } else { stage + 1 };
+                stage = if stage == 10 { 0 } else { stage + 1 };
             }
         }).detach();
     });

@@ -363,8 +363,19 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
     }
     let mut section = div().flex().flex_col().gap(px(12.)).child(
         div()
+            .relative()
+            .children({
+                #[cfg(debug_assertions)]
+                {
+                    crate::workspace_ui_smoke::probe("recent-projects-heading")
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    None::<AnyElement>
+                }
+            })
             .font_weight(FontWeight::SEMIBOLD)
-            .text_center()
+            .text_left()
             .child("Recent projects"),
     );
     if ids.is_empty() {
@@ -385,10 +396,10 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
     let mut tiles = div()
         .flex()
         .flex_wrap()
-        .items_start()
-        .justify_center()
+        .items_stretch()
+        .justify_start()
         .gap(px(12.));
-    for id in ids {
+    for (_tile_index, id) in ids.into_iter().enumerate() {
         let Some(project) = this.projects.iter().find(|project| project.id == id) else {
             continue;
         };
@@ -413,20 +424,37 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
         tiles = tiles.child(
             div()
                 .id(format!("dashboard-recent:{id}"))
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe(match _tile_index {
+                            0 => "recent-tile-0",
+                            1 => "recent-tile-1",
+                            _ => "recent-tile-2",
+                        })
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .aria_label(format!("Open recent project {name}"))
-                .flex_1()
-                .min_w(px(300.))
-                .max_w(px(360.))
+                .w(px(320.))
+                .max_w_full()
+                .h(px(132.))
+                .flex_shrink_0()
                 .rounded(px(10.))
                 .border_1()
-                .border_color(p.border_strong)
-                .bg(p.panel)
+                .border_color(p.border)
+                .bg(p.subtle)
                 .p(px(14.))
                 .flex()
                 .flex_col()
+                .justify_between()
                 .gap(px(9.))
                 .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
+                .hover(move |style| style.bg(p.hover).border_color(p.blue.opacity(0.35)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(index) = this.projects.iter().position(|project| project.id == id) {
                         this.select_project(index, cx);
@@ -456,20 +484,20 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                 .child(
                     div()
                         .flex()
-                        .flex_wrap()
-                        .items_center()
+                        .items_end()
                         .justify_between()
                         .gap(px(8.))
                         .child(
                             div()
                                 .flex()
+                                .flex_1()
+                                .flex_col()
                                 .min_w(px(0.))
-                                .items_center()
-                                .gap(px(8.))
-                                .children(crate::local_projects::monorepo_badge(this, project, &p))
+                                .gap(px(4.))
                                 .child(
                                     div()
                                         .flex()
+                                        .h(px(24.))
                                         .min_w(px(0.))
                                         .items_center()
                                         .gap(px(6.))
@@ -482,7 +510,10 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                                             format!("dashboard-branch:{}", project.id),
                                             cx,
                                         )),
-                                ),
+                                )
+                                .child(div().h(px(18.)).flex().items_center().children(
+                                    crate::local_projects::monorepo_badge(this, project, &p),
+                                )),
                         )
                         .child(
                             div()
@@ -528,10 +559,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .text_center()
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(greeting_for_hour(Local::now().hour())),
-        )
-        .child(div().text_center().text_size(px(12.)).text_color(p.muted_fg).child(
-            "Your projects, live agents and recorded activity · customize in Settings → General",
-        ));
+        );
     let live = this.live_agents();
     if live.is_empty() {
         body = body.child(recent_project_tiles(this, cx));

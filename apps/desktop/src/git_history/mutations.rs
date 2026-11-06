@@ -27,28 +27,18 @@ impl Form {
     }
 }
 impl DunlinApp {
-    pub(super) fn operate_on_history_commit(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(view) = &self.git_history.view else {
-            return;
-        };
-        let Some(commit) = view.selected.and_then(|i| view.rows.get(i)) else {
-            return;
-        };
-        let oid = commit.oid.clone();
-        view.mutations
-            .revision
-            .update(cx, |s, cx| s.set_value(oid, window, cx));
-        self.open_git_overview(cx);
-    }
-    pub(crate) fn git_operation_guard(&self, project: &Project, action: &Action) -> Result<(), String> {
-        if !self.projects.iter().any(|p| owns(project, p)) || (self.project().id != project.id && !matches!(action, Action::Switch { .. })) {
+    pub(crate) fn git_operation_guard(
+        &self,
+        project: &Project,
+        action: &Action,
+    ) -> Result<(), String> {
+        if !self.projects.iter().any(|p| owns(project, p))
+            || (self.project().id != project.id && !matches!(action, Action::Switch { .. }))
+        {
             return Err("Project changed; reopen repository state".into());
         }
-        if self.git_history.running
+        if self.group_cleanup.busy
+            || self.git_history.running
             || self.branch_ui.running()
             || self.projects.iter().any(|p| {
                 self.git_mutation_in_flight(&p.id) || self.ai_commit_locks_project_id(&p.id)
@@ -209,7 +199,9 @@ impl DunlinApp {
             Action::Switch { branch, .. } => Some(branch.clone()),
             _ => None,
         };
-        if switched_branch.is_some() { self.branch_ui.begin(id, project.id.clone()); }
+        if switched_branch.is_some() {
+            self.branch_ui.begin(id, project.id.clone());
+        }
         let tabs = self
             .workbench
             .tabs

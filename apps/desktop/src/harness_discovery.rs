@@ -54,9 +54,17 @@ pub(crate) fn search_paths() -> Vec<PathBuf> {
 
 fn home_bins(home: &Path) -> Vec<PathBuf> {
     [
-        ".local/bin", ".cargo/bin", ".bun/bin", ".npm-global/bin",
-        ".volta/bin", ".opencode/bin", "Library/pnpm", "node_modules/.bin",
-    ].map(|dir| home.join(dir)).into()
+        ".local/bin",
+        ".cargo/bin",
+        ".bun/bin",
+        ".npm-global/bin",
+        ".volta/bin",
+        ".opencode/bin",
+        "Library/pnpm",
+        "node_modules/.bin",
+    ]
+    .map(|dir| home.join(dir))
+    .into()
 }
 
 fn nvm_bins(root: &Path) -> Vec<PathBuf> {
@@ -239,7 +247,8 @@ pub(crate) fn catalog_docs(name: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn install_command(name: &str) -> Option<&'static str> {
-    (name == "Claude Code").then_some("npm install -g @agentclientprotocol/claude-agent-acp@preview")
+    (name == "Claude Code")
+        .then_some("npm install -g @agentclientprotocol/claude-agent-acp@preview")
 }
 
 impl crate::app::DunlinApp {
@@ -251,41 +260,61 @@ impl crate::app::DunlinApp {
     }
 
     pub(crate) fn rescan_harnesses(&mut self, cx: &mut dunlin_ui::Context<Self>) {
-        if self.harness_scanning { return; }
+        if self.harness_scanning {
+            return;
+        }
         self.harness_scanning = true;
         self.harness_setup_notice = Some("Scanning installed ACP adapters…".into());
         cx.notify();
         cx.spawn(async move |this, cx| {
             let detected = cx.background_executor().spawn(async { discover() }).await;
             let _ = this.update(cx, |this, cx| {
-                let count = detected.iter().filter(|entry| entry.adapter.is_some()).count();
+                let count = detected
+                    .iter()
+                    .filter(|entry| entry.adapter.is_some())
+                    .count();
                 this.harness_discovery = detected;
                 this.harness_scanning = false;
                 let message = format!("Scan complete · {count} ACP adapters detected");
                 this.harness_setup_notice = Some(message.clone());
                 this.set_notice(message, cx);
             });
-        }).detach();
+        })
+        .detach();
     }
 
     pub(crate) fn open_harness_docs(&mut self, name: &str, cx: &mut dunlin_ui::Context<Self>) {
-        let Some(url) = catalog_docs(name) else { return; };
+        let Some(url) = catalog_docs(name) else {
+            return;
+        };
         self.harness_setup_notice = Some("Opening the setup guide…".into());
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let result = cx.background_executor().spawn(async move {
-                let mut command = std::process::Command::new(if cfg!(target_os = "macos") { "/usr/bin/open" } else { "xdg-open" });
-                crate::providers::command_output(command.arg(url), std::time::Duration::from_secs(5))
-            }).await;
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut command = std::process::Command::new(if cfg!(target_os = "macos") {
+                        "/usr/bin/open"
+                    } else {
+                        "xdg-open"
+                    });
+                    crate::providers::command_output(
+                        command.arg(url),
+                        std::time::Duration::from_secs(5),
+                    )
+                })
+                .await;
             let _ = this.update(cx, |this, cx| {
-                this.harness_setup_notice = Some(if result.is_ok_and(|output| output.status.success()) {
-                    "Setup guide opened in your browser; nothing was installed.".into()
-                } else {
-                    format!("Could not open the browser. Open this URL manually: {url}")
-                });
+                this.harness_setup_notice =
+                    Some(if result.is_ok_and(|output| output.status.success()) {
+                        "Setup guide opened in your browser; nothing was installed.".into()
+                    } else {
+                        format!("Could not open the browser. Open this URL manually: {url}")
+                    });
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
     }
 }
 
@@ -317,14 +346,33 @@ mod tests {
         let bin = home.path().join("node_modules/.bin");
         std::fs::create_dir_all(&bin).unwrap();
         let target = home.path().join("node_modules/adapter.js");
-        std::fs::write(&target, b"#!/usr/bin/env node\nthrow new Error('must not execute');\n").unwrap();
+        std::fs::write(
+            &target,
+            b"#!/usr/bin/env node\nthrow new Error('must not execute');\n",
+        )
+        .unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
         let adapter = bin.join("claude-agent-acp");
         std::os::unix::fs::symlink(&target, &adapter).unwrap();
         let detected = discover_in(&home_bins(home.path()));
-        assert_eq!(detected.iter().find(|entry| entry.name == "Claude Code").unwrap().adapter.as_ref(), Some(&adapter));
-        assert!(!home_bins(home.path()).iter().any(|path| path.starts_with(home.path().join("project"))));
-        assert_eq!(install_command("Claude Code"), Some("npm install -g @agentclientprotocol/claude-agent-acp@preview"));
+        assert_eq!(
+            detected
+                .iter()
+                .find(|entry| entry.name == "Claude Code")
+                .unwrap()
+                .adapter
+                .as_ref(),
+            Some(&adapter)
+        );
+        assert!(
+            !home_bins(home.path())
+                .iter()
+                .any(|path| path.starts_with(home.path().join("project")))
+        );
+        assert_eq!(
+            install_command("Claude Code"),
+            Some("npm install -g @agentclientprotocol/claude-agent-acp@preview")
+        );
         assert!(install_command("Unknown").is_none());
     }
 

@@ -30,15 +30,18 @@ pub(crate) fn agent_caption(
             at >= timing.started_at_ms && timing.finished_at_ms.is_none_or(|end| at <= end)
         })
     });
-    let at = timing.as_ref().and_then(|timing| timing.finished_at_ms).or_else(|| {
-        items.iter().rev().find_map(|item| {
-            if let ChatItem::AgentText { at_ms, text, .. } = item {
-                (!text.is_empty()).then_some(*at_ms)
-            } else {
-                None
-            }
-        })
-    });
+    let at = timing
+        .as_ref()
+        .and_then(|timing| timing.finished_at_ms)
+        .or_else(|| {
+            items.iter().rev().find_map(|item| {
+                if let ChatItem::AgentText { at_ms, text, .. } = item {
+                    (!text.is_empty()).then_some(*at_ms)
+                } else {
+                    None
+                }
+            })
+        });
     let mut parts = Vec::new();
     if times && let Some(time) = at.and_then(local_time) {
         parts.push(time);

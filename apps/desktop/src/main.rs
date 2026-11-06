@@ -3,6 +3,7 @@
 mod activity;
 mod ai_commit;
 mod app;
+mod backup;
 mod branch_picker;
 mod chat_presentation;
 mod chat_scroll;
@@ -16,17 +17,17 @@ mod explorer;
 mod factory_reset;
 mod file_icons;
 mod file_preview;
-mod git_history;
 mod git_actions;
+mod git_history;
 #[cfg(debug_assertions)]
 mod glass_smoke;
+mod group_cleanup;
 mod group_settings;
 mod harness;
-mod harness_discovery;
 mod harness_brand;
+mod harness_discovery;
 mod inline_blame;
 mod local_projects;
-mod project_import;
 mod logging;
 mod markdown_editor;
 mod mcp;
@@ -38,9 +39,10 @@ mod overlay_window;
 mod platform;
 mod plugins;
 mod project_activity;
+mod project_catalog;
 mod project_groups;
 mod project_icons;
-mod project_catalog;
+mod project_import;
 mod project_runtime_settings;
 mod project_tree;
 mod projection;
@@ -48,8 +50,10 @@ mod provider_auth;
 mod providers;
 mod qa;
 mod remote;
+mod remote_connection;
 mod run;
 mod security;
+mod server_panel;
 mod session_import;
 mod session_list;
 mod sidebar_layout;
@@ -58,14 +62,17 @@ mod spec;
 mod subtask_worktrees;
 mod task_budgets;
 mod terminal;
+#[cfg(test)]
+mod ui_contract_tests;
 mod usage;
+mod user_profile;
 mod vault;
 mod views;
 mod watch;
 mod window_state;
 mod workbench;
-#[cfg(test)]
-mod ui_contract_tests;
+mod workspace_panes;
+mod workspace_text;
 #[cfg(debug_assertions)]
 mod workspace_ui_smoke;
 
@@ -192,7 +199,13 @@ fn main() {
                 ..dunlin_ui::window_options()
             },
             cx,
-            |window, cx| cx.new(|cx| DunlinApp::new(window, cx)),
+            |window, cx| {
+                cx.new(|cx| {
+                    let mut app = DunlinApp::new(window, cx);
+                    app.refresh_user_profile(cx);
+                    app
+                })
+            },
         )
         .expect("failed to open the Dunlin window");
     });

@@ -68,7 +68,6 @@ pub(crate) fn run() {
         let bounds = Bounds::new(point(px(80.), px(80.)), size(px(1360.), px(860.)));
         let (parent, owner) = open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..dunlin_ui::window_options() }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         cx.activate(true);
-        owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); });
         cx.spawn(async move |cx| {
             let started = Instant::now(); let mut stage = 0;
             loop {
@@ -84,7 +83,17 @@ pub(crate) fn run() {
                     let (open, panel) = { let app = owner.read(cx); (app.overlay_window.is_open(), app.overlay_window.diagnostic(cx)) };
                     assert!(started.elapsed() < Duration::from_secs(20), "glass smoke stalled at stage {stage}; panel={panel:?}");
                     match stage {
-                        0 if panel.is_some() => {
+                        0 => {
+                            let rail = crate::workspace_ui_smoke::measured("navigation-rail");
+                            let settings = crate::workspace_ui_smoke::measured("rail-settings");
+                            assert!(settings.bottom() > rail.bottom() - px(16.), "Settings belongs at the bottom of the navigation rail");
+                            assert_eq!(crate::workspace_ui_smoke::measured("user-avatar").size, size(px(22.), px(22.)));
+                            assert_eq!(crate::workspace_ui_smoke::measured("title-user-menu").size, size(px(32.), px(32.)), "a smaller avatar must preserve its click target");
+                            parent.update(cx, |_, window, cx| click(window, settings.center(), cx)).unwrap();
+                            stage = 90;
+                        }
+                        90 if panel.is_some() => {
+                            assert!(owner.read(cx).settings_open);
                             assert_eq!(panel.unwrap().size, size(px(1120.), px(760.)));
                             assert!(open);
                             parent.update(cx, |_, window, _| window.resize(size(px(1200.), px(800.)))).unwrap(); stage = 1;
@@ -105,8 +114,8 @@ pub(crate) fn run() {
                         }
                         3 if !open => {
                             assert!(!owner.read(cx).has_modal_overlay());
-                            parent.update(cx, |_, window, cx| {
-                                click(window, point(px(45.), window.viewport_size().height - px(13.)), cx);
+                             parent.update(cx, |_, window, cx| {
+                                 click(window, crate::workspace_ui_smoke::measured("status-branch-picker").center(), cx);
                             }).unwrap();
                             assert!(owner.read(cx).branch_ui.is_open(), "status-bar branch trigger must open its compact picker");
                             stage = 12;
@@ -120,16 +129,25 @@ pub(crate) fn run() {
                             parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| app.open_palette(window, cx))).unwrap();
                             stage = 13;
                         }
-                        13 => {
+                         13 => {
                             assert!(!open);
                             assert!(owner.read(cx).command_open);
                             assert!(!owner.read(cx).has_modal_overlay());
-                            assert!(!owner.read(cx).overlay_backdrop.has_dimming());
+                             assert!(!owner.read(cx).overlay_backdrop.has_dimming());
+                             parent.update(cx, |_, window, _| assert_search_shade(window)).unwrap();
                             let focus = owner.read(cx).overlay_focus_handle(cx);
                             assert!(parent.update(cx, |_, w, _| focus.is_focused(w)).unwrap());
-                            parent.update(cx, |_, window, cx| press_escape(window, cx)).unwrap();
-                            assert!(!owner.read(cx).command_open);
-                            owner.update(cx, |app, cx| {
+                             parent.update(cx, |_, window, cx| press_escape(window, cx)).unwrap();
+                             assert!(!owner.read(cx).command_open);
+                             parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| app.open_project_search(window, cx))).unwrap();
+                             stage = 130;
+                         }
+                         130 => {
+                             assert!(owner.read(cx).command_open && owner.read(cx).command_projects_only);
+                             parent.update(cx, |_, window, _| assert_search_shade(window)).unwrap();
+                             parent.update(cx, |_, window, cx| press_escape(window, cx)).unwrap();
+                             assert!(!owner.read(cx).command_open);
+                             owner.update(cx, |app, cx| {
                                 app.remote_picker = Some(crate::app::RemotePicker {
                                     host_id: "smoke-host".into(), host_name: "Fixture (no network)".into(),
                                     projects: Vec::new(), loading: false, error: None,
@@ -250,7 +268,7 @@ pub(crate) fn run() {
                         }
                         17 => {
                             let child = owner.read(cx).overlay_window.debug_window().unwrap();
-                            for handle in [parent.into(), child] {
+                            for handle in [parent, child] {
                                 handle.update(cx, |_, window, cx| {
                                     assert!(!window.is_action_available(&crate::native_menu::Commands, cx));
                                     assert!(!window.is_action_available(&crate::native_menu::OpenFolders, cx));
@@ -317,33 +335,85 @@ pub(crate) fn run() {
     });
 }
 
+fn assert_search_shade(window: &Window) {
+    let bounds =
+        Bounds::new(point(px(0.), px(0.)), window.viewport_size()).scale(window.scale_factor());
+    let shade: Background = black().opacity(0.14).into();
+    assert!(
+        window
+            .painted_quads()
+            .iter()
+            .any(|quad| quad.bounds == bounds && quad.background == shade),
+        "search must paint a light fullscreen shade behind the palette"
+    );
+}
+
 fn click(window: &mut Window, position: Point<Pixels>, cx: &mut App) {
-    window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position, ..Default::default() }), cx);
-    window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { button: MouseButton::Left, position, click_count: 1, ..Default::default() }), cx);
-    window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { button: MouseButton::Left, position, click_count: 1, ..Default::default() }), cx);
+    window.dispatch_event(
+        PlatformInput::MouseMove(MouseMoveEvent {
+            position,
+            ..Default::default()
+        }),
+        cx,
+    );
+    window.dispatch_event(
+        PlatformInput::MouseDown(MouseDownEvent {
+            button: MouseButton::Left,
+            position,
+            click_count: 1,
+            ..Default::default()
+        }),
+        cx,
+    );
+    window.dispatch_event(
+        PlatformInput::MouseUp(MouseUpEvent {
+            button: MouseButton::Left,
+            position,
+            click_count: 1,
+            ..Default::default()
+        }),
+        cx,
+    );
 }
 
 fn press_escape(window: &mut Window, cx: &mut App) {
-    window.dispatch_event(PlatformInput::KeyDown(KeyDownEvent {
-        keystroke: Keystroke::parse("escape").unwrap(), is_held: false, prefer_character_input: false,
-    }), cx);
+    window.dispatch_event(
+        PlatformInput::KeyDown(KeyDownEvent {
+            keystroke: Keystroke::parse("escape").unwrap(),
+            is_held: false,
+            prefer_character_input: false,
+        }),
+        cx,
+    );
 }
 
 fn assert_native_input_responder(window: &Window) {
     use objc2_app_kit::NSView;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window).unwrap();
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        unreachable!()
+    };
     // SAFETY: The fixture window owns this view and runs on AppKit's main thread.
     let view: &NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
     let native = view.window().unwrap();
-    let app = objc2_app_kit::NSApplication::sharedApplication(objc2::MainThreadMarker::new().unwrap());
+    let app =
+        objc2_app_kit::NSApplication::sharedApplication(objc2::MainThreadMarker::new().unwrap());
     assert!(native.canBecomeKeyWindow());
     if app.isActive() {
-        assert!(native.isKeyWindow(), "the active application's modal must own the native keyboard focus");
+        assert!(
+            native.isKeyWindow(),
+            "the active application's modal must own the native keyboard focus"
+        );
     }
-    let responder = native.firstResponder().expect("modal has no native input responder");
-    assert_eq!(std::ptr::from_ref(&*responder).cast::<()>(), std::ptr::from_ref(view).cast::<()>(), "native key events must reach the modal's GPUI view");
+    let responder = native
+        .firstResponder()
+        .expect("modal has no native input responder");
+    assert_eq!(
+        std::ptr::from_ref(&*responder).cast::<()>(),
+        std::ptr::from_ref(view).cast::<()>(),
+        "native key events must reach the modal's GPUI view"
+    );
 }
 
 fn post_native_key(window: &Window, key: &str, code: u16) {
@@ -351,7 +421,9 @@ fn post_native_key(window: &Window, key: &str, code: u16) {
     use objc2_foundation::{NSOperationQueue, NSPoint, NSString};
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window).unwrap();
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        unreachable!()
+    };
     // SAFETY: Only this isolated test application's live window is targeted.
     let view: &NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
     let native = view.window().unwrap();
@@ -363,5 +435,7 @@ fn post_native_key(window: &Window, key: &str, code: u16) {
     // Send only to our fixture, even if macOS leaves the user's app frontmost.
     let block = block2::RcBlock::new(move || native.sendEvent(&event));
     // SAFETY: AppKit delivery must run on the main queue, outside GPUI borrows.
-    unsafe { NSOperationQueue::mainQueue().addOperationWithBlock(&block); }
+    unsafe {
+        NSOperationQueue::mainQueue().addOperationWithBlock(&block);
+    }
 }

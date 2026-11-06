@@ -58,6 +58,30 @@ pub(crate) struct OverlayBackdrop {
     shared: Rc<Shared>,
 }
 
+/// A localized, input-transparent material below GPUI toolbar controls.
+#[derive(Default)]
+pub(crate) struct ControlGlass(RefCell<native::BackdropViews>);
+impl ControlGlass {
+    pub(crate) fn paint(&self, bounds: Bounds<Pixels>, window: &Window, cx: &App) {
+        if crate::platform::reduce_transparency() {
+            self.clear(window);
+            return;
+        }
+        self.0.borrow_mut().update_panel(
+            window,
+            Bounds::new(point(px(0.), px(0.)), window.viewport_size()),
+            Some(bounds),
+            f32::from(bounds.size.height) / 2.,
+            palette(cx).bg.l < 0.5,
+        );
+    }
+    pub(crate) fn clear(&self, window: &Window) {
+        self.0
+            .borrow_mut()
+            .update_panel(window, Bounds::default(), None, 0., false);
+    }
+}
+
 #[derive(Default)]
 struct WindowBackdrops(HashMap<WindowId, Weak<Shared>>);
 impl Global for WindowBackdrops {}
@@ -163,7 +187,10 @@ impl OverlayBackdrop {
             move |viewport, _, window, cx| {
                 if window.has_active_prompt() {
                     // A GPUI confirmation paints its own backdrop above this scene.
-                    this.shared.native.borrow_mut().update(window, viewport, &[], false, None);
+                    this.shared
+                        .native
+                        .borrow_mut()
+                        .update(window, viewport, &[], false, None);
                     return;
                 }
                 let panel_plane = this.shared.panel_plane.get();
@@ -261,19 +288,22 @@ impl Drop for NativeLease {
 
 /// Attach inside the actual foreground panel, not the full-screen dismiss layer.
 pub(crate) fn rounded_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
-    surface_probe(backdrop, false, radius)
+    surface_probe(backdrop, false, radius, 1.)
+}
+pub(crate) fn borderless_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
+    surface_probe(backdrop, false, radius, 0.)
 }
 /// A scroll container translates all its children, including an absolute
 /// measuring canvas. Its content mask, unlike child coordinates, stays fixed
 /// to the visible panel; do not move the sharp cutout when its contents scroll.
 pub(crate) fn rounded_scroll_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
-    surface_probe(backdrop, true, radius)
+    surface_probe(backdrop, true, radius, 1.)
 }
-fn surface_probe(backdrop: &OverlayBackdrop, scroll: bool, radius: f32) -> AnyElement {
+fn surface_probe(backdrop: &OverlayBackdrop, scroll: bool, radius: f32, border: f32) -> AnyElement {
     let frame = backdrop.shared.frame.clone();
     canvas(
         move |bounds, window, _| {
-            let bounds = surface_bounds(bounds, window.content_mask().bounds, scroll);
+            let bounds = surface_bounds(bounds, window.content_mask().bounds, scroll, border);
             if nonempty(bounds) {
                 frame.borrow_mut().surface = Some(bounds);
                 frame.borrow_mut().radius = radius;
@@ -287,11 +317,14 @@ fn surface_probe(backdrop: &OverlayBackdrop, scroll: bool, radius: f32) -> AnyEl
     .into_any_element()
 }
 
-fn surface_bounds(child: Bounds<Pixels>, clip: Bounds<Pixels>, scroll: bool) -> Bounds<Pixels> {
-    // Every measured modal has a 1-point border. Absolute children and scroll
-    // clips are measured inside that border; native glass must include it or
-    // its corners end up inset by one point on every edge.
-    (if scroll { clip } else { child }).dilate(px(1.))
+fn surface_bounds(
+    child: Bounds<Pixels>,
+    clip: Bounds<Pixels>,
+    scroll: bool,
+    border: f32,
+) -> Bounds<Pixels> {
+    // Absolute children and scroll clips exclude borders, but native glass must include them.
+    (if scroll { clip } else { child }).dilate(px(border))
 }
 
 /// Component menus are deferred above dialogs. Observe their visible custom
@@ -1179,14 +1212,19 @@ mod tests {
         for (w, h) in [(530., 460.), (300., 170.), (1120., 760.)] {
             let interior = rect(101., 201., w - 2., h - 2.);
             assert_eq!(
-                super::surface_bounds(interior, interior, false),
+                super::surface_bounds(interior, interior, false, 1.),
                 rect(100., 200., w, h)
             );
             assert_eq!(
-                super::surface_bounds(interior, interior, true),
+                super::surface_bounds(interior, interior, true, 1.),
                 rect(100., 200., w, h)
             );
         }
+        let borderless = rect(100., 200., 1120., 760.);
+        assert_eq!(
+            super::surface_bounds(borderless, borderless, false, 0.),
+            borderless
+        );
     }
     fn triangle_coverage(path: &dunlin_ui::Path<Pixels>, x: f32, y: f32) -> usize {
         path.vertices
@@ -1397,8 +1435,8 @@ mod tests {
     fn scrolling_contents_do_not_move_the_sharp_panel_cutout() {
         let viewport = rect(0., 0., 1360., 860.);
         let panel = rect(450., 100., 460., 650.);
-        let before = super::surface_bounds(panel, panel, true);
-        let after = super::surface_bounds(rect(450., -200., 460., 650.), panel, true);
+        let before = super::surface_bounds(panel, panel, true, 1.);
+        let after = super::surface_bounds(rect(450., -200., 460., 650.), panel, true, 1.);
         assert_eq!(before, after);
         assert_eq!(
             regions(viewport, Some(before), false),
@@ -1406,11 +1444,11 @@ mod tests {
         );
         let resized = rect(400., 60., 460., 600.);
         assert_eq!(
-            super::surface_bounds(panel, resized, true),
+            super::surface_bounds(panel, resized, true, 1.),
             resized.dilate(px(1.))
         );
         assert_eq!(
-            super::surface_bounds(panel, viewport, false),
+            super::surface_bounds(panel, viewport, false, 1.),
             panel.dilate(px(1.))
         );
     }

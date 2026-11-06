@@ -5,6 +5,7 @@ mod discovery;
 use crate::app::{DunlinApp, tone_color, tone_soft};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use dunlin_domain::Project;
+use dunlin_ui::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use dunlin_ui::*;
 use std::{
     collections::HashMap,
@@ -33,6 +34,7 @@ struct Entry {
 }
 #[derive(Default)]
 pub(crate) struct State {
+    color: Option<(String, Entity<ColorPickerState>, Subscription)>,
     entries: HashMap<String, Entry>,
     groups: HashMap<String, (String, Arc<Image>)>,
     busy: bool,
@@ -45,7 +47,7 @@ fn matches_project(project: &Project, id: &str, root: &str) -> bool {
         && (project.settings.custom_icon.is_some() || (project.trusted && !project.is_remote()))
 }
 
-fn decode(bytes: &[u8], extension: &str) -> Result<Arc<Image>, String> {
+pub(crate) fn decode(bytes: &[u8], extension: &str) -> Result<Arc<Image>, String> {
     if bytes.len() > MAX_ICON_BYTES {
         return Err("Project icon exceeds 2 MiB".into());
     }
@@ -109,12 +111,22 @@ fn custom_image(value: &str) -> Result<Arc<Image>, String> {
 }
 
 pub(crate) fn read_icon(path: PathBuf) -> Result<String, String> {
-    let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
-    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "svg" | "ico") { return Err("Choose PNG, JPEG, SVG or ICO".into()); }
+    let extension = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "svg" | "ico") {
+        return Err("Choose PNG, JPEG, SVG or ICO".into());
+    }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    if !file.metadata().map_err(|e| e.to_string())?.is_file() { return Err("Choose a regular image file".into()); }
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("Choose a regular image file".into());
+    }
     let mut bytes = Vec::new();
-    file.take(MAX_ICON_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    file.take(MAX_ICON_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
     let image = decode(&bytes, &extension)?;
     Ok(format!("png:{}", STANDARD.encode(image.bytes())))
 }
@@ -122,27 +134,59 @@ pub(crate) fn read_icon(path: PathBuf) -> Result<String, String> {
 fn group_image(value: &str) -> Result<Arc<Image>, String> {
     let builtin = match value {
         "aws-lambda" => Some((include_str!("../../../assets/aws-lambda.svg"), "#FF9900")),
-        "kubernetes" => Some((include_str!("../../../assets/kubernetes.svg"), "#326CE5")),
+        "kubernetes" => Some((include_str!("../../../assets/kubernetes.svg"), "#78A9FF")),
         _ => None,
     };
     if let Some((svg, color)) = builtin {
-        return decode(svg.replace("<path ", &format!("<path fill=\"{color}\" ")).as_bytes(), "svg");
+        return decode(
+            svg.replace("<path ", &format!("<path fill=\"{color}\" "))
+                .as_bytes(),
+            "svg",
+        );
     }
     custom_image(value)
 }
 
-pub(crate) fn render_group(this: &DunlinApp, group: &dunlin_domain::ProjectGroup, side: f32, p: &Palette) -> AnyElement {
-    let image = this.project_icons.groups.get(&group.id)
+pub(crate) fn render_group(
+    this: &DunlinApp,
+    group: &dunlin_domain::ProjectGroup,
+    side: f32,
+    p: &Palette,
+) -> AnyElement {
+    let image = this
+        .project_icons
+        .groups
+        .get(&group.id)
         .filter(|(value, _)| group.settings.icon.as_ref() == Some(value));
-    let view = div().size(px(side)).flex_shrink_0().flex().items_center().justify_center();
+    let view = div()
+        .size(px(side))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center();
     if let Some((_, image)) = image {
         #[cfg(debug_assertions)]
-        let view = view.relative().children(crate::workspace_ui_smoke::probe("group-image"));
-        view.child(img(image.clone()).size(px(side)).object_fit(ObjectFit::Contain)).into_any_element()
+        let view = view
+            .relative()
+            .children(crate::workspace_ui_smoke::probe("group-image"));
+        view.child(
+            img(image.clone())
+                .size(px(side))
+                .object_fit(ObjectFit::Contain),
+        )
+        .into_any_element()
     } else {
         #[cfg(debug_assertions)]
-        let view = view.relative().children(crate::workspace_ui_smoke::probe("group-dot"));
-        view.child(div().size(px(6.)).rounded_full().bg(tone_color(p, group.tone))).into_any_element()
+        let view = view
+            .relative()
+            .children(crate::workspace_ui_smoke::probe("group-dot"));
+        view.child(
+            div()
+                .size(px((side * 0.5).clamp(8., 14.)))
+                .rounded_full()
+                .bg(tone_color(p, group.tone)),
+        )
+        .into_any_element()
     }
 }
 
@@ -192,6 +236,55 @@ fn detect(root: &str, previous: Option<&Detected>) -> Option<Detected> {
 }
 
 impl DunlinApp {
+    pub(crate) fn reset_project_color_picker(&mut self) {
+        self.project_icons.color = None;
+    }
+
+    pub(crate) fn project_color_picker(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let project = &self.projects[index];
+        if self
+            .project_icons
+            .color
+            .as_ref()
+            .is_none_or(|(id, _, _)| id != &project.id)
+        {
+            let id = project.id.clone();
+            let color = project
+                .settings
+                .custom_color
+                .map(|value| rgba(value).into())
+                .unwrap_or_else(|| tone_color(&palette(cx), project.tone));
+            let state = cx.new(|cx| ColorPickerState::new(window, cx).default_value(color));
+            let owner = id.clone();
+            let subscription =
+                cx.subscribe(&state, move |this, _, event: &ColorPickerEvent, cx| {
+                    let ColorPickerEvent::Change(color) = event;
+                    if let Some(index) = this.projects.iter().position(|p| p.id == owner) {
+                        let mut project = this.projects[index].clone();
+                        project.settings.custom_color =
+                            color.map(|color| u32::from(color.to_rgb()));
+                        if let Some(store) = &this.store
+                            && let Err(error) = store.upsert_project(&project)
+                        {
+                            this.file_notice(format!("Could not save project color: {error}"), cx);
+                            return;
+                        }
+                        this.projects[index] = project;
+                        cx.notify();
+                    }
+                });
+            self.project_icons.color = Some((id, state, subscription));
+        }
+        ColorPicker::new(&self.project_icons.color.as_ref().unwrap().1)
+            .label("Custom dot color")
+            .into_any_element()
+    }
+
     pub(crate) fn choose_project_icon(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(project) = self.projects.get(index) else {
             return;
@@ -213,14 +306,14 @@ impl DunlinApp {
             };
             let result = cx
                 .background_executor()
-                .spawn(async move {
-                    read_icon(path)
-                })
+                .spawn(async move { read_icon(path) })
                 .await;
             let _ = this.update(cx, |this, cx| match result {
                 Ok(icon) => {
                     if let Some(index) = this.projects.iter().position(|p| p.id == id) {
                         this.projects[index].settings.custom_icon = Some(icon);
+                        this.projects[index].settings.custom_color = None;
+                        this.project_icons.color = None;
                         this.store_project_settings(index);
                         this.project_icons.entries.remove(&id);
                         this.refresh_project_icons(cx);
@@ -235,6 +328,8 @@ impl DunlinApp {
     pub(crate) fn reset_project_icon(&mut self, index: usize, cx: &mut Context<Self>) {
         if let Some(project) = self.projects.get_mut(index) {
             project.settings.custom_icon = None;
+            project.settings.custom_color = None;
+            self.project_icons.color = None;
             self.project_icons.entries.remove(&project.id);
             self.store_project_settings(index);
             self.refresh_project_icons(cx);
@@ -242,12 +337,19 @@ impl DunlinApp {
         }
     }
     pub(crate) fn refresh_project_icons(&mut self, cx: &mut Context<Self>) {
-        self.project_icons.groups.retain(|id, (value, _)| self.project_groups.iter().any(|g| &g.id == id && g.settings.icon.as_ref() == Some(value)));
+        self.project_icons.groups.retain(|id, (value, _)| {
+            self.project_groups
+                .iter()
+                .any(|g| &g.id == id && g.settings.icon.as_ref() == Some(value))
+        });
         for group in &self.project_groups {
             if !self.project_icons.groups.contains_key(&group.id)
                 && let Some(value) = &group.settings.icon
-                && let Ok(image) = group_image(value) {
-                self.project_icons.groups.insert(group.id.clone(), (value.clone(), image));
+                && let Ok(image) = group_image(value)
+            {
+                self.project_icons
+                    .groups
+                    .insert(group.id.clone(), (value.clone(), image));
             }
         }
         self.project_icons.entries.retain(|id, entry| {
@@ -365,6 +467,16 @@ fn monogram(name: &str) -> String {
 }
 
 pub(crate) fn render(this: &DunlinApp, project: &Project, side: f32, p: &Palette) -> AnyElement {
+    if let Some(color) = project.settings.custom_color {
+        return div()
+            .size(px(side))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(dot(rgba(color).into(), (side * 0.55).clamp(10., 18.)))
+            .into_any_element();
+    }
     let icon = this
         .project_icons
         .entries

@@ -163,15 +163,19 @@ fn compact_item(
     })
 }
 
-pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let label = if this.project().is_remote() {
+pub(super) fn harness_label(this: &DunlinApp) -> String {
+    if this.project().is_remote() {
         match &this.harness.status {
             crate::harness::HarnessStatus::Ready { agent, .. } => agent.clone(),
             _ => "Relay harness".into(),
         }
     } else {
         this.session_harness()
-    };
+    }
+}
+
+pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let label = harness_label(this);
     let app = cx.entity().downgrade();
     trigger("composer-harness", label, IconName::Bot)
         .tooltip("Choose a harness for a new conversation")
@@ -194,23 +198,16 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 ));
             }
             menu = menu.label("Switching harness starts a new conversation");
-            let configured = crate::harness::configured_harness_names(&this.custom_harness_command);
+            let configured = this.visible_harness_names();
             if configured.is_empty() {
-                menu = menu.label("No harness is installed or configured");
+                menu = menu.label("No visible harness is installed or configured");
             }
             for name in configured {
                 let command = harness_command(&name, &this.custom_harness_command);
                 let available = command_available(&command);
                 menu = menu.item(item(
                     &app,
-                    (
-                        name.clone(),
-                        if available {
-                            command
-                        } else {
-                            format!("Not installed · {command}")
-                        },
-                    ),
+                    (name.clone(), String::new()),
                     IconName::Bot,
                     this.session_harness() == name,
                     this.chat_controls_busy() || !available,
@@ -219,10 +216,7 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
             }
             menu.separator().item(item(
                 &app,
-                (
-                    "Configure harnesses…".into(),
-                    "Custom commands and defaults".into(),
-                ),
+                ("Configure harnesses…".into(), String::new()),
                 IconName::Settings2,
                 false,
                 false,
@@ -237,7 +231,7 @@ pub(crate) fn mode(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
     let label = mode_label(this.harness.modes.as_ref(), this.harness.mode_changing);
     let app = cx.entity().downgrade();
     trigger("composer-mode", label, IconName::ShieldCheck)
-        .tooltip("Mode reported by the connected harness; Dunlin's independent safety policy is in Permissions settings")
+        .tooltip("Shift+Tab: next agent mode · tool approval policy is in Permissions settings")
         .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
                 return menu;
@@ -260,34 +254,56 @@ pub(crate) fn mode(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                     ));
                 }
             } else {
-                menu = menu.label("This harness has not advertised agent modes").item(item(&app,
-                    ("Connect / retry harness".into(), "Discover the modes supported by this harness".into()),
-                    IconName::Plug, false, busy, Action::Connect));
+                menu = menu
+                    .label("This harness has not advertised agent modes")
+                    .item(item(
+                        &app,
+                        (
+                            "Connect / retry harness".into(),
+                            "Discover the modes supported by this harness".into(),
+                        ),
+                        IconName::Plug,
+                        false,
+                        busy,
+                        Action::Connect,
+                    ));
             }
-            menu.separator().item(item(&app, ("Tool approval settings…".into(), "Dunlin safety restrictions are separate from the harness mode".into()),
-                IconName::Settings2, false, false, Action::Settings(SettingsTab::Permissions))).scrollable(true).max_h(px(440.))
+            menu.separator()
+                .item(item(
+                    &app,
+                    (
+                        "Tool approval settings…".into(),
+                        "Dunlin safety restrictions are separate from the harness mode".into(),
+                    ),
+                    IconName::Settings2,
+                    false,
+                    false,
+                    Action::Settings(SettingsTab::Permissions),
+                ))
+                .scrollable(true)
+                .max_h(px(440.))
         })
         .on_open_change(track_menu(cx))
         .into_any_element()
 }
 
 fn mode_label(modes: Option<&dunlin_agent::SessionModes>, changing: bool) -> String {
-    if changing { "Changing mode…".into() } else { modes.map(|m| m.label().to_string()).unwrap_or_else(|| "Agent mode unavailable".into()) }
+    if changing {
+        "Changing mode…".into()
+    } else {
+        modes
+            .map(|m| m.label().to_string())
+            .unwrap_or_else(|| "Agent mode unavailable".into())
+    }
 }
 
-#[cfg(test)]
-mod mode_tests {
-    #[test]
-    fn auto_is_only_the_harness_mode_and_unknown_modes_are_never_invented() {
-        let mut modes = dunlin_agent::SessionModes { config_id: Some("agent-mode".into()), current: "auto".into(),
-            choices: vec![dunlin_agent::ModelChoice { id: "auto".into(), name: "Auto".into(), description: None }] };
-        assert_eq!(super::mode_label(Some(&modes), false), "Auto");
-        assert_eq!(super::mode_label(Some(&modes), true), "Changing mode…");
-        modes.current = "new-wire-mode".into();
-        assert_eq!(super::mode_label(Some(&modes), false), "new-wire-mode");
-        assert_eq!(modes.choices.len(), 1);
-        assert_eq!(super::mode_label(None, false), "Agent mode unavailable");
-    }
+pub(crate) fn next_mode(modes: &dunlin_agent::SessionModes) -> Option<&str> {
+    let next = modes
+        .choices
+        .iter()
+        .position(|choice| choice.id == modes.current)
+        .map_or(0, |index| (index + 1) % modes.choices.len());
+    modes.choices.get(next).map(|choice| choice.id.as_str())
 }
 
 pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -622,4 +638,52 @@ pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -
             "Select a local OpenCode conversation to manage its providers. For remote conversations, connect the provider on the relay."
         )))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod mode_tests {
+    #[test]
+    fn mode_cycle_wraps_and_handles_missing_current_and_empty_choices() {
+        let mut modes = dunlin_agent::SessionModes {
+            config_id: None,
+            current: "a".into(),
+            choices: vec![
+                dunlin_agent::ModelChoice {
+                    id: "a".into(),
+                    name: "A".into(),
+                    description: None,
+                },
+                dunlin_agent::ModelChoice {
+                    id: "b".into(),
+                    name: "B".into(),
+                    description: None,
+                },
+            ],
+        };
+        assert_eq!(super::next_mode(&modes), Some("b"));
+        modes.current = "b".into();
+        assert_eq!(super::next_mode(&modes), Some("a"));
+        modes.current = "unknown".into();
+        assert_eq!(super::next_mode(&modes), Some("a"));
+        modes.choices.clear();
+        assert_eq!(super::next_mode(&modes), None);
+    }
+    #[test]
+    fn auto_is_only_the_harness_mode_and_unknown_modes_are_never_invented() {
+        let mut modes = dunlin_agent::SessionModes {
+            config_id: Some("agent-mode".into()),
+            current: "auto".into(),
+            choices: vec![dunlin_agent::ModelChoice {
+                id: "auto".into(),
+                name: "Auto".into(),
+                description: None,
+            }],
+        };
+        assert_eq!(super::mode_label(Some(&modes), false), "Auto");
+        assert_eq!(super::mode_label(Some(&modes), true), "Changing mode…");
+        modes.current = "new-wire-mode".into();
+        assert_eq!(super::mode_label(Some(&modes), false), "new-wire-mode");
+        assert_eq!(modes.choices.len(), 1);
+        assert_eq!(super::mode_label(None, false), "Agent mode unavailable");
+    }
 }

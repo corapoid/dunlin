@@ -3,31 +3,16 @@
 
 use dunlin_domain::{MainView, UsageSource};
 use dunlin_ui::assets::IconName;
+use dunlin_ui::component::Icon;
 use dunlin_ui::component::button::{Button, ButtonVariants};
 use dunlin_ui::component::input::{Editor, Input};
 use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
-use dunlin_ui::component::Icon;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::{DunlinApp, SettingsTab};
 use dunlin_domain::PermissionMode;
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub(crate) enum DesignSection {
-    #[default]
-    Application,
-    Sidebar,
-}
-impl DesignSection {
-    const ALL: [Self; 2] = [Self::Application, Self::Sidebar];
-    fn label(self) -> &'static str {
-        match self {
-            Self::Application => "Application",
-            Self::Sidebar => "Sidebar",
-        }
-    }
-}
 pub(crate) fn settings_size(width: f32, height: f32) -> (f32, f32) {
     (
         (width - 48.).clamp(360., 1120.),
@@ -103,38 +88,68 @@ pub(crate) fn render(
         f32::from(window.viewport_size().height),
     );
     let viewport = window.viewport_size();
-    let (left, top) = settings_position((f32::from(viewport.width), f32::from(viewport.height)), (width, height),
-        (f32::from(this.settings_offset.x), f32::from(this.settings_offset.y)));
-    this.settings_offset = point(px(left - (f32::from(viewport.width) - width) / 2.),
-        px(top - (f32::from(viewport.height) - height) / 2.));
+    let (left, top) = settings_position(
+        (f32::from(viewport.width), f32::from(viewport.height)),
+        (width, height),
+        (
+            f32::from(this.settings_offset.x),
+            f32::from(this.settings_offset.y),
+        ),
+    );
+    this.settings_offset = point(
+        px(left - (f32::from(viewport.width) - width) / 2.),
+        px(top - (f32::from(viewport.height) - height) / 2.),
+    );
 
     let panel = div()
         .id("settings-panel")
-        .absolute().left(px(left)).top(px(top))
+        .absolute()
+        .left(px(left))
+        .top(px(top))
         .children({
-            #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("settings-panel") }
-            #[cfg(not(debug_assertions))] { None::<AnyElement> }
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("settings-panel")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
         })
-        .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
+        .child(crate::effects::borderless_probe(
+            &this.overlay_backdrop,
+            20.,
+        ))
         .w(px(width))
         .h(px(height))
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.border_strong)
-        .bg(p.panel)
+        .rounded(px(20.))
+        .shadow_lg()
+        .bg(p.subtle)
         .overflow_hidden()
         .flex()
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(settings_nav(this, cx))
         .child(
             div()
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("settings-content")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .flex_1()
                 .min_w(px(0.))
                 .flex()
                 .flex_col()
-                .rounded_tr(px(12.))
-                .rounded_br(px(12.))
-                .bg(p.panel)
+                .m(px(8.))
+                .rounded(px(16.))
+                .overflow_hidden()
+                .bg(p.bg)
                 .child(settings_header(this, cx))
                 .child(
                     div()
@@ -145,10 +160,11 @@ pub(crate) fn render(
                         .child(settings_page(match tab {
                             SettingsTab::General => general(this, window, cx),
                             SettingsTab::Design => design(this, window, cx),
+                            SettingsTab::Sidebar => sidebar_settings(this, cx),
                             SettingsTab::Chat => chat_settings(this, cx),
                             SettingsTab::Harnesses => harnesses(this, cx),
                             SettingsTab::Skills => crate::skills::render(this, cx),
-                            SettingsTab::Security => security(this, cx),
+                            SettingsTab::Security => security(this, window, cx),
                             SettingsTab::Secrets => {
                                 crate::vault::settings::render(this, window, cx)
                             }
@@ -181,10 +197,15 @@ pub(crate) fn render(
                 if event.pressed_button == Some(MouseButton::Left) {
                     this.settings_offset = offset + (event.position - start);
                     cx.notify();
-                } else { this.settings_drag = None; }
+                } else {
+                    this.settings_drag = None;
+                }
             }
         }))
-        .on_mouse_up(MouseButton::Left, cx.listener(|this, _, _, _| this.settings_drag = None))
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(|this, _, _, _| this.settings_drag = None),
+        )
         .child(panel)
         .into_any_element()
 }
@@ -193,14 +214,26 @@ fn settings_position(viewport: (f32, f32), panel: (f32, f32), offset: (f32, f32)
     let position = |view: f32, size: f32, delta: f32| {
         ((view - size) / 2. + delta).clamp(8., (view - size - 8.).max(8.))
     };
-    (position(viewport.0, panel.0, offset.0), position(viewport.1, panel.1, offset.1))
+    (
+        position(viewport.0, panel.0, offset.0),
+        position(viewport.1, panel.1, offset.1),
+    )
 }
 
 #[test]
 fn settings_drag_stays_reachable_after_drag_and_resize() {
-    assert_eq!(settings_position((1200., 900.), (900., 700.), (0., 0.)), (150., 100.));
-    assert_eq!(settings_position((1200., 900.), (900., 700.), (10000., -10000.)), (292., 8.));
-    assert_eq!(settings_position((600., 500.), (590., 490.), (10000., 10000.)), (8., 8.));
+    assert_eq!(
+        settings_position((1200., 900.), (900., 700.), (0., 0.)),
+        (150., 100.)
+    );
+    assert_eq!(
+        settings_position((1200., 900.), (900., 700.), (10000., -10000.)),
+        (292., 8.)
+    );
+    assert_eq!(
+        settings_position((600., 500.), (590., 490.), (10000., 10000.)),
+        (8., 8.)
+    );
 }
 
 fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -210,9 +243,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .min_h(px(0.))
         .overflow_hidden()
         .flex_shrink_0()
-        .border_r_1()
-        .border_color(p.border)
-        .bg(p.panel)
+        .bg(p.subtle)
         .rounded_tl(px(12.))
         .rounded_bl(px(12.))
         .flex()
@@ -224,8 +255,6 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .border_b_1()
-                .border_color(p.border)
                 .child(
                     div()
                         .size(px(22.))
@@ -253,6 +282,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             &[
                 SettingsTab::General,
                 SettingsTab::Design,
+                SettingsTab::Sidebar,
                 SettingsTab::Chat,
                 SettingsTab::Editor,
             ],
@@ -354,7 +384,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .into_any_element()
 }
 
-fn security(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn security(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let enabled = this.security_enabled;
     let body = div()
@@ -363,12 +393,12 @@ fn security(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .flex()
         .flex_col()
         .gap(px(18.))
-        .child(section_label("Security workspace", &p))
+        .child(section_label("Security tools", &p))
         .child(
             settings_card(&p)
                 .child(setting_row(
-                    "Enable Security workspace",
-                    "Show the Security rail section, command palette entry and audit views. Disabling only hides Dunlin's workspace; it does not uninstall skills, delete audit artifacts, grant permissions, or change Codex Security.",
+                    "Enable Security tools",
+                    "Audit tools and saved findings live here in Settings. Disabling does not remove skills or artifacts, or change permissions.",
                     toggle_switch(
                         "security-enabled",
                         enabled,
@@ -411,7 +441,11 @@ fn security(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 &p,
             )),
         );
-    body.into_any_element()
+    body.when(enabled, |body| {
+        body.child(crate::security::sidebar_body(this, cx))
+            .child(crate::security::render(this, window, cx))
+    })
+    .into_any_element()
 }
 
 fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -421,9 +455,10 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
             "General",
             "Startup behavior and the default workspace. Appearance lives in Design.",
         ),
-        SettingsTab::Design => (
-            "Design",
-            "Theme, interface density and the project sidebar.",
+        SettingsTab::Design => ("Design", "Theme, typography and interface density."),
+        SettingsTab::Sidebar => (
+            "Sidebar",
+            "Project list appearance, sorting and sidebar width.",
         ),
         SettingsTab::Chat => (
             "Chat",
@@ -440,7 +475,7 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         ),
         SettingsTab::Security => (
             "Security",
-            "Audit skills, external scan artifacts and the global Security workspace switch.",
+            "Audit tools, scan artifacts and findings — all in Settings.",
         ),
         SettingsTab::Secrets => (
             "Secrets",
@@ -469,23 +504,28 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         .id("settings-drag-handle")
         .relative()
         .children({
-            #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("settings-drag-handle") }
-            #[cfg(not(debug_assertions))] { None::<AnyElement> }
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("settings-drag-handle")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
         })
         .h(px(56.))
         .flex_shrink_0()
-        .rounded_tr(px(12.))
-        .px(px(24.))
+        .px(px(32.))
         .flex()
         .items_center()
         .gap(px(8.))
-        .border_b_1()
-        .border_color(p.border)
-        .bg(p.panel)
-        .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _, cx| {
-            this.settings_drag = Some((event.position, this.settings_offset));
-            cx.stop_propagation();
-        }))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                this.settings_drag = Some((event.position, this.settings_offset));
+                cx.stop_propagation();
+            }),
+        )
         .child(
             div()
                 .flex_1()
@@ -508,16 +548,17 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 ),
         )
         .child(
-            icon_button("settings-close", IconName::X, "Close settings")
-                .on_click(cx.listener(|this, _, _, cx| {
+            icon_button("settings-close", IconName::X, "Close settings").on_click(cx.listener(
+                |this, _, _, cx| {
                     this.settings_open = false;
                     cx.notify();
-                })),
+                },
+            )),
         )
         .into_any_element()
 }
 
-fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn general(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let view = this.default_view;
     let harness = this.default_harness.clone();
@@ -645,6 +686,7 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
                 )),
         )
         .child(crate::project_import::settings(this, cx))
+        .child(crate::backup::settings(this, window, cx))
         .child(section_label("Behavior", &p))
         .child(
             settings_card(&p)
@@ -740,48 +782,20 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
 
 fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let selected = this.design_section;
-    let mut tabs = segment_group(&p);
-    for section in DesignSection::ALL {
-        tabs = tabs.child(
-            segment(
-                format!("settings-design:{}", section.label()),
-                section.label(),
-                section == selected,
-                &p,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.design_section = section;
-                cx.notify();
-            })),
+    let mut density = segment_group(&p);
+    for (value, label) in [
+        (crate::app::UiDensity::Comfortable, "Comfortable"),
+        (crate::app::UiDensity::Compact, "Compact"),
+    ] {
+        density = density.child(
+            segment(format!("density:{label}"), label, this.density == value, &p).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.set_ui_density(value, cx);
+                }),
+            ),
         );
     }
-    let content = match selected {
-        DesignSection::Application => {
-            let mut density = segment_group(&p);
-            for (value, label) in [
-                (crate::app::UiDensity::Comfortable, "Comfortable"),
-                (crate::app::UiDensity::Compact, "Compact"),
-            ] {
-                density = density.child(
-                    segment(format!("density:{label}"), label, this.density == value, &p).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.density = value;
-                            dunlin_ui::scale::set_density(match value {
-                                crate::app::UiDensity::Compact => {
-                                    dunlin_ui::scale::Density::Compact
-                                }
-                                crate::app::UiDensity::Comfortable => {
-                                    dunlin_ui::scale::Density::Comfortable
-                                }
-                            });
-                            this.persist_settings(cx);
-                            cx.notify();
-                        }),
-                    ),
-                );
-            }
-            div()
+    div()
                 .px(px(24.))
                 .py(px(20.))
                 .flex()
@@ -840,47 +854,49 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                         ))
                 )
                 .into_any_element()
-        }
-        DesignSection::Sidebar => {
-            let mut sort = segment_group(&p);
-            for (candidate, label) in [
-                (crate::project_tree::Sort::Name, "Name ↑"),
-                (crate::project_tree::Sort::Modified, "Modified ↓"),
-            ] {
-                sort = sort.child(
-                    segment(
-                        format!("design-sort:{label}"),
-                        label,
-                        this.project_sort == candidate,
-                        &p,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.project_sort = candidate;
-                        this.persist_settings(cx);
-                        cx.notify();
-                    })),
-                );
-            }
-            let mut width = div().flex().items_center().gap(px(6.));
-            for (label, delta) in [("−", -24.), ("+", 24.), ("Reset", 0.)] {
-                width = width.child(
-                    settings_button(format!("design-width:{label}"), label, false, &p).on_click(
-                        cx.listener(move |this, _, window, cx| {
-                            this.sidebar_width = if delta == 0. {
-                                crate::sidebar_layout::DEFAULT_WIDTH
-                            } else {
-                                crate::sidebar_layout::width(
-                                    this.sidebar_width + delta,
-                                    f32::from(window.viewport_size().width),
-                                )
-                            };
-                            this.persist_settings(cx);
-                            cx.notify();
-                        }),
-                    ),
-                );
-            }
-            div()
+}
+
+fn sidebar_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    let mut sort = segment_group(&p);
+    for (candidate, label) in [
+        (crate::project_tree::Sort::Name, "Name ↑"),
+        (crate::project_tree::Sort::Modified, "Modified ↓"),
+    ] {
+        sort = sort.child(
+            segment(
+                format!("design-sort:{label}"),
+                label,
+                this.project_sort == candidate,
+                &p,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.project_sort = candidate;
+                this.persist_settings(cx);
+                cx.notify();
+            })),
+        );
+    }
+    let mut width = div().flex().items_center().gap(px(6.));
+    for (label, delta) in [("−", -24.), ("+", 24.), ("Reset", 0.)] {
+        width = width.child(
+            settings_button(format!("design-width:{label}"), label, false, &p).on_click(
+                cx.listener(move |this, _, window, cx| {
+                    this.sidebar_width = if delta == 0. {
+                        crate::sidebar_layout::DEFAULT_WIDTH
+                    } else {
+                        crate::sidebar_layout::width(
+                            this.sidebar_width + delta,
+                            f32::from(window.viewport_size().width),
+                        )
+                    };
+                    this.persist_settings(cx);
+                    cx.notify();
+                }),
+            ),
+        );
+    }
+    div()
                 .px(px(24.))
                 .py(px(20.))
                 .flex()
@@ -891,7 +907,7 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                     settings_card(&p)
                         .child(setting_row(
                             "Show branch names",
-                            "Show or hide branch/Git labels below project names. Dirty-change indicators remain visible.",
+                            "Show branch and local-change status in Comfortable. Your preference is kept in Compact.",
                             toggle_switch(
                                 "project-branches",
                                 this.show_project_branches,
@@ -902,19 +918,19 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                             &p,
                         ))
                         .child(divider(&p))
-                        .child(setting_row("Show primary language", "Show the dominant language and a filter containing the primary languages found in your projects.",
+                        .child(setting_row("Show primary language", "Shown below topics in Comfortable. Your preference is kept in Compact.",
                             toggle_switch("project-language", this.project_list.show_language, |this| {
                                 this.project_list.show_language = !this.project_list.show_language;
                                 this.project_catalog.language = None;
                             }, cx, &p), &p))
                         .child(divider(&p))
-                        .child(setting_row("Show GitHub topics", "Read repository topics with your existing GitHub CLI account. Click a topic to filter projects; no login prompts or repository writes.",
+                        .child(setting_row("Show repository topics", "Shown above language in Comfortable. Your preference is kept in Compact; click a topic to filter projects.",
                             toggle_switch("project-topics", this.project_list.show_topics, |this| {
                                 this.project_list.show_topics = !this.project_list.show_topics;
                                 this.project_catalog.topic = None;
                             }, cx, &p), &p))
                         .child(divider(&p))
-                        .child(setting_row("Wrap project names", "Wrap long project names onto multiple lines instead of truncating them with an ellipsis.",
+                        .child(setting_row("Wrap project names", "Wrap long names in Comfortable. Compact keeps one-line names without changing this preference.",
                             toggle_switch("project-wrap-names", this.project_list.wrap_names, |this| this.project_list.wrap_names = !this.project_list.wrap_names, cx, &p), &p))
                         .child(divider(&p))
                         .child(setting_row("Project hover preview", "Show repository name, primary language, storage size, topics and an inert README preview on hover.",
@@ -935,30 +951,9 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
                             ),
                             width.into_any_element(),
                             &p,
-                        ))
-                        .child(divider(&p))
-                        .child(setting_row(
-                            "Collapse account usage",
-                            "Start with the compact account usage footer.",
-                            toggle_switch(
-                                "design-usage-collapse",
-                                this.account_usage_collapsed,
-                                |this| this.account_usage_collapsed = !this.account_usage_collapsed,
-                                cx,
-                                &p,
-                            ),
-                            &p,
                         )),
                 )
                 .into_any_element()
-        }
-    };
-    div()
-        .flex()
-        .flex_col()
-        .child(div().px(px(24.)).pt(px(18.)).flex().child(tabs))
-        .child(content)
-        .into_any_element()
 }
 
 fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -1050,11 +1045,16 @@ fn theme_card(
     } else {
         dunlin_ui::theme::light()
     };
-    let label = match appearance { crate::app::Appearance::System => "System", crate::app::Appearance::Light => "Light", crate::app::Appearance::Dark => "Dark" };
+    let label = match appearance {
+        crate::app::Appearance::System => "System",
+        crate::app::Appearance::Light => "Light",
+        crate::app::Appearance::Dark => "Dark",
+    };
 
     div()
         .id(format!("theme-card-{label}"))
-        .flex_1().min_w(px(0.))
+        .flex_1()
+        .min_w(px(0.))
         .rounded(px(9.))
         .border_1()
         .border_color(if selected { p.fg } else { p.border })
@@ -1137,9 +1137,13 @@ fn theme_card(
                 .items_center()
                 .gap(px(6.))
                 .child(
-                    Icon::new(match appearance { crate::app::Appearance::System => IconName::Monitor, crate::app::Appearance::Dark => IconName::Moon, crate::app::Appearance::Light => IconName::Sun })
-                        .size(px(12.))
-                        .text_color(p.muted_fg),
+                    Icon::new(match appearance {
+                        crate::app::Appearance::System => IconName::Monitor,
+                        crate::app::Appearance::Dark => IconName::Moon,
+                        crate::app::Appearance::Light => IconName::Sun,
+                    })
+                    .size(px(12.))
+                    .text_color(p.muted_fg),
                 )
                 .child(
                     div()
@@ -1157,6 +1161,28 @@ fn theme_card(
 }
 
 fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    if let Some(project) = this.project().remote.clone() {
+        if this.server_panel.host.as_deref() != Some(&project.host_id) {
+            if this.server_panel.transfer.is_some()
+                || this
+                    .server_panel
+                    .job
+                    .as_ref()
+                    .is_some_and(|job| !job.finished)
+            {
+                return div().p(px(24.)).child("Another server operation is still running. Open Remote settings to finish or cancel it before switching server configuration.").into_any_element();
+            }
+            this.server_panel = crate::server_panel::State {
+                host: Some(project.host_id),
+                ..Default::default()
+            };
+            this.refresh_server(cx);
+        }
+        return div()
+            .p(px(24.))
+            .child(crate::server_panel::render(this, cx))
+            .into_any_element();
+    }
     let p = palette(cx);
     let current = this.default_harness.clone();
     let discovery = this.harness_discovery.clone();
@@ -1195,19 +1221,15 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         let name_owned = name.to_string();
         let import_name = name.to_string();
         let install_name = name.to_string();
+        let visibility_name = name.to_string();
+        let visible = this.harness_visible(name);
         let scanning =
             this.session_import.loading && this.session_import.scanning.as_deref() == Some(*name);
 
         let action = if installed {
             settings_button(
                 format!("import-sessions:{name}"),
-                if scanning {
-                    this.session_import
-                        .progress_label()
-                        .unwrap_or_else(|| "Scanning…".into())
-                } else {
-                    "Import sessions…".to_string()
-                },
+                "Import sessions…",
                 false,
                 &p,
             )
@@ -1236,10 +1258,14 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
 
         #[cfg(debug_assertions)]
         let action = if *name == "Claude Code" {
-            div().relative().child(action)
+            div()
+                .relative()
+                .child(action)
                 .children(crate::workspace_ui_smoke::probe("claude-harness-action"))
                 .into_any_element()
-        } else { action };
+        } else {
+            action
+        };
         let row = div()
             .id(format!("harness-row:{name}"))
             .h(px(54.))
@@ -1286,7 +1312,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     )
                     .when(selected, |this| this.child(settings_chip("Default", &p))),
             )
-            .child(
+            .when(!scanning, |row| row.child(
                 div()
                     .w(px(102.))
                     .flex_shrink_0()
@@ -1300,15 +1326,32 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             .text_color(p.muted_fg)
                             .child(status),
                     ),
-            )
+            ))
             .child(
                 div()
-                    .w(px(124.))
+                    .when(!scanning, |view| view.w(px(124.)))
+                    .when(scanning, |view| view.flex_1().min_w(px(0.)))
                     .flex_shrink_0()
                     .flex()
                     .justify_end()
-                    .child(action),
+                    .child(if scanning {
+                        div().min_w(px(0.)).truncate().text_size(px(11.)).text_color(p.muted_fg)
+                            .child(this.session_import.progress_label().unwrap_or_else(|| "Scanning…".into()))
+                            .into_any_element()
+                    } else { action }),
             )
+            .child(settings_button(format!("harness-visible:{name}"), if visible { "Shown" } else { "Hidden" }, visible, &p)
+                .toggled(visible)
+                .accessibility_label(format!("Show {name} in harness choices"))
+                .tooltip("Show this harness in selection lists; existing conversations are unchanged")
+                .relative().children({
+                    #[cfg(debug_assertions)] { if *name == "Claude Code" { crate::workspace_ui_smoke::probe("claude-harness-visible") } else { None } }
+                    #[cfg(not(debug_assertions))] { None::<AnyElement> }
+                })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_harness_visibility(&visibility_name, cx);
+                })))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.default_harness = name_owned.clone();
@@ -1361,7 +1404,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("ACP agents run locally over stdio. Install a harness, then import its existing sessions. Nothing is installed or authorized automatically. The chat picker shows only installed adapters and a configured Custom ACP command; the full catalog stays here."),
+                .child("ACP agents run locally over stdio. Nothing is installed or authorized automatically. Shown / Hidden controls selection lists without uninstalling adapters or changing existing conversations and defaults. The full catalog stays here."),
         )
         .child(list)
         .child(
@@ -1423,8 +1466,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .h(px(32.))
                         .px(px(9.))
                         .rounded(px(6.))
-                        .border_1()
-                        .border_color(p.border)
+                        .shadow_sm()
                         .bg(p.bg)
                         .flex()
                         .items_center()
@@ -1529,7 +1571,12 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     body.into_any_element()
 }
 
-fn harness_setup(this: &DunlinApp, name: &str, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+fn harness_setup(
+    this: &DunlinApp,
+    name: &str,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
     let docs_name = name.to_string();
     let mut card = settings_card(p).p(px(12.)).flex().flex_col().gap(px(9.))
         .child(div().flex().items_center()
@@ -1546,12 +1593,24 @@ fn harness_setup(this: &DunlinApp, name: &str, cx: &mut Context<DunlinApp>, p: &
             .child(div().text_size(px(11.)).line_height(relative(1.45)).text_color(p.muted_fg)
                 .child("Requires Node.js 22+. The -g option installs globally. Without -g, npm installs in the current folder's node_modules/.bin. Dunlin also checks ~/node_modules/.bin; for another local install, set Custom ACP to its absolute executable path."));
     }
-    if let Some(path) = this.harness_discovery.iter().find(|entry| entry.name == name).and_then(|entry| entry.adapter.as_ref()) {
-        card = card.child(div().text_size(px(11.)).text_color(p.green).child(format!("Detected executable: {}", path.display())));
+    if let Some(path) = this
+        .harness_discovery
+        .iter()
+        .find(|entry| entry.name == name)
+        .and_then(|entry| entry.adapter.as_ref())
+    {
+        card = card.child(
+            div()
+                .text_size(px(11.))
+                .text_color(p.green)
+                .child(format!("Detected executable: {}", path.display())),
+        );
     }
-    card.child(settings_button("harness-setup-guide", "Open setup guide", false, p)
-        .on_click(cx.listener(move |this, _, _, cx| this.open_harness_docs(&docs_name, cx))))
-        .into_any_element()
+    card.child(
+        settings_button("harness-setup-guide", "Open setup guide", false, p)
+            .on_click(cx.listener(move |this, _, _, cx| this.open_harness_docs(&docs_name, cx))),
+    )
+    .into_any_element()
 }
 
 fn permissions(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -1905,6 +1964,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
 
 fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
+    this.ensure_usage(cx);
     this.ensure_billing(cx);
     let mut usages = Vec::new();
     if let Some(live) = this.session_usage() {
@@ -2049,6 +2109,22 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
 }
 
 fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+    use dunlin_usage::billing::TimeRange;
+    let mut ranges = segment_group(p);
+    for range in TimeRange::ALL {
+        ranges = ranges.child(
+            segment(
+                format!("billing-range:{}", range.label()),
+                range.label(),
+                this.billing_range == range,
+                p,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.billing_range = range;
+                cx.notify();
+            })),
+        );
+    }
     let mut body = div()
         .pt(px(6.))
         .flex()
@@ -2143,16 +2219,24 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
                 .text_color(p.muted_fg)
                 .child("Read-only, bounded scan of local Claude Code, Codex and OpenCode logs. Deduped; unknown models stay unpriced and are never counted as $0. Main/subagent/internal attribution is explicit; unknown is never assumed to be main work. Relay sync sends aggregate evidence only, never raw logs or prompts."),
         );
+    body = body.child(ranges);
     if let Some(error) = &this.billing_error {
         body = body.child(div().text_color(p.red).child(error.clone()));
     }
-    let Some(summary) = this.billing.clone() else {
+    let selected = TimeRange::ALL
+        .iter()
+        .position(|range| *range == this.billing_range)
+        .unwrap();
+    let Some(summary) = (if this.billing_range == TimeRange::All {
+        this.billing.clone()
+    } else {
+        this.billing_ranges.get(selected).cloned()
+    }) else {
         return body
             .child(
                 div()
                     .rounded(px(8.))
-                    .border_1()
-                    .border_color(p.border)
+                    .shadow_sm()
                     .bg(p.card)
                     .p(px(12.))
                     .text_size(px(11.))
@@ -2231,8 +2315,8 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
         .child(
             div().flex().flex_wrap().gap(px(8.)).children([
                 usage_metric(
-                    "Month to date",
-                    format!("${:.2}", summary.month_to_date_cost()),
+                    "Selected period",
+                    format!("${:.2}", totals.priced_cost_usd),
                     "known priced spend",
                     p.fg,
                     p,
@@ -2304,7 +2388,7 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
         div()
             .text_size(px(10.5))
             .text_color(p.muted_fg)
-            .child("Alert budget"),
+            .child("Monthly alert budget"),
     );
     for (label, value) in [
         ("Off", None),
@@ -2376,11 +2460,13 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
     );
     summary_card = summary_card.child(budget_row);
     body = body.child(summary_card);
-    for alert in summary.alerts(if this.billing_alerts {
-        this.billing_budget()
-    } else {
-        None
-    }) {
+    let mut alerts = summary.alerts(None);
+    if this.billing_alerts
+        && let Some(all) = &this.billing
+    {
+        alerts.extend(all.budget_alerts(this.billing_budget()));
+    }
+    for alert in alerts {
         let (color, level) = match alert.level {
             dunlin_usage::billing::AlertLevel::Info => (p.blue, "INFO"),
             dunlin_usage::billing::AlertLevel::Warning => (p.amber, "WARN"),
@@ -2417,8 +2503,9 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
     body = body.child(
         div()
             .flex()
-            .flex_wrap()
-            .items_start()
+            .flex_col()
+            .w_full()
+            .min_w(px(0.))
             .gap(px(10.))
             .child(billing_slices(
                 "By work attribution",
@@ -2430,8 +2517,7 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
             .child(billing_slices("By model", &summary.by_model, p))
             .child(billing_slices("By project", &summary.by_project, p)),
     );
-    body = body.child(billing_sources(&summary.sources, p));
-    body = body.child(billing_days(&summary.by_day, p));
+    body = body.child(billing_days(&summary.by_day, this.billing_range.label(), p));
     if !this.billing_sync.is_empty() {
         body = body.child(billing_sync_results(&this.billing_sync, p));
     }
@@ -2455,117 +2541,19 @@ fn billing_usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette)
     body.into_any_element()
 }
 
-fn billing_sources(sources: &[dunlin_usage::billing::SourceFile], p: &Palette) -> AnyElement {
-    let mut card = div()
-        .w_full()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .overflow_hidden()
-        .child(
-            div()
-                .px(px(9.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(p.border)
-                .bg(p.subtle)
-                .text_size(px(10.))
-                .font_family(dunlin_ui::theme::code_font())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.muted_fg)
-                .child("Log evidence · manual QA"),
-        );
-    if sources.is_empty() {
-        card = card.child(
-            div()
-                .p(px(8.))
-                .text_size(px(10.5))
-                .text_color(p.muted_fg)
-                .child("No supported provider logs found in the default locations."),
-        );
-    }
-    for source in sources.iter().take(12) {
-        let color = if source.state == "error" {
-            p.red
-        } else if source.state == "cached" {
-            p.muted_fg
-        } else {
-            p.fg
-        };
-        card = card.child(
-            div()
-                .px(px(9.))
-                .py(px(4.))
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(
-                    div()
-                        .w(px(82.))
-                        .text_size(px(9.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .child(source.provider.clone()),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .truncate()
-                        .text_size(px(10.))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(color)
-                        .child(source.path.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(9.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .child(format!(
-                            "{} · {} ev · {} B",
-                            source.state, source.events, source.bytes
-                        )),
-                ),
-        );
-    }
-    if sources.len() > 12 {
-        card = card.child(
-            div()
-                .px(px(9.))
-                .py(px(4.))
-                .text_size(px(9.5))
-                .text_color(p.muted_fg)
-                .child(format!(
-                    "… {} more sources in the QA report",
-                    sources.len() - 12
-                )),
-        );
-    }
-    card.into_any_element()
-}
-
 fn billing_sync_results(results: &[crate::usage::BillingSync], p: &Palette) -> AnyElement {
-    let mut card = div()
-        .w_full()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .overflow_hidden()
-        .child(
-            div()
-                .px(px(9.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(p.border)
-                .bg(p.subtle)
-                .text_size(px(10.))
-                .font_family(dunlin_ui::theme::code_font())
-                .text_color(p.muted_fg)
-                .child("Relay sync · aggregate evidence only"),
-        );
+    let mut card = settings_card(p).w_full().overflow_hidden().child(
+        div()
+            .px(px(9.))
+            .py(px(6.))
+            .border_b_1()
+            .border_color(p.border)
+            .bg(p.subtle)
+            .text_size(px(10.))
+            .font_family(dunlin_ui::theme::code_font())
+            .text_color(p.muted_fg)
+            .child("Relay sync · aggregate evidence only"),
+    );
     for result in results {
         card = card.child(
             div()
@@ -2598,25 +2586,18 @@ fn billing_remote_evidence(
     rows: &[crate::remote::RemoteBillingEvidence],
     p: &Palette,
 ) -> AnyElement {
-    let mut card = div()
-        .w_full()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .overflow_hidden()
-        .child(
-            div()
-                .px(px(9.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(p.border)
-                .bg(p.subtle)
-                .text_size(px(10.))
-                .font_family(dunlin_ui::theme::code_font())
-                .text_color(p.muted_fg)
-                .child("Relay evidence · administrator view"),
-        );
+    let mut card = settings_card(p).w_full().overflow_hidden().child(
+        div()
+            .px(px(9.))
+            .py(px(6.))
+            .border_b_1()
+            .border_color(p.border)
+            .bg(p.subtle)
+            .text_size(px(10.))
+            .font_family(dunlin_ui::theme::code_font())
+            .text_color(p.muted_fg)
+            .child("Relay evidence · administrator view"),
+    );
     for row in rows {
         let totals = &row.evidence.summary.totals;
         card = card.child(
@@ -2703,13 +2684,10 @@ fn project_short_label(label: &str) -> String {
 }
 
 fn billing_slices(title: &str, slices: &[dunlin_usage::billing::Slice], p: &Palette) -> AnyElement {
-    let mut card = div()
-        .flex_1()
-        .min_w(px(300.))
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    let mut card = settings_card(p)
+        .w_full()
+        .min_w(px(0.))
+        .flex_shrink_0()
         .overflow_hidden()
         .child(
             div()
@@ -2782,27 +2760,20 @@ fn billing_slices(title: &str, slices: &[dunlin_usage::billing::Slice], p: &Pale
     card.into_any_element()
 }
 
-fn billing_days(days: &[dunlin_usage::billing::Day], p: &Palette) -> AnyElement {
-    let mut card = div()
-        .w_full()
-        .rounded(px(10.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .overflow_hidden()
-        .child(
-            div()
-                .px(px(9.))
-                .py(px(6.))
-                .border_b_1()
-                .border_color(p.border)
-                .bg(p.subtle)
-                .text_size(px(10.))
-                .font_family(dunlin_ui::theme::code_font())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.muted_fg)
-                .child("Last 14 days"),
-        );
+fn billing_days(days: &[dunlin_usage::billing::Day], range: &str, p: &Palette) -> AnyElement {
+    let mut card = settings_card(p).w_full().overflow_hidden().child(
+        div()
+            .px(px(9.))
+            .py(px(6.))
+            .border_b_1()
+            .border_color(p.border)
+            .bg(p.subtle)
+            .text_size(px(10.))
+            .font_family(dunlin_ui::theme::code_font())
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(p.muted_fg)
+            .child(format!("Daily usage · {range}")),
+    );
     if days.is_empty() {
         card = card.child(
             div()
@@ -2812,7 +2783,7 @@ fn billing_days(days: &[dunlin_usage::billing::Day], p: &Palette) -> AnyElement 
                 .child("No dated events."),
         );
     }
-    for day in days.iter().take(14) {
+    for day in days {
         card = card.child(
             div()
                 .px(px(9.))
@@ -3098,6 +3069,39 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         })),
                 ),
         )
+        .child(
+            settings_card(&p)
+                .p(px(14.))
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(p.red)
+                                .child("Reset Dunlin to factory defaults"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .line_height(relative(1.45))
+                                .text_color(p.muted_fg)
+                                .child("Permanently remove local settings, projects, groups, history and Dunlin's saved credentials. Repository files and installed agents stay. Dunlin closes after resetting."),
+                        ),
+                )
+                .child(
+                    settings_text_button("factory-reset", "Reset…", p.red, &p)
+                        .on_click(cx.listener(|this, _, window, cx| this.request_factory_reset(window, cx))),
+                ),
+        )
         .child(section_label("About", &p))
         .child(
             settings_card(&p)
@@ -3143,39 +3147,6 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .text_color(p.muted_fg)
                         .child("MIT"),
                 ),
-        )
-        .child(
-            settings_card(&p)
-                .p(px(14.))
-                .flex()
-                .items_center()
-                .gap(px(12.))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.))
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(p.red)
-                                .child("Reset Dunlin to factory defaults"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .line_height(relative(1.45))
-                                .text_color(p.muted_fg)
-                                .child("Permanently remove local settings, projects, groups, history and Dunlin's saved credentials. Repository files and installed agents stay. Dunlin closes after resetting."),
-                        ),
-                )
-                .child(
-                    settings_text_button("factory-reset", "Reset…", p.red, &p)
-                        .on_click(cx.listener(|this, _, window, cx| this.request_factory_reset(window, cx))),
-                ),
         );
 
     body.into_any_element()
@@ -3183,7 +3154,6 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
 
 fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let loading = this.remote_loading;
 
     let mut body = div()
         .px(px(24.))
@@ -3191,6 +3161,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
         .flex()
         .flex_col()
         .gap(px(22.))
+        .child(crate::server_panel::render(this, cx))
         .child(section_label("Remote servers", &p));
 
     if this.remote_hosts.is_empty() {
@@ -3212,13 +3183,14 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                         .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
-                        .child("Run `dunlin-relay pair <user>` on the machine that hosts your projects, then enter the code below."),
+                        .child("Use Connect to server to enter an endpoint and a relay login key, or choose an SSH identity."),
                 ),
         );
     } else {
         for host in this.remote_hosts.clone() {
             let host_id = host.id.clone();
             let host_for_picker = host_id.clone();
+            let host_for_management = host_id.clone();
             body = body.child(
                 settings_card(&p).child(
                     div()
@@ -3265,122 +3237,53 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                                 ),
                         )
                         .child(
-                            settings_button("remote-add-project", "Add project", false, &p)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.open_remote_picker_for(&host_for_picker, cx);
-                                })),
+                            settings_button(
+                                format!("remote-manage:{host_id}"),
+                                "Manage",
+                                false,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.manage_server(&host_for_management, window, cx)
+                                },
+                            )),
                         )
                         .child(
-                            icon_button(format!("remote-remove:{host_id}"), IconName::X, "Remove remote host")
-                                .on_click(cx.listener(move |this, _, _, cx| {
+                            settings_button(
+                                format!("remote-add-project:{host_id}"),
+                                "Add project",
+                                false,
+                                &p,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.open_remote_picker_for(&host_for_picker, cx);
+                                },
+                            )),
+                        )
+                        .child(
+                            icon_button(
+                                format!("remote-remove:{host_id}"),
+                                IconName::X,
+                                "Remove remote host",
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
                                     this.remove_remote_host(&host_id, cx);
-                                })),
+                                },
+                            )),
                         ),
                 ),
             );
         }
     }
 
-    let field = |label: &'static str, input: AnyElement, p: &Palette| {
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(3.))
-            .child(
-                div()
-                    .text_size(px(10.5))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(p.muted_fg)
-                    .child(label),
-            )
-            .child(
-                div()
-                    .h(px(32.))
-                    .px(px(9.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(p.border)
-                    .bg(p.bg)
-                    .flex()
-                    .items_center()
-                    .child(input),
-            )
-    };
-
-    body = body.child(section_label("Pair this Mac", &p)).child(
-        settings_card(&p)
-            .p(px(14.))
-            .flex()
-            .flex_col()
-            .gap(px(10.))
-            .child(field(
-                "Relay URL",
-                div()
-                    .child(
-                        Input::new(&this.remote_url_input)
-                            .appearance(false)
-                            .bordered(false)
-                            .cleanable(true),
-                    )
-                    .into_any_element(),
-                &p,
-            ))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(
-                        div().flex_1().child(field(
-                            "Pairing code",
-                            div()
-                                .child(
-                                    Input::new(&this.remote_code_input)
-                                        .appearance(false)
-                                        .bordered(false)
-                                        .cleanable(true),
-                                )
-                                .into_any_element(),
-                            &p,
-                        )),
-                    )
-                    .child(
-                        div().flex_1().child(field(
-                            "Server name",
-                            div()
-                                .child(
-                                    Input::new(&this.remote_name_input)
-                                        .appearance(false)
-                                        .bordered(false)
-                                        .cleanable(true),
-                                )
-                                .into_any_element(),
-                            &p,
-                        )),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(p.muted_fg)
-                            .child("The relay must be reachable over Tailscale or HTTPS."),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        settings_button(
-                            "remote-pair",
-                            if loading { "Pairing…" } else { "Pair device" },
-                            true,
-                            &p,
-                        )
-                        .when(loading, |this| this.opacity(0.6))
-                        .on_click(cx.listener(|this, _, _, cx| this.pair_remote(cx))),
-                    ),
-            ),
+    body = body.child(
+        dunlin_ui::button("settings-connect-server")
+            .primary()
+            .label("Connect to server…")
+            .on_click(cx.listener(|this, _, window, cx| this.open_remote_connection(window, cx))),
     );
 
     body.into_any_element()
@@ -3435,8 +3338,24 @@ impl DunlinApp {
 fn settings_page(content: AnyElement) -> AnyElement {
     div()
         .w_full()
+        .px(px(8.))
         .flex()
-        .child(div().w_full().max_w(px(760.)).child(content))
+        .child(
+            div()
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("settings-page")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .w_full()
+                .child(content),
+        )
         .into_any_element()
 }
 
@@ -3450,7 +3369,7 @@ fn section_label(label: &str, p: &Palette) -> AnyElement {
 }
 
 fn settings_card(p: &Palette) -> Div {
-    card_surface(*p)
+    card_surface(*p).rounded(px(16.)).shadow_sm()
 }
 
 fn settings_chip(label: impl Into<SharedString>, p: &Palette) -> Div {
@@ -3491,7 +3410,9 @@ fn settings_button(
     primary: bool,
     _p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id).label(label).when(primary, |button| button.primary())
+    dunlin_ui::button(id)
+        .label(label)
+        .when(primary, |button| button.primary())
 }
 
 fn settings_text_button(
@@ -3500,7 +3421,9 @@ fn settings_text_button(
     color: Hsla,
     p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id).ghost().label(label)
+    dunlin_ui::button(id)
+        .ghost()
+        .label(label)
         .when(color == p.red, |button| button.danger().outline())
         .when(color == p.amber, |button| button.warning().outline())
 }
@@ -3694,6 +3617,16 @@ fn code_font_candidate(family: &str) -> bool {
         || name.contains("menlo")
         || name.contains("andale")
         || name.contains("fixed")
+        || name.contains("nerd")
+        || name.contains("powerline")
+        || name.contains("meslo")
+        || name.ends_with(" nf")
+        || name.ends_with(" nfm")
+        || name.ends_with(" nfp")
+        || name.contains("hack")
+        || name.contains("iosevka")
+        || name.contains("inconsolata")
+        || name.contains("cascadia")
 }
 
 fn mono_value(label: &str, p: &Palette) -> AnyElement {
@@ -3702,8 +3635,7 @@ fn mono_value(label: &str, p: &Palette) -> AnyElement {
         .h(px(28.))
         .px(px(8.))
         .rounded(px(6.))
-        .border_1()
-        .border_color(p.border)
+        .shadow_sm()
         .bg(p.subtle)
         .flex()
         .items_center()
@@ -3722,10 +3654,11 @@ fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> An
     let size = this.code_font_size;
     dunlin_ui::segment_group(*p)
         .child(
-            icon_button("font-decrease", IconName::Minus, "Decrease code font size")
-                .on_click(cx.listener(|this, _, _, cx| {
+            icon_button("font-decrease", IconName::Minus, "Decrease code font size").on_click(
+                cx.listener(|this, _, _, cx| {
                     this.adjust_code_font_size(-1.0, cx);
-                })),
+                }),
+            ),
         )
         .child(
             div()
@@ -3736,10 +3669,11 @@ fn stepper(this: &mut DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> An
                 .child(format!("{size:.0} px")),
         )
         .child(
-            icon_button("font-increase", IconName::Plus, "Increase code font size")
-                .on_click(cx.listener(|this, _, _, cx| {
+            icon_button("font-increase", IconName::Plus, "Increase code font size").on_click(
+                cx.listener(|this, _, _, cx| {
                     this.adjust_code_font_size(1.0, cx);
-                })),
+                }),
+            ),
         )
         .into_any_element()
 }
@@ -3781,6 +3715,11 @@ mod font_tests {
             "Fira Code",
             "Consolas",
             "Andale Mono",
+            "MesloLGS NF",
+            "Hack Nerd Font",
+            "Iosevka",
+            "Cascadia Code",
+            "Inconsolata",
         ] {
             assert!(super::code_font_candidate(name), "{name}");
         }

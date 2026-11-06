@@ -21,11 +21,14 @@ pub(crate) fn run() {
     std::fs::create_dir(&dir).expect("fixture directory must not already exist");
     let project_path = dir.join("project");
     std::fs::create_dir(&project_path).unwrap();
+    let other_path = dir.join("other-project");
+    std::fs::create_dir(&other_path).unwrap();
     let source = dir.join("claude/projects/fixture");
     std::fs::create_dir_all(&source).unwrap();
     for index in 0..700 {
         let content = serde_json::json!({
-            "type":"user", "sessionId": format!("fixture-{index}"), "cwd":project_path,
+            "type":"user", "sessionId": format!("fixture-{index}"),
+            "cwd": if index == 699 { &other_path } else { &project_path },
             "message":{"content":format!("Question {index}")}
         });
         std::fs::write(
@@ -64,6 +67,11 @@ pub(crate) fn run() {
             settings: Default::default(),
         })
         .unwrap();
+    let mut other = store.projects().unwrap().pop().unwrap();
+    other.id = "other-project".into();
+    other.name = "Other repository".into();
+    other.path = other_path.to_string_lossy().into();
+    store.upsert_project(&other).unwrap();
     drop(store);
     // SAFETY: main invokes the fixture before starting application/worker threads.
     unsafe {
@@ -91,6 +99,8 @@ pub(crate) fn run() {
         }).unwrap();
         let owner = owner.unwrap();
         owner.update(cx, |app, cx| {
+            let project = app.projects.iter().position(|p| p.id == "fixture-project").unwrap();
+            app.select_project(project, cx);
             app.scan_session_import("Claude Code", cx);
             assert!(app.session_import.loading);
             assert!(app.session_import.progress.is_some());
@@ -117,7 +127,8 @@ pub(crate) fn run() {
                                 let preview = app.session_import.preview.as_ref().unwrap();
                                 assert_eq!(preview.rows.len(), 700);
                                 assert_eq!(preview.warnings.len(), 1);
-                                assert!(preview.rows.iter().all(|row| row.candidate.transcript.is_empty() && row.project.as_deref() == Some("fixture-project")));
+                                assert!(preview.rows.iter().all(|row| row.candidate.transcript.is_empty()
+                                    && row.project.as_deref() == Some(if row.candidate.source_id == "fixture-699" { "other-project" } else { "fixture-project" })));
                                 assert_eq!(preview.rows.iter().filter(|row| row.update).count(), if stage == 0 { 0 } else { 700 });
                                 staging = Some(preview.staging.path().to_path_buf());
                                 app.apply_session_import(cx);
@@ -130,10 +141,39 @@ pub(crate) fn run() {
                                 assert!(app.session_import.preview.is_none());
                                 assert!(app.session_import.error.is_none());
                                 assert_eq!(app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).count(), 700);
+                                let histories: Vec<_> = app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).collect();
+                                assert!(histories.iter().all(|s| s.workspace.is_some() && app.session_visible(s)));
+                                assert_eq!(histories.iter().filter(|s| app.session_scope(s) == Some(crate::session_list::Scope::Project)).count(), 699);
+                                assert_eq!(histories.iter().filter(|s| s.project_id == "other-project" && app.session_scope(s).is_none()).count(), 1);
                                 let store = app.store.as_ref().unwrap();
                                 assert_eq!(store.sessions(None).unwrap().iter().filter(|s| s.id.starts_with("import-")).count(), 700);
                                 if stage == 1 {
+                                    let id = imported_id("Claude Code", "fixture-0");
+                                    let before = store.load_transcript::<Vec<ChatItem>>(&id).unwrap().unwrap();
+                                    let selected = app.session().id.clone();
+                                    assert!(app.open_session_id(&id, cx));
+                                    assert!(app.assign_imported_location(&id, "other-project", Some(other_path.to_str().unwrap())).is_err());
+                                    assert!(app.open_session_id(&selected, cx));
+                                    assert!(app.assign_imported_location(&id, "other-project", Some(other_path.to_str().unwrap())).unwrap());
+                                    assert!(!app.sessions.iter().any(|s| s.id == id));
+                                    let moved = app.all_sessions.iter().find(|s| s.id == id).unwrap();
+                                    assert!(app.session_scope(moved).is_none());
+                                    assert_eq!(app.store.as_ref().unwrap().sessions(Some("other-project")).unwrap().len(), 2);
+                                    assert_eq!(serde_json::to_value(app.store.as_ref().unwrap().load_transcript::<Vec<ChatItem>>(&id).unwrap().unwrap()).unwrap(), serde_json::to_value(before).unwrap());
                                     app.scan_session_import("Claude Code", cx);
+                                } else {
+                                    let id = imported_id("Claude Code", "fixture-0");
+                                    assert!(app.sessions.iter().any(|s| s.id == id && s.project_id == "fixture-project"));
+                                    let mut preview = Preview::new("Claude Code".into()).unwrap();
+                                    preview.push(Candidate {
+                                        source_id: "fixture-0".into(), title: "No directory".into(), directory: None,
+                                        model: "Auto".into(), transcript: vec![ChatItem::User { text: "Hello".into(), timing: None, at_ms: 0 }], at_ms: 0,
+                                    }, &app.projects).unwrap();
+                                    finalize_import(app, Ok(preview), cx);
+                                    let row = &app.session_import.preview.as_ref().unwrap().rows[0];
+                                    assert!(row.update);
+                                    assert_eq!(row.project.as_deref(), Some("fixture-project"));
+                                    app.clear_session_import_preview(cx);
                                 }
                                 stage += 1;
                             }

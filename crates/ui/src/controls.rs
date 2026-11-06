@@ -14,7 +14,8 @@ use crate::{Palette, scale};
 /// Standard action. Use the kit's semantic variants, sizes and loading state.
 pub fn button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
-        .small()
+        .ghost()
+        .self_center()
         .rounded(px(scale::RADIUS_MD))
         // The kit activates on key-up; keep key-down from activating a parent tab.
         .on_key_down(|event, _, cx| {
@@ -32,6 +33,7 @@ pub fn icon_button(
 ) -> Button {
     let label = label.into();
     button(id)
+        .small()
         .ghost()
         .size(px(28.))
         .icon(icon)
@@ -59,11 +61,18 @@ pub fn checkbox(
 
 pub fn document_tabs(id: impl Into<ElementId>) -> TabBar {
     // shortcut: kit tabs rely on app navigation shortcuts; adopt roving focus when the kit supports it.
-    TabBar::new(id).outline().small().max_width(px(240.))
+    TabBar::new(id)
+        .folder()
+        .max_width(px(240.))
+        .border_0()
+        .bg(transparent_black())
 }
 
 pub fn document_tab(label: impl Into<SharedString>) -> Tab {
-    Tab::new().label(label)
+    Tab::new()
+        .label(label)
+        .border_0()
+        .border_color(transparent_black())
 }
 
 pub fn segment_group(p: Palette) -> Div {
@@ -73,9 +82,21 @@ pub fn segment_group(p: Palette) -> Div {
         .gap(px(2.))
         .p(px(2.))
         .rounded(px(scale::RADIUS_MD + 2.))
-        .border_1()
-        .border_color(p.border)
         .bg(p.subtle)
+}
+
+pub fn navigation_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl Into<SharedString>,
+) -> Button {
+    let label = label.into();
+    button(id)
+        .size(px(36.))
+        .px(px(0.))
+        .accessibility_label(label.clone())
+        .tooltip(label)
+        .child(gpui_kit::component::Icon::new(icon).size(px(17.)))
 }
 
 pub fn segment_button(
@@ -84,6 +105,7 @@ pub fn segment_button(
     active: bool,
 ) -> Button {
     button(id)
+        .small()
         .ghost()
         .label(label)
         .selected(active)
@@ -106,6 +128,8 @@ pub fn menu_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> 
     let label = label.into();
     button(id)
         .ghost()
+        .with_size(gpui_kit::component::Size::Medium)
+        .h(px(34.))
         .accessibility_label(label.clone())
         .child(div().flex_1().min_w(px(0.)).text_left().child(label))
         .w_full()
@@ -115,15 +139,12 @@ pub fn menu_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> 
 
 /// Shared opaque surface; glass belongs to window chrome, not reading areas.
 pub fn card_surface(p: Palette) -> Div {
-    div()
-        .rounded(px(scale::RADIUS_LG))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
+    div().rounded(px(scale::RADIUS_LG)).bg(p.card)
 }
 
 pub fn dialog_surface(p: Palette) -> Div {
     card_surface(p)
+        .border_1()
         .border_color(p.border_strong)
         .p(px(16.))
         .flex()
@@ -160,6 +181,7 @@ pub fn code_header(p: Palette) -> Div {
 /// One inset workspace contains editors and docks, preserving their split layout.
 pub fn workspace_surface(p: Palette) -> Div {
     card_surface(p)
+        .bg(transparent_black())
         .rounded(px(scale::WORKSPACE_RADIUS))
         .flex()
         .flex_col()
@@ -171,7 +193,7 @@ pub fn workspace_surface(p: Palette) -> Div {
 
 pub fn chrome_background(p: Palette, reduce_transparency: bool) -> Hsla {
     if cfg!(target_os = "macos") && !reduce_transparency {
-        p.panel.opacity(0.45)
+        p.chrome
     } else {
         p.panel
     }
@@ -183,7 +205,7 @@ pub fn window_options() -> WindowOptions {
     if cfg!(target_os = "macos") {
         options.window_background = WindowBackgroundAppearance::Blurred;
         if let Some(titlebar) = &mut options.titlebar {
-            titlebar.traffic_light_position = Some(point(px(16.), px(18.)));
+            titlebar.traffic_light_position = Some(point(px(16.), px(12.)));
         }
     }
     options
@@ -194,10 +216,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn document_tabs_have_no_frame() {
+        let mut tab = document_tab("Conversation");
+        let mut bar = document_tabs("tabs");
+        for borders in [
+            tab.style().border_widths.clone(),
+            bar.style().border_widths.clone(),
+        ] {
+            assert_eq!(borders.top, Some(px(0.).into()));
+            assert_eq!(borders.bottom, Some(px(0.).into()));
+            assert_eq!(borders.left, Some(px(0.).into()));
+            assert_eq!(borders.right, Some(px(0.).into()));
+        }
+    }
+
+    #[test]
     fn window_keeps_native_titlebar_behavior_and_platform_fallback() {
         let options = window_options();
         assert!(options.app_owns_titlebar_drag);
-        assert!(options.titlebar.unwrap().appears_transparent);
+        let titlebar = options.titlebar.unwrap();
+        assert!(titlebar.appears_transparent);
+        if cfg!(target_os = "macos") {
+            assert_eq!(
+                titlebar.traffic_light_position.unwrap().y + px(7.),
+                px(scale::TITLEBAR_HEIGHT / 2.)
+            );
+        }
         assert_eq!(
             options.window_background,
             if cfg!(target_os = "macos") {
@@ -210,14 +254,27 @@ mod tests {
 
     #[test]
     fn reduced_transparency_and_non_mac_chrome_are_opaque() {
+        const { assert!(scale::WORKSPACE_RADIUS > scale::RADIUS_MD) };
         for p in [crate::theme::light(), crate::theme::dark()] {
             assert_eq!(chrome_background(p, true).a, 1.);
             assert_eq!(
                 chrome_background(p, false).a,
-                if cfg!(target_os = "macos") { 0.45 } else { 1. }
+                if cfg!(target_os = "macos") {
+                    p.chrome.a
+                } else {
+                    1.
+                }
             );
             assert_eq!(p.card.a, 1.);
-            assert!(scale::WORKSPACE_RADIUS > scale::RADIUS_MD);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dark_glass_stays_dark_even_over_a_white_background() {
+        let tint: Rgba = chrome_background(crate::theme::dark(), false).into();
+        for channel in [tint.r, tint.g, tint.b] {
+            assert!(channel * tint.a + 1. - tint.a < 0.3);
         }
     }
 }

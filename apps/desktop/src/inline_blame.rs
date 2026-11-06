@@ -312,7 +312,11 @@ pub(crate) fn toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Button {
         .small()
         .rounded(px(4.))
         .icon(assets::IconName::GitCommitHorizontal)
-        .accessibility_label(if enabled { "Disable inline blame" } else { "Enable inline blame" })
+        .accessibility_label(if enabled {
+            "Disable inline blame"
+        } else {
+            "Enable inline blame"
+        })
         .when(enabled, |button| button.bg(palette(cx).accent))
         .tooltip("Inline blame for unchanged lines in all source files")
         .on_click(cx.listener(|this, _, _, cx| this.toggle_inline_blame(cx)))
@@ -377,7 +381,8 @@ pub(crate) fn status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
             .ghost()
             .small()
             .h(px(22.))
-            .text_size(px(10.5)).text_color(p.muted_fg.opacity(0.75))
+            .text_size(px(10.5))
+            .text_color(p.muted_fg.opacity(0.75))
             .label(label(line))
             .tooltip(info(value, line))
             .on_click(cx.listener(move |this, _, w, cx| this.open_blame_commit(oid.clone(), w, cx)))

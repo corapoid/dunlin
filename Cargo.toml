@@ -4,6 +4,7 @@ members = ["apps/desktop", "crates/*"]
 exclude = ["vendor/*"]
 
 [patch.crates-io]
+block = { path = "vendor/block-0.1.6" }
 gpui-base = { path = "vendor/gpui-base-0.8.0" }
 gpui-component = { path = "vendor/gpui-component-0.8.0" }
 gpui-pre = { path = "vendor/gpui-pre-0.3.9" }
@@ -15,7 +16,7 @@ rav1e = { path = "vendor/rav1e-0.8.1" }
 cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
 
 [workspace.package]
-version = "0.1.0-beta.8"
+version = "0.1.0-beta.9"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"

@@ -10,8 +10,8 @@ use dunlin_ui::component::input::{Input, InputState};
 use dunlin_ui::component::{Disableable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
-    AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement, IntoElement,
-    ParentElement, StatefulInteractiveElement, Styled, Window, div, palette, px,
+    AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window, div, palette, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -354,9 +354,9 @@ impl DunlinApp {
     }
 
     pub(crate) fn provider_auth_input_focused(&self, window: &Window, cx: &dunlin_ui::App) -> bool {
-        self.provider_auth.as_ref().is_some_and(|dialog| {
-            dialog.input.read(cx).focus_handle(cx).is_focused(window)
-        })
+        self.provider_auth
+            .as_ref()
+            .is_some_and(|dialog| dialog.input.read(cx).focus_handle(cx).is_focused(window))
     }
 
     pub(crate) fn close_provider_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -805,11 +805,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             )
                         })
                         .when(ready && dialog.service.is_none(), |view| {
-                            view.child(dunlin_ui::button("auth-retry").primary().label("Retry").on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.connect_provider(window, cx)
-                                }),
-                            ))
+                            view.child(
+                                dunlin_ui::button("auth-retry")
+                                    .primary()
+                                    .label("Retry")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.connect_provider(window, cx)
+                                    })),
+                            )
                         }),
                 ),
         )

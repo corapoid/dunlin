@@ -2,11 +2,7 @@
 //! Native block projections share the canonical source buffer, history and save.
 use crate::{app::DunlinApp, workbench::Tab};
 use dunlin_ui::{
-    component::{
-        Disableable, Sizable,
-        button::ButtonVariants,
-        input::Editor,
-    },
+    component::{Disableable, Sizable, button::ButtonVariants, input::Editor},
     prelude::FluentBuilder as _,
     *,
 };
@@ -271,6 +267,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .overflow_hidden()
                 .child(
                     Editor::new(&tab.editor)
+                        .text_size(crate::workspace_text::size(this.code_font_size, cx))
                         .appearance(false)
                         .bordered(false)
                         .readonly(!editable(this, tab))
@@ -293,7 +290,6 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .flex()
         .flex_col()
         .overflow_hidden()
-        .bg(p.card)
         .text_color(p.fg)
         .child(
             div()

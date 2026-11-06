@@ -7,11 +7,12 @@ use dunlin_ui::*;
 pub(crate) fn reduce_transparency() -> bool {
     #[cfg(target_os = "macos")]
     {
-        objc2_app_kit::NSWorkspace::sharedWorkspace()
-            .accessibilityDisplayShouldReduceTransparency()
+        objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency()
     }
     #[cfg(not(target_os = "macos"))]
-    { true }
+    {
+        true
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

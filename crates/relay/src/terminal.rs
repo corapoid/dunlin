@@ -24,7 +24,9 @@ const HEARTBEAT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Deserialize)]
 pub struct TerminalQuery {
+    #[serde(default)]
     pub project: String,
+    pub setup: Option<String>,
     #[serde(default)]
     pub rows: Option<u16>,
     #[serde(default)]
@@ -40,13 +42,77 @@ enum ClientControl {
 }
 
 pub async fn ws(
-    AuthUser { user, .. }: AuthUser,
+    auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<TerminalQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
-    let project = state.project_for_user(&user.id, &query.project)?;
-    let path = PathBuf::from(&project.path);
+    let (project_id, mut options) = if let Some(agent) = &query.setup {
+        crate::management::admin(&auth)?;
+        let (program, args): (&str, Vec<String>) = match agent.as_str() {
+            "opencode" => ("opencode", vec!["auth".into(), "login".into()]),
+            "codex" => ("codex", vec!["login".into(), "--device-auth".into()]),
+            "claude" => ("claude", vec!["auth".into(), "login".into()]),
+            _ => return Err(ApiError::bad_request("Unknown agent setup target")),
+        };
+        let program = crate::management::executable(&state.config, program)
+            .ok_or_else(|| ApiError::conflict("Install this agent on the server first"))?;
+        let home = crate::management::agent_home(&state.config, &auth.user.id);
+        if crate::management::isolated_agents(&state.config) {
+            crate::management::private_dir(&home).map_err(ApiError::internal)?;
+        }
+        let command = crate::acp::harness_command(
+            &state.config,
+            program
+                .to_str()
+                .ok_or_else(|| ApiError::bad_request("Invalid agent path"))?,
+            &args,
+            home.to_str()
+                .ok_or_else(|| ApiError::bad_request("Invalid agent home"))?,
+            &[],
+            &[],
+            &dunlin_domain::ProjectSettings::default(),
+            &auth.user.id,
+        );
+        let command = command.as_std();
+        let mut options = SpawnOptions::command(
+            home,
+            command.get_program().to_string_lossy().to_string(),
+            command
+                .get_args()
+                .map(|a| a.to_string_lossy().to_string())
+                .collect(),
+        );
+        options.env = command
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_string(),
+                    value
+                        .map(|v| v.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                )
+            })
+            .collect();
+        // PTYs intentionally reject caller-supplied PATH. This fixed server argv
+        // supplies its own managed path without weakening that trust boundary.
+        options.args.insert(0, options.program.clone());
+        options.args.insert(
+            0,
+            format!(
+                "PATH={}",
+                crate::management::path(&state.config).to_string_lossy()
+            ),
+        );
+        options.program = "/usr/bin/env".into();
+        (format!("agent-setup:{agent}"), options)
+    } else {
+        let project = state.project_for_user(&auth.user.id, &query.project)?;
+        let path = PathBuf::from(&project.path);
+        let options = SpawnOptions::shell(path).map_err(ApiError::conflict)?;
+        (project.id, options)
+    };
+    let path = &options.cwd;
     if !path.is_dir() {
         return Err(ApiError::new(
             axum::http::StatusCode::CONFLICT,
@@ -62,9 +128,11 @@ pub async fn ws(
         .cols
         .unwrap_or(dunlin_terminal::DEFAULT_COLS)
         .clamp(20, 500);
+    options.rows = rows;
+    options.cols = cols;
     let connection_id = format!("term-{}", uuid::Uuid::now_v7());
     Ok(ws.on_upgrade(move |socket| async move {
-        bridge(socket, connection_id, project.id, path, rows, cols, permit).await;
+        bridge(socket, connection_id, project_id, options, permit).await;
     }))
 }
 
@@ -72,28 +140,9 @@ async fn bridge(
     mut socket: WebSocket,
     connection_id: String,
     project_id: String,
-    path: PathBuf,
-    rows: u16,
-    cols: u16,
+    options: SpawnOptions,
     _permit: OwnedSemaphorePermit,
 ) {
-    let options = match SpawnOptions::shell(path) {
-        Ok(mut options) => {
-            options.rows = rows;
-            options.cols = cols;
-            options
-        }
-        Err(error) => {
-            let _ = socket
-                .send(Message::Text(
-                    json!({"type": "error", "message": error})
-                        .to_string()
-                        .into(),
-                ))
-                .await;
-            return;
-        }
-    };
     let session = match tokio::task::spawn_blocking(move || Session::spawn(options)).await {
         Ok(Ok(session)) => session,
         Ok(Err(error)) => {

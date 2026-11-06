@@ -240,11 +240,7 @@ impl State {
 }
 
 fn card(p: &Palette) -> Div {
-    card_surface(*p)
-        .p(px(14.))
-        .flex()
-        .flex_col()
-        .gap(px(7.))
+    card_surface(*p).p(px(14.)).flex().flex_col().gap(px(7.))
 }
 
 fn badge(label: impl Into<SharedString>, color: Hsla, p: &Palette) -> Div {

@@ -6,13 +6,14 @@ use crate::{
 use dunlin_domain::Project;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
-    component::{
-        Sizable,
-        button::ButtonVariants,
-    },
+    component::{Sizable, button::ButtonVariants},
     *,
 };
 use dunlin_workspace::git::operations::Action;
+
+fn needs_confirmation(action: &Action, status: &str) -> bool {
+    !matches!(action, Action::Switch { discard: false, .. }) || !status.is_empty()
+}
 
 pub(crate) struct Pending {
     id: uuid::Uuid,
@@ -99,6 +100,10 @@ impl DunlinApp {
                 match result {
                     Ok((prepared, discard, discard_error)) => {
                         if let Err(e) = this.git_operation_guard(&project, &prepared.plan.action) { this.file_notice(e, cx); return; }
+                        if !needs_confirmation(&prepared.plan.action, &prepared.plan.status) {
+                            this.run_prepared_git_action(id, project, backend, prepared, cx);
+                            return;
+                        }
                         this.pending_git_action = Some(Pending { id, project, backend, navigation, prepared, discard, discard_error });
                         this.focus_handle.focus(window, cx);
                     }
@@ -227,4 +232,28 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .when(pending.discard.is_some(), |panel| panel.child(div().text_size(px(12.)).text_color(p.red).child("Discard and switch permanently deletes all uncommitted changes, including untracked files. No Undo or automatic stash.")))
             .when_some(pending.discard_error.as_ref(), |panel, error| panel.child(div().text_size(px(12.)).text_color(p.red).child(format!("Discard and switch unavailable: {error}"))))
             .child(buttons)).into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_clean_non_destructive_branch_switches_skip_confirmation() {
+        let switch = Action::Switch {
+            branch: "main".into(),
+            discard: false,
+        };
+        assert!(!needs_confirmation(&switch, ""));
+        assert!(needs_confirmation(&switch, " M file\0"));
+        assert!(needs_confirmation(&switch, "?? file\0"));
+        assert!(needs_confirmation(
+            &Action::Switch {
+                branch: "main".into(),
+                discard: true
+            },
+            ""
+        ));
+        assert!(needs_confirmation(&Action::WorktreePrune, ""));
+    }
 }

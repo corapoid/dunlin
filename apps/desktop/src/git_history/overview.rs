@@ -14,6 +14,7 @@ pub(super) struct State {
 }
 
 impl DunlinApp {
+    #[cfg(debug_assertions)]
     pub(super) fn open_git_overview(&mut self, cx: &mut Context<Self>) {
         if let Some(view) = &mut self.git_history.view {
             view.overview.visible = true;

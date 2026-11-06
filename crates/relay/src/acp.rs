@@ -46,7 +46,8 @@ pub async fn bridge(
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (close_tx, mut close_rx) = mpsc::channel::<()>(1);
 
-    let (program, args) = command_parts(&state.config.harness);
+    let selected_harness = crate::management::harness(&state.config);
+    let (program, args) = command_parts(&selected_harness);
     let current_path = project.path.clone();
     let extra_paths = allowed_roots
         .iter()
@@ -98,7 +99,9 @@ pub async fn bridge(
         &extra_paths,
         &other_projects,
         &project_settings,
+        &user.id,
     );
+    harness.env("PATH", crate::management::path(&state.config));
     let stderr = if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
         Stdio::inherit()
     } else {
@@ -114,10 +117,7 @@ pub async fn bridge(
     {
         Ok(child) => child,
         Err(error) => {
-            let message = format!(
-                "Could not start harness `{}`: {error}",
-                state.config.harness
-            );
+            let message = format!("Could not start harness `{}`: {error}", selected_harness);
             eprintln!("[relay] could not start harness");
             let _ = ws_tx
                 .send(Message::Text(
@@ -985,7 +985,8 @@ fn command_parts(command: &str) -> (String, Vec<String>) {
 /// OpenCode working while preventing an agent from reading another project or a
 /// user's keys. It is a best-effort privacy boundary, not a container; use
 /// separate OS accounts or containers for hard isolation.
-fn harness_command(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn harness_command(
     config: &crate::config::Config,
     program: &str,
     args: &[String],
@@ -993,30 +994,85 @@ fn harness_command(
     allowed_roots: &[String],
     other_projects: &[String],
     settings: &ProjectSettings,
+    user_id: &str,
 ) -> Command {
+    let isolated = crate::management::isolated_agents(config);
+    let home = crate::management::agent_home(config, user_id);
+    if isolated && crate::management::private_dir(&home).is_err() {
+        return Command::new("/nonexistent/dunlin-agent-home-unavailable");
+    }
     let mut command = if config.sandbox
         && cfg!(target_os = "macos")
         && Path::new("/usr/bin/sandbox-exec").is_file()
     {
         let mut command = Command::new("/usr/bin/sandbox-exec");
-        let profile = sandbox_profile(
+        let mut runtime_roots = allowed_roots.to_vec();
+        runtime_roots.push(project_path.to_owned());
+        let tools = crate::management::tools(config);
+        let tools = tools.canonicalize().unwrap_or(tools);
+        let node = crate::management::root(config).join("node");
+        let node = node.canonicalize().unwrap_or(node);
+        for path in [&home, &tools, &node] {
+            runtime_roots.push(path.to_string_lossy().to_string());
+        }
+        let mut profile = sandbox_profile(
             project_path,
-            allowed_roots,
+            &runtime_roots,
             other_projects,
             program,
             &config.db,
         );
+        profile.push_str(&server_sandbox_policy(
+            &crate::management::root(config),
+            &runtime_roots,
+        ));
+        if isolated && let Some(host_home) = std::env::var_os("HOME") {
+            for suffix in [
+                ".codex",
+                ".claude",
+                ".local/share/opencode",
+                ".local/state/opencode",
+                ".config/opencode",
+            ] {
+                let path = PathBuf::from(&host_home).join(suffix);
+                profile.push_str(&format!(
+                    "\n(deny file-read* file-write* (subpath \"{}\"))\n",
+                    escape_sandbox_path(&path.to_string_lossy())
+                ));
+            }
+        }
+        profile.push_str(&format!(
+            "\n(deny file-write* (subpath \"{}\") (subpath \"{}\"))\n",
+            escape_sandbox_path(&tools.to_string_lossy()),
+            escape_sandbox_path(&node.to_string_lossy())
+        ));
         if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
             eprintln!("[relay] sandbox profile:\n{profile}");
         }
         command.arg("-p").arg(profile).arg(program).args(args);
         command
+    } else if cfg!(target_os = "macos") && config.sandbox {
+        Command::new("/nonexistent/dunlin-sandbox-unavailable")
+    } else if cfg!(target_os = "linux") && config.sandbox {
+        linux_harness_command(config, program, args, project_path, allowed_roots, &home)
     } else {
         let mut command = Command::new(program);
         command.args(args);
         command
     };
     scrub_harness_environment(&mut command);
+    if isolated {
+        for key in ["OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY"] {
+            command.env_remove(key);
+        }
+    }
+    if isolated {
+        command
+            .env("HOME", &home)
+            .env("XDG_CONFIG_HOME", home.join(".config"))
+            .env("XDG_CACHE_HOME", home.join(".cache"))
+            .env("XDG_DATA_HOME", home.join(".local/share"));
+    }
     if validate_project_environment(&settings.environment).is_ok() {
         for (key, value) in &settings.environment {
             if !key.starts_with("DUNLIN_")
@@ -1028,6 +1084,81 @@ fn harness_command(
             }
         }
     }
+    command
+}
+
+fn linux_harness_command(
+    config: &crate::config::Config,
+    program: &str,
+    args: &[String],
+    project: &str,
+    roots: &[String],
+    home: &Path,
+) -> Command {
+    // Missing bubblewrap fails at spawn, never by silently running unsandboxed.
+    let mut command = Command::new(
+        crate::management::executable(config, "bwrap").unwrap_or_else(|| "/usr/bin/bwrap".into()),
+    );
+    command.args([
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+        "--share-net",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+    ]);
+    for directory in ["/usr", "/bin", "/lib", "/lib64"] {
+        if Path::new(directory).exists() {
+            command.args(["--ro-bind", directory, directory]);
+        }
+    }
+    for file in [
+        "/etc/resolv.conf",
+        "/etc/hosts",
+        "/etc/nsswitch.conf",
+        "/etc/passwd",
+        "/etc/group",
+        "/etc/ssl",
+        "/etc/pki",
+    ] {
+        if Path::new(file).exists() {
+            command.args(["--ro-bind", file, file]);
+        }
+    }
+    command.arg("--bind").arg(home).arg("/home/dunlin").args([
+        "--setenv",
+        "HOME",
+        "/home/dunlin",
+        "--setenv",
+        "XDG_CONFIG_HOME",
+        "/home/dunlin/.config",
+        "--setenv",
+        "XDG_CACHE_HOME",
+        "/home/dunlin/.cache",
+        "--setenv",
+        "XDG_DATA_HOME",
+        "/home/dunlin/.local/share",
+    ]);
+    let tools = crate::management::tools(config);
+    if tools.is_dir() {
+        command.arg("--ro-bind").arg(&tools).arg(&tools);
+    }
+    let node = crate::management::root(config).join("node");
+    if node.is_dir() {
+        command.arg("--ro-bind").arg(&node).arg(&node);
+    }
+    command.args(["--bind", project, project]);
+    for root in roots {
+        command.args(["--bind", root, root]);
+    }
+    command
+        .args(["--chdir", project, "--"])
+        .arg(program)
+        .args(args);
     command
 }
 
@@ -1044,6 +1175,13 @@ fn scrub_harness_environment(command: &mut Command) {
         "DUNLIN_AUTOPROMPT",
         "DUNLIN_DATA_DIR",
         "DUNLIN_LOG_FILE",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "GITLAB_ACCESS_TOKEN",
+        "OAUTH_TOKEN",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "SSH_AUTH_SOCK",
     ] {
         command.env_remove(key);
     }
@@ -1181,9 +1319,11 @@ fn sandbox_profile(
             private.push(".claude");
         }
         if !program.contains("opencode") {
-            private.push(".local/share/opencode");
-            private.push(".local/state/opencode");
-            private.push(".config/opencode");
+            private.extend([
+                ".local/share/opencode",
+                ".local/state/opencode",
+                ".config/opencode",
+            ]);
         }
         for suffix in private {
             deny_path(
@@ -1240,6 +1380,27 @@ fn escape_sandbox_path(path: &str) -> String {
     path.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn server_sandbox_policy(root: &Path, allowed: &[String]) -> String {
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_owned());
+    let mut policy = format!(
+        "\n(deny file-read* file-write* (require-all (subpath \"{}\")",
+        escape_sandbox_path(&root.to_string_lossy())
+    );
+    for path in allowed {
+        let path = Path::new(path)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(path));
+        if path != root && path.starts_with(&root) {
+            policy.push_str(&format!(
+                " (require-not (subpath \"{}\"))",
+                escape_sandbox_path(&path.to_string_lossy())
+            ));
+        }
+    }
+    policy.push_str("))\n(deny file-link)\n");
+    policy
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1250,6 +1411,37 @@ mod tests {
     use crate::config::Config;
     use crate::store::{Project, Store};
     use serde_json::json;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn server_namespace_policy_denies_future_siblings_not_only_existing_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("server");
+        let project = root.join("projects/allowed");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("file"), "allowed").unwrap();
+        let policy = format!(
+            "(version 1)\n(allow default)\n{}",
+            super::server_sandbox_policy(&root, &[project.to_string_lossy().to_string()])
+        );
+        let future = root.join("projects/.transfer-created-later");
+        std::fs::create_dir_all(&future).unwrap();
+        std::fs::write(future.join("secret"), "never read").unwrap();
+        let read = |path: &std::path::Path| {
+            std::process::Command::new("/usr/bin/sandbox-exec")
+                .args(["-p", &policy, "/bin/cat"])
+                .arg(path)
+                .output()
+                .unwrap()
+        };
+        let allowed = read(&project.join("file"));
+        assert!(
+            allowed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&allowed.stderr)
+        );
+        assert!(!read(&future.join("secret")).status.success());
+    }
 
     #[test]
     fn relay_vault_is_injected_as_a_stdio_mcp_server() {

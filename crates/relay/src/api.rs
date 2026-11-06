@@ -33,6 +33,7 @@ pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) management: Arc<Mutex<crate::management::Management>>,
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
     pub(crate) vault: Option<Arc<crate::vault::RelayVault>>,
@@ -83,6 +84,7 @@ impl AppState {
         vault: Option<Arc<crate::vault::RelayVault>>,
     ) -> Self {
         Self {
+            management: Arc::new(Mutex::new(crate::management::Management::default())),
             store: Arc::new(Mutex::new(store)),
             config: Arc::new(config),
             vault,
@@ -119,6 +121,7 @@ impl AppState {
     }
 
     fn connection_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        let _installation = self.installation_guard()?;
         self.connections.clone().try_acquire_owned().map_err(|_| {
             ApiError::new(
                 StatusCode::TOO_MANY_REQUESTS,
@@ -128,6 +131,7 @@ impl AppState {
     }
 
     pub(crate) fn terminal_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        let _installation = self.installation_guard()?;
         self.terminal_sessions
             .clone()
             .try_acquire_owned()
@@ -137,6 +141,31 @@ impl AppState {
                     "Too many active relay terminals; close one and retry",
                 )
             })
+    }
+
+    pub(crate) fn tools_busy(&self) -> bool {
+        self.connections.available_permits() < 32 || self.terminal_sessions.available_permits() < 8
+    }
+
+    fn installation_guard(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, crate::management::Management>, ApiError> {
+        let management = self
+            .management
+            .lock()
+            .map_err(|_| ApiError::internal("Management lock poisoned"))?;
+        if management.jobs.values().any(|running| {
+            running
+                .job
+                .lock()
+                .map(|job| job.kind.starts_with("install:") && !job.finished)
+                .unwrap_or(true)
+        }) {
+            return Err(ApiError::conflict(
+                "Server tools are being installed; wait for the installation to finish",
+            ));
+        }
+        Ok(management)
     }
 
     fn allow_pair_attempt(&self) -> bool {
@@ -247,6 +276,12 @@ impl FromRequestParts<AppState> for AuthUser {
             .authenticate(token)
             .map_err(ApiError::from)?
             .ok_or_else(ApiError::unauthorized)?;
+        if auth.0.role != "admin" && crate::management::host_accounts(&state.config) {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "This relay uses host-level Git accounts and permits administrators only. Use an isolated relay service for member access.",
+            ));
+        }
         Ok(Self {
             user: auth.0,
             device: auth.1,
@@ -257,6 +292,29 @@ impl FromRequestParts<AppState> for AuthUser {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route(
+            "/v1/server",
+            get(crate::management::info).put(crate::management::update),
+        )
+        .route("/v1/server/actions", post(crate::management::start))
+        .route("/v1/server/clone", post(crate::management::clone_project))
+        .route(
+            "/v1/server/jobs/{id}",
+            get(crate::management::job).delete(crate::management::cancel),
+        )
+        .route("/v1/server/copies", post(crate::management::copy::begin))
+        .route(
+            "/v1/server/copies/{id}/chunk",
+            post(crate::management::copy::chunk),
+        )
+        .route(
+            "/v1/server/copies/{id}/finish",
+            post(crate::management::copy::finish),
+        )
+        .route(
+            "/v1/server/copies/{id}",
+            delete(crate::management::copy::cancel),
+        )
         .route("/v1/git/operation/prepare", post(operations::prepare))
         .route("/v1/git/operation/execute", post(operations::execute))
         .route("/v1/git/blame", get(operations::blame))
@@ -479,10 +537,15 @@ async fn github_metadata(
     Json(request): Json<GithubLoadRequest>,
 ) -> Result<Json<dunlin_workspace::github::Metadata>, ApiError> {
     if user.role != "admin" {
-        return Err(ApiError::new(StatusCode::FORBIDDEN, "Relay GitHub metadata uses the host account and requires an administrator"));
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Relay GitHub metadata uses the host account and requires an administrator",
+        ));
     }
     let project = state.project_for_user(&user.id, &request.project)?;
-    Ok(Json(run_blocking(move || dunlin_workspace::github::metadata(&project.path)).await?))
+    Ok(Json(
+        run_blocking(move || dunlin_workspace::github::metadata(&project.path)).await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -1304,10 +1367,15 @@ async fn fs_storage(
 ) -> Result<Json<Option<u64>>, ApiError> {
     let project = state.project_for_user(&user.id, &query.project)?;
     let permit = state.fs_permit()?;
-    Ok(Json(run_blocking(move || {
-        let _permit = permit;
-        Ok(dunlin_workspace::tree::storage_size(std::path::Path::new(&project.path)))
-    }).await?))
+    Ok(Json(
+        run_blocking(move || {
+            let _permit = permit;
+            Ok(dunlin_workspace::tree::storage_size(std::path::Path::new(
+                &project.path,
+            )))
+        })
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -2034,7 +2102,7 @@ async fn git_switch(
     Ok(StatusCode::OK)
 }
 
-async fn run_blocking<T, F>(operation: F) -> Result<T, ApiError>
+pub(crate) async fn run_blocking<T, F>(operation: F) -> Result<T, ApiError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,

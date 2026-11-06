@@ -1,8 +1,5 @@
 //! Explicit, scope-owned branch checkout. No stash/reset/force or automatic AI.
-use crate::{
-    app::DunlinApp,
-    remote::WorkspaceBackend,
-};
+use crate::{app::DunlinApp, remote::WorkspaceBackend};
 use dunlin_domain::Project;
 use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -17,7 +14,7 @@ use dunlin_ui::{
 };
 use dunlin_workspace::git::BranchContext;
 
-pub(crate) const STATUS_BAR_HEIGHT: f32 = 27.;
+pub(crate) const STATUS_BAR_HEIGHT: f32 = 32.;
 pub(crate) const STATUS_BAR_INSET: f32 = 11.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +33,7 @@ struct Layout {
     row: f32,
 }
 impl Presentation {
-    // Geometry never depends on loading state, errors, filtering or row count.
+    // Filtering keeps the loaded panel size stable.
     fn layout(self) -> Layout {
         match self {
             Self::Modal => Layout {
@@ -61,6 +58,14 @@ impl Presentation {
     }
 }
 impl Layout {
+    fn for_branches(mut self, count: usize, available_height: f32) -> Self {
+        if self.header == 0. {
+            let desired =
+                self.search + self.footer + 2. + 12. + count.min(10) as f32 * (self.row + 2.);
+            self.height = desired.max(self.height).min(available_height.max(110.));
+        }
+        self
+    }
     fn list_height(self) -> f32 {
         self.height - 2. - self.header - self.summary - self.search - self.footer
     }
@@ -91,12 +96,24 @@ struct Picker {
     scroll: ScrollHandle,
     _subscription: Subscription,
 }
+impl Picker {
+    fn layout(&self, window: &Window) -> Layout {
+        self.presentation.layout().for_branches(
+            self.context
+                .as_ref()
+                .map_or(0, |context| context.branches.len()),
+            f32::from(window.viewport_size().height) - STATUS_BAR_HEIGHT - 32.,
+        )
+    }
+}
 impl State {
     pub(crate) fn begin(&mut self, id: uuid::Uuid, project: String) {
         self.job = Some(Job { id, project });
     }
     pub(crate) fn finish(&mut self, id: uuid::Uuid) {
-        if self.job.as_ref().is_some_and(|job| job.id == id) { self.job = None; }
+        if self.job.as_ref().is_some_and(|job| job.id == id) {
+            self.job = None;
+        }
     }
     pub(crate) fn input_focus(&self, cx: &App) -> Option<FocusHandle> {
         self.picker
@@ -286,17 +303,14 @@ impl DunlinApp {
             .as_ref()
             .map(|context| filtered(context, &picker.filter.read(cx).value()))
             .unwrap_or_default();
+        let layout = picker.layout(window);
         match key {
             "up" | "down" if !rows.is_empty() => {
                 picker.selected = (picker.selected as isize + if key == "up" { -1 } else { 1 })
                     .rem_euclid(rows.len() as isize) as usize;
-                picker.scroll.set_offset(point(
-                    px(0.),
-                    -px(picker
-                        .presentation
-                        .layout()
-                        .selected_offset(picker.selected)),
-                ));
+                picker
+                    .scroll
+                    .set_offset(point(px(0.), -px(layout.selected_offset(picker.selected))));
                 cx.stop_propagation();
                 cx.notify();
             }
@@ -340,9 +354,16 @@ impl DunlinApp {
         let project = picker.project.clone();
         let backend = picker.backend.clone();
         self.close_branch_picker(window, cx);
-        self.prepare_git_action(project, backend, dunlin_workspace::git::operations::Action::Switch {
-            branch: branch.into(), discard: false,
-        }, window, cx);
+        self.prepare_git_action(
+            project,
+            backend,
+            dunlin_workspace::git::operations::Action::Switch {
+                branch: branch.into(),
+                discard: false,
+            },
+            window,
+            cx,
+        );
     }
 }
 
@@ -387,6 +408,21 @@ fn branch_badge(
     };
     div()
         .id(id)
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                if presentation == Presentation::StatusBar {
+                    crate::workspace_ui_smoke::probe("status-branch-picker")
+                } else {
+                    None
+                }
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .aria_label(format!("Switch Git branch · {label}"))
         .px(px(6.))
         .py(px(3.))
@@ -396,6 +432,9 @@ fn branch_badge(
         .gap(px(5.))
         .text_size(px(11.))
         .text_color(p.muted_fg)
+        .when(presentation == Presentation::StatusBar, |badge| {
+            badge.text_color(p.fg)
+        })
         .cursor_pointer()
         .hover(move |style| style.bg(p.hover).text_color(p.fg))
         .on_click(cx.listener(move |this, _, window, cx| {
@@ -407,13 +446,13 @@ fn branch_badge(
         .child(Icon::new(IconName::ChevronDown).size(px(10.)))
         .into_any_element()
 }
-pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn render(this: &DunlinApp, window: &Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let Some(picker) = &this.branch_ui.picker else {
         return div().into_any_element();
     };
     let p = palette(cx);
     let compact = picker.presentation == Presentation::StatusBar;
-    let layout = picker.presentation.layout();
+    let layout = picker.layout(window);
     let mut rows = div().flex().flex_col().gap(px(2.)).p(px(6.));
     if let Some(error) = &picker.error {
         rows = rows.child(
@@ -522,7 +561,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .child(format!("Switch branch · {}", picker.project.name)),
                     )
                     .child(
-                        dunlin_ui::button("branch-picker-close").ghost().label("Close")
+                        dunlin_ui::button("branch-picker-close")
+                            .ghost()
+                            .label("Close")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_branch_picker(window, cx)
                             })),
@@ -615,6 +656,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 #[cfg(test)]
 mod tests {
     use super::{Presentation, filtered};
+    #[test]
+    fn compact_list_grows_to_ten_branches_then_scrolls_within_the_window() {
+        let base = Presentation::StatusBar.layout();
+        assert_eq!(base.for_branches(1, 700.).height, 170.);
+        assert!(base.for_branches(7, 700.).height > 250.);
+        assert_eq!(base.for_branches(10, 700.), base.for_branches(1000, 700.));
+        assert_eq!(base.for_branches(1000, 220.).height, 220.);
+    }
     #[test]
     fn fixed_panel_geometry_reserves_the_same_scroll_area_before_and_after_loading() {
         for presentation in [Presentation::Modal, Presentation::StatusBar] {

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use tower::ServiceExt;
 
 mod history;
+mod management;
 mod operations;
 mod terminal;
 mod workbench;

@@ -1,10 +1,7 @@
 //! Isolated native-window controller smoke. Confirmation acceptance is simulated
 //! only here; no user repository, harness, or installed application is touched.
 use crate::app::{DunlinApp, StoredSettings};
-use dunlin_ui::{
-    component::input::Undo,
-    *,
-};
+use dunlin_ui::{component::input::Undo, *};
 use dunlin_workspace::git::{operations::Action, overview};
 use std::{
     fs,
@@ -156,6 +153,7 @@ pub(crate) fn run() {
     }
     application().with_assets(assets::AllAssets).run(move |cx| {
         cx.set_app_identity("dev.dunlin.ide.git-smoke","Dunlin Git Smoke");dunlin_ui::init(cx);crate::logging::init();
+        crate::workspace_ui_smoke::enable_probes();
         let (handle,owner)=open_window(WindowOptions{window_bounds:Some(WindowBounds::Windowed(Bounds::new(point(px(90.),px(90.)),size(px(if light_narrow {760.} else {1200.}),px(800.))))),..dunlin_ui::window_options()},cx,|window,cx|cx.new(|cx|DunlinApp::new(window,cx))).unwrap();
         handle.update(cx,|_,w,cx|owner.update(cx,|app,cx|app.open_workbench_file(path.to_str().unwrap(),None,w,cx))).unwrap();
         cx.spawn(async move |cx| {
@@ -190,7 +188,35 @@ pub(crate) fn run() {
                                  let id=app.workbench.tabs[0].id.clone();app.activate_file_tab(&id,w,cx);stage=30;
                             },
                              30=>{assert!(app.editor.read(cx).focus_handle(cx).is_focused(w));assert!(w.is_action_available(&Undo,cx));w.dispatch_action(Box::new(Undo),cx);stage=3;},
-                             3 if !app.editor_dirty && !app.git_loading=>{assert_eq!(app.editor.read(cx).text().to_string(),disk);app.open_git_history(w,cx);app.open_git_overview(cx);stage=4;},
+                              3 if !app.editor_dirty && !app.git_loading=>{assert_eq!(app.editor.read(cx).text().to_string(),disk);app.open_git_history(w,cx);stage=3000;},
+                              3000 if app.git_history.view.as_ref().is_some_and(|view| !view.loading && !view.rows.is_empty()) => {
+                                  let view = app.git_history.view.as_mut().unwrap();
+                                  view.rows.resize(500, view.rows[0].clone());
+                                  view.lanes.resize(500, view.lanes[0].clone());
+                                  stage = 3001;
+                              },
+                               3001 if app.git_history.view.as_ref().is_some_and(|view| view.detail.is_some() && !view.detail_loading && !view.patch_loading) => {
+                                   crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                  let view = app.git_history.view.as_ref().unwrap();
+                                  let scroll = view.scroll.0.borrow();
+                                  assert_eq!(scroll.last_item_size.as_ref().unwrap().contents.height, px(32. * 500.));
+                                  assert!(scroll.base_handle.bounds().size.height < px(32. * view.rows.len() as f32));
+                                  drop(scroll);
+                                  view.scroll.scroll_to_item_strict(499, ScrollStrategy::Bottom);
+                                  stage = 3002;
+                              },
+                              3002 => {
+                                  let view = app.git_history.view.as_ref().unwrap();
+                                  assert!(view.scroll.0.borrow().base_handle.offset().y < px(-10000.), "a 500-commit virtual list must reach its last rows");
+                                  view.scroll.scroll_to_item_strict(0, ScrollStrategy::Top);
+                                  stage = 3003;
+                              },
+                              3003 => {
+                                  assert_eq!(app.git_history.view.as_ref().unwrap().scroll.0.borrow().base_handle.offset().y, px(0.));
+                                  app.load_git_history(cx);
+                                  app.open_git_overview(cx);
+                                  stage = 4;
+                              },
                             4 if !app.git_loading=>{app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.locks("another-project"),"aliases and linked worktrees must remain protected");stage=5;},
                              5 if !app.git_history.running && !app.git_loading=>{let view=app.git_history.view.as_mut().unwrap();assert!(view.mutations.pending.is_some(),"{:?}",view.mutations.error);assert_eq!(fs::read_to_string(&path).unwrap(),disk);view.mutations.pending=None;app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.running,"{:?}",app.notice);stage=6;},
                              6 if !app.git_history.running && !app.git_loading=>{let view=app.git_history.view.as_ref().unwrap();let prepared=view.mutations.pending.clone().expect("preflight must produce a plan");app.execute_repository_action(view.id,view.project.clone(),prepared,cx);assert!(app.git_history.running,"{:?}",app.notice);app.close_git_history(cx);assert!(app.git_history.locks("another-project"));stage=7;},

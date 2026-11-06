@@ -67,7 +67,7 @@ pub(crate) fn render(
         );
     }
     let zoom = this.activity.graph_zoom.clamp(0.5, 1.8);
-    scale_nodes(&mut visible_nodes, zoom);
+    scale_nodes(&mut visible_nodes, zoom * crate::workspace_text::scale(cx));
     let selected = this.selected_node.clone();
     let scroll = this.activity.graph_scroll.clone();
     let focus = this.activity_focus.clone();
@@ -200,7 +200,9 @@ pub(crate) fn render(
         )
         .child(div().flex_1())
         .child(
-            dunlin_ui::button("graph-export-svg").icon(IconName::Download).label("Save SVG")
+            dunlin_ui::button("graph-export-svg")
+                .icon(IconName::Download)
+                .label("Save SVG")
                 .accessibility_label("Save graph as SVG")
                 .on_click(cx.listener(|this, _, _, cx| this.export_graph_svg(cx))),
         );
@@ -256,7 +258,7 @@ pub(crate) fn render(
         .flex_1()
         .min_w(px(0.))
         .min_h(px(0.))
-        .bg(p.bg)
+        .bg(p.card)
         .child(toolbar)
         .child(content)
         .child(legend)
@@ -707,7 +709,7 @@ fn node_card(
     let mut card = card
         .child(
             div()
-                .h(px(30.))
+                .h(crate::workspace_text::size(30., cx))
                 .px(px(9.))
                 .flex()
                 .items_center()
@@ -728,7 +730,7 @@ fn node_card(
                     div()
                         .flex_1()
                         .min_w(px(0.))
-                        .text_size(px(12.0))
+                        .text_size(crate::workspace_text::size(12., cx))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.fg)
                         .truncate()
@@ -760,9 +762,9 @@ fn node_card(
                 .gap(px(6.))
                 .child(
                     div()
-                        .h(px(34.))
+                        .h(crate::workspace_text::size(34., cx))
                         .overflow_hidden()
-                        .text_size(px(11.0))
+                        .text_size(crate::workspace_text::size(11., cx))
                         .line_height(relative(1.45))
                         .text_color(if is_tool {
                             p.muted_fg
@@ -962,11 +964,12 @@ fn node_detail(
                 )
                 .child(div().flex_1())
                 .child(
-                    icon_button("close-node-detail", IconName::X, "Close agent details")
-                        .on_click(cx.listener(|this, _, _, cx| {
+                    icon_button("close-node-detail", IconName::X, "Close agent details").on_click(
+                        cx.listener(|this, _, _, cx| {
                             this.selected_node = None;
                             cx.notify();
-                        })),
+                        }),
+                    ),
                 ),
         )
         .child(
@@ -1004,7 +1007,9 @@ fn node_detail(
                 .children(node.tools.iter().map(|kind| tool_chip(*kind, p)))
                 .child(div().flex_1())
                 .child(
-                    dunlin_ui::button("open-node-session").icon(IconName::ArrowUpRight).label("Transcript")
+                    dunlin_ui::button("open-node-session")
+                        .icon(IconName::ArrowUpRight)
+                        .label("Transcript")
                         .accessibility_label("Open the live transcript for this node")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.set_view(MainView::Chat, cx);

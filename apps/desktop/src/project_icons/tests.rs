@@ -44,9 +44,15 @@ fn group_logos_and_custom_icons_decode_to_bounded_embedded_rasters() {
         let image = super::group_image(name).unwrap();
         let raster = image::load_from_memory(image.bytes()).unwrap();
         assert!(raster.width() <= 128 && raster.height() <= 128);
-        assert!(raster.to_rgba8().pixels().any(|p| p.0[3] != 0 && (p.0[0] != 0 || p.0[1] != 0 || p.0[2] != 0)));
+        assert!(
+            raster
+                .to_rgba8()
+                .pixels()
+                .any(|p| p.0[3] != 0 && (p.0[0] != 0 || p.0[1] != 0 || p.0[2] != 0))
+        );
     }
-    let repo = Repo::new(); repo.write("custom.svg", SVG);
+    let repo = Repo::new();
+    repo.write("custom.svg", SVG);
     let embedded = super::read_icon(repo.0.join("custom.svg")).unwrap();
     fs::remove_file(repo.0.join("custom.svg")).unwrap();
     assert!(super::group_image(&embedded).is_ok());
@@ -76,11 +82,13 @@ fn custom_icons_are_embedded_bounded_and_survive_source_file_removal() {
     assert!(settings.custom_icon.is_none());
     let settings = dunlin_domain::ProjectSettings {
         custom_icon: Some(saved.clone()),
+        custom_color: Some(0xa1b2c3ff),
         ..Default::default()
     };
     let restored: dunlin_domain::ProjectSettings =
         serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
     assert_eq!(restored.custom_icon.as_deref(), Some(saved.as_str()));
+    assert_eq!(restored.custom_color, Some(0xa1b2c3ff));
 }
 
 #[test]

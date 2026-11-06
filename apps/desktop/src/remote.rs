@@ -491,7 +491,10 @@ pub(crate) struct RemoteWorkspace {
 
 impl RemoteWorkspace {
     pub(crate) fn storage_size(&self) -> Result<Option<u64>, String> {
-        self.get(&format!("/v1/fs/storage?project={}", encode(&self.project.project_id)))
+        self.get(&format!(
+            "/v1/fs/storage?project={}",
+            encode(&self.project.project_id)
+        ))
     }
     pub fn tree(&self) -> Result<FileTree, String> {
         self.get(&format!(
@@ -744,7 +747,10 @@ impl RemoteWorkspace {
     }
 
     pub(crate) fn github_metadata(&self) -> Result<dunlin_workspace::github::Metadata, String> {
-        self.post("/v1/github/metadata", &serde_json::json!({"project": self.project.project_id, "remote": "origin"}))
+        self.post(
+            "/v1/github/metadata",
+            &serde_json::json!({"project": self.project.project_id, "remote": "origin"}),
+        )
     }
 
     pub fn review_capture(
@@ -877,20 +883,6 @@ impl WorkspaceBackend {
         }
     }
 
-    /// Checkout one exact commit only for a local project. Remote history stays
-    /// read-only until the relay exposes an explicit checkout capability.
-    pub fn checkout_commit_at(&self, scope: &str, oid: &str) -> Result<(), String> {
-        match self {
-            Self::Local { root } => {
-                let root = git::history::repository_root(root, Some(scope))?;
-                let expected = git::branch_context(&root)?;
-                git::checkout_commit_checked(&root, oid, &expected)
-            }
-            Self::Remote(_) => {
-                Err("Commit checkout is local-only; remote history remains read-only".into())
-            }
-        }
-    }
     pub fn editor_baseline(&self, path: &str) -> Option<String> {
         match self {
             Self::Local { root } => git::head_file(root, &entry_relative(root, path).ok()?)

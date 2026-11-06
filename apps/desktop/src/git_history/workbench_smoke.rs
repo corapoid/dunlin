@@ -10,16 +10,42 @@ fn waiting(app: &DunlinApp, id: &str) -> bool {
     })
 }
 fn chat_waiting(app: &DunlinApp) -> bool {
-    app.harness.transcript.iter().any(|item| matches!(item, ChatItem::Permission { resolved: None, .. }))
+    app.harness
+        .transcript
+        .iter()
+        .any(|item| matches!(item, ChatItem::Permission { resolved: None, .. }))
 }
 fn tab_session(app: &DunlinApp, title: &str) -> String {
-    app.all_sessions.iter().find(|session| session.title == title).unwrap().id.clone()
+    app.all_sessions
+        .iter()
+        .find(|session| session.title == title)
+        .unwrap()
+        .id
+        .clone()
 }
 fn approve_chat(app: &mut DunlinApp, cx: &mut Context<DunlinApp>) {
-    let (id, choice) = app.harness.transcript.iter().find_map(|item| match item {
-        ChatItem::Permission { request_id, options, resolved: None, .. } => Some((request_id.clone(), options.iter().find(|o| o.kind == dunlin_agent::PermissionKind::AllowOnce).unwrap().id.clone())),
-        _ => None,
-    }).unwrap();
+    let (id, choice) = app
+        .harness
+        .transcript
+        .iter()
+        .find_map(|item| match item {
+            ChatItem::Permission {
+                request_id,
+                options,
+                resolved: None,
+                ..
+            } => Some((
+                request_id.clone(),
+                options
+                    .iter()
+                    .find(|o| o.kind == dunlin_agent::PermissionKind::AllowOnce)
+                    .unwrap()
+                    .id
+                    .clone(),
+            )),
+            _ => None,
+        })
+        .unwrap();
     app.resolve_permission(&id, Some(choice), "Allow once".into(), cx);
 }
 pub(super) fn step(
@@ -145,28 +171,42 @@ pub(super) fn step(
             *stage = 13;
         }
         13 => {
-            super::context::smoke_begin(app, w, cx); *stage = 14;
+            super::context::smoke_begin(app, w, cx);
+            *stage = 14;
         }
         14 => {
             super::context::smoke_finish(app, w, cx);
-            std::fs::write(std::path::Path::new(&app.project().path).join("example.rs"), "fn changed_on_disk() {}\n// unchanged\n").unwrap();
-            super::review::smoke_begin(app, w, cx); *stage = 15;
+            std::fs::write(
+                std::path::Path::new(&app.project().path).join("example.rs"),
+                "fn changed_on_disk() {}\n// unchanged\n",
+            )
+            .unwrap();
+            super::review::smoke_begin(app, w, cx);
+            *stage = 15;
         }
-        15 if super::review::smoke_edit(app, cx) => { *stage = 16; }
-        16 if super::review::smoke_diff(app, cx) => { *stage = 17; }
+        15 if super::review::smoke_edit(app, cx) => {
+            *stage = 16;
+        }
+        16 if super::review::smoke_diff(app, cx) => {
+            *stage = 17;
+        }
         17 if super::review::smoke_finish(app, cx) => {
-            super::checks::smoke_begin(app, w, cx); *stage = 18;
+            super::checks::smoke_begin(app, w, cx);
+            *stage = 18;
         }
         18 => {
             app.new_session(cx);
-            app.composer.update(cx, |s, cx| s.set_value("Concurrent alpha", w, cx));
+            app.composer
+                .update(cx, |s, cx| s.set_value("Concurrent alpha", w, cx));
             app.send_prompt(w, cx);
             *stage = 19;
         }
         19 if chat_waiting(app) => {
-            app.composer.update(cx, |s, cx| s.set_value("Draft alpha", w, cx));
+            app.composer
+                .update(cx, |s, cx| s.set_value("Draft alpha", w, cx));
             app.new_session(cx);
-            app.composer.update(cx, |s, cx| s.set_value("Concurrent beta", w, cx));
+            app.composer
+                .update(cx, |s, cx| s.set_value("Concurrent beta", w, cx));
             app.send_prompt(w, cx);
             *stage = 20;
         }
@@ -174,9 +214,14 @@ pub(super) fn step(
             let a = tab_session(app, "Concurrent alpha");
             let parked = &app.parked_runtimes[&a].state;
             assert!(parked.running);
-            assert!(parked.transcript.iter().any(|item| matches!(item, ChatItem::User { text, .. } if text == "Concurrent alpha")));
-            assert!(!parked.transcript.iter().any(|item| matches!(item, ChatItem::User { text, .. } if text == "Concurrent beta")));
-            app.composer.update(cx, |s, cx| s.set_value("Draft beta", w, cx));
+            assert!(parked.transcript.iter().any(
+                |item| matches!(item, ChatItem::User { text, .. } if text == "Concurrent alpha")
+            ));
+            assert!(!parked.transcript.iter().any(
+                |item| matches!(item, ChatItem::User { text, .. } if text == "Concurrent beta")
+            ));
+            app.composer
+                .update(cx, |s, cx| s.set_value("Draft beta", w, cx));
             app.activate_chat_tab(&a, w, cx);
             *stage = 21;
         }
@@ -203,7 +248,10 @@ pub(super) fn step(
             app.activate_chat_tab(&b, w, cx);
             *stage = 24;
         }
-        24 if chat_waiting(app) => { approve_chat(app, cx); *stage = 25; }
+        24 if chat_waiting(app) => {
+            approve_chat(app, cx);
+            *stage = 25;
+        }
         25 if !app.harness.running => {
             let a = tab_session(app, "Concurrent alpha");
             app.activate_chat_tab(&a, w, cx);
@@ -214,8 +262,20 @@ pub(super) fn step(
         26 if !app.harness.running => {
             for title in ["Concurrent alpha", "Concurrent beta"] {
                 let id = tab_session(app, title);
-                let items: Vec<ChatItem> = app.store.as_ref().unwrap().load_transcript(&id).unwrap().unwrap();
-                assert_eq!(items.iter().filter(|item| matches!(item, ChatItem::User { .. })).count(), 1);
+                let items: Vec<ChatItem> = app
+                    .store
+                    .as_ref()
+                    .unwrap()
+                    .load_transcript(&id)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    items
+                        .iter()
+                        .filter(|item| matches!(item, ChatItem::User { .. }))
+                        .count(),
+                    1
+                );
                 assert!(items.iter().any(|item| matches!(item, ChatItem::User { timing: Some(t), .. } if t.speaker.as_ref().is_some_and(|s| s.harness == "Custom ACP" && s.model.is_some()) && t.elapsed_ms.is_some())));
             }
             app.smoke_remote_tab_routing(cx);

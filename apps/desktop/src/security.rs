@@ -224,16 +224,16 @@ impl DunlinApp {
     }
 }
 
-fn action(id: impl Into<ElementId>, label: impl Into<SharedString>, _p: Palette) -> dunlin_ui::component::button::Button {
+fn action(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    _p: Palette,
+) -> dunlin_ui::component::button::Button {
     dunlin_ui::button(id).label(label)
 }
 
 fn card(p: &Palette) -> Div {
-    card_surface(*p)
-        .p(px(16.))
-        .flex()
-        .flex_col()
-        .gap(px(10.))
+    card_surface(*p).p(px(16.)).flex().flex_col().gap(px(10.))
 }
 
 fn badge(label: impl Into<SharedString>, p: &Palette) -> Div {
@@ -2493,7 +2493,7 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .p(px(10.))
                 .rounded(px(8.))
-                .bg(p.card)
+                .bg(p.fg.opacity(0.045))
                 .flex()
                 .flex_col()
                 .gap(px(4.))
@@ -2531,7 +2531,7 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .p(px(10.))
                 .rounded(px(8.))
-                .bg(p.card)
+                .bg(p.fg.opacity(0.045))
                 .flex()
                 .flex_col()
                 .gap(px(4.))

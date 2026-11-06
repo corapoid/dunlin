@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+#[cfg(target_os = "linux")]
+pub use crate::linux_store::ServiceKeychainStore;
 use zeroize::Zeroizing;
 
 /// Keychain service name for credential values. The account is the internal id.
@@ -132,10 +134,10 @@ impl SecretStore for KeychainStore {
 #[cfg(not(target_os = "macos"))]
 pub struct KeychainStore;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub struct ServiceKeychainStore;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 impl ServiceKeychainStore {
     pub const fn desktop() -> Self {
         Self
@@ -145,7 +147,7 @@ impl ServiceKeychainStore {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 impl SecretStore for ServiceKeychainStore {
     fn get(&self, _id: &str) -> Result<Zeroizing<String>, String> {
         Err("Credential storage requires the macOS Keychain".into())

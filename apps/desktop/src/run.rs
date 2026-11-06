@@ -5,16 +5,32 @@
 //! in a local PTY, never through a shell string.
 use crate::app::DunlinApp;
 use dunlin_terminal::Exit;
-use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
+use dunlin_ui::component::Sizable;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::{Icon, Sizable};
+use dunlin_ui::prelude::FluentBuilder as _;
 
 use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 const MAX_HISTORY: usize = 50;
+const TRANSITION: Duration = Duration::from_millis(180);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InstallPhase {
+    Starting,
+    Running,
+    Succeeded,
+    Failed,
+    Returning,
+}
+
+struct Installation {
+    record: String,
+    tab: String,
+    phase: InstallPhase,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct RunRecord {
@@ -68,6 +84,9 @@ pub(crate) struct State {
     pub error: Option<String>,
     pub checked_project: Option<String>,
     pub checked: Option<Instant>,
+    pub dependencies: Vec<dunlin_workspace::run::Dependency>,
+    installations: std::collections::HashMap<String, Installation>,
+    animation: u64,
 }
 
 impl State {
@@ -89,8 +108,19 @@ impl State {
 }
 
 impl DunlinApp {
+    pub(crate) fn showing_dependency_terminal(&self) -> bool {
+        self.bottom_panel == crate::app::BottomPanel::Run
+            && self
+                .run
+                .installations
+                .get(&self.project().path)
+                .is_some_and(|install| install.phase != InstallPhase::Starting)
+    }
+
     pub(crate) fn ensure_run_detection(&mut self, cx: &mut Context<Self>) {
         if self.project().is_remote() {
+            self.run.dependencies.clear();
+            self.run.candidates.clear();
             self.run.error = Some(
                 "Run discovery is local-only; a relay project has no local manifest access.".into(),
             );
@@ -108,6 +138,11 @@ impl DunlinApp {
         }
         self.run.loading = true;
         self.run.error = None;
+        if self.run.checked_project.as_deref() != Some(&path) {
+            self.run.candidates.clear();
+            self.run.dependencies.clear();
+            self.run.warnings.clear();
+        }
         self.run.checked_project = Some(path.clone());
         let checked_path = path.clone();
         cx.spawn(async move |this, cx| {
@@ -124,6 +159,7 @@ impl DunlinApp {
                     return;
                 }
                 this.run.candidates = result.candidates;
+                this.run.dependencies = result.dependencies;
                 this.run.warnings = result.warnings;
                 this.run.error = None;
                 cx.notify();
@@ -146,6 +182,9 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) {
         let project = self.project().clone();
+        if candidate.kind == "dependency" && self.run.installations.contains_key(&project.path) {
+            return;
+        }
         if project.is_remote() {
             self.set_notice("Run is local-only until the relay exposes a PTY grant", cx);
             return;
@@ -190,6 +229,10 @@ impl DunlinApp {
                     );
                     return;
                 }
+                let install = candidate.kind == "dependency";
+                if install && this.run.installations.contains_key(&project.path) {
+                    return;
+                }
                 let record_id = uuid::Uuid::now_v7().to_string();
                 let record = RunRecord {
                     id: record_id.clone(),
@@ -210,6 +253,37 @@ impl DunlinApp {
                 this.run.history.truncate(MAX_HISTORY);
                 this.persist_settings(cx);
                 match this.open_run_terminal(window, candidate, record.id.clone(), cx) {
+                    Ok(()) if install => {
+                        let tab = this.terminal.tabs.last().unwrap().id.clone();
+                        this.run.installations.insert(
+                            project.path.clone(),
+                            Installation {
+                                record: record_id.clone(),
+                                tab,
+                                phase: InstallPhase::Starting,
+                            },
+                        );
+                        this.run.animation = this.run.animation.wrapping_add(1);
+                        let transition = if this.reduce_motion {
+                            Duration::ZERO
+                        } else {
+                            TRANSITION
+                        };
+                        cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(transition).await;
+                            let _ = this.update(cx, |this, cx| {
+                                if let Some(install) = this.run.installations.get_mut(&project.path)
+                                    && install.record == record_id
+                                    && install.phase == InstallPhase::Starting
+                                {
+                                    install.phase = InstallPhase::Running;
+                                    this.run.animation = this.run.animation.wrapping_add(1);
+                                    cx.notify();
+                                }
+                            });
+                        })
+                        .detach();
+                    }
                     Ok(()) => this.set_notice("Detected command started in a terminal tab", cx),
                     Err(error) => {
                         if let Some(record) = this
@@ -250,6 +324,16 @@ impl DunlinApp {
             .strip_prefix(self.project().path.trim_end_matches('/'))
             .unwrap_or("")
             .trim_start_matches('/');
+        let kind = if self
+            .run
+            .dependencies
+            .iter()
+            .any(|dependency| dependency.candidate.id == record.candidate_id)
+        {
+            "dependency"
+        } else {
+            "history"
+        };
         let candidate = dunlin_workspace::run::RunCandidate {
             id: record.candidate_id,
             label: record.label,
@@ -261,7 +345,7 @@ impl DunlinApp {
                 relative.into()
             },
             source: "run history".into(),
-            kind: "history".into(),
+            kind: kind.into(),
         };
         self.start_run(window, candidate, cx);
     }
@@ -274,7 +358,16 @@ impl DunlinApp {
             .find(|tab| matches!(&tab.origin, crate::terminal::Origin::Run { record } if record == record_id))
             .map(|tab| tab.id.clone());
         if let Some(tab) = tab {
-            self.close_terminal_tab(&tab, cx);
+            if self
+                .run
+                .installations
+                .values()
+                .any(|install| install.record == record_id)
+            {
+                self.kill_terminal_process(&tab);
+            } else {
+                self.close_terminal_tab(&tab, cx);
+            }
         } else if self
             .run
             .history
@@ -323,59 +416,102 @@ impl DunlinApp {
             }
         }
         self.persist_settings(cx);
+        self.finish_dependency_install(record_id, cx);
+    }
+
+    fn finish_dependency_install(&mut self, record: &str, cx: &mut Context<Self>) {
+        let Some((project, install)) = self
+            .run
+            .installations
+            .iter_mut()
+            .find(|(_, install)| install.record == record)
+        else {
+            return;
+        };
+        let success = self
+            .run
+            .history
+            .iter()
+            .find(|run| run.id == record)
+            .is_some_and(|run| run.success == Some(true));
+        install.phase = if success {
+            InstallPhase::Succeeded
+        } else {
+            InstallPhase::Failed
+        };
+        self.run.animation = self.run.animation.wrapping_add(1);
+        if !success {
+            return;
+        }
+        let project = project.clone();
+        let record = record.to_string();
+        let transition = if self.reduce_motion {
+            Duration::ZERO
+        } else {
+            TRANSITION
+        };
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(700))
+                .await;
+            let returning = this
+                .update(cx, |this, cx| {
+                    let Some(install) = this
+                        .run
+                        .installations
+                        .get_mut(&project)
+                        .filter(|install| install.record == record)
+                    else {
+                        return false;
+                    };
+                    install.phase = InstallPhase::Returning;
+                    this.run.animation = this.run.animation.wrapping_add(1);
+                    cx.notify();
+                    true
+                })
+                .unwrap_or(false);
+            if !returning {
+                return;
+            }
+            cx.background_executor().timer(transition).await;
+            let _ = this.update(cx, |this, cx| {
+                if this
+                    .run
+                    .installations
+                    .get(&project)
+                    .is_some_and(|install| install.record == record)
+                {
+                    this.dismiss_dependency_install(&project, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn dismiss_dependency_install(&mut self, project: &str, cx: &mut Context<Self>) {
+        if let Some(install) = self.run.installations.remove(project) {
+            self.close_terminal_tab(&install.tab, cx);
+            self.run.animation = self.run.animation.wrapping_add(1);
+            if self.project().path == project {
+                self.run.checked = None;
+                self.ensure_run_detection(cx);
+            }
+            cx.notify();
+        }
     }
 }
 
 pub(crate) fn render(
     this: &mut DunlinApp,
-    _window: &mut Window,
+    window: &mut Window,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     this.ensure_run_detection(cx);
     let p = palette(cx);
     let remote = this.project().is_remote();
-    let toolbar = div()
-        .h(px(38.))
-        .flex_shrink_0()
-        .px(px(12.))
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .border_b_1()
-        .border_color(p.border)
-        .bg(p.subtle)
-        .child(
-            Icon::new(IconName::SquareTerminal)
-                .size(px(14.))
-                .text_color(p.teal),
-        )
-        .child(
-            div()
-                .text_size(px(12.5))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(p.fg)
-                .child("Run"),
-        )
-        .child(
-            div()
-                .text_size(px(10.5))
-                .font_family(dunlin_ui::theme::code_font())
-                .text_color(p.muted_fg)
-                .child(this.project().path.clone()),
-        )
-        .child(div().flex_1())
-        .child(
-            dunlin_ui::button("run-refresh")
-                .ghost()
-                .small()
-                .label(if this.run.loading {
-                    "Detecting…"
-                } else {
-                    "Refresh"
-                })
-                .disabled(remote || this.run.loading)
-                .on_click(cx.listener(|this, _, _, cx| this.refresh_run_detection(cx))),
-        );
+    if this.showing_dependency_terminal() {
+        return render_installation(this, window, cx);
+    }
     let mut body = div()
         .id("run-scroll")
         .flex_1()
@@ -386,6 +522,91 @@ pub(crate) fn render(
         .flex()
         .flex_col()
         .gap(px(10.));
+    let mut dependencies = div().flex().flex_col().gap(px(8.));
+    dependencies = dependencies.child(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(11.))
+                    .text_color(p.muted_fg)
+                    .child("Dependencies"),
+            )
+            .child(
+                dunlin_ui::button("run-refresh")
+                    .ghost()
+                    .small()
+                    .label(if this.run.loading {
+                        "Checking…"
+                    } else {
+                        "Refresh"
+                    })
+                    .disabled(remote || this.run.loading)
+                    .on_click(cx.listener(|this, _, _, cx| this.refresh_run_detection(cx))),
+            ),
+    );
+    for dependency in &this.run.dependencies {
+        let candidate = dependency.candidate.clone();
+        dependencies = dependencies.child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .text_size(px(11.))
+                        .text_color(p.muted_fg)
+                        .child(if dependency.candidate.cwd == "." {
+                            if dependency.installed {
+                                "Installed".into()
+                            } else {
+                                "Missing dependencies".into()
+                            }
+                        } else {
+                            format!(
+                                "{} · {}",
+                                dependency.candidate.cwd,
+                                if dependency.installed {
+                                    "Installed"
+                                } else {
+                                    "Missing dependencies"
+                                }
+                            )
+                        }),
+                )
+                .when(!dependency.installed, |row| {
+                    row.child(
+                        dunlin_ui::button(format!("install-dependency:{}", candidate.id))
+                            .small()
+                            .label("Install dependency")
+                            .disabled(
+                                remote
+                                    || this.run.loading
+                                    || !this.project().trusted
+                                    || this.group_cleanup.busy
+                                    || this.run.installations.contains_key(&this.project().path),
+                            )
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.start_run(window, candidate.clone(), cx)
+                            })),
+                    )
+                }),
+        );
+    }
+    if !remote && !this.run.loading && this.run.dependencies.is_empty() {
+        dependencies = dependencies.child(
+            div()
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .child("No Node dependencies detected."),
+        );
+    }
+    body = body.child(dependencies);
     if remote {
         body = body.child(
             div()
@@ -627,8 +848,111 @@ pub(crate) fn render(
         .flex_1()
         .min_h(px(0.))
         .min_w(px(0.))
-        .bg(p.bg)
-        .child(toolbar)
+        .bg(p.card)
         .child(body)
+        .with_animation(
+            ElementId::NamedInteger("run-content".into(), this.run.animation),
+            Animation::new(if this.reduce_motion {
+                Duration::ZERO
+            } else {
+                TRANSITION
+            })
+            .with_easing(ease_out_quint()),
+            {
+                let exiting = this
+                    .run
+                    .installations
+                    .get(&this.project().path)
+                    .is_some_and(|install| install.phase == InstallPhase::Starting);
+                move |view, t| view.opacity(if exiting { 1. - t } else { t })
+            },
+        )
+        .into_any_element()
+}
+
+fn render_installation(
+    this: &mut DunlinApp,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    let p = palette(cx);
+    let project = this.project().path.clone();
+    let install = &this.run.installations[&project];
+    let tab = install.tab.clone();
+    let phase = install.phase;
+    let record = install.record.clone();
+    let status = match phase {
+        InstallPhase::Succeeded | InstallPhase::Returning => "Dependencies installed successfully",
+        InstallPhase::Failed => "Installation failed · review the output below",
+        _ => "Installing dependencies…",
+    };
+    let output = crate::terminal::render_run_output(this, &tab, window, cx);
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h(px(0.))
+        .min_w(px(0.))
+        .overflow_hidden()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .px(px(12.))
+                .py(px(8.))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.5))
+                        .text_color(if phase == InstallPhase::Failed {
+                            p.red
+                        } else if matches!(phase, InstallPhase::Succeeded | InstallPhase::Returning)
+                        {
+                            p.green
+                        } else {
+                            p.teal
+                        })
+                        .child(status),
+                )
+                .when(phase == InstallPhase::Failed, |header| {
+                    header.child(
+                        dunlin_ui::button("install-back")
+                            .small()
+                            .label("Back to Run")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.dismiss_dependency_install(&project, cx)
+                            })),
+                    )
+                })
+                .when(phase == InstallPhase::Running, |header| {
+                    header.child(
+                        dunlin_ui::button("install-stop")
+                            .ghost()
+                            .small()
+                            .label("Stop")
+                            .on_click(
+                                cx.listener(move |this, _, _, cx| this.stop_run(&record, cx)),
+                            ),
+                    )
+                }),
+        )
+        .child(output)
+        .with_animation(
+            ElementId::NamedInteger("run-content".into(), this.run.animation),
+            Animation::new(if this.reduce_motion {
+                Duration::ZERO
+            } else {
+                TRANSITION
+            })
+            .with_easing(ease_out_quint()),
+            move |view, t| {
+                view.opacity(if phase == InstallPhase::Returning {
+                    1. - t
+                } else {
+                    t
+                })
+            },
+        )
         .into_any_element()
 }

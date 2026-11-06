@@ -5,15 +5,18 @@ use dunlin_ui::{
         Disableable, Selectable, Sizable,
         button::{Button, ButtonVariants},
         input::{Input, InputEvent, InputState},
+        menu::{DropdownMenu, PopupMenu, PopupMenuItem},
     },
     *,
 };
 use dunlin_workspace::{
     github::imports as github,
+    gitlab,
     repositories::{self, Discovery},
 };
 use std::{
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -25,21 +28,24 @@ enum Mode {
     #[default]
     Local,
     GitHub,
+    GitLab,
+}
+impl Mode {
+    fn parse(self, value: &str) -> Result<github::Source, String> {
+        if self == Self::GitLab {
+            gitlab::parse(value)
+        } else {
+            github::Source::parse(value)
+        }
+    }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Purpose {
     Local,
     Destination,
 }
-struct Browser {
-    path: PathBuf,
-    purpose: Purpose,
-    folders: Vec<PathBuf>,
-    loading: bool,
-}
 struct Inputs {
     query: Entity<InputState>,
-    path: Entity<InputState>,
     destination: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
@@ -48,7 +54,8 @@ enum Preview {
         root: PathBuf,
         discovery: Discovery,
     },
-    GitHub {
+    Hosted {
+        mode: Mode,
         source: github::Source,
         repositories: Vec<String>,
     },
@@ -58,14 +65,17 @@ pub(crate) struct State {
     pub open: bool,
     pub busy: bool,
     mode: Mode,
-    browser: Option<Browser>,
+    local: Option<PathBuf>,
+    search: Option<Arc<github::PreviewRequest>>,
     inputs: Option<Inputs>,
     preview: Option<Preview>,
     watch: bool,
     error: Option<String>,
     progress: Option<String>,
+    group: Option<String>,
     request: u64,
     pub cli: Option<github::CliStatus>,
+    pub gitlab_cli: Option<github::CliStatus>,
     pub checking_cli: bool,
     last_scan: Option<Instant>,
     pub watch_error: Option<String>,
@@ -73,22 +83,19 @@ pub(crate) struct State {
 impl State {
     pub fn focus(&self, cx: &App) -> Option<FocusHandle> {
         let inputs = self.inputs.as_ref()?;
-        Some(
-            if self.browser.is_some() {
-                &inputs.path
-            } else {
-                &inputs.query
-            }
-            .read(cx)
-            .focus_handle(cx),
-        )
+        Some(inputs.query.read(cx).focus_handle(cx))
     }
     pub fn dismiss(&mut self) {
-        if !self.busy {
+        if !self.busy || self.search.is_some() {
+            if let Some(search) = self.search.take() {
+                search.cancel();
+            }
+            self.busy = false;
+            self.progress = None;
             self.open = false;
             self.request = self.request.wrapping_add(1);
             self.inputs = None;
-            self.browser = None;
+            self.local = None;
             self.preview = None;
         }
     }
@@ -113,40 +120,6 @@ fn absolute_path(value: &str) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn folders(path: &Path) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let path = std::fs::canonicalize(path).map_err(|e| format!("Cannot open folder: {e}"))?;
-    if !path.is_dir() {
-        return Err("That path is not a folder".into());
-    }
-    let mut folders = Vec::new();
-    for (index, entry) in std::fs::read_dir(&path)
-        .map_err(|e| format!("Cannot read folder: {e}"))?
-        .enumerate()
-    {
-        if index >= 20_000 {
-            return Err("Too many entries to display. Enter a more specific path.".into());
-        }
-        let entry = entry.map_err(|e| format!("Cannot read folder entry: {e}"))?;
-        #[cfg(target_os = "macos")]
-        {
-            use std::os::macos::fs::MetadataExt;
-            if entry.metadata().is_ok_and(|metadata| metadata.st_flags() & libc::UF_HIDDEN != 0) { continue; }
-        }
-        if !entry.file_name().to_string_lossy().starts_with('.') && entry
-            .file_type()
-            .is_ok_and(|kind| kind.is_dir())
-        {
-            folders.push(entry.path());
-        }
-    }
-    folders.sort_by_cached_key(|path| {
-        path.file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_lowercase()
-    });
-    Ok((path, folders))
-}
 fn can_watch(root: &Path, discovery: &Discovery) -> bool {
     discovery.projects.len() > 1
         && discovery
@@ -154,15 +127,39 @@ fn can_watch(root: &Path, discovery: &Discovery) -> bool {
             .iter()
             .all(|repo| repo.collection.as_deref() == Some(root))
 }
+
 fn only_new_repositories(discovery: &mut Discovery, existing: &std::collections::HashSet<PathBuf>) {
     discovery
         .projects
         .retain(|repo| !existing.contains(&repo.path) && repo.path.join(".git").exists());
 }
 
+pub(crate) fn source_menu(menu: PopupMenu, app: WeakEntity<DunlinApp>) -> PopupMenu {
+    let local = app.clone();
+    menu.item(
+        PopupMenuItem::new("Add from local drive")
+            .icon(dunlin_ui::assets::IconName::FolderOpen)
+            .on_click(move |_, _, cx| {
+                let _ = local.update(cx, |this, cx| this.open_folder(cx));
+            }),
+    )
+    .item(
+        PopupMenuItem::new("Add from remote repo")
+            .icon(dunlin_ui::assets::IconName::GitFork)
+            .on_click(move |_, _, cx| {
+                let _ = app.update(cx, |this, cx| this.open_project_import(cx));
+            }),
+    )
+}
+
 impl DunlinApp {
     pub(crate) fn open_project_import(&mut self, cx: &mut Context<Self>) {
-        if self.factory_resetting || self.project_import.busy || self.local_import_running {
+        if self.factory_resetting
+            || self.project_import.busy
+            || self.local_import_running
+            || self.backup.busy
+            || self.backup.cloning
+        {
             self.file_notice("Wait for the current import to finish", cx);
             return;
         }
@@ -178,14 +175,15 @@ impl DunlinApp {
         self.branch_ui.dismiss();
         self.project_import.dismiss();
         self.project_import.open = true;
-        self.project_import.mode = Mode::Local;
+        self.project_import.mode = Mode::GitHub;
         self.project_import.error = None;
         self.project_import.watch = false;
-        self.refresh_github_cli(cx);
+        self.project_import.group = None;
+        self.refresh_hosting_cli(cx);
         cx.notify();
     }
 
-    pub(crate) fn refresh_github_cli(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn refresh_hosting_cli(&mut self, cx: &mut Context<Self>) {
         if self.project_import.checking_cli {
             return;
         }
@@ -193,10 +191,11 @@ impl DunlinApp {
         cx.spawn(async |this, cx| {
             let status = cx
                 .background_executor()
-                .spawn(async { github::status() })
+                .spawn(async { (github::status(), gitlab::status()) })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                this.project_import.cli = Some(status);
+                this.project_import.cli = Some(status.0);
+                this.project_import.gitlab_cli = Some(status.1);
                 this.project_import.checking_cli = false;
                 cx.notify();
             });
@@ -204,7 +203,64 @@ impl DunlinApp {
         .detach();
     }
 
-    fn browse_import_folder(
+    fn refresh_hosting_accounts(&mut self, cx: &mut Context<Self>) {
+        self.refresh_hosting_cli(cx);
+        self.user_profile.checked = None;
+        self.refresh_user_profile(cx);
+    }
+
+    fn choose_import_folder(
+        &mut self,
+        purpose: Purpose,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project_import.busy {
+            return;
+        }
+        let request = self.project_import.request;
+        let mode = self.project_import.mode;
+        let paths = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some(
+                if purpose == Purpose::Local {
+                    "Choose project folder"
+                } else {
+                    "Choose download folder"
+                }
+                .into(),
+            ),
+        });
+        let paths = self.overlay_backdrop.track_native(paths, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            let result = paths.await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if !this.project_import.open
+                    || this.project_import.request != request
+                    || this.project_import.mode != mode
+                {
+                    return;
+                }
+                match result {
+                    Ok(Ok(Some(paths))) => {
+                        if let Some(path) = paths.into_iter().next() {
+                            this.select_import_folder(path, purpose, window, cx);
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        this.project_import.error = Some(error.to_string());
+                        cx.notify();
+                    }
+                    _ => {}
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn select_import_folder(
         &mut self,
         path: PathBuf,
         purpose: Purpose,
@@ -214,74 +270,17 @@ impl DunlinApp {
         if self.project_import.busy {
             return;
         }
-        self.project_import.request = self.project_import.request.wrapping_add(1);
-        let request = self.project_import.request;
-        if purpose == Purpose::Local {
-            self.project_import.preview = None;
-            self.project_import.watch = false;
-        }
         self.project_import.error = None;
-        self.project_import.browser = Some(Browser {
-            path: path.clone(),
-            purpose,
-            folders: Vec::new(),
-            loading: true,
-        });
-        if let Some(inputs) = &self.project_import.inputs {
-            inputs.path.update(cx, |state, cx| {
+        if purpose == Purpose::Local {
+            self.project_import.local = Some(path);
+            self.project_import.watch = false;
+            self.preview_project_import(cx);
+        } else if let Some(inputs) = &self.project_import.inputs {
+            inputs.destination.update(cx, |state, cx| {
                 state.set_value(path.to_string_lossy().into_owned(), window, cx)
             });
         }
         cx.notify();
-        cx.spawn(async move |this, cx| {
-            let result = cx
-                .background_executor()
-                .spawn(async move { folders(&path) })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                if !this.project_import.open || this.project_import.request != request {
-                    return;
-                }
-                if let Some(browser) = &mut this.project_import.browser {
-                    browser.loading = false;
-                    match result {
-                        Ok((path, folders)) => {
-                            browser.path = path;
-                            browser.folders = folders;
-                        }
-                        Err(error) => {
-                            this.project_import.error = Some(error);
-                            this.project_import.browser = None;
-                        }
-                    }
-                }
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    fn go_import_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(inputs) = &self.project_import.inputs else {
-            return;
-        };
-        let purpose = self
-            .project_import
-            .browser
-            .as_ref()
-            .map(|b| b.purpose)
-            .unwrap_or(if self.project_import.mode == Mode::Local {
-                Purpose::Local
-            } else {
-                Purpose::Destination
-            });
-        match absolute_path(&inputs.path.read(cx).value()) {
-            Ok(path) => self.browse_import_folder(path, purpose, window, cx),
-            Err(error) => {
-                self.project_import.error = Some(error);
-                cx.notify();
-            }
-        }
     }
 
     fn preview_project_import(&mut self, cx: &mut Context<Self>) {
@@ -289,17 +288,12 @@ impl DunlinApp {
             return;
         }
         let mode = self.project_import.mode;
-        let local = self
-            .project_import
-            .browser
-            .as_ref()
-            .filter(|b| !b.loading && b.purpose == Purpose::Local)
-            .map(|b| b.path.clone());
-        let source = if mode == Mode::GitHub {
+        let local = self.project_import.local.clone();
+        let source = if mode != Mode::Local {
             let Some(inputs) = &self.project_import.inputs else {
                 return;
             };
-            match github::Source::parse(&inputs.query.read(cx).value()) {
+            match mode.parse(&inputs.query.read(cx).value()) {
                 Ok(source) => Some(source),
                 Err(error) => {
                     self.project_import.error = Some(error);
@@ -319,13 +313,17 @@ impl DunlinApp {
         self.project_import.progress = Some("Looking for repositories…".into());
         self.project_import.request = self.project_import.request.wrapping_add(1);
         let request = self.project_import.request;
+        let requested_source = source.clone();
+        let search = Arc::new(github::PreviewRequest::default());
+        self.project_import.search = Some(search.clone());
         cx.notify();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     if let Some(source) = source {
-                        github::preview(&source).map(|repositories| Preview::GitHub {
+                        (if mode == Mode::GitLab { gitlab::preview_cancellable(&source, &search) } else { github::preview_cancellable(&source, &search) }).map(|repositories| Preview::Hosted {
+                            mode,
                             source,
                             repositories,
                         })
@@ -337,11 +335,20 @@ impl DunlinApp {
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
-                if this.project_import.request != request {
+                if !this.project_import.open || this.project_import.request != request {
                     return;
                 }
                 this.project_import.busy = false;
+                this.project_import.search = None;
                 this.project_import.progress = None;
+                if let Some(source) = requested_source.as_ref() {
+                    let current = this.project_import.inputs.as_ref().and_then(|inputs| mode.parse(&inputs.query.read(cx).value()).ok());
+                    if this.project_import.mode != mode || current.as_ref() != Some(source) {
+                        this.project_import.preview = None;
+                        cx.notify();
+                        return;
+                    }
+                }
                 match result {
                     Ok(preview) => {
                         this.project_import.watch = matches!(&preview, Preview::Local { root, discovery }
@@ -383,17 +390,16 @@ impl DunlinApp {
                 // Rescan on confirmation: a preview never grants stale paths access.
                 self.import_local_folders(vec![root], cx);
             }
-            Preview::GitHub {
+            Preview::Hosted {
+                mode,
                 source,
                 repositories,
             } => {
                 let Some(inputs) = &self.project_import.inputs else {
                     return;
                 };
-                if github::Source::parse(&inputs.query.read(cx).value())
-                    .ok()
-                    .as_ref()
-                    != Some(&source)
+                if mode != self.project_import.mode
+                    || mode.parse(&inputs.query.read(cx).value()).ok().as_ref() != Some(&source)
                 {
                     self.project_import.error = Some("The query changed. Preview again.".into());
                     cx.notify();
@@ -403,7 +409,8 @@ impl DunlinApp {
                     Ok(path) => path,
                     Err(error) => {
                         self.project_import.error = Some(error);
-                        self.project_import.preview = Some(Preview::GitHub {
+                        self.project_import.preview = Some(Preview::Hosted {
+                            mode,
                             source,
                             repositories,
                         });
@@ -414,8 +421,25 @@ impl DunlinApp {
                 if repositories.is_empty() {
                     return;
                 }
+                if self
+                    .project_import
+                    .group
+                    .as_ref()
+                    .is_some_and(|id| !self.project_groups.iter().any(|g| &g.id == id))
+                {
+                    self.project_import.error =
+                        Some("The selected group no longer exists. Select another group.".into());
+                    self.project_import.preview = Some(Preview::Hosted {
+                        mode,
+                        source,
+                        repositories,
+                    });
+                    cx.notify();
+                    return;
+                }
                 self.project_import.busy = true;
                 self.project_import.error = None;
+                let group = self.project_import.group.clone();
                 let count = repositories.len();
                 cx.spawn(async move |this, cx| {
                     let mut discovery = Discovery::default();
@@ -435,8 +459,12 @@ impl DunlinApp {
                             .background_executor()
                             .spawn(async move {
                                 // Inspect individually: GitHub batches can exceed the local 256-root scan limit.
-                                github::clone_repository(&name, &destination)
-                                    .map(|path| repositories::discover(&[path]))
+                                (if mode == Mode::GitLab {
+                                    gitlab::clone_repository(&name, &destination)
+                                } else {
+                                    github::clone_repository(&name, &destination)
+                                })
+                                .map(|path| repositories::discover(&[path]))
                             })
                             .await;
                         match result {
@@ -452,7 +480,7 @@ impl DunlinApp {
                         this.project_import.busy = false;
                         this.project_import.progress = None;
                         this.project_import.dismiss();
-                        this.finish_project_import(discovery, false, None, false, cx);
+                        this.finish_project_import(discovery, false, None, false, group, cx);
                         cx.notify();
                     });
                 })
@@ -464,6 +492,8 @@ impl DunlinApp {
 
     pub(crate) fn poll_project_folders(&mut self, cx: &mut Context<Self>) {
         if self.watched_project_folders.is_empty()
+            || self.backup.busy
+            || self.backup.cloning
             || self.local_import_running
             || self.project_import.busy
             || self.has_modal_overlay()
@@ -500,7 +530,7 @@ impl DunlinApp {
                 };
                 discovery.warnings.clear();
                 if !discovery.projects.is_empty() {
-                    this.finish_project_import(discovery, false, None, false, cx);
+                    this.finish_project_import(discovery, false, None, false, None, cx);
                 }
                 cx.notify();
             });
@@ -519,12 +549,8 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     if this.project_import.inputs.is_none() {
-        let query = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("https://github.com/owner/repo or org:example archived:false")
-        });
-        let path =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Absolute folder path or ~/…"));
+        let query = cx
+            .new(|cx| InputState::new(window, cx).placeholder("Repository URL or provider search"));
         let destination = cx.new(|cx| InputState::new(window, cx).placeholder("Clone destination"));
         let default = crate::app::data_dir()
             .map(|p| p.join("repositories"))
@@ -533,7 +559,7 @@ pub(crate) fn render(
             state.set_value(default.to_string_lossy().into_owned(), window, cx)
         });
         let changed = cx.subscribe(&query, |this, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) && this.project_import.mode == Mode::GitHub {
+            if matches!(event, InputEvent::Change) && this.project_import.mode != Mode::Local {
                 this.project_import.preview = None;
                 this.project_import.error = None;
                 cx.notify();
@@ -542,35 +568,27 @@ pub(crate) fn render(
                 this.preview_project_import(cx);
             }
         });
-        let go = cx.subscribe_in(&path, window, |this, _, event: &InputEvent, window, cx| {
-            if matches!(event, InputEvent::PressEnter { .. }) {
-                this.go_import_folder(window, cx);
-            }
-        });
         this.project_import.inputs = Some(Inputs {
             query,
-            path,
             destination,
-            _subscriptions: vec![changed, go],
+            _subscriptions: vec![changed],
         });
-        this.browse_import_folder(home(), Purpose::Local, window, cx);
     }
     let p = palette(cx);
     let busy = this.project_import.busy;
     let mode = this.project_import.mode;
     let inputs = this.project_import.inputs.as_ref().unwrap();
     let query = inputs.query.clone();
-    let path_input = inputs.path.clone();
     let destination = inputs.destination.clone();
     let mut content = div().flex().flex_col().gap(px(12.));
-    let mut tabs = div().flex().gap(px(8.));
+    let mut tabs = segment_group(p).self_start();
     for (candidate, label) in [
         (Mode::Local, "Local folder"),
-        (Mode::GitHub, "GitHub URL or filter"),
+        (Mode::GitHub, "GitHub"),
+        (Mode::GitLab, "GitLab"),
     ] {
         tabs = tabs.child(
             dunlin_ui::button(format!("import-source:{label}"))
-                .small()
                 .label(label)
                 .selected(mode == candidate)
                 .toggled(mode == candidate)
@@ -582,9 +600,8 @@ pub(crate) fn render(
                     this.project_import.watch = false;
                     this.project_import.request = this.project_import.request.wrapping_add(1);
                     if candidate == Mode::Local {
-                        this.browse_import_folder(home(), Purpose::Local, window, cx);
+                        this.choose_import_folder(Purpose::Local, window, cx);
                     } else {
-                        this.project_import.browser = None;
                         if let Some(inputs) = &this.project_import.inputs {
                             inputs.query.update(cx, |state, cx| state.focus(window, cx));
                         }
@@ -594,159 +611,66 @@ pub(crate) fn render(
         );
     }
     content = content.child(tabs);
-    if mode == Mode::GitHub {
-        let status = this
-            .project_import
-            .cli
-            .as_ref()
-            .map(|s| s.message.clone())
-            .unwrap_or_else(|| "Checking GitHub CLI…".into());
+    if mode != Mode::Local {
+        let status = (if mode == Mode::GitLab {
+            &this.project_import.gitlab_cli
+        } else {
+            &this.project_import.cli
+        })
+        .as_ref()
+        .map(|s| s.message.clone())
+        .unwrap_or_else(|| "Checking hosting CLI…".into());
         content = content
             .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().text_size(px(11.)).text_color(p.muted_fg).child(status))
-                .child(button("import-refresh-gh", "Check again", !this.project_import.checking_cli).on_click(cx.listener(|this, _, _, cx| this.refresh_github_cli(cx)))))
-            .child(Input::new(&query).disabled(busy))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Native GitHub repository search, e.g. org:example archived:false language:Rust. Only repositories accessible to your gh account are included."))
-            .child(button("import-search-preview", "Preview repositories", !busy && this.project_import.browser.is_none()).on_click(cx.listener(|this, _, _, cx| this.preview_project_import(cx))))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Download into · repositories use <owner>/<repo> subfolders"))
-            .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(Input::new(&destination).disabled(busy)))
-                .child(button("import-browse-destination", "Browse…", !busy).on_click(cx.listener(|this, _, window, cx| {
-                    let value = this.project_import.inputs.as_ref().unwrap().destination.read(cx).value().to_string();
-                    let path = absolute_path(&value).ok().filter(|p| p.is_dir()).unwrap_or_else(home);
-                    this.browse_import_folder(path, Purpose::Destination, window, cx);
-                }))));
+                .child(button("import-refresh-gh", "Check again", !this.project_import.checking_cli).on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))))
+            .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child("1. Find repositories"))
+                .child(div().text_size(px(11.)).text_color(p.muted_fg).child(if mode == Mode::GitLab { "GitLab repository URL or search text" } else { "GitHub repository URL or native search query" }))
+                .child(div().flex().flex_wrap().items_center().gap(px(8.))
+                    .child(div().flex_1().min_w(px(180.)).child(Input::new(&query).disabled(busy)))
+                    .child(button("import-search-preview", if busy { "Searching…" } else { "Search repositories" }, !busy && !query.read(cx).value().trim().is_empty())
+                        .relative().children({
+                            #[cfg(debug_assertions)]
+                            { crate::workspace_ui_smoke::probe("import-search-action") }
+                            #[cfg(not(debug_assertions))]
+                            { None::<AnyElement> }
+                        })
+                        .primary().on_click(cx.listener(|this, _, _, cx| this.preview_project_import(cx)))))
+                .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Click Search repositories or press Enter. Nothing is downloaded yet."))
+                .child(div().text_size(px(11.)).text_color(p.muted_fg).child(if mode == Mode::GitLab {
+                    "Search includes projects you are a member of, using your glab account."
+                } else { "Example: org:example in:name media archived:false · uses your active gh account." })))
+            .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child("2. Choose a destination"))
+                .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Repositories are downloaded into <owner>/<repo> subfolders. Existing folders are never overwritten."))
+                .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(Input::new(&destination).disabled(busy)))
+                 .child(button("import-browse-destination", "Browse…", !busy).on_click(cx.listener(|this, _, window, cx| {
+                    this.choose_import_folder(Purpose::Destination, window, cx);
+                }))))
+            .child({
+                let app = cx.entity().downgrade();
+                dunlin_ui::button("import-target-group").label(format!("Add to group: {}", this.project_import.group.as_deref()
+                    .map(|id| crate::project_tree::group_path(&this.project_groups, id)).unwrap_or_else(|| "Top level".into())))
+                    .dropdown_caret(true).disabled(busy)
+                    .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
+                        let Some(entity) = app.upgrade() else { return menu; };
+                        let this = entity.read(cx);
+                        for id in std::iter::once(None).chain(this.project_groups.iter().map(|g| Some(g.id.clone()))) {
+                            let label = id.as_deref().map(|id| crate::project_tree::group_path(&this.project_groups, id)).unwrap_or_else(|| "Top level".into());
+                            let app = app.clone();
+                            menu = menu.item(PopupMenuItem::new(label).checked(this.project_import.group == id).on_click(move |_, _, cx| {
+                                let _ = app.update(cx, |this, cx| { this.project_import.group = id.clone(); cx.notify(); });
+                            }));
+                        }
+                        menu.scrollable(true).max_h(px(280.))
+                    })
+            }));
     }
-    if let Some(browser) = &this.project_import.browser {
-        let purpose = browser.purpose;
-        let loading = browser.loading;
-        let current = browser.path.clone();
-        let up = current.parent().filter(|_| current != home()).map(Path::to_path_buf);
-        let mut list = div()
-            .id("import-folders")
-            .h(px(160.))
-            .overflow_y_scroll()
-            .flex()
-            .flex_col();
-        if loading {
-            list = list.child("Reading folders…");
-        }
-        for (index, folder) in browser.folders.iter().enumerate() {
-            let folder = folder.clone();
-            let label = folder
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned();
-            list = list.child(
-                dunlin_ui::button(format!("import-folder:{index}"))
-                    .ghost()
-                    .small()
-                    .flex_shrink_0()
-                    .accessibility_label(label.clone())
-                    .icon(dunlin_ui::assets::IconName::ChevronRight)
-                    .child(div().flex_1().text_left().child(label))
-                    .disabled(busy)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.browse_import_folder(folder.clone(), purpose, window, cx)
-                    })),
-            );
-        }
-        if !loading && browser.folders.is_empty() {
-            list = list.child(
-                div()
-                    .text_color(p.muted_fg)
-                    .child("No subfolders. You can select this folder."),
-            );
-        }
-        content = content
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(
-                        button("import-parent", "Up", !busy && up.is_some()).on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                if let Some(path) = &up {
-                                    this.browse_import_folder(path.clone(), purpose, window, cx);
-                                }
-                            },
-                        )),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .child(Input::new(&path_input).disabled(busy)),
-                    )
-                    .child(button("import-go", "Go", !busy).on_click(
-                        cx.listener(|this, _, window, cx| this.go_import_folder(window, cx)),
-                    )),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(p.muted_fg)
-                    .child(format!("Selected folder: {}", current.display())),
-            )
-            .child(list)
-            .child(if purpose == Purpose::Local {
-                button(
-                    "import-scan-folder",
-                    "Select this folder · count repositories",
-                    !busy && !loading,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.preview_project_import(cx)))
-                .into_any_element()
-            } else {
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(
-                        button(
-                            "import-use-destination",
-                            "Download into this folder",
-                            !busy && !loading,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                if let Some(inputs) = &this.project_import.inputs {
-                                    inputs.destination.update(cx, |state, cx| {
-                                        state.set_value(
-                                            current.to_string_lossy().into_owned(),
-                                            window,
-                                            cx,
-                                        )
-                                    });
-                                }
-                                this.project_import.browser = None;
-                                cx.notify();
-                            },
-                        )),
-                    )
-                    .child(
-                        button(
-                            "import-cancel-destination",
-                            "Cancel folder selection",
-                            !busy,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.project_import.browser = None;
-                            cx.notify();
-                        })),
-                    )
-                    .into_any_element()
-            });
-    } else if mode == Mode::Local {
+    if mode == Mode::Local {
         content = content.child(
-            div()
-                .flex()
-                .gap(px(6.))
-                .child(div().flex_1().child(Input::new(&path_input)))
-                .child(
-                    button("import-retry-folder", "Open folder", !busy).on_click(
-                        cx.listener(|this, _, window, cx| this.go_import_folder(window, cx)),
-                    ),
-                ),
+            button("import-choose-folder", "Choose folder…", !busy).on_click(cx.listener(
+                |this, _, window, cx| this.choose_import_folder(Purpose::Local, window, cx),
+            )),
         );
     }
     let mut ready = false;
@@ -788,7 +712,7 @@ pub(crate) fn render(
                     warning,
                 )
             }
-            Preview::GitHub { repositories, .. } => {
+            Preview::Hosted { repositories, .. } => {
                 ready = !repositories.is_empty();
                 (
                     repositories.clone(),
@@ -800,17 +724,42 @@ pub(crate) fn render(
                 )
             }
         };
-        content = content.child(div().font_weight(FontWeight::SEMIBOLD).child(summary));
         let mut list = div()
             .id("import-preview-list")
             .max_h(px(110.))
             .overflow_y_scroll()
             .text_size(px(11.))
-            .text_color(p.muted_fg);
+            .text_color(p.fg);
         for name in names {
             list = list.child(div().child(name));
         }
-        content = content.child(list);
+        content = content.child(
+            div()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(p.border)
+                .bg(p.card)
+                .p(px(12.))
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(if mode == Mode::Local {
+                            "Review projects"
+                        } else {
+                            "3. Review repositories"
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(p.muted_fg)
+                        .child(summary),
+                )
+                .child(list),
+        );
         if let Some(warning) = warning {
             content = content.child(div().text_color(p.amber).child(warning));
         }
@@ -818,6 +767,11 @@ pub(crate) fn render(
     if let Some(error) = &this.project_import.error {
         content = content.child(
             div()
+                .rounded(px(8.))
+                .bg(p.red_soft)
+                .border_1()
+                .border_color(p.red.opacity(0.3))
+                .p(px(10.))
                 .text_size(px(11.))
                 .text_color(p.red)
                 .child(error.clone()),
@@ -849,8 +803,19 @@ pub(crate) fn render(
         .child(
             div()
                 .id("project-import-sheet")
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("project-import-sheet")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .w(px(width))
-                .max_h(px(height))
+                .h(px(height))
                 .rounded(px(12.))
                 .border_1()
                 .border_color(p.border_strong)
@@ -871,6 +836,7 @@ pub(crate) fn render(
                 .child(
                     div()
                         .id("project-import-scroll")
+                        .flex_1()
                         .min_h(px(0.))
                         .overflow_y_scroll()
                         .px(px(20.))
@@ -888,29 +854,40 @@ pub(crate) fn render(
                         .justify_end()
                         .gap(px(8.))
                         .child(
-                            button("import-close", "Cancel", !busy).on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.project_import.dismiss();
-                                    cx.notify();
-                                },
-                            )),
+                            button(
+                                "import-close",
+                                "Cancel",
+                                !busy || this.project_import.search.is_some(),
+                            )
+                            .relative()
+                            .children({
+                                #[cfg(debug_assertions)]
+                                {
+                                    crate::workspace_ui_smoke::probe("import-cancel")
+                                }
+                                #[cfg(not(debug_assertions))]
+                                {
+                                    None::<AnyElement>
+                                }
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.project_import.dismiss();
+                                cx.notify();
+                            })),
                         )
                         .child(
                             button(
                                 "import-confirm",
-                                if mode == Mode::GitHub {
-                                    "Download and import"
+                                if mode != Mode::Local {
+                                    if ready {
+                                        "Download and import"
+                                    } else {
+                                        "Search repositories first"
+                                    }
                                 } else {
                                     "Import projects"
                                 },
-                                ready
-                                    && !busy
-                                    && !this.local_import_running
-                                    && this
-                                        .project_import
-                                        .browser
-                                        .as_ref()
-                                        .is_none_or(|b| b.purpose == Purpose::Local),
+                                ready && !busy && !this.local_import_running,
                             )
                             .primary()
                             .on_click(
@@ -924,7 +901,7 @@ pub(crate) fn render(
 
 pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     if this.project_import.cli.is_none() && !this.project_import.checking_cli {
-        this.refresh_github_cli(cx);
+        this.refresh_hosting_cli(cx);
     }
     let p = palette(cx);
     let status = this.project_import.cli.as_ref();
@@ -945,7 +922,18 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .child(div().text_size(px(11.)).text_color(color).child(message))
                 .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Authenticate outside Dunlin: gh auth login --hostname github.com. Dunlin never reads or stores your token.")))
             .child(button("settings-refresh-gh", if this.project_import.checking_cli { "Checking…" } else { "Check again" }, !this.project_import.checking_cli)
-                .on_click(cx.listener(|this, _, _, cx| this.refresh_github_cli(cx)))));
+                .on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))));
+    let gitlab_status = this.project_import.gitlab_cli.as_ref();
+    card = card.child(div().px(px(14.)).py(px(12.)).border_t_1().border_color(p.border)
+        .flex().items_center().gap(px(10.))
+        .child(div().flex_1().min_w(px(0.)).flex().flex_col().gap(px(4.))
+            .child(div().font_weight(FontWeight::MEDIUM).child("GitLab CLI"))
+            .child(div().text_size(px(11.)).text_color(if gitlab_status.is_some_and(|s| s.authenticated) { p.green } else { p.muted_fg })
+                .child(gitlab_status.map(|s| s.message.clone()).unwrap_or_else(|| "Checking GitLab CLI…".into())))
+            .child(div().text_size(px(11.)).text_color(p.muted_fg)
+                .child("Authenticate outside Dunlin: glab auth login --hostname gitlab.com. Tokens stay in glab.")))
+        .child(button("settings-refresh-glab", "Check again", !this.project_import.checking_cli)
+            .on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))));
     for (index, root) in this.watched_project_folders.clone().into_iter().enumerate() {
         card = card.child(
             div()
@@ -995,6 +983,28 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
 mod tests {
     use super::*;
     #[test]
+    fn dismiss_cancels_search_and_invalidates_results_but_never_interrupts_cloning() {
+        let mut state = State {
+            open: true,
+            busy: true,
+            request: 7,
+            search: Some(Arc::new(github::PreviewRequest::default())),
+            ..Default::default()
+        };
+        state.dismiss();
+        assert!(!state.open && !state.busy && state.search.is_none());
+        assert_eq!(state.request, 8);
+        let mut clone = State {
+            open: true,
+            busy: true,
+            request: 7,
+            ..Default::default()
+        };
+        clone.dismiss();
+        assert!(clone.open && clone.busy);
+        assert_eq!(clone.request, 7);
+    }
+    #[test]
     fn watch_is_only_offered_for_a_collection_and_only_new_git_roots_are_auto_imported() {
         let temp = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(temp.path()).unwrap();
@@ -1041,26 +1051,11 @@ mod tests {
         assert!(saved.auto_connect);
     }
     #[test]
-    fn explorer_validates_paths_and_lists_only_directories() {
+    fn destination_requires_an_absolute_path_and_expands_home() {
         assert!(absolute_path("relative").is_err());
         assert_eq!(
             absolute_path("~/projects").unwrap(),
             home().join("projects")
         );
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join(".hidden")).unwrap();
-        #[cfg(target_os = "macos")]
-        {
-            std::fs::create_dir(dir.path().join("finder-hidden")).unwrap();
-            assert!(std::process::Command::new("/usr/bin/chflags").arg("hidden").arg(dir.path().join("finder-hidden")).status().unwrap().success());
-        }
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(dir.path().join(".hidden"), dir.path().join("linked-folder")).unwrap();
-        std::fs::create_dir(dir.path().join("z")).unwrap();
-        std::fs::create_dir(dir.path().join("A")).unwrap();
-        std::fs::write(dir.path().join("file"), "not a directory").unwrap();
-        let (_, entries) = folders(dir.path()).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].file_name().unwrap(), "A");
     }
 }

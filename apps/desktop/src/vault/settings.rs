@@ -19,6 +19,7 @@ pub(crate) enum InjectionKind {
 }
 
 pub(crate) struct Draft {
+    pub advanced: bool,
     pub secret_id: Option<String>,
     pub label: Entity<InputState>,
     pub description: Entity<InputState>,
@@ -140,6 +141,7 @@ impl Draft {
             }
         }
         Self {
+            advanced: secret.is_some_and(|secret| !secret.allowed_hosts.is_empty()),
             secret_id: secret.map(|secret| secret.id.clone()),
             label,
             description,
@@ -180,11 +182,16 @@ impl Draft {
             .map(str::to_string)
             .collect();
         NewSecret {
+            storage_only: !self.advanced,
             label: self.label.read(cx).value().to_string(),
             description: self.description.read(cx).value().to_string(),
             value: self.value.read(cx).value().to_string(),
             hosts,
-            path_prefix: self.path_prefix.read(cx).value().to_string(),
+            path_prefix: if self.advanced {
+                self.path_prefix.read(cx).value().to_string()
+            } else {
+                "/".into()
+            },
             injection: match self.injection_kind {
                 InjectionKind::Header => Injection::Header {
                     name: self.header_name.read(cx).value().to_string(),
@@ -373,6 +380,46 @@ fn section_label(text: &'static str, p: Palette) -> Div {
         .child(text)
 }
 
+pub(super) fn secret_field(label: &'static str, state: &Entity<InputState>, p: Palette) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .min_w(px(0.))
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe(label)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .child(section_label(label, p))
+        .child(
+            div()
+                .relative()
+                .w_full()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe(match label {
+                            "Name" => "vault-name-input",
+                            "Key" => "vault-key-input",
+                            _ => "vault-other-input",
+                        })
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .child(Input::new(state).aria_label(label).w_full()),
+        )
+}
+
 fn ttl_label(expires_at: Option<i64>) -> String {
     let Some(expires_at) = expires_at else {
         return "no expiry".into();
@@ -395,7 +442,7 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let mut body = div()
-        .p(px(16.))
+        .px(px(24.)).py(px(20.))
         .flex()
         .flex_col()
         .gap(px(12.))
@@ -403,7 +450,7 @@ pub(crate) fn render(
             div()
                 .text_size(px(11.5))
                 .text_color(p.muted_fg)
-                .child("Values live in the macOS Keychain. Agents never receive them: they ask Dunlin to perform an HTTPS request or a fixed CLI recipe. Quick keys expire automatically."),
+                .child("Keys stay in the macOS Keychain, never in model context or project files. Configure agent access only when needed."),
         )
         .child(
             div()
@@ -607,7 +654,11 @@ pub(crate) fn render(
     }
     if let Some(draft) = &this.vault.ui.draft {
         let editing = draft.secret_id.is_some();
-        body = body
+        let form = div().flex().flex_col().gap(px(14.)).p(px(16.)).rounded(px(16.)).bg(p.card)
+            .relative().children({
+                #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("vault-secret-form") }
+                #[cfg(not(debug_assertions))] { None::<AnyElement> }
+            })
             .child(
                 div()
                     .text_size(px(13.))
@@ -618,15 +669,19 @@ pub(crate) fn render(
                         "New credential"
                     }),
             )
-            .child(
-                div()
-                    .flex()
-                    .gap(px(6.))
-                    .child(Input::new(&draft.label))
-                    .child(Input::new(&draft.hosts)),
-            )
-            .child(Input::new(&draft.description))
-            .child(Input::new(&draft.value))
+            .child(secret_field("Name", &draft.label, p))
+            .child(secret_field("Key", &draft.value, p))
+            .child(dunlin_ui::button("vault-advanced").ghost().small()
+                .label(if draft.advanced { "Store only · remove agent access" } else { "Configure agent access…" })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(draft) = &mut this.vault.ui.draft { draft.advanced = !draft.advanced; }
+                    cx.notify();
+                })))
+            .when(!draft.advanced, |body| body.child(div().text_size(px(11.)).text_color(p.muted_fg)
+                .child("Stored without expiry or agent access. You can configure access later.")))
+            .when(draft.advanced, |body| body
+            .child(secret_field("Allowed API hosts", &draft.hosts, p))
+            .child(secret_field("Description for the agent", &draft.description, p))
             .child(
                 div()
                     .flex()
@@ -663,8 +718,8 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.header_name))
-                        .child(Input::new(&draft.header_prefix)),
+                        .child(secret_field("Header name", &draft.header_name, p).flex_1())
+                        .child(secret_field("Header prefix", &draft.header_prefix, p).flex_1()),
                 )
             })
             .when(draft.injection_kind == InjectionKind::OAuth2, |view| {
@@ -672,8 +727,8 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.oauth_token_url))
-                        .child(Input::new(&draft.oauth_client_id)),
+                        .child(secret_field("Token URL", &draft.oauth_token_url, p).flex_1())
+                        .child(secret_field("Client ID", &draft.oauth_client_id, p).flex_1()),
                 )
                 .child(
                     div()
@@ -687,9 +742,9 @@ pub(crate) fn render(
                     div()
                         .flex()
                         .gap(px(6.))
-                        .child(Input::new(&draft.aws_access_key_id))
-                        .child(Input::new(&draft.aws_region))
-                        .child(Input::new(&draft.aws_service)),
+                        .child(secret_field("Access key ID", &draft.aws_access_key_id, p).flex_1())
+                        .child(secret_field("Region", &draft.aws_region, p).flex_1())
+                        .child(secret_field("Service", &draft.aws_service, p).flex_1()),
                 )
                 .child(
                     div()
@@ -698,8 +753,8 @@ pub(crate) fn render(
                         .child("The stored value is the AWS secret access key. The broker signs each allowed request with SigV4; the secret never reaches the model."),
                 )
             })
-            .child(Input::new(&draft.path_prefix))
-            .child(Input::new(&draft.headers))
+            .child(secret_field("Allowed path prefix", &draft.path_prefix, p))
+            .child(secret_field("Allowed request headers", &draft.headers, p))
             .child(
                 div()
                     .flex()
@@ -792,6 +847,7 @@ pub(crate) fn render(
                             }),
                     ),
             )
+            )
             .child(
                 div()
                     .flex()
@@ -814,7 +870,7 @@ pub(crate) fn render(
                             })),
                     ),
             );
-        return body.into_any_element();
+        return body.child(form).into_any_element();
     }
 
     body = body.child(
@@ -920,7 +976,7 @@ pub(crate) fn render(
                 div()
                     .text_size(px(10.5))
                     .text_color(p.muted_fg)
-                    .child(format!(
+                    .child(if secret.allowed_hosts.is_empty() { "Stored only · configure agent access to use this key".into() } else { format!(
                         "{} · {} · {}{}",
                         secret.allowed_hosts.join(", "),
                         secret
@@ -935,7 +991,7 @@ pub(crate) fn render(
                         } else {
                             " · requires approval"
                         }
-                    )),
+                    ) }),
             )
             .child(
                 div()

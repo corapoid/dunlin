@@ -7,6 +7,7 @@ const HISTORY_LIMIT: usize = 100;
 enum Surface {
     Main(MainView),
     File(String),
+    Terminal(String),
     Git,
     Spec,
 }
@@ -98,6 +99,10 @@ impl DunlinApp {
             && let Some(tab) = self.active_file_tab()
         {
             Surface::File(tab.id.clone())
+        } else if let Some(crate::workspace_panes::TabKey::Terminal(id)) =
+            self.current_workspace_tab()
+        {
+            Surface::Terminal(id)
         } else {
             Surface::Main(self.view)
         };
@@ -142,6 +147,9 @@ impl DunlinApp {
                         .iter()
                         .any(|t| &t.id == id && Some(&t.project) == project.as_ref()),
                     Surface::Spec => self.spec_tools_enabled,
+                    Surface::Terminal(id) => self.terminal.tabs.iter().any(|tab| {
+                        tab.workspace && &tab.id == id && Some(&tab.project) == project.as_ref()
+                    }),
                     _ => true,
                 }
             }
@@ -182,8 +190,8 @@ impl DunlinApp {
                 self.section = SidebarSection::Dashboard;
             }
             Location::Security => {
-                self.settings_open = false;
-                self.section = SidebarSection::Security;
+                self.settings_open = true;
+                self.settings_tab = SettingsTab::Security;
             }
             Location::Settings(tab) => {
                 self.settings_open = true;
@@ -230,12 +238,18 @@ impl DunlinApp {
                     }
                 }
                 self.settings_open = false;
-                if matches!(self.section, SidebarSection::Dashboard | SidebarSection::Security) {
+                if matches!(
+                    self.section,
+                    SidebarSection::Dashboard | SidebarSection::Security
+                ) {
                     self.section = SidebarSection::Projects;
                 }
                 match surface {
                     Surface::Main(view) => self.set_view(*view, cx),
                     Surface::File(id) => self.activate_file_tab(id, window, cx),
+                    Surface::Terminal(id) => {
+                        self.activate_workspace_terminal(id, window, cx);
+                    }
                     Surface::Git => {
                         self.show_git_history(window, cx);
                     }
@@ -253,7 +267,7 @@ impl DunlinApp {
         if !matches!(
             location,
             Location::Workspace {
-                surface: Surface::File(_),
+                surface: Surface::File(_) | Surface::Terminal(_),
                 ..
             }
         ) {

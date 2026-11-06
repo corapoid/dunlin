@@ -2,9 +2,7 @@
 use super::{Format, Mode, table::Operation};
 use crate::app::{DunlinApp, StoredSettings};
 use dunlin_ui::{
-    component::{
-        input::{Redo, Undo},
-    },
+    component::input::{Redo, Undo},
     *,
 };
 use std::{

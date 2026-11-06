@@ -90,6 +90,9 @@ pub(crate) fn topics(app: &DunlinApp, project: &Project) -> Vec<String> {
         .unwrap_or_default()
 }
 pub(crate) fn matches(app: &DunlinApp, project: &Project) -> bool {
+    if app.density == crate::app::UiDensity::Compact {
+        return true;
+    }
     (!app.project_list.show_language
         || app
             .project_catalog
@@ -102,6 +105,16 @@ pub(crate) fn matches(app: &DunlinApp, project: &Project) -> bool {
                 .topic
                 .as_ref()
                 .is_none_or(|s| topics(app, project).contains(s)))
+}
+pub(crate) fn branch_line(branch: &str, changes: Option<usize>) -> String {
+    match changes {
+        Some(0) => format!("{branch} (clean)"),
+        Some(count) => format!(
+            "{branch} ({count} local {})",
+            if count == 1 { "change" } else { "changes" }
+        ),
+        None => branch.into(),
+    }
 }
 pub(crate) fn languages(app: &DunlinApp) -> Vec<String> {
     app.projects
@@ -136,13 +149,26 @@ fn load(backend: WorkspaceBackend, topics: bool, preview: bool) -> Details {
     if preview {
         details.readme = readme(&backend);
         details.size = match &backend {
-            WorkspaceBackend::Local { root } => dunlin_workspace::tree::storage_size(std::path::Path::new(root)),
+            WorkspaceBackend::Local { root } => {
+                dunlin_workspace::tree::storage_size(std::path::Path::new(root))
+            }
             WorkspaceBackend::Remote(remote) => remote.storage_size().ok().flatten(),
         };
     }
     if topics {
         let result = match &backend {
-            WorkspaceBackend::Local { root } => dunlin_workspace::github::metadata(root),
+            WorkspaceBackend::Local { root } => {
+                if dunlin_workspace::git::load(root)
+                    .repository
+                    .is_some_and(|link| {
+                        link.provider == dunlin_workspace::git::hosting::Provider::GitLab
+                    })
+                {
+                    dunlin_workspace::gitlab::metadata(root)
+                } else {
+                    dunlin_workspace::github::metadata(root)
+                }
+            }
             WorkspaceBackend::Remote(remote) => remote.github_metadata(),
         };
         match result {
@@ -321,7 +347,9 @@ pub(crate) fn preview(app: &DunlinApp, project: &Project, cx: &App) -> AnyElemen
                 })),
         );
     #[cfg(debug_assertions)]
-    let panel = panel.relative().children(crate::workspace_ui_smoke::probe("project-preview"));
+    let panel = panel
+        .relative()
+        .children(crate::workspace_ui_smoke::probe("project-preview"));
     panel.into_any_element()
 }
 
@@ -394,6 +422,14 @@ pub(crate) fn smoke_filters(app: &mut DunlinApp) {
     assert!(!matches(app, &first));
     app.project_catalog.topic = Some("aws-lambda".into());
     assert!(!matches(app, &second));
+    let density = app.density;
+    app.density = crate::app::UiDensity::Compact;
+    assert!(
+        matches(app, &first) && matches(app, &second),
+        "Compact must not retain invisible metadata filters"
+    );
+    assert!(app.project_list.show_language && app.project_list.show_topics);
+    app.density = density;
     app.project_catalog.language = None;
     assert!(matches(app, &first));
     assert!(!matches(app, &second));
@@ -406,6 +442,16 @@ pub(crate) fn smoke_filters(app: &mut DunlinApp) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn branch_status_does_not_invent_unknown_change_counts() {
+        assert_eq!(super::branch_line("main", None), "main");
+        assert_eq!(super::branch_line("main", Some(0)), "main (clean)");
+        assert_eq!(super::branch_line("work", Some(1)), "work (1 local change)");
+        assert_eq!(
+            super::branch_line("work", Some(2)),
+            "work (2 local changes)"
+        );
+    }
     #[test]
     fn old_preferences_keep_existing_defaults_and_roundtrip_new_choices() {
         let p: super::Preferences = serde_json::from_str("{}").unwrap();

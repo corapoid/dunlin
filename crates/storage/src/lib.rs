@@ -409,12 +409,64 @@ impl Store {
         }
         if version < 14 {
             let transaction = self.connection.unchecked_transaction()?;
-            let exists: i64 = transaction.query_row("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'workspace'", [], |row| row.get(0))?;
-            if exists == 0 { transaction.execute_batch("ALTER TABLE sessions ADD COLUMN workspace TEXT;")?; }
+            let exists: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'workspace'",
+                [],
+                |row| row.get(0),
+            )?;
+            if exists == 0 {
+                transaction.execute_batch("ALTER TABLE sessions ADD COLUMN workspace TEXT;")?;
+            }
             // Legacy display labels were not timestamps; use the last persisted transcript instead.
             transaction.execute_batch("UPDATE sessions SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', COALESCE((SELECT updated_at FROM transcripts WHERE session_id = sessions.id), created_at), 'unixepoch') WHERE updated_at = 'now' OR updated_at GLOB '[0-9]*m ago' OR updated_at GLOB '[0-9]*h ago' OR updated_at GLOB '[0-9]*d ago'; PRAGMA user_version = 14;")?;
             transaction.commit()?;
         }
+        Ok(())
+    }
+
+    /// Commit an additive catalog import and preferences together, or nothing.
+    pub fn import_catalog(
+        &self,
+        groups: &[ProjectGroup],
+        projects: &[Project],
+        settings: Option<&serde_json::Value>,
+    ) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let mut all = self.project_groups()?;
+        let mut ids: std::collections::HashSet<_> =
+            all.iter().map(|group| group.id.clone()).collect();
+        all.extend_from_slice(groups);
+        for group in groups {
+            if !ids.insert(group.id.clone()) {
+                return Err(StoreError::InvalidGroup(
+                    "Imported group already exists".into(),
+                ));
+            }
+            group
+                .validate_parent(&all)
+                .map_err(StoreError::InvalidGroup)?;
+        }
+        // Input is parent-first; existing catalog entries are never overwritten.
+        for group in groups {
+            self.write_project_group(group)?;
+        }
+        for project in projects {
+            let exists: bool = self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+                [&project.id],
+                |r| r.get(0),
+            )?;
+            if exists {
+                return Err(StoreError::InvalidGroup(
+                    "Imported project already exists".into(),
+                ));
+            }
+            self.upsert_project(project)?;
+        }
+        if let Some(settings) = settings {
+            self.save_setting("app", settings)?;
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -642,6 +694,20 @@ impl Store {
                 session.acp_session_id,
                 session.workspace,
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Update only the recorded location, preserving conversation metadata and turns.
+    pub fn update_session_location(
+        &self,
+        id: &str,
+        project_id: &str,
+        workspace: Option<&str>,
+    ) -> Result<()> {
+        self.connection.execute(
+            "UPDATE sessions SET project_id = ?2, workspace = COALESCE(?3, workspace) WHERE id = ?1",
+            params![id, project_id, workspace],
         )?;
         Ok(())
     }
@@ -1444,6 +1510,147 @@ mod tests {
         }
     }
 
+    #[test]
+    fn catalog_import_is_atomic_additive_and_preserves_deferred_checkout_after_reopen() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("dunlin-catalog-import-{unique}.db"));
+        let store = Store::open(&path).unwrap();
+        let existing = project();
+        store.upsert_project(&existing).unwrap();
+        store.upsert_session(&session()).unwrap();
+        store
+            .save_setting("app", &serde_json::json!({"chat_logo":true}))
+            .unwrap();
+        let root = ProjectGroup {
+            id: "root".into(),
+            name: "Root".into(),
+            parent_id: None,
+            tone: ProjectTone::Teal,
+            settings: Default::default(),
+        };
+        let child = ProjectGroup {
+            id: "child".into(),
+            name: "Child".into(),
+            parent_id: Some(root.id.clone()),
+            tone: ProjectTone::Blue,
+            settings: Default::default(),
+        };
+        let mut pending = existing.clone();
+        pending.id = "imported".into();
+        pending.trusted = false;
+        pending.path = "/chosen/github.com/o/r".into();
+        pending.group_id = Some(child.id.clone());
+        pending.settings.pending_clone = Some(dunlin_domain::PendingClone {
+            url: "https://github.com/o/r".into(),
+            destination: "/chosen".into(),
+        });
+        let settings = serde_json::json!({"chat_logo":false});
+        assert!(
+            store
+                .import_catalog(
+                    &[root.clone(), child.clone()],
+                    &[pending.clone(), existing.clone()],
+                    Some(&settings)
+                )
+                .is_err()
+        );
+        assert!(store.project_groups().unwrap().is_empty());
+        assert_eq!(store.projects().unwrap().len(), 1);
+        assert_eq!(
+            store
+                .load_setting::<serde_json::Value>("app")
+                .unwrap()
+                .unwrap()["chat_logo"],
+            true
+        );
+        store
+            .import_catalog(&[root, child], &[pending.clone()], Some(&settings))
+            .unwrap();
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let projects = store.projects().unwrap();
+        assert_eq!(projects.len(), 2);
+        let loaded = projects.iter().find(|p| p.id == pending.id).unwrap();
+        assert!(loaded.is_not_downloaded() && !loaded.trusted);
+        assert_eq!(
+            loaded.settings.pending_clone,
+            pending.settings.pending_clone
+        );
+        assert_eq!(store.project_groups().unwrap().len(), 2);
+        assert_eq!(
+            store
+                .load_setting::<serde_json::Value>("app")
+                .unwrap()
+                .unwrap(),
+            settings
+        );
+        let old = projects.iter().find(|p| p.id == existing.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(old).unwrap(),
+            serde_json::to_value(existing).unwrap()
+        );
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn correcting_session_location_preserves_history_and_other_metadata() {
+        let store = Store::open_in_memory().unwrap();
+        let source = project();
+        let mut target = source.clone();
+        target.id = "other-repo".into();
+        target.path = "/work/other-repo".into();
+        store.upsert_project(&source).unwrap();
+        store.upsert_project(&target).unwrap();
+        let mut imported = session();
+        imported.id = "import-history".into();
+        let transcript = vec!["imported conversation", "local follow-up"];
+        store
+            .import_sessions(&[(imported.clone(), transcript.clone())])
+            .unwrap();
+
+        store
+            .update_session_location(&imported.id, &target.id, Some("/work/other-repo/src"))
+            .unwrap();
+        assert!(store.sessions(Some(&source.id)).unwrap().is_empty());
+        let moved = store.sessions(Some(&target.id)).unwrap().pop().unwrap();
+        imported.project_id = target.id.clone();
+        imported.workspace = Some("/work/other-repo/src".into());
+        assert_eq!(
+            serde_json::to_value(&moved).unwrap(),
+            serde_json::to_value(&imported).unwrap()
+        );
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&imported.id)
+                .unwrap()
+                .unwrap(),
+            transcript
+        );
+
+        store
+            .update_session_location(&imported.id, &target.id, None)
+            .unwrap();
+        assert_eq!(
+            store.sessions(Some(&target.id)).unwrap()[0].workspace,
+            imported.workspace
+        );
+        assert!(
+            store
+                .update_session_location(&imported.id, "missing-project", Some("/wrong"))
+                .is_err()
+        );
+        let unchanged = store.sessions(Some(&target.id)).unwrap().pop().unwrap();
+        assert_eq!(
+            serde_json::to_value(unchanged).unwrap(),
+            serde_json::to_value(imported).unwrap()
+        );
+    }
+
     fn seed_factory_reset(store: &Store) {
         store
             .upsert_project_group(&group("reset-group", None))
@@ -2094,18 +2301,31 @@ mod tests {
     fn v14_session_workspace_and_activity_migration_preserves_unknown_history() {
         let store = Store::open_in_memory().unwrap();
         store.upsert_project(&project()).unwrap();
-        let mut row = session(); row.workspace = Some("/recorded/worktree".into());
+        let mut row = session();
+        row.workspace = Some("/recorded/worktree".into());
         store.upsert_session(&row).unwrap();
         assert_eq!(store.sessions(None).unwrap()[0].workspace, row.workspace);
         store.save_transcript(&row.id, &vec!["history"]).unwrap();
         store.connection.execute_batch("ALTER TABLE sessions DROP COLUMN workspace; UPDATE sessions SET updated_at = 'now'; UPDATE transcripts SET updated_at = 1762344000; PRAGMA user_version = 13;").unwrap();
-        store.migrate().unwrap(); store.migrate().unwrap();
+        store.migrate().unwrap();
+        store.migrate().unwrap();
         let migrated = &store.sessions(None).unwrap()[0];
         assert!(migrated.workspace.is_none());
         assert_eq!(migrated.updated_at, "2025-11-05T12:00:00Z");
-        assert_eq!(store.load_transcript::<Vec<String>>(&row.id).unwrap().unwrap(), ["history"]);
-        row.updated_at = "Imported".into(); store.upsert_session(&row).unwrap();
-        store.connection.execute_batch("PRAGMA user_version = 13;").unwrap(); store.migrate().unwrap();
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&row.id)
+                .unwrap()
+                .unwrap(),
+            ["history"]
+        );
+        row.updated_at = "Imported".into();
+        store.upsert_session(&row).unwrap();
+        store
+            .connection
+            .execute_batch("PRAGMA user_version = 13;")
+            .unwrap();
+        store.migrate().unwrap();
         assert_eq!(store.sessions(None).unwrap()[0].updated_at, "Imported");
     }
 
@@ -2122,7 +2342,10 @@ mod tests {
         assert_eq!(saved.settings, row.settings);
         row.settings.icon = Some("png:embedded-fixture".into());
         store.upsert_project_group(&row).unwrap();
-        assert_eq!(store.project_groups().unwrap()[0].settings.icon, row.settings.icon);
+        assert_eq!(
+            store.project_groups().unwrap()[0].settings.icon,
+            row.settings.icon
+        );
     }
 
     #[test]

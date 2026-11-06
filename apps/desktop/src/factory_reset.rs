@@ -48,6 +48,8 @@ impl DunlinApp {
             || self.git_history.running
             || self.local_import_running
             || self.project_import.busy
+            || self.backup.busy
+            || self.backup.cloning
             || self.session_import.loading
             || self.remote_loading
             || self.vault.ui.busy

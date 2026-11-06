@@ -190,7 +190,19 @@ mod tests {
         );
         assert_eq!(cancel_index(&["Delete everything".into()]), None);
         assert_eq!(cancel_index(&[PromptButton::cancel("Keep files")]), Some(0));
-        assert_eq!(cancel_index(&[PromptButton::cancel("Deny"), PromptButton::new("Allow once")]), Some(0));
-        assert_eq!(cancel_index(&[PromptButton::cancel("Keep Running"), PromptButton::new("Quit Anyway")]), Some(0));
+        assert_eq!(
+            cancel_index(&[
+                PromptButton::cancel("Deny"),
+                PromptButton::new("Allow once")
+            ]),
+            Some(0)
+        );
+        assert_eq!(
+            cancel_index(&[
+                PromptButton::cancel("Keep Running"),
+                PromptButton::new("Quit Anyway")
+            ]),
+            Some(0)
+        );
     }
 }

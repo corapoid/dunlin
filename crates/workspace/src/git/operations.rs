@@ -22,10 +22,17 @@ const CONTENT_LIMIT: u64 = 64 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
-    Discard { paths: Vec<String> },
-    Ignore { path: String },
+    Discard {
+        paths: Vec<String>,
+    },
+    Ignore {
+        path: String,
+    },
     UnstageAll,
-    Switch { branch: String, discard: bool },
+    Switch {
+        branch: String,
+        discard: bool,
+    },
     StashPush {
         message: String,
         include_untracked: bool,
@@ -611,10 +618,12 @@ fn tree_root(root: &str, path: &str, inventory: &Overview) -> Result<String, Str
 }
 pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
     let root = repository_root(path, None)?;
-    if matches!(action, Action::Discard { .. } | Action::Ignore { .. } | Action::UnstageAll | Action::Switch { .. }) {
-        if fs::canonicalize(path).map_err(|_| "Project folder is unavailable")? != Path::new(&root) {
-            return Err("Choose the repository root, not a project subfolder".into());
-        }
+    if matches!(
+        action,
+        Action::Discard { .. } | Action::Ignore { .. } | Action::UnstageAll | Action::Switch { .. }
+    ) && fs::canonicalize(path).map_err(|_| "Project folder is unavailable")? != Path::new(&root)
+    {
+        return Err("Choose the repository root, not a project subfolder".into());
     }
     locks(&root)?;
     let common = directory(&root, "--git-common-dir")?;
@@ -637,9 +646,11 @@ pub fn preflight(path: &str, action: Action) -> Result<Plan, String> {
     let mut target = None;
     let mut worktree_target = None;
     match &action {
-        Action::Discard { paths } => { changes::discard_paths(&root, paths)?; }
+        Action::Discard { paths } => {
+            changes::discard_paths(&root, paths)?;
+        }
         Action::Ignore { path } => changes::check_ignore(&root, path)?,
-        Action::UnstageAll => {},
+        Action::UnstageAll => {}
         Action::Switch { branch, discard } => {
             target = Some(changes::check_switch(&root, branch, &inventory)?);
             if *discard {
@@ -930,13 +941,28 @@ pub fn execute(path: &str, plan: &Plan) -> Result<Outcome, String> {
             if plan.head.is_some() {
                 read(root, &["restore", "--staged", "--", "."])?;
             } else {
-                read(root, &["rm", "--cached", "-r", "--ignore-unmatch", "--", "."])?;
+                read(
+                    root,
+                    &["rm", "--cached", "-r", "--ignore-unmatch", "--", "."],
+                )?;
             }
             true
         }
         Action::Switch { branch, discard } => {
-            if *discard { changes::discard(root, &changes::changed_paths(root)?)?; }
-            read(root, &["switch", "--no-guess", "--no-overwrite-ignore", "--no-recurse-submodules", "--", branch])?;
+            if *discard {
+                changes::discard(root, &changes::changed_paths(root)?)?;
+            }
+            read(
+                root,
+                &[
+                    "switch",
+                    "--no-guess",
+                    "--no-overwrite-ignore",
+                    "--no-recurse-submodules",
+                    "--",
+                    branch,
+                ],
+            )?;
             true
         }
         Action::StashPush {

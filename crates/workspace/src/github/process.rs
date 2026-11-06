@@ -3,7 +3,10 @@
 use std::{
     io::{Read, Write},
     process::{Command, ExitStatus, Stdio},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 struct Child(std::process::Child);
@@ -18,11 +21,24 @@ impl Drop for Child {
     }
 }
 pub(crate) fn run(
-    mut command: Command,
+    command: Command,
     input: Option<Vec<u8>>,
     timeout: Duration,
     limit: u64,
 ) -> Result<(ExitStatus, Vec<u8>), String> {
+    run_cancellable(command, input, timeout, limit, &AtomicBool::new(false))
+}
+
+pub(crate) fn run_cancellable(
+    mut command: Command,
+    input: Option<Vec<u8>>,
+    timeout: Duration,
+    limit: u64,
+    cancelled: &AtomicBool,
+) -> Result<(ExitStatus, Vec<u8>), String> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err("Search cancelled".into());
+    }
     command
         .stdin(if input.is_some() {
             Stdio::piped()
@@ -61,6 +77,9 @@ pub(crate) fn run(
     });
     let start = Instant::now();
     let status = loop {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("Search cancelled".into());
+        }
         match child.0.try_wait(){Ok(Some(status))=>break status,Ok(None) if start.elapsed()<timeout=>std::thread::sleep(Duration::from_millis(10)),_=>return Err("GitHub CLI timed out. A submitted mutation may have succeeded; inspect remote state. No automatic retry.".into())}
     };
     let bytes = out_rx
@@ -78,4 +97,32 @@ pub(crate) fn run(
             )?;
     }
     Ok((status, bytes))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    #[test]
+    fn cancellation_stops_a_running_cli_instead_of_waiting_for_its_timeout() {
+        let cancelled = std::sync::Arc::new(AtomicBool::new(false));
+        let dir = tempfile::tempdir().unwrap();
+        let ready = dir.path().join("ready");
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "touch \"$1\"; sleep 20", "fixture"])
+            .arg(&ready);
+        let flag = cancelled.clone();
+        let cancel = std::thread::spawn(move || {
+            let start = Instant::now();
+            while !ready.exists() && start.elapsed() < Duration::from_secs(2) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            flag.store(true, Ordering::Relaxed);
+        });
+        let start = Instant::now();
+        let result = run_cancellable(command, None, Duration::from_secs(30), 1024, &cancelled);
+        cancel.join().unwrap();
+        assert_eq!(result.unwrap_err(), "Search cancelled");
+        assert!(start.elapsed() < Duration::from_secs(3));
+    }
 }

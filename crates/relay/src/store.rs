@@ -444,7 +444,7 @@ impl Store {
     pub fn create_pairing_code(&self, user_id: &str, ttl_secs: i64) -> Result<(String, i64)> {
         let code = auth::random_pairing_code();
         let hash = auth::hash_token(&code);
-        let expires_at = now_secs() + ttl_secs.max(60);
+        let expires_at = now_secs() + ttl_secs.clamp(60, 900);
         self.connection.execute(
             "INSERT INTO pairing_codes (id, user_id, code_hash, expires_at) VALUES (?1, ?2, ?3, ?4)",
             params![
@@ -473,10 +473,13 @@ impl Store {
         if used_at.is_some() || expires_at <= now_secs() {
             return Ok(None);
         }
-        self.connection.execute(
-            "UPDATE pairing_codes SET used_at = ?1 WHERE id = ?2",
+        let changed = self.connection.execute(
+            "UPDATE pairing_codes SET used_at = ?1 WHERE id = ?2 AND used_at IS NULL AND expires_at > ?1",
             params![now_secs(), id],
         )?;
+        if changed != 1 {
+            return Ok(None);
+        }
         self.find_user(&user_id)
     }
 
@@ -717,6 +720,23 @@ pub fn now_secs() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::Store;
+
+    #[test]
+    fn pairing_is_limited_to_fifteen_minutes_and_expiry_is_server_enforced() {
+        let store = Store::open_in_memory().unwrap();
+        let user = store.create_user("admin", "admin").unwrap();
+        let before = super::now_secs();
+        let (code, expires) = store.create_pairing_code(&user.id, 86400).unwrap();
+        assert!((before + 900..=super::now_secs() + 900).contains(&expires));
+        store
+            .connection
+            .execute(
+                "UPDATE pairing_codes SET expires_at = ?1",
+                [super::now_secs()],
+            )
+            .unwrap();
+        assert!(store.consume_pairing_code(&code).unwrap().is_none());
+    }
 
     #[test]
     fn pairs_a_device_and_authenticates_it() {

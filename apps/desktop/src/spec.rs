@@ -402,6 +402,7 @@ impl DunlinApp {
             return;
         }
         self.branch_ui.dismiss();
+        self.remember_workspace_tab();
         self.project_settings_target = None;
         self.project_runtime_draft = None;
         self.group_settings_draft = None;
@@ -419,6 +420,7 @@ impl DunlinApp {
         }
         if self.spec.is_open_for(&project) {
             self.spec.active = true;
+            self.remember_workspace_tab();
             cx.notify();
             return;
         }
@@ -456,7 +458,11 @@ impl DunlinApp {
                 error: None,
             });
             self.spec.active = true;
+            self.remember_workspace_tab();
             self.focus_handle.focus(window, cx);
+            self.workbench
+                .panes
+                .opened(crate::workspace_panes::TabKey::Spec(project.id.clone()));
             let project_for_result = project.clone();
             cx.spawn(async move |this, cx| {
                 let result = cx
@@ -490,11 +496,22 @@ impl DunlinApp {
         let view = load_view(&project, self.store.as_ref());
         self.spec.view = Some(view);
         self.spec.active = true;
+        self.remember_workspace_tab();
+        self.workbench
+            .panes
+            .opened(crate::workspace_panes::TabKey::Spec(project.id.clone()));
         self.focus_handle.focus(window, cx);
         cx.notify();
     }
 
     pub(crate) fn close_spec_workspace(&mut self, cx: &mut Context<Self>) {
+        if let Some(view) = &self.spec.view {
+            self.workbench
+                .panes
+                .closed(&crate::workspace_panes::TabKey::Spec(
+                    view.project.id.clone(),
+                ));
+        }
         self.spec.active = false;
         self.spec.view = None;
         cx.notify();

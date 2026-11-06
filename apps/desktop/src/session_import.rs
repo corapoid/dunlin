@@ -446,6 +446,13 @@ fn finalize_import(
         let id = imported_id(&preview.harness, &row.candidate.source_id);
         let repeated = !seen.insert(id.clone());
         row.update = existing.contains(id.as_str()) && !repeated;
+        if row.update && row.project.is_none() {
+            row.project = this
+                .all_sessions
+                .iter()
+                .find(|session| session.id == id)
+                .map(|session| session.project_id.clone());
+        }
         row.duplicate =
             repeated || row.update || source_ids.contains(row.candidate.source_id.as_str());
         if row.duplicate && !row.update {
@@ -472,6 +479,70 @@ fn finalize_import(
 }
 
 impl DunlinApp {
+    fn assign_imported_location(
+        &mut self,
+        id: &str,
+        project_id: &str,
+        directory: Option<&str>,
+    ) -> Result<bool, String> {
+        let Some(session) = self.all_sessions.iter().find(|session| session.id == id) else {
+            return Ok(false);
+        };
+        if imported_source(id, &session.harness).is_none()
+            || !self
+                .projects
+                .iter()
+                .any(|project| project.id == project_id && !project.is_remote())
+        {
+            return Ok(false);
+        }
+        let moved = session.project_id != project_id;
+        let workspace = directory
+            .map(str::to_owned)
+            .or_else(|| session.workspace.clone());
+        if !moved && workspace == session.workspace {
+            return Ok(false);
+        }
+        // A live adapter must never inherit another project's permissions or root.
+        if moved && (self.session().id == id || self.parked_runtimes.contains_key(id)) {
+            return Err(format!(
+                "Could not reassign {}: close its agent and switch to another session, then import again",
+                session.title
+            ));
+        }
+        self.store
+            .as_ref()
+            .ok_or("History storage unavailable")?
+            .update_session_location(id, project_id, directory)
+            .map_err(|error| error.to_string())?;
+        let session = self
+            .all_sessions
+            .iter_mut()
+            .find(|session| session.id == id)
+            .unwrap();
+        session.project_id = project_id.into();
+        session.workspace = workspace;
+        let summary = session.clone();
+        let current = self.session().id.clone();
+        let current_project = self.project().id.clone();
+        self.sessions
+            .retain(|session| session.id != id || project_id == current_project);
+        if project_id == current_project {
+            if let Some(session) = self.sessions.iter_mut().find(|session| session.id == id) {
+                session.project_id = summary.project_id;
+                session.workspace = summary.workspace;
+            } else {
+                self.sessions.push(summary);
+            }
+        }
+        self.selected_session = self
+            .sessions
+            .iter()
+            .position(|session| session.id == current)
+            .unwrap_or(0);
+        Ok(true)
+    }
+
     fn clear_session_import_preview(&mut self, cx: &Context<Self>) {
         if let Some(preview) = self.session_import.preview.take() {
             cx.background_executor()
@@ -707,11 +778,19 @@ impl DunlinApp {
         };
         let mut rows = Vec::new();
         let mut updates = Vec::new();
+        let mut locations = Vec::new();
         for row in &preview.rows {
             if !row.selected {
                 continue;
             }
             if row.update {
+                if let Some(project) = &row.project {
+                    locations.push((
+                        imported_id(&preview.harness, &row.candidate.source_id),
+                        project.clone(),
+                        row.candidate.directory.clone(),
+                    ));
+                }
                 updates.push((
                     imported_id(&preview.harness, &row.candidate.source_id),
                     row.transcript.clone(),
@@ -735,6 +814,7 @@ impl DunlinApp {
                 summary.title = "Imported conversation".into();
             }
             summary.model = row.candidate.model.clone();
+            summary.workspace = row.candidate.directory.clone();
             summary.status = dunlin_domain::SessionStatus::Done;
             summary.updated_at = chrono::DateTime::from_timestamp_millis(
                 row.candidate.at_ms.min(i64::MAX as u64) as i64,
@@ -770,7 +850,16 @@ impl DunlinApp {
                 this.session_import.scanning = None;
                 this.session_import.progress = None;
                 match result {
-            Ok(applied) => {
+            Ok(mut applied) => {
+                for (id, project, directory) in locations {
+                    match this.assign_imported_location(&id, &project, directory.as_deref()) {
+                        Ok(true) => {
+                            if !applied.updated.contains(&id) { applied.updated.push(id); }
+                        }
+                        Ok(false) => {}
+                        Err(error) => applied.error = Some(error),
+                    }
+                }
                 let imported = applied.sessions.len();
                 let projects: HashSet<_> = this.projects.iter().map(|project| project.id.clone()).collect();
                 for summary in applied.sessions {
@@ -916,7 +1005,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if let Some(preview) = &this.session_import.preview {
         body = body.child(format!("Import preview · {} · {} sessions", preview.harness, preview.rows.len()))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Copies histories only. Source files stay unchanged. Assign unmatched sessions or leave them skipped. Updating an imported copy adds recorded token and diff data without replacing your local follow-up turns."));
+            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Copies histories only. Source files stay unchanged. Assign unmatched sessions or leave them skipped. Updating an imported copy applies the selected project and adds recorded token and diff data without replacing your local follow-up turns."));
         let list = uniform_list(
             "session-import-preview",
             preview.rows.len(),
@@ -934,7 +1023,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .iter()
                         .find(|p| Some(&p.id) == row.project.as_ref());
                     let label = if row.update {
-                        "Update imported copy".to_string()
+                        format!(
+                            "Update · {}",
+                            project
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Assign project…")
+                        )
                     } else if row.duplicate {
                         "Already imported".to_string()
                     } else {
@@ -945,7 +1039,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     let choose = dunlin_ui::button(format!("import-project-{i}"))
                         .small()
                         .label(label)
-                        .disabled(row.duplicate)
+                        .disabled(row.duplicate && !row.update)
                         .dropdown_caret(true)
                         .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
                             let Some(entity) = app.upgrade() else {

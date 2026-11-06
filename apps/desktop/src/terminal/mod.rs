@@ -24,35 +24,101 @@ const ROW_HEIGHT: f32 = 15.;
 const CHAR_WIDTH: f32 = 7.1;
 const FONT_SIZE: f32 = 11.5;
 
-fn terminal_font() -> Font {
+fn terminal_font(cx: &App) -> Font {
+    static FALLBACKS: std::sync::OnceLock<FontFallbacks> = std::sync::OnceLock::new();
     Font {
-        fallbacks: Some(FontFallbacks::from_fonts(vec!["Symbols Nerd Font Mono".into()])),
+        fallbacks: Some(
+            FALLBACKS
+                .get_or_init(|| {
+                    let mut names: Vec<String> = cx
+                        .text_system()
+                        .all_font_names()
+                        .into_iter()
+                        .filter(|name| symbol_font_candidate(name))
+                        .collect();
+                    names.sort();
+                    names.dedup();
+                    names.retain(|name| name != "Symbols Nerd Font Mono");
+                    names.push("Symbols Nerd Font Mono".into());
+                    FontFallbacks::from_fonts(names)
+                })
+                .clone(),
+        ),
         features: FontFeatures::disable_ligatures(),
         ..font(dunlin_ui::theme::code_font())
     }
 }
 
+fn symbol_font_candidate(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.contains("nerd")
+        || name.contains("powerline")
+        || name.contains("meslo")
+        || name.ends_with(" nf")
+        || name.ends_with(" nfm")
+        || name.ends_with(" nfp")
+}
+
+#[cfg(test)]
+mod font_tests {
+    #[test]
+    fn installed_terminal_symbol_families_are_used_without_picking_proportional_ui_fonts() {
+        for name in [
+            "MesloLGS NF",
+            "Hack Nerd Font",
+            "Symbols Nerd Font Mono",
+            "DejaVu Sans Mono for Powerline",
+            "FiraCode NFM",
+        ] {
+            assert!(super::symbol_font_candidate(name), "{name}");
+        }
+        for name in ["Arial", "Helvetica", "Geist"] {
+            assert!(!super::symbol_font_candidate(name));
+        }
+    }
+}
+
 #[cfg(debug_assertions)]
 pub(crate) fn smoke_glyphs(window: &Window, cx: &App) {
-    for text in ["\u{e0b0}", "\u{e0a0}", "\u{e718}", "\u{f07c}", "\u{f015}", "界"] {
-        let line = window.text_system().shape_line(text.into(), px(FONT_SIZE), &[TextRun {
-            len: text.len(), font: terminal_font(), color: palette(cx).fg.into(),
-            background_color: None, underline: None, strikethrough: None,
-        }], None);
+    for text in [
+        "\u{e0b0}", "\u{e0a0}", "\u{e718}", "\u{f07c}", "\u{f015}", "界",
+    ] {
+        let line = window.text_system().shape_line(
+            text.into(),
+            px(FONT_SIZE),
+            &[TextRun {
+                len: text.len(),
+                font: terminal_font(cx),
+                color: palette(cx).fg,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+        );
         assert!(!line.runs.is_empty());
-        assert!(line.runs.iter().flat_map(|r| &r.glyphs).all(|g| g.id.0 != 0), "missing terminal glyph: {text}");
+        assert!(
+            line.runs
+                .iter()
+                .flat_map(|r| &r.glyphs)
+                .all(|g| g.id.0 != 0),
+            "missing terminal glyph: {text}"
+        );
     }
     assert!(cell_width(cx) > 0.);
 }
 
 fn cell_width(cx: &App) -> f32 {
-    let font = cx.text_system().resolve_font(&terminal_font());
-    cx.text_system().advance(font, px(FONT_SIZE), 'M')
-        .map(|advance| f32::from(advance.width)).ok()
-        .filter(|width| width.is_finite() && *width > 0.).unwrap_or(CHAR_WIDTH)
+    let font = cx.text_system().resolve_font(&terminal_font(cx));
+    cx.text_system()
+        .advance(font, crate::workspace_text::size(FONT_SIZE, cx), 'M')
+        .map(|advance| f32::from(advance.width))
+        .ok()
+        .filter(|width| width.is_finite() && *width > 0.)
+        .unwrap_or(CHAR_WIDTH * crate::workspace_text::scale(cx))
 }
 const BODY_PADDING: f32 = 8.;
-const PANE_HEADER: f32 = 15.;
+const PANE_HEADER: f32 = 0.;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Status {
@@ -71,6 +137,8 @@ pub(crate) enum Origin {
 
 pub(crate) struct Tab {
     pub id: String,
+    pub project: String,
+    pub workspace: bool,
     pub title: String,
     pub cwd: String,
     pub screen: Screen,
@@ -103,15 +171,19 @@ pub(crate) struct State {
     pub split_drag: Option<SplitDrag>,
     pub focus: FocusHandle,
     pub search_open: bool,
-    pub ssh_open: bool,
     pub ssh_target: Option<Entity<InputState>>,
     pub ssh_path: Option<Entity<InputState>>,
     pub dock_width: f32,
     pub dock_height: f32,
+    run_previous_tab: Option<String>,
 }
 
 impl State {
     pub fn new(cx: &mut Context<DunlinApp>) -> Self {
+        cx.bind_keys([
+            KeyBinding::new("tab", NoAction, Some("DunlinTerminal")),
+            KeyBinding::new("shift-tab", NoAction, Some("DunlinTerminal")),
+        ]);
         Self {
             cell_width: cell_width(cx),
             tabs: Vec::new(),
@@ -123,11 +195,11 @@ impl State {
             split_drag: None,
             focus: cx.focus_handle(),
             search_open: false,
-            ssh_open: false,
             ssh_target: None,
             ssh_path: None,
             dock_width: 900.,
             dock_height: 300.,
+            run_previous_tab: None,
         }
     }
 
@@ -262,7 +334,85 @@ fn shell_options(project: &Project, integration: bool) -> Result<SpawnOptions, S
 }
 
 impl DunlinApp {
+    pub(crate) fn open_server_agent_setup(
+        &mut self,
+        host: crate::remote::RemoteHost,
+        token: String,
+        agent: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match relay::connect_setup(&host, &token, agent) {
+            Ok(session) => {
+                let id = self.terminal_add(
+                    session,
+                    format!("{} · {agent} authorization", host.name),
+                    host.url,
+                    Origin::Relay,
+                    dunlin_terminal::DEFAULT_ROWS,
+                    dunlin_terminal::DEFAULT_COLS,
+                    cx,
+                );
+                self.terminal.active = self.terminal.index_of(&id).unwrap_or(0);
+                self.settings_open = false;
+                self.bottom_panel = crate::app::BottomPanel::Terminal;
+                self.terminal.focus.focus(window, cx);
+                self.set_notice("Agent authorization runs on the selected server. No local credentials are copied.", cx);
+            }
+            Err(error) => self.set_notice(error, cx),
+        }
+        cx.notify();
+    }
+    pub(crate) fn open_workspace_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.remember_workspace_tab();
+        let layout = self.terminal.layout.clone();
+        let active = self.terminal.active;
+        if let Err(error) = self.open_terminal_tab(cx) {
+            self.file_notice(error, cx);
+            return;
+        }
+        let id = self.terminal.active_tab().unwrap().id.clone();
+        self.terminal.tab_mut(&id).unwrap().workspace = true;
+        self.terminal.layout = layout;
+        self.terminal.active = active;
+        self.workbench
+            .panes
+            .opened(crate::workspace_panes::TabKey::Terminal(id.clone()));
+        self.activate_workspace_tab(&crate::workspace_panes::TabKey::Terminal(id), window, cx);
+        cx.notify();
+    }
+
+    pub(crate) fn activate_workspace_terminal(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(index) = self
+            .terminal
+            .tabs
+            .iter()
+            .position(|tab| tab.id == id && tab.workspace && tab.project == self.project().id)
+        else {
+            return false;
+        };
+        self.remember_workspace_tab();
+        self.stash_editor_tab();
+        self.workbench.show_file = false;
+        self.git_history.active = false;
+        self.spec.active = false;
+        self.workbench.terminal = Some(id.into());
+        self.terminal.active = index;
+        self.terminal.focus.focus(window, cx);
+        self.remember_workspace_tab();
+        cx.notify();
+        true
+    }
+
     pub(crate) fn open_terminal_tab(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+        if self.group_cleanup.busy {
+            return Err("Wait for generated-folder cleanup to finish".into());
+        }
         let project = self.project().clone();
         if project.is_remote() {
             let workspace = self.remote_workspace_for_project(&project)?;
@@ -330,6 +480,9 @@ impl DunlinApp {
             options.env = environment.into_iter().collect();
         }
         let title = candidate.label.chars().take(48).collect::<String>();
+        let installing = candidate.kind == "dependency";
+        let previous_active = self.terminal.active;
+        let previous_layout = self.terminal.layout.clone();
         self.terminal_spawn(
             options,
             title,
@@ -337,6 +490,12 @@ impl DunlinApp {
             Origin::Run { record: record_id },
             cx,
         )?;
+        if installing {
+            self.terminal.active = previous_active;
+            self.terminal.layout = previous_layout;
+            cx.notify();
+            return Ok(());
+        }
         self.terminal.active = self.terminal.tabs.len().saturating_sub(1);
         self.terminal.error = None;
         self.bottom_panel = crate::app::BottomPanel::Terminal;
@@ -351,6 +510,9 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
+        if self.group_cleanup.busy {
+            return Err("Wait for generated-folder cleanup to finish".into());
+        }
         self.ensure_ssh_inputs(window, cx);
         let target = self
             .terminal
@@ -373,10 +535,29 @@ impl DunlinApp {
         } else {
             std::env::temp_dir()
         };
-        let options = SpawnOptions::ssh(
+        let identity = self
+            .remote_connection
+            .identity
+            .as_ref()
+            .map(|input| input.read(cx).value().trim().to_string())
+            .filter(|s| !s.is_empty());
+        let port = self
+            .remote_connection
+            .port
+            .as_ref()
+            .map(|input| input.read(cx).value().trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.parse::<u16>()
+                    .map_err(|_| "SSH port must be between 1 and 65535".to_string())
+            })
+            .transpose()?;
+        let options = SpawnOptions::ssh_with_identity(
             &target,
             local_cwd,
             (!path.is_empty()).then_some(path.as_str()),
+            identity.as_deref().map(std::path::Path::new),
+            port,
         )?;
         let title = format!("SSH · {target}");
         let tab = self.terminal_spawn(
@@ -389,7 +570,6 @@ impl DunlinApp {
             cx,
         )?;
         self.terminal.active = self.terminal.index_of(&tab).unwrap_or(0);
-        self.terminal.ssh_open = false;
         self.terminal_ssh_target = target;
         self.terminal_ssh_path = path;
         self.terminal.error = None;
@@ -398,20 +578,6 @@ impl DunlinApp {
         self.terminal.focus.focus(window, cx);
         cx.notify();
         Ok(())
-    }
-
-    /// Open the existing SSH terminal form without starting a local shell tab.
-    /// The form keeps the saved OpenSSH target/path ready for the user to edit.
-    pub(crate) fn open_ssh_terminal_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.ensure_ssh_inputs(window, cx);
-        self.terminal.ssh_open = true;
-        self.bottom_panel = crate::app::BottomPanel::Terminal;
-        self.terminal.error = None;
-        if let Some(target) = &self.terminal.ssh_target {
-            target.update(cx, |input, cx| input.focus(window, cx));
-        }
-        self.persist_settings(cx);
-        cx.notify();
     }
 
     pub(crate) fn terminal_split(
@@ -453,17 +619,6 @@ impl DunlinApp {
                     .default_value(path)
             }));
         }
-    }
-
-    pub(crate) fn terminal_ssh_toggle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.terminal.ssh_open = !self.terminal.ssh_open;
-        if self.terminal.ssh_open {
-            self.ensure_ssh_inputs(window, cx);
-            if let Some(target) = &self.terminal.ssh_target {
-                target.update(cx, |input, cx| input.focus(window, cx));
-            }
-        }
-        cx.notify();
     }
 
     fn terminal_stream(
@@ -545,6 +700,8 @@ impl DunlinApp {
         let id = self.terminal.next_id();
         self.terminal.tabs.push(Tab {
             id: id.clone(),
+            project: self.project().id.clone(),
+            workspace: false,
             title,
             cwd,
             screen: Screen::new(rows, cols, dunlin_terminal::DEFAULT_SCROLLBACK),
@@ -570,17 +727,50 @@ impl DunlinApp {
         origin: Origin,
         cx: &mut Context<Self>,
     ) -> Result<String, String> {
+        if self.group_cleanup.busy {
+            return Err("Wait for generated-folder cleanup to finish".into());
+        }
         let rows = options.rows;
         let cols = options.cols;
         let session = Session::spawn(options)?;
         Ok(self.terminal_add(session, title, cwd, origin, rows, cols, cx))
     }
 
+    pub(crate) fn kill_terminal_process(&self, id: &str) {
+        if let Some(session) = self
+            .terminal
+            .tabs
+            .iter()
+            .find(|tab| tab.id == id)
+            .and_then(|tab| tab.session.as_ref())
+        {
+            session.kill();
+        }
+    }
+
     pub(crate) fn close_terminal_tab(&mut self, id: &str, cx: &mut Context<Self>) {
         let Some(index) = self.terminal.tabs.iter().position(|tab| tab.id == id) else {
             return;
         };
+        let active = self.terminal.active_tab().map(|tab| tab.id.clone());
         let tab = self.terminal.tabs.remove(index);
+        if tab.workspace {
+            self.workbench
+                .panes
+                .closed(&crate::workspace_panes::TabKey::Terminal(id.into()));
+            if self.workbench.terminal.as_deref() == Some(id) {
+                self.workbench.terminal = None;
+            }
+        }
+        if let Some(index) = active.as_deref().and_then(|id| self.terminal.index_of(id)) {
+            self.terminal.active = index;
+        }
+        if active.as_deref() == Some(id)
+            && let Some(previous) = self.terminal.run_previous_tab.take()
+            && let Some(index) = self.terminal.index_of(&previous)
+        {
+            self.terminal.active = index;
+        }
         if let Some(session) = &tab.session {
             session.kill();
         }
@@ -596,8 +786,8 @@ impl DunlinApp {
             let active = self
                 .terminal
                 .tabs
-                .get(self.terminal.active)
-                .or_else(|| self.terminal.tabs.first())
+                .iter()
+                .find(|tab| !tab.workspace)
                 .map(|tab| tab.id.clone());
             if let Some(active) = active {
                 self.terminal.show_tab(&active);
@@ -703,77 +893,6 @@ impl DunlinApp {
         );
     }
 
-    pub(crate) fn terminal_copy_command(&mut self, cx: &mut Context<Self>) {
-        let Some(tab) = self.terminal.active_tab() else {
-            return;
-        };
-        let snapshot = tab.screen.shell_snapshot();
-        let Some(block) = snapshot
-            .blocks
-            .iter()
-            .rev()
-            .find(|block| block.finished() && !block.command.is_empty())
-            .or_else(|| snapshot.last_block())
-            .cloned()
-        else {
-            self.set_notice("No shell-integration command yet", cx);
-            return;
-        };
-        if block.command.is_empty() {
-            self.set_notice("The last shell command is empty", cx);
-            return;
-        }
-        cx.write_to_clipboard(ClipboardItem::new_string(truncate_terminal_text(
-            block.command,
-        )));
-        self.set_notice("Copied the last shell command", cx);
-    }
-
-    pub(crate) fn terminal_copy_output(&mut self, cx: &mut Context<Self>) {
-        let Some(tab) = self.terminal.active_tab_mut() else {
-            return;
-        };
-        let snapshot = tab.screen.shell_snapshot();
-        let Some(block) = snapshot
-            .blocks
-            .iter()
-            .rev()
-            .find(|block| block.finished())
-            .or_else(|| snapshot.last_block())
-            .cloned()
-        else {
-            self.set_notice("No shell-integration command output yet", cx);
-            return;
-        };
-        let Some(start) = block.output_line else {
-            self.set_notice("The last command has no captured output", cx);
-            return;
-        };
-        let end = block
-            .finished_line
-            .unwrap_or_else(|| tab.screen.visible_line(tab.screen.rows().saturating_sub(1)));
-        let end = if block.finished_line.is_some() {
-            end.saturating_sub(1)
-        } else {
-            end
-        };
-        if end < start {
-            self.set_notice("The last command produced no output", cx);
-            return;
-        }
-        let text = tab.screen.text_between(
-            TermPoint::new(start, 0),
-            TermPoint::new(end, tab.screen.cols().saturating_sub(1)),
-        );
-        let text = truncate_terminal_text(text);
-        if text.trim().is_empty() {
-            self.set_notice("The last command produced no output", cx);
-            return;
-        }
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.set_notice("Copied the last shell command output", cx);
-    }
-
     pub(crate) fn terminal_scroll(&mut self, up: bool, lines: usize, cx: &mut Context<Self>) {
         let Some(tab) = self.terminal.active_tab_mut() else {
             return;
@@ -806,25 +925,17 @@ impl DunlinApp {
         cx.notify();
     }
 
-    pub(crate) fn terminal_clear(&mut self, cx: &mut Context<Self>) {
-        let Some(tab) = self.terminal.active_tab_mut() else {
-            return;
-        };
-        tab.screen.process(b"\x1bc");
-        tab.screen.reset_metadata();
-        tab.selection = None;
-        if let Some(session) = &tab.session {
-            let _ = session.write(b"\x0c");
-        }
-        cx.notify();
-    }
-
-    pub(crate) fn terminal_resize_to(&mut self, width: f32, height: f32) {
+    pub(crate) fn terminal_resize_to(&mut self, width: f32, height: f32, cx: &App) {
         self.terminal.dock_width = width.max(1.);
         self.terminal.dock_height = height.max(1.);
         let sizes = self.terminal.pane_sizes(width, height);
         if sizes.is_empty() {
-            let (rows, cols) = terminal_size(width, height, self.terminal.cell_width);
+            let (rows, cols) = terminal_size(
+                width,
+                height,
+                self.terminal.cell_width,
+                crate::workspace_text::scale(cx),
+            );
             if let Some(tab) = self.terminal.active_tab_mut()
                 && tab.size != (rows, cols)
             {
@@ -838,7 +949,12 @@ impl DunlinApp {
         }
         let mut updates = Vec::with_capacity(sizes.len());
         for (id, (width, height)) in sizes {
-            let (rows, cols) = terminal_size(width, height, self.terminal.cell_width);
+            let (rows, cols) = terminal_size(
+                width,
+                height,
+                self.terminal.cell_width,
+                crate::workspace_text::scale(cx),
+            );
             updates.push((id, rows, cols));
         }
         for (id, rows, cols) in updates {
@@ -868,7 +984,12 @@ impl DunlinApp {
         };
         self.terminal.active = index;
         self.terminal.focus.focus(window, cx);
-        let Some(point) = terminal_point(&self.terminal.tabs[index], event.position, self.terminal.cell_width) else {
+        let Some(point) = terminal_point(
+            &self.terminal.tabs[index],
+            event.position,
+            self.terminal.cell_width,
+            ROW_HEIGHT * crate::workspace_text::scale(cx),
+        ) else {
             cx.notify();
             return;
         };
@@ -909,13 +1030,14 @@ impl DunlinApp {
         };
         let y = f32::from(event.position.y);
         let top = f32::from(bounds.top()) + BODY_PADDING + PANE_HEADER;
-        let bottom = top + f32::from(tab.screen.rows()) * ROW_HEIGHT;
+        let row_height = ROW_HEIGHT * crate::workspace_text::scale(cx);
+        let bottom = top + f32::from(tab.screen.rows()) * row_height;
         if y < top {
             tab.screen.scroll_up(1);
         } else if y > bottom {
             tab.screen.scroll_down(1);
         }
-        let Some(head) = terminal_point(tab, event.position, cell_width) else {
+        let Some(head) = terminal_point(tab, event.position, cell_width, row_height) else {
             return;
         };
         if head != anchor || tab.selection.is_some() {
@@ -970,7 +1092,20 @@ impl DunlinApp {
         let keystroke = &event.keystroke;
         let platform = keystroke.modifiers.platform;
         let control = keystroke.modifiers.control;
+        if self.showing_dependency_terminal()
+            && platform
+            && matches!(keystroke.key.as_str(), "d" | "w" | "f")
+        {
+            return true;
+        }
         if platform {
+            if keystroke.key == "d" && self.terminal.active_tab().is_some_and(|tab| tab.workspace) {
+                self.split_workspace(window, cx);
+                if self.focus_workspace_pane(1 - self.workbench.panes.focused, window, cx) {
+                    self.open_workspace_terminal(window, cx);
+                }
+                return true;
+            }
             match keystroke.key.as_str() {
                 "a" => {
                     self.terminal_select_all(cx);
@@ -1033,6 +1168,7 @@ impl DunlinApp {
         }
         let bytes: Option<Vec<u8>> = match keystroke.key.as_str() {
             "enter" | "return" => Some(b"\r".to_vec()),
+            "tab" if keystroke.modifiers.shift => Some(b"\x1b[Z".to_vec()),
             "tab" => Some(b"\t".to_vec()),
             "backspace" => Some(vec![0x7f]),
             "escape" => Some(vec![0x1b]),
@@ -1076,17 +1212,22 @@ impl DunlinApp {
     }
 }
 
-pub(crate) fn terminal_size(width: f32, height: f32, cell_width: f32) -> (u16, u16) {
+pub(crate) fn terminal_size(width: f32, height: f32, cell_width: f32, scale: f32) -> (u16, u16) {
     let cols = ((width - BODY_PADDING * 2. - 2.) / cell_width).clamp(20., 512.) as u16;
-    let rows = ((height - 78.) / 15.5).clamp(3., 80.) as u16;
+    let rows = ((height - 78.) / (15.5 * scale)).clamp(3., 80.) as u16;
     (rows, cols)
 }
 
-fn terminal_point(tab: &Tab, position: Point<Pixels>, cell_width: f32) -> Option<TermPoint> {
+fn terminal_point(
+    tab: &Tab,
+    position: Point<Pixels>,
+    cell_width: f32,
+    row_height: f32,
+) -> Option<TermPoint> {
     let bounds = tab.bounds.get()?;
     let x = f32::from(position.x) - f32::from(bounds.left()) - BODY_PADDING;
     let y = f32::from(position.y) - f32::from(bounds.top()) - BODY_PADDING - PANE_HEADER;
-    let row = (y / ROW_HEIGHT).floor().max(0.) as u16;
+    let row = (y / row_height).floor().max(0.) as u16;
     let col = (x / cell_width).floor().max(0.) as u16;
     let row = row.min(tab.screen.rows().saturating_sub(1));
     let col = col.min(tab.screen.cols().saturating_sub(1));
@@ -1206,8 +1347,10 @@ fn row_runs(
         let background = (bg != p.bg).then_some(bg);
         if let Some(last) = runs.last_mut()
             && last.col + last.cells == col
-            && last.text.is_ascii() && contents.is_ascii()
-            && !last.wide && !cell.is_wide()
+            && last.text.is_ascii()
+            && contents.is_ascii()
+            && !last.wide
+            && !cell.is_wide()
             && last.fg == fg
             && last.bg == background
             && last.bold == cell.bold()
@@ -1241,28 +1384,30 @@ fn row_element(
     hide_cursor: bool,
     query: &str,
     selection: Option<Selection>,
-    prompt_lines: &[i64],
     cell_width: f32,
     p: &Palette,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let runs = row_runs(&tab.screen, row, cursor, hide_cursor, selection, p);
-    let line = tab.screen.visible_line(row);
     let selection_color = p.blue.opacity(0.28);
     let mut line_element = div()
         .relative()
-        .h(px(ROW_HEIGHT))
+        .h(crate::workspace_text::size(ROW_HEIGHT, cx))
         .w_full()
         .flex()
         .items_center()
         .overflow_hidden()
-        .whitespace_nowrap()
-        .when(prompt_lines.contains(&line), |this| this.bg(p.subtle));
+        .whitespace_nowrap();
     let mut link_index = 0usize;
     for run in runs {
-        let mut run_element = div().absolute().left(px(f32::from(run.col) * cell_width)).top_0()
-            .w(px(f32::from(run.cells) * cell_width)).h(px(ROW_HEIGHT))
-            .flex().items_center()
+        let mut run_element = div()
+            .absolute()
+            .left(px(f32::from(run.col) * cell_width))
+            .top_0()
+            .w(px(f32::from(run.cells) * cell_width))
+            .h(crate::workspace_text::size(ROW_HEIGHT, cx))
+            .flex()
+            .items_center()
             .when_some(run.bg, |element, bg| element.bg(bg))
             .when(run.selected, |element| element.bg(selection_color));
         for (part, highlighted) in highlight_parts(&run.text, query) {
@@ -1279,9 +1424,9 @@ fn row_element(
                 let target = handled.as_deref().and_then(safe_link);
                 let is_link = target.is_some();
                 let base = div()
-                    .text_size(px(FONT_SIZE))
-                    .line_height(px(ROW_HEIGHT))
-                    .font(terminal_font())
+                    .text_size(crate::workspace_text::size(FONT_SIZE, cx))
+                    .line_height(crate::workspace_text::size(ROW_HEIGHT, cx))
+                    .font(terminal_font(cx))
                     .flex_shrink_0()
                     .text_color(if is_link { p.blue } else { run.fg })
                     .when_some(run.bg, |this, bg| this.bg(bg))
@@ -1458,47 +1603,11 @@ fn render_pane(
     let (cursor_row, cursor_col) = screen.cursor_position();
     let hide_cursor = screen.hide_cursor();
     let rows = tab.screen.rows();
-    let shell = tab.screen.shell_snapshot();
-    let prompt_lines: Vec<i64> = shell.blocks.iter().map(|block| block.prompt_line).collect();
     let selection = tab.selection.filter(|selection| !selection.is_empty());
     let bounds = tab.bounds.clone();
     let id_for_down = tab.id.clone();
     let id_for_wheel = tab.id.clone();
-    let title = tab.title.clone();
-    let cwd = shell.cwd.clone().unwrap_or_else(|| tab.cwd.clone());
-    let status = match &tab.status {
-        Status::Running => "live",
-        Status::Exited(exit) if exit.success => "exited",
-        Status::Exited(_) => "failed",
-        Status::Failed(_) => "error",
-    };
-    let status_color = match &tab.status {
-        Status::Running => p.green,
-        Status::Exited(exit) if exit.success => p.green,
-        Status::Exited(_) | Status::Failed(_) => p.red,
-    };
-    let mut lines = div().flex().flex_col().p(px(BODY_PADDING)).child(
-        div()
-            .h(px(PANE_HEADER))
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .text_size(px(10.))
-            .font_family(dunlin_ui::theme::code_font())
-            .text_color(p.muted_fg)
-            .child(div().size(px(5.)).rounded_full().bg(status_color))
-            .child(
-                div()
-                    .min_w(px(0.))
-                    .truncate()
-                    .child(format!("{title} · {cwd}")),
-            )
-            .child(div().flex_1())
-            .when(shell.integration, |this| {
-                this.child(div().text_size(px(9.)).text_color(p.green).child("OSC 133"))
-            })
-            .child(div().text_size(px(9.)).text_color(p.muted_fg).child(status)),
-    );
+    let mut lines = div().flex().flex_col().p(px(BODY_PADDING));
     for row in 0..rows {
         lines = lines.child(row_element(
             tab,
@@ -1507,7 +1616,6 @@ fn render_pane(
             hide_cursor,
             &query,
             selection,
-            &prompt_lines,
             this.terminal.cell_width,
             &p,
             cx,
@@ -1515,6 +1623,7 @@ fn render_pane(
     }
     let body = div()
         .id(format!("terminal-body:{}", tab.id))
+        .key_context("DunlinTerminal")
         .track_focus(&this.terminal.focus)
         .flex_1()
         .min_h(px(0.))
@@ -1522,9 +1631,6 @@ fn render_pane(
         .w_full()
         .h_full()
         .overflow_hidden()
-        .border_1()
-        .border_color(if active { p.border_strong } else { p.border })
-        .bg(p.bg)
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |this, event: &MouseDownEvent, window, cx| {
@@ -1561,25 +1667,95 @@ fn render_pane(
     body.into_any_element()
 }
 
+/// Reuse the PTY viewport inside Run without replacing the user's terminal split layout.
+pub(crate) fn render_run_output(
+    this: &mut DunlinApp,
+    id: &str,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    if let Some(index) = this.terminal.index_of(id)
+        && this.terminal.active != index
+    {
+        this.terminal.run_previous_tab = this.terminal.active_tab().map(|tab| tab.id.clone());
+        this.terminal.active = index;
+    }
+    render_tab(this, id, window, cx)
+}
+
+pub(crate) fn render_tab(
+    this: &mut DunlinApp,
+    id: &str,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
+    this.terminal.cell_width = cell_width(cx);
+    let cell_width = this.terminal.cell_width;
+    let row_height = ROW_HEIGHT * crate::workspace_text::scale(cx);
+    if let Some(tab) = this.terminal.tab_mut(id) {
+        if let Some(bounds) = tab.bounds.get() {
+            let cols = ((f32::from(bounds.size.width) - BODY_PADDING * 2.) / cell_width)
+                .clamp(20., 512.) as u16;
+            let rows = ((f32::from(bounds.size.height) - BODY_PADDING * 2.) / row_height)
+                .clamp(3., 80.) as u16;
+            if tab.size != (rows, cols) {
+                tab.size = (rows, cols);
+                tab.screen.resize(rows, cols);
+                if let Some(session) = &tab.session {
+                    let _ = session.resize(rows, cols);
+                }
+            }
+        }
+        let pane = render_pane(this, id, window, cx);
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h(px(0.))
+            .min_w(px(0.))
+            .when(
+                this.terminal.search_open
+                    && this.terminal.active_tab().is_some_and(|tab| tab.id == id),
+                |root| {
+                    root.child(search_controls(this, cx).mx(px(dunlin_ui::scale::WORKSPACE_RADIUS)))
+                },
+            )
+            .child(pane)
+            .into_any_element()
+    } else {
+        div()
+            .flex_1()
+            .p(px(12.))
+            .text_color(palette(cx).muted_fg)
+            .child("Terminal closed.")
+            .into_any_element()
+    }
+}
+
 pub(crate) fn render(
     this: &mut DunlinApp,
     window: &mut Window,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
+    if let Some(previous) = this.terminal.run_previous_tab.take()
+        && let Some(index) = this.terminal.index_of(&previous)
+    {
+        this.terminal.active = index;
+    }
     this.terminal.cell_width = cell_width(cx);
     let viewport_width = f32::from(window.viewport_size().width);
     let viewport_height = f32::from(window.viewport_size().height);
     match this.terminal_dock {
         crate::app::TerminalDock::Bottom => {
-            this.terminal_resize_to(viewport_width - 330., this.bottom_panel_height)
+            this.terminal_resize_to(viewport_width - 330., this.bottom_panel_height, cx)
         }
         crate::app::TerminalDock::Left | crate::app::TerminalDock::Right => {
-            this.terminal_resize_to(this.bottom_panel_width, viewport_height - 140.)
+            this.terminal_resize_to(this.bottom_panel_width, viewport_height - 140., cx)
         }
     }
     let p = palette(cx);
     let mut toolbar = div()
-        .h(px(38.))
+        .h(px(34.))
         .flex_shrink_0()
         .px(px(10.))
         .flex()
@@ -1587,8 +1763,14 @@ pub(crate) fn render(
         .gap(px(6.))
         .border_b_1()
         .border_color(p.border)
-        .bg(p.subtle);
-    for (index, tab) in this.terminal.tabs.iter().enumerate() {
+        .bg(p.card);
+    for (index, tab) in this
+        .terminal
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(_, tab)| !tab.workspace)
+    {
         let active = index == this.terminal.active;
         let id = tab.id.clone();
         let close = id.clone();
@@ -1600,17 +1782,16 @@ pub(crate) fn render(
         toolbar = toolbar.child(
             div()
                 .id(format!("terminal-tab:{id}"))
+                .aria_label(format!("{} · {}", tab.title, tab.cwd))
                 .h(px(25.))
                 .max_w(px(230.))
                 .px(px(7.))
                 .rounded(px(5.))
-                .border_1()
-                .border_color(if active {
-                    p.border_strong
+                .bg(if active {
+                    p.accent
                 } else {
-                    p.border.opacity(0.)
+                    transparent_black()
                 })
-                .bg(if active { p.card } else { p.bg.opacity(0.) })
                 .flex()
                 .items_center()
                 .gap(px(5.))
@@ -1636,6 +1817,7 @@ pub(crate) fn render(
                         .small()
                         .label("×")
                         .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
                             this.close_terminal_tab(&close, cx);
                         })),
                 ),
@@ -1677,108 +1859,11 @@ pub(crate) fn render(
                         this.set_notice(error, cx);
                     }
                 })),
-        )
-        .child(
-            dunlin_ui::button("terminal-ssh")
-                .ghost()
-                .small()
-                .label("SSH")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.terminal_ssh_toggle(window, cx);
-                })),
         );
-    if this.terminal.search_open {
-        let matches = this
-            .terminal
-            .active_tab()
-            .map(|tab| count_matches(&tab.screen.screen().contents(), &this.terminal_query))
-            .unwrap_or(0);
-        toolbar = toolbar
-            .child(
-                div()
-                    .w(px(190.))
-                    .child(Input::new(&this.terminal_search).small()),
-            )
-            .child(
-                div()
-                    .text_size(px(9.5))
-                    .font_family(dunlin_ui::theme::code_font())
-                    .text_color(p.muted_fg)
-                    .child(format!("{matches} visible")),
-            )
-            .child(
-                dunlin_ui::button("terminal-search-close")
-                    .ghost()
-                    .small()
-                    .label("×")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.terminal.search_open = false;
-                        this.terminal_query.clear();
-                        this.terminal_search
-                            .update(cx, |input, cx| input.set_value("", window, cx));
-                        cx.notify();
-                    })),
-            );
+    if this.terminal.search_open && this.terminal.active_tab().is_some_and(|tab| !tab.workspace) {
+        toolbar = toolbar.child(search_controls(this, cx));
     }
     toolbar = toolbar.child(div().flex_1());
-    if let Some(tab) = this.terminal.active_tab() {
-        let (position, total) = tab.screen.scroll_position();
-        let has_block = tab.screen.shell_snapshot().last_block().is_some();
-        toolbar = toolbar
-            .child(
-                div()
-                    .text_size(px(10.))
-                    .font_family(dunlin_ui::theme::code_font())
-                    .text_color(p.muted_fg)
-                    .child(if total > 0 {
-                        format!("scroll {position}/{total}")
-                    } else {
-                        "live".into()
-                    }),
-            )
-            .child(
-                dunlin_ui::button("terminal-find")
-                    .ghost()
-                    .small()
-                    .label("Find")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.terminal.search_open = true;
-                        this.terminal_search
-                            .update(cx, |input, cx| input.focus(window, cx));
-                        cx.notify();
-                    })),
-            )
-            .child(
-                dunlin_ui::button("terminal-copy")
-                    .ghost()
-                    .small()
-                    .label("Copy")
-                    .on_click(cx.listener(|this, _, _, cx| this.terminal_copy(cx))),
-            )
-            .when(has_block, |bar| {
-                bar.child(
-                    dunlin_ui::button("terminal-copy-command")
-                        .ghost()
-                        .small()
-                        .label("Cmd")
-                        .on_click(cx.listener(|this, _, _, cx| this.terminal_copy_command(cx))),
-                )
-                .child(
-                    dunlin_ui::button("terminal-copy-output")
-                        .ghost()
-                        .small()
-                        .label("Out")
-                        .on_click(cx.listener(|this, _, _, cx| this.terminal_copy_output(cx))),
-                )
-            })
-            .child(
-                dunlin_ui::button("terminal-clear")
-                    .ghost()
-                    .small()
-                    .label("Clear")
-                    .on_click(cx.listener(|this, _, _, cx| this.terminal_clear(cx))),
-            );
-    }
 
     let mut root = div()
         .flex()
@@ -1786,64 +1871,8 @@ pub(crate) fn render(
         .flex_1()
         .min_h(px(0.))
         .min_w(px(0.))
-        .bg(p.bg)
+        .bg(p.card)
         .child(toolbar);
-
-    if this.terminal.ssh_open {
-        this.ensure_ssh_inputs(window, cx);
-        let target = this.terminal.ssh_target.clone();
-        let path = this.terminal.ssh_path.clone();
-        let mut bar = div()
-            .flex_shrink_0()
-            .px(px(10.))
-            .py(px(6.))
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .border_b_1()
-            .border_color(p.border)
-            .bg(p.bg);
-        bar = bar.child(div().w(px(230.)).child(if let Some(input) = &target {
-            Input::new(input).small().into_any_element()
-        } else {
-            div().into_any_element()
-        }));
-        bar = bar.child(div().w(px(220.)).child(if let Some(input) = &path {
-            Input::new(input).small().into_any_element()
-        } else {
-            div().into_any_element()
-        }));
-        bar = bar
-            .child(
-                dunlin_ui::button("terminal-ssh-connect")
-                    .small()
-                    .label("Connect")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        if let Err(error) = this.open_ssh_terminal(window, cx) {
-                            this.terminal.error = Some(error.clone());
-                            this.set_notice(error, cx);
-                        }
-                    })),
-            )
-            .child(
-                dunlin_ui::button("terminal-ssh-cancel")
-                    .ghost()
-                    .small()
-                    .label("×")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.terminal.ssh_open = false;
-                        cx.notify();
-                    })),
-            )
-            .child(div().flex_1())
-            .child(
-                div()
-                    .text_size(px(9.5))
-                    .text_color(p.muted_fg)
-                    .child("No keys or tokens are copied; ssh uses your agent and config."),
-            );
-        root = root.child(bar);
-    }
 
     let body = match this.terminal.layout.clone() {
         Some(node) => render_layout(this, &node, window, cx),
@@ -1888,6 +1917,44 @@ pub(crate) fn render(
     root.into_any_element()
 }
 
+fn search_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Div {
+    let matches = this
+        .terminal
+        .active_tab()
+        .map(|tab| count_matches(&tab.screen.screen().contents(), &this.terminal_query))
+        .unwrap_or(0);
+    div()
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .flex_shrink_0()
+        .child(
+            div()
+                .w(px(190.))
+                .child(Input::new(&this.terminal_search).small()),
+        )
+        .child(
+            div()
+                .text_size(px(9.5))
+                .text_color(palette(cx).muted_fg)
+                .child(format!("{matches} visible")),
+        )
+        .child(
+            dunlin_ui::button("terminal-search-close")
+                .ghost()
+                .small()
+                .label("×")
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.terminal.search_open = false;
+                    this.terminal_query.clear();
+                    this.terminal_search
+                        .update(cx, |input, cx| input.set_value("", window, cx));
+                    this.terminal.focus.focus(window, cx);
+                    cx.notify();
+                })),
+        )
+}
+
 #[cfg(test)]
 mod tests {
     // Keep the test attribute built-in; a `super::*` glob would also import the
@@ -1897,10 +1964,10 @@ mod tests {
 
     #[test]
     fn terminal_size_respects_dock_limits() {
-        let (rows, cols) = terminal_size(900., 300., 7.1);
+        let (rows, cols) = terminal_size(900., 300., 7.1, 1.);
         assert!((3..=80).contains(&rows));
         assert!((20..=512).contains(&cols));
-        let (rows, cols) = terminal_size(10., 10., 7.1);
+        let (rows, cols) = terminal_size(10., 10., 7.1, 1.);
         assert_eq!(rows, 3);
         assert_eq!(cols, 20);
     }
@@ -1912,7 +1979,7 @@ mod tests {
         let sizes = node.sizes(800., 300.);
         assert_eq!(sizes.len(), 2);
         for (_, (width, height)) in sizes {
-            let (rows, cols) = terminal_size(width, height, 7.1);
+            let (rows, cols) = terminal_size(width, height, 7.1, 1.);
             assert!(rows >= 3);
             assert!(cols >= 20);
         }
@@ -1935,7 +2002,16 @@ mod tests {
         screen.process(b"\r\n\x1b[41m\x1b[K");
         let runs = super::row_runs(&screen, 2, None, true, None, &dunlin_ui::theme::dark());
         assert_eq!((runs[0].col, runs[0].cells), (0, 100));
-        assert!(runs[0].bg.is_some(), "erased colored columns keep their background");
-        assert_eq!(terminal_size(1000., 400., 10.).1, 98);
+        assert!(
+            runs[0].bg.is_some(),
+            "erased colored columns keep their background"
+        );
+        assert_eq!(terminal_size(1000., 400., 10., 1.).1, 98);
+        let normal = terminal_size(1000., 400., 10., 1.);
+        let zoomed = terminal_size(1000., 400., 20., 2.);
+        assert!(
+            zoomed.0 < normal.0 && zoomed.1 < normal.1,
+            "PTY rows and columns must follow the measured font zoom"
+        );
     }
 }

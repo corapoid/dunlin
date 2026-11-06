@@ -5,23 +5,63 @@ use crate::{
     remote::WorkspaceBackend,
 };
 use dunlin_ui::assets::IconName;
+use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::component::{
     Icon, Sizable,
     button::ButtonVariants,
     input::{EditorState, InputEvent},
 };
-use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::preview::{self, PreviewKind};
 use std::sync::Arc;
 
+mod new_tabs;
+
 const FILE_NOTICE_DURATION: std::time::Duration = std::time::Duration::from_millis(2500);
+
+pub(crate) fn empty_workspace(cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .size_full()
+        .min_h(px(0.))
+        .items_center()
+        .justify_center()
+        .gap(px(18.))
+        .relative()
+        .children(tab_probe("empty-workspace"))
+        .child(
+            Icon::new(IconName::Bird)
+                .size(px(132.))
+                .text_color(p.muted_fg.opacity(0.12)),
+        )
+        .child(
+            div()
+                .text_size(px(12.))
+                .text_color(p.muted_fg.opacity(0.55))
+                .child("A little space for your next idea"),
+        )
+        .child(
+            dunlin_ui::button("reopen-chat-tab")
+                .ghost()
+                .label("Open Chat")
+                .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx))),
+        )
+        .into_any_element()
+}
 fn tab_probe(name: &'static str) -> Option<AnyElement> {
     #[cfg(debug_assertions)]
-    { crate::workspace_ui_smoke::probe(name) }
+    {
+        crate::workspace_ui_smoke::probe(name)
+    }
     #[cfg(not(debug_assertions))]
-    { let _ = name; None }
+    {
+        let _ = name;
+        None
+    }
 }
 
 fn preview_failure(path: &str, detail: Option<&str>) -> String {
@@ -39,6 +79,39 @@ fn buffer_changed(saved: Option<&str>, current: &str) -> bool {
     saved != Some(current)
 }
 
+fn save_new_buffer(
+    root: &str,
+    path: &std::path::Path,
+    text: &str,
+) -> Result<(String, dunlin_workspace::fs::FileStat), String> {
+    let display_root = std::path::PathBuf::from(root);
+    if text.len() as u64 > dunlin_workspace::fs::MAX_EDITOR_BYTES {
+        return Err("This file is too large to save".into());
+    }
+    let root = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
+    let parent = std::fs::canonicalize(path.parent().ok_or("Choose a file name")?)
+        .map_err(|error| error.to_string())?;
+    let path = parent.join(path.file_name().ok_or("Choose a file name")?);
+    let relative = path
+        .strip_prefix(&root)
+        .map_err(|_| "Choose a location inside this project")?
+        .to_string_lossy();
+    let root = root.to_string_lossy();
+    let created = dunlin_workspace::fs::create_file(&root, &relative)?;
+    // Keep any created file on failure; the unsaved buffer remains available to retry.
+    let stat = WorkspaceBackend::Local {
+        root: root.into_owned(),
+    }
+    .write_file(&path.to_string_lossy(), text, Some(created.mtime_ms))?;
+    Ok((
+        display_root
+            .join(relative.as_ref())
+            .to_string_lossy()
+            .into_owned(),
+        stat,
+    ))
+}
+
 fn closing_tab_ids<'a>(
     project: &str,
     tabs: impl Iterator<Item = (&'a str, &'a str)>,
@@ -53,14 +126,18 @@ fn preview_fit() -> ObjectFit {
 
 #[derive(Default)]
 pub(crate) struct State {
+    pub panes: crate::workspace_panes::State,
     pub tabs: Vec<Tab>,
     pub active: Option<String>,
     pub show_file: bool,
+    pub terminal: Option<String>,
+    pub new_tab_menu: Option<usize>,
+    pub new_tab_press: Option<(usize, std::time::Instant)>,
     pub preview_cache: crate::file_preview::Cache,
     pub closed_chats: std::collections::HashSet<String>,
     pub chat_tabs: Vec<String>,
-    chat_drafts: std::collections::HashMap<String, String>,
-    chat_scrolls: std::collections::HashMap<String, crate::chat_scroll::ChatScroll>,
+    pub(crate) chat_drafts: std::collections::HashMap<String, String>,
+    pub(crate) chat_scrolls: std::collections::HashMap<String, crate::chat_scroll::ChatScroll>,
     pub pending_chat_draft: Option<String>,
 }
 pub(crate) struct Tab {
@@ -78,6 +155,8 @@ pub(crate) struct Tab {
     pub kind: PreviewKind,
     pub preview: Option<Preview>,
     pub loading: bool,
+    pub untitled: bool,
+    pub saving: bool,
     pub minimap: crate::minimap::State,
     pub markdown: crate::markdown_editor::State,
     pub blame: crate::inline_blame::State,
@@ -88,36 +167,188 @@ pub(crate) struct Tab {
 }
 
 impl DunlinApp {
+    pub(crate) fn save_untitled_file(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(tab) = self
+            .workbench
+            .tabs
+            .iter()
+            .find(|tab| tab.id == id && tab.untitled && !tab.saving)
+        else {
+            return;
+        };
+        if self.project().is_remote() {
+            // shortcut: native Save As is local-only; add a relay path prompt when remote scratch saving is needed.
+            self.file_notice("Keep or copy this buffer; saving an untitled file currently requires a local project.", cx);
+            return;
+        }
+        let id = tab.id.clone();
+        let root = tab.root.clone();
+        let project = tab.project.clone();
+        if !self.guard_ai_commit_mutation(cx) {
+            return;
+        }
+        let receiver = cx.prompt_for_new_path(std::path::Path::new(&root), Some("Untitled.txt"));
+        let receiver = self.overlay_backdrop.track_native(receiver, cx);
+        self.workbench
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.id == id)
+            .unwrap()
+            .saving = true;
+        cx.spawn(async move |this, cx| {
+            let result = receiver.await;
+            let _ = this.update(cx, |this, cx| {
+                let Some(index) = this.workbench.tabs.iter().position(|tab| tab.id == id) else {
+                    return;
+                };
+                this.workbench.tabs[index].saving = false;
+                let path = match result {
+                    Ok(Ok(Some(path))) => path,
+                    Ok(Err(error)) => {
+                        this.file_notice(error.to_string(), cx);
+                        return;
+                    }
+                    _ => {
+                        cx.notify();
+                        return;
+                    }
+                };
+                if this.project().id != project
+                    || this.project().path != root
+                    || !this.guard_ai_commit_mutation(cx)
+                {
+                    return;
+                }
+                let text = this.workbench.tabs[index]
+                    .editor
+                    .read(cx)
+                    .value()
+                    .to_string();
+                match save_new_buffer(&root, &path, &text) {
+                    Ok((path, stat)) => {
+                        let tab = &mut this.workbench.tabs[index];
+                        tab.inspector.path = path.clone();
+                        tab.inspector.name = std::path::Path::new(&path)
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned();
+                        tab.inspector.language = crate::app::editor_language(&path).into();
+                        tab.inspector.bytes = stat.bytes as usize;
+                        tab.inspector.directory = std::path::Path::new(&path)
+                            .parent()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned();
+                        tab.untitled = false;
+                        tab.dirty = false;
+                        tab.saved_text = Some(text);
+                        tab.mtime = Some(stat.mtime_ms);
+                        tab.minimap.invalidate_baseline();
+                        tab.blame = Default::default();
+                        tab.git_changed = false;
+                        tab.conflict = None;
+                        let language = tab.inspector.language.clone();
+                        tab.editor
+                            .update(cx, |editor, cx| editor.set_highlighter(language, cx));
+                        if this.workbench.active.as_deref() == Some(&id) {
+                            this.inspector = Some(tab.inspector.clone());
+                            this.editor_dirty = false;
+                            this.editor_mtime = tab.mtime;
+                            this.editor_conflict = None;
+                            this.finish_pending_editor(cx);
+                        }
+                        this.refresh_git_status(cx);
+                    }
+                    Err(error) => this.file_notice(error, cx),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
     pub(crate) fn ensure_chat_tab(&mut self) {
         let id = self.session().id.clone();
         self.workbench.closed_chats.remove(&id);
-        if !self.workbench.chat_tabs.contains(&id) { self.workbench.chat_tabs.push(id); }
+        if !self.workbench.chat_tabs.contains(&id) {
+            self.workbench.chat_tabs.push(id);
+        }
+        self.workbench
+            .panes
+            .opened(crate::workspace_panes::TabKey::Chat(
+                self.session().id.clone(),
+            ));
     }
 
     pub(crate) fn stash_chat_ui(&mut self, cx: &App) {
         let id = self.session().id.clone();
-        let draft = self.workbench.pending_chat_draft.take().unwrap_or_else(|| self.composer.read(cx).value().to_string());
+        self.workbench
+            .panes
+            .composers
+            .insert(id.clone(), self.composer.clone());
+        self.workbench
+            .panes
+            .transcripts
+            .insert(id.clone(), self.harness.transcript.clone());
+        let draft = self
+            .workbench
+            .pending_chat_draft
+            .take()
+            .unwrap_or_else(|| self.composer.read(cx).value().to_string());
         self.workbench.chat_drafts.insert(id.clone(), draft);
-        self.workbench.chat_scrolls.insert(id, std::mem::take(&mut self.chat_scroll));
+        self.workbench
+            .chat_scrolls
+            .insert(id, std::mem::take(&mut self.chat_scroll));
     }
 
     pub(crate) fn rekey_chat_tab(&mut self, old: &str, new: &str) {
-        for id in self.project_session_selections.values_mut() { if id == old { *id = new.into(); } }
-        for id in &mut self.workbench.chat_tabs { if id == old { *id = new.into(); } }
-        if self.workbench.closed_chats.remove(old) { self.workbench.closed_chats.insert(new.into()); }
-        if let Some(draft) = self.workbench.chat_drafts.remove(old) { self.workbench.chat_drafts.insert(new.into(), draft); }
-        if let Some(scroll) = self.workbench.chat_scrolls.remove(old) { self.workbench.chat_scrolls.insert(new.into(), scroll); }
+        for id in self.project_session_selections.values_mut() {
+            if id == old {
+                *id = new.into();
+            }
+        }
+        for id in &mut self.workbench.chat_tabs {
+            if id == old {
+                *id = new.into();
+            }
+        }
+        if self.workbench.closed_chats.remove(old) {
+            self.workbench.closed_chats.insert(new.into());
+        }
+        if let Some(draft) = self.workbench.chat_drafts.remove(old) {
+            self.workbench.chat_drafts.insert(new.into(), draft);
+        }
+        if let Some(scroll) = self.workbench.chat_scrolls.remove(old) {
+            self.workbench.chat_scrolls.insert(new.into(), scroll);
+        }
+        self.workbench.panes.rekey_chat(old, new);
     }
 
     pub(crate) fn restore_chat_ui(&mut self) {
         let id = self.session().id.clone();
-        self.workbench.pending_chat_draft = Some(self.workbench.chat_drafts.get(&id).cloned().unwrap_or_default());
+        if let Some(composer) = self.workbench.panes.composers.get(&id) {
+            self.composer = composer.clone();
+        }
+        self.workbench.pending_chat_draft = Some(
+            self.workbench
+                .chat_drafts
+                .get(&id)
+                .cloned()
+                .unwrap_or_default(),
+        );
         self.chat_scroll = self.workbench.chat_scrolls.remove(&id).unwrap_or_default();
         self.ensure_chat_tab();
     }
 
-    pub(crate) fn activate_chat_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self.open_session_id(id, cx) { self.show_chat_tab(window, cx); }
+    pub(crate) fn activate_chat_tab(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.open_session_id(id, cx) {
+            self.show_chat_tab(window, cx);
+        }
     }
     pub(crate) fn retained_buffer_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let tab = self.active_file_tab().filter(|t| t.git_changed)?;
@@ -261,6 +492,7 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.remember_workspace_tab();
         self.stash_editor_tab();
         let Some(tab) = self
             .workbench
@@ -281,6 +513,7 @@ impl DunlinApp {
             crate::markdown_editor::supports(&tab.inspector.path) && tab.markdown.preview_only();
         self.workbench.active = Some(id.into());
         self.workbench.show_file = true;
+        self.workbench.terminal = None;
         self.git_history.active = false;
         self.spec.active = false;
         self.autosave_generation = self.autosave_generation.wrapping_add(1);
@@ -295,6 +528,7 @@ impl DunlinApp {
             self.focus_handle.focus(window, cx);
         }
         self.check_open_file(cx);
+        self.remember_workspace_tab();
         cx.notify();
     }
     pub(crate) fn show_chat_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -311,25 +545,24 @@ impl DunlinApp {
         self.close_session_tab(&id, window, cx);
     }
 
-    pub(crate) fn close_session_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let active = self.session().id == id && !self.workbench.show_file
-            && !self.git_history.is_active_for(self.project()) && !self.spec.is_active_for(self.project());
+    pub(crate) fn close_session_tab(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let active =
+            self.current_workspace_tab() == Some(crate::workspace_panes::TabKey::Chat(id.into()));
         self.workbench.chat_tabs.retain(|tab| tab != id);
+        self.workbench
+            .panes
+            .closed(&crate::workspace_panes::TabKey::Chat(id.into()));
         self.workbench.closed_chats.insert(id.to_string());
-        if !active { cx.notify(); return; }
-        if let Some(next) = self.workbench.chat_tabs.iter().rev().find(|tab| self.sessions.iter().any(|s| &s.id == *tab)).cloned() {
-            self.activate_chat_tab(&next, window, cx);
+        if !active {
+            cx.notify();
             return;
         }
-        if !self.workbench.show_file && !self.git_history.is_active_for(self.project()) && !self.spec.is_active_for(self.project()) {
-            if let Some(id) = self.workbench.tabs.iter().rev().find(|tab| tab.project == self.project().id).map(|tab| tab.id.clone()) {
-                self.activate_file_tab(&id, window, cx);
-            } else if self.git_history.is_open_for(self.project()) {
-                self.open_git_history(window, cx);
-            } else if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
-                self.open_spec_workspace(window, cx);
-            }
-        }
+        self.sync_workspace_panes(window, cx);
         cx.notify();
     }
     pub(crate) fn open_workbench_file(
@@ -339,14 +572,39 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.explorer.busy {
+        self.open_file_buffer(path, false, line, window, cx);
+    }
+
+    pub(crate) fn new_untitled_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_file_buffer(
+            &format!("untitled:{}", uuid::Uuid::now_v7()),
+            true,
+            None,
+            window,
+            cx,
+        );
+    }
+
+    fn open_file_buffer(
+        &mut self,
+        path: &str,
+        untitled: bool,
+        line: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.explorer.busy || self.group_cleanup.busy {
             self.file_notice(
                 "Wait for the current file operation before opening a preview",
                 cx,
             );
             return;
         }
-        let kind = preview::kind(path);
+        let kind = if untitled {
+            PreviewKind::Text
+        } else {
+            preview::kind(path)
+        };
         if kind == PreviewKind::Unsupported {
             self.file_notice(preview_failure(path, None), cx);
             return;
@@ -416,7 +674,10 @@ impl DunlinApp {
                 }
                 if active {
                     this.editor_dirty = dirty;
-                    if this.autosave && dirty {
+                    if this.autosave
+                        && dirty
+                        && !this.active_file_tab().is_some_and(|tab| tab.untitled)
+                    {
                         this.schedule_autosave(cx);
                     }
                 }
@@ -426,8 +687,7 @@ impl DunlinApp {
         let observation = cx.observe(&editor, |this, entity, cx| {
             this.queue_markdown_preview(entity.entity_id(), cx);
             if this.editor.entity_id() == entity.entity_id()
-                && (this.editor_minimap
-                    || this.inline_blame)
+                && (this.editor_minimap || this.inline_blame)
             {
                 cx.notify();
             }
@@ -435,7 +695,11 @@ impl DunlinApp {
         let p = std::path::Path::new(path);
         let inspector = Inspector {
             path: path.into(),
-            name: p.file_name().unwrap_or_default().to_string_lossy().into(),
+            name: if untitled {
+                "Untitled".into()
+            } else {
+                p.file_name().unwrap_or_default().to_string_lossy().into()
+            },
             directory: p
                 .parent()
                 .map(|p| dunlin_workspace::fs::relative_to(&self.project().path, p))
@@ -453,13 +717,15 @@ impl DunlinApp {
             editor: editor.clone(),
             backend: backend.clone(),
             dirty: false,
-            saved_text: None,
-            readonly: true,
+            saved_text: untitled.then(String::new),
+            readonly: !untitled,
             mtime: None,
             conflict: None,
             kind,
             preview: None,
-            loading: true,
+            loading: !untitled,
+            untitled,
+            saving: false,
             minimap: Default::default(),
             markdown: Default::default(),
             blame: Default::default(),
@@ -468,9 +734,15 @@ impl DunlinApp {
             _subscription: subscription,
             _observation: observation,
         });
+        self.workbench
+            .panes
+            .opened(crate::workspace_panes::TabKey::File(id.clone()));
         // Do not stash the previous editor again after inserting the loading tab.
         self.workbench.active = None;
         self.activate_file_tab(&id, window, cx);
+        if untitled {
+            return;
+        }
         let path = path.to_string();
         let requested_path = path.clone();
         cx.spawn_in(window, async move |this, cx| {
@@ -551,11 +823,32 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let Some(tab) = self
+            .workbench
+            .tabs
+            .iter()
+            .find(|tab| tab.id == id && tab.project == self.project().id)
+        else {
+            return;
+        };
+        if self.current_workspace_tab() != Some(crate::workspace_panes::TabKey::File(id.into()))
+            && !tab.dirty
+        {
+            self.workbench.tabs.retain(|tab| tab.id != id);
+            self.workbench
+                .panes
+                .closed(&crate::workspace_panes::TabKey::File(id.into()));
+            cx.notify();
+            return;
+        }
         self.activate_file_tab(id, window, cx);
         self.request_close_inspector(cx);
     }
     pub(crate) fn close_active_tab(&mut self) {
         if let Some(id) = self.workbench.active.take() {
+            self.workbench
+                .panes
+                .closed(&crate::workspace_panes::TabKey::File(id.clone()));
             self.workbench.tabs.retain(|t| t.id != id);
         }
         self.workbench.show_file = false;
@@ -575,6 +868,12 @@ impl DunlinApp {
             let tab = &self.workbench.tabs[index];
             if !tab.dirty || project.is_some_and(|project| tab.project != project) {
                 continue;
+            }
+            if tab.untitled {
+                // shortcut: Save All pauses for naming; resume automatically when batch Save As gains a continuation.
+                let id = tab.id.clone();
+                self.save_untitled_file(&id, cx);
+                return false;
             }
             if tab.git_changed {
                 self.file_notice("Resolve the Git-changed file's reload/overwrite conflict before saving all buffers.",cx);
@@ -625,13 +924,10 @@ impl DunlinApp {
         true
     }
 
-    pub(crate) fn request_close_all_file_tabs(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn request_close_all_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stash_editor_tab();
         let project = self.project().id.clone();
+        let keys = self.workspace_tab_keys();
         let ids = closing_tab_ids(
             &project,
             self.workbench
@@ -639,7 +935,7 @@ impl DunlinApp {
                 .iter()
                 .map(|tab| (tab.id.as_str(), tab.project.as_str())),
         );
-        if ids.is_empty() {
+        if keys.is_empty() {
             return;
         }
         if !self
@@ -648,14 +944,14 @@ impl DunlinApp {
             .iter()
             .any(|tab| ids.contains(&tab.id) && tab.dirty)
         {
-            self.finish_close_all_file_tabs(&ids, window, cx);
+            self.finish_close_all_tabs(&keys, cx);
             return;
         }
         let root = self.project().path.clone();
         let answer = window.prompt(
             PromptLevel::Warning,
-            "Close all file tabs?",
-            Some("Some files have unsaved changes. Chat and its agent will remain open."),
+            "Close all tabs?",
+            Some("Some files have unsaved changes. Terminal tabs will close; conversations stay in history and agents keep running."),
             &["Save All and Close", "Discard and Close", "Cancel"],
             cx,
         );
@@ -664,41 +960,51 @@ impl DunlinApp {
             let Ok(choice @ (0 | 1)) = answer.await else {
                 return;
             };
-            let _ = this.update_in(cx, |this, window, cx| {
+            let _ = this.update_in(cx, |this, _, cx| {
                 if this.project().id != project || this.project().path != root {
                     return;
                 }
                 if choice == 0 && !this.save_tabs_for_project(Some(&project), cx) {
                     return;
                 }
-                this.finish_close_all_file_tabs(&ids, window, cx);
+                this.finish_close_all_tabs(&keys, cx);
             });
         })
         .detach();
     }
 
-    fn finish_close_all_file_tabs(
+    fn finish_close_all_tabs(
         &mut self,
-        ids: &[String],
-        window: &mut Window,
+        keys: &[crate::workspace_panes::TabKey],
         cx: &mut Context<Self>,
     ) {
-        let keep_history = self.git_history.is_active_for(self.project());
-        let active_closed = self
+        use crate::workspace_panes::TabKey;
+        for key in keys {
+            match key {
+                TabKey::Chat(id) => {
+                    self.workbench.chat_tabs.retain(|tab| tab != id);
+                    self.workbench.closed_chats.insert(id.clone());
+                }
+                TabKey::File(id) => self.workbench.tabs.retain(|tab| &tab.id != id),
+                TabKey::Terminal(id) => self.close_terminal_tab(id, cx),
+                TabKey::Git(_) => self.close_git_history(cx),
+                TabKey::Spec(_) => self.close_spec_workspace(cx),
+            }
+            self.workbench.panes.closed(key);
+        }
+        if self
             .workbench
             .active
             .as_ref()
-            .is_some_and(|id| ids.contains(id));
-        self.workbench.tabs.retain(|tab| !ids.contains(&tab.id));
-        if active_closed {
+            .is_some_and(|id| keys.contains(&TabKey::File(id.clone())))
+        {
             self.workbench.active = None;
             self.close_inspector();
         }
-        if keep_history {
-            cx.notify();
-        } else {
-            self.show_chat_tab(window, cx);
-        }
+        self.workbench.terminal = None;
+        self.workbench.panes.active = [None, None];
+        self.workbench.panes.restore = None;
+        cx.notify();
     }
     pub(crate) fn retarget_file_tabs(
         &mut self,
@@ -744,7 +1050,7 @@ impl DunlinApp {
         // A changed extension must go through the allowlist/decoder again.
         self.workbench
             .tabs
-            .retain(|t| t.kind == preview::kind(&t.inspector.path));
+            .retain(|t| t.untitled || t.kind == preview::kind(&t.inspector.path));
         if let Some(tab) = self
             .workbench
             .tabs
@@ -758,82 +1064,189 @@ impl DunlinApp {
             self.close_inspector();
         }
     }
-    pub(crate) fn render_workbench_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_workbench_tabs(
+        &self,
+        pane: usize,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, bool) {
+        use crate::workspace_panes::TabKey;
         let p = palette(cx);
+        let selection = self.workbench.panes.active[pane].as_ref();
         let mut tabs = Vec::new();
-        let mut selected = None;
-        for session in self.workbench.chat_tabs.iter().filter_map(|id| self.sessions.iter().find(|s| &s.id == id)) {
+        let mut keys = Vec::new();
+        for session in self
+            .workbench
+            .chat_tabs
+            .iter()
+            .filter_map(|id| self.sessions.iter().find(|s| &s.id == id))
+        {
+            if !self
+                .workbench
+                .panes
+                .belongs(&TabKey::Chat(session.id.clone()), pane)
+            {
+                continue;
+            }
             let current = session.id == self.session().id;
             let id = session.id.clone();
             let key_open = id.clone();
             let close = id.clone();
-            let active = current && !self.workbench.show_file
-                && !self.git_history.is_active_for(self.project())
-                && !self.spec.is_active_for(self.project());
-            if active { selected = Some(tabs.len()); }
+            keys.push(TabKey::Chat(id.clone()));
             tabs.push(
                 document_tab(session.title.clone())
                     .focusable()
                     .tab_stop(true)
                     .aria_label(format!("Open session {}", session.title))
-                    .relative().when(current, |tab| tab.children(tab_probe("chat-tab")))
-                    .prefix(Icon::new(IconName::MessageSquare).size(px(12.)))
-                    .on_click(cx.listener(move |this, _, window, cx| this.activate_chat_tab(&id, window, cx)))
+                    .prefix(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .child(Icon::new(IconName::MessageSquare).size(px(14.)))
+                            .when(current, |icon| icon.children(tab_probe("chat-tab"))),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.activate_chat_tab(&id, window, cx)
+                    }))
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                            cx.stop_propagation(); this.activate_chat_tab(&key_open, window, cx);
+                            cx.stop_propagation();
+                            this.activate_chat_tab(&key_open, window, cx);
                         }
                     }))
-                    .suffix(icon_button(format!("close-chat-tab:{close}"), IconName::X, format!("Close session tab {} without stopping its agent", session.title))
-                        .relative().when(current, |button| button.children(tab_probe("close-chat-tab")))
+                    .suffix(
+                        icon_button(
+                            format!("close-chat-tab:{close}"),
+                            IconName::X,
+                            format!(
+                                "Close session tab {} without stopping its agent",
+                                session.title
+                            ),
+                        )
+                        .relative()
+                        .when(current, |button| {
+                            button.children(tab_probe("close-chat-tab"))
+                        })
                         .size(px(24.))
-                        .on_click(cx.listener(move |this, _, window, cx| { cx.stop_propagation(); this.close_session_tab(&close, window, cx); })))
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.close_session_tab(&close, window, cx);
+                            },
+                        )),
+                    ),
             );
         }
-        for tab in self
-            .workbench
-            .tabs
-            .iter()
-            .filter(|t| t.project == self.project().id)
-        {
+        for tab in self.workbench.tabs.iter().filter(|t| {
+            t.project == self.project().id
+                && self
+                    .workbench
+                    .panes
+                    .belongs(&TabKey::File(t.id.clone()), pane)
+        }) {
             let id = tab.id.clone();
             let close = id.clone();
-            let active = !self.git_history.is_active_for(self.project())
-                && !self.spec.is_active_for(self.project())
-                && self.workbench.show_file
-                && self.workbench.active.as_deref() == Some(&id);
+            let active = selection == Some(&TabKey::File(id.clone()));
             let dirty = if self.workbench.active.as_deref() == Some(&id) {
                 self.editor_dirty
             } else {
                 tab.dirty
             };
-            if active { selected = Some(tabs.len()); }
+            keys.push(TabKey::File(id.clone()));
             tabs.push(
-                document_tab(format!("{}{}", tab.inspector.name, if dirty { " •" } else { "" }))
-                    .prefix(Icon::new(crate::file_icons::appearance(&tab.inspector.name, &p).0).size(px(13.)))
+                document_tab(format!(
+                    "{}{}",
+                    tab.inspector.name,
+                    if dirty { " •" } else { "" }
+                ))
+                .prefix(
+                    div()
+                        .relative()
+                        .flex()
+                        .items_center()
+                        .child(
+                            Icon::new(crate::file_icons::appearance(&tab.inspector.name, &p).0)
+                                .size(px(14.)),
+                        )
+                        .when(active, |view| view.children(tab_probe("file-tab-drag"))),
+                )
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.activate_file_tab(&id, window, cx)),
+                )
+                .suffix(
+                    icon_button(
+                        format!("close-tab:{close}"),
+                        IconName::X,
+                        format!("Close {}", tab.inspector.name),
+                    )
+                    .relative()
+                    .when(active, |button| {
+                        button.children(tab_probe("close-file-tab"))
+                    })
+                    .size(px(24.))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.activate_file_tab(&id, window, cx)
+                        cx.stop_propagation();
+                        this.request_close_tab(&close, window, cx);
+                    })),
+                ),
+            );
+        }
+        for terminal in self
+            .terminal
+            .tabs
+            .iter()
+            .filter(|tab| tab.workspace && tab.project == self.project().id)
+        {
+            let key = TabKey::Terminal(terminal.id.clone());
+            if !self.workbench.panes.belongs(&key, pane) {
+                continue;
+            }
+            keys.push(key);
+            let id = terminal.id.clone();
+            let close = id.clone();
+            tabs.push(
+                document_tab(terminal.title.clone())
+                    .prefix(Icon::new(IconName::Terminal).size(px(14.)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.activate_workspace_terminal(&id, window, cx);
                     }))
                     .suffix(
-                        icon_button(format!("close-tab:{close}"), IconName::X, format!("Close {}", tab.inspector.name))
-                            .size(px(24.))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.request_close_tab(&close, window, cx);
-                            })),
+                        icon_button(
+                            format!("close-workspace-terminal:{close}"),
+                            IconName::X,
+                            "Close terminal",
+                        )
+                        .size(px(24.))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.close_terminal_tab(&close, cx);
+                        })),
                     ),
             );
         }
-        if self.git_history.is_open_for(self.project()) {
-            if self.git_history.is_active_for(self.project()) { selected = Some(tabs.len()); }
+        if self.git_history.is_open_for(self.project())
+            && self
+                .workbench
+                .panes
+                .belongs(&TabKey::Git(self.project().id.clone()), pane)
+        {
+            keys.push(TabKey::Git(self.project().id.clone()));
             tabs.push(
                 document_tab(self.git_history.tab_label())
-                    .relative().children(tab_probe("git-history-tab"))
+                    .prefix(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .child(Icon::new(IconName::GitBranch).size(px(14.)))
+                            .children(tab_probe("git-history-tab")),
+                    )
                     .aria_label("Git history tab")
                     .on_click(cx.listener(|this, _, window, cx| this.open_git_history(window, cx)))
                     .suffix(
                         icon_button("close-git-history-tab", IconName::X, "Close Git history")
-                            .relative().children(tab_probe("close-git-history-tab"))
+                            .relative()
+                            .children(tab_probe("close-git-history-tab"))
                             .size(px(24.))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
@@ -846,8 +1259,14 @@ impl DunlinApp {
                     ),
             );
         }
-        if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
-            if self.spec.is_active_for(self.project()) { selected = Some(tabs.len()); }
+        if self.spec_tools_enabled
+            && self.spec.is_open_for(self.project())
+            && self
+                .workbench
+                .panes
+                .belongs(&TabKey::Spec(self.project().id.clone()), pane)
+        {
+            keys.push(TabKey::Spec(self.project().id.clone()));
             tabs.push(
                 document_tab("Spec")
                     .aria_label("Spec workspace tab")
@@ -868,43 +1287,211 @@ impl DunlinApp {
                     ),
             );
         }
-        div()
+        let order = self.workspace_tab_keys();
+        let mut ordered: Vec<_> = keys.into_iter().zip(tabs).collect();
+        ordered.sort_by_key(|(key, _)| {
+            order
+                .iter()
+                .position(|tab| tab == key)
+                .unwrap_or(usize::MAX)
+        });
+        let selected = ordered.iter().position(|(key, _)| Some(key) == selection);
+        let project = self.project().id.clone();
+        let tabs = ordered
+            .into_iter()
+            .map(|(key, tab)| {
+                let (label, icon) = match &key {
+                    TabKey::Chat(id) => (
+                        self.sessions
+                            .iter()
+                            .find(|session| &session.id == id)
+                            .map(|session| session.title.clone())
+                            .unwrap_or_else(|| "Chat".into()),
+                        IconName::MessageSquare,
+                    ),
+                    TabKey::File(id) => (
+                        self.workbench
+                            .tabs
+                            .iter()
+                            .find(|tab| &tab.id == id)
+                            .map(|tab| tab.inspector.name.clone())
+                            .unwrap_or_else(|| "File".into()),
+                        IconName::File,
+                    ),
+                    TabKey::Git(_) => (self.git_history.tab_label().into(), IconName::GitBranch),
+                    TabKey::Spec(_) => ("Spec".into(), IconName::File),
+                    TabKey::Terminal(id) => (
+                        self.terminal
+                            .tabs
+                            .iter()
+                            .find(|tab| &tab.id == id)
+                            .map(|tab| tab.title.clone())
+                            .unwrap_or_else(|| "Terminal".into()),
+                        IconName::Terminal,
+                    ),
+                };
+                tab.background_motion(!self.reduce_motion)
+                    .drag_over::<crate::workspace_panes::TabDrag>(|style, _, _, cx| {
+                        style.border_b_2().border_color(palette(cx).blue)
+                    })
+                    .on_drop(cx.listener({
+                        let key = key.clone();
+                        move |this, drag: &crate::workspace_panes::TabDrag, window, cx| {
+                            cx.stop_propagation();
+                            this.drop_workspace_tab_at(drag, pane, Some(&key), window, cx);
+                        }
+                    }))
+                    .on_drag(
+                        crate::workspace_panes::TabDrag {
+                            key,
+                            project: project.clone(),
+                        },
+                        move |_, _, _, cx| {
+                            cx.new(|_| crate::workspace_panes::TabPreview {
+                                label: label.clone(),
+                                icon,
+                            })
+                        },
+                    )
+            })
+            .collect::<Vec<_>>();
+        let menu = div()
+            .flex()
+            .flex_shrink_0()
+            .child(
+                icon_button(
+                    format!("split-workspace:{pane}"),
+                    IconName::PanelLeft,
+                    "Split workspace side by side",
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.split_workspace(window, cx))),
+            )
+            .when(self.workbench.panes.enabled, |menu| {
+                menu.child(
+                    dunlin_ui::button(format!("move-workspace-tab:{pane}"))
+                        .label(if pane == 0 { "→" } else { "←" })
+                        .accessibility_label("Move selected tab to other pane")
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.move_workspace_tab(pane, window, cx)
+                        })),
+                )
+                .child(
+                    icon_button(
+                        format!("merge-workspace:{pane}"),
+                        IconName::X,
+                        "Merge workspace panes",
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.merge_workspace(cx))),
+                )
+            })
+            .map(|bar| {
+                bar.child(
+                    dunlin_ui::button("document-tabs-menu")
+                        .ghost()
+                        .relative()
+                        .when(pane == 0, |button| {
+                            button.children(tab_probe("document-tabs-menu"))
+                        })
+                        .icon(IconName::Ellipsis)
+                        .accessibility_label("Document tab menu")
+                        .dropdown_menu_with_anchor(Anchor::TopRight, {
+                            let app = cx.entity().downgrade();
+                            let project = self.project().id.clone();
+                            move |menu, _, cx| {
+                                let minimap =
+                                    app.upgrade().is_some_and(|app| app.read(cx).editor_minimap);
+                                let split_app = app.clone();
+                                let terminal_app = app.clone();
+                                let map_app = app.clone();
+                                let app = app.clone();
+                                let project = project.clone();
+                                menu.item(PopupMenuItem::new("Split view").on_click(
+                                    move |_, window, cx| {
+                                        let _ = split_app.update(cx, |this, cx| {
+                                            this.split_workspace(window, cx)
+                                        });
+                                    },
+                                ))
+                                .item(PopupMenuItem::new("Terminal tab").on_click(
+                                    move |_, window, cx| {
+                                        let _ = terminal_app.update(cx, |this, cx| {
+                                            this.open_workspace_terminal(window, cx)
+                                        });
+                                    },
+                                ))
+                                .item(
+                                    PopupMenuItem::new(if minimap {
+                                        "Hide file map"
+                                    } else {
+                                        "Show file map"
+                                    })
+                                    .on_click(
+                                        move |_, _, cx| {
+                                            let _ = map_app.update(cx, |this, cx| {
+                                                this.editor_minimap = !this.editor_minimap;
+                                                this.persist_settings(cx);
+                                                cx.notify();
+                                            });
+                                        },
+                                    ),
+                                )
+                                .separator()
+                                .item(
+                                    PopupMenuItem::new("Close all tabs").on_click(
+                                        move |_, window, cx| {
+                                            if let Some(app) = app.upgrade() {
+                                                app.update(cx, |this, cx| {
+                                                    if this.project().id == project {
+                                                        this.request_close_all_tabs(window, cx);
+                                                    }
+                                                });
+                                            }
+                                        },
+                                    ),
+                                )
+                            }
+                        }),
+                )
+            });
+        // Folder tabs reserve 4 px for their foot; align + with the visible labels.
+        let new_tab = div()
+            .relative()
+            .flex()
+            .flex_shrink_0()
+            .mt(-px(4.))
+            .child(new_tabs::button(self, pane, cx))
+            .children(tab_probe("new-chat-tab"));
+        let strip = div()
+            .id(format!("workspace-tabs-drop:{pane}"))
             .h(px(36.))
+            .relative()
+            .children(tab_probe("document-tabs-strip"))
             .flex_shrink_0()
             .flex()
-            .bg(p.panel)
-            .border_b_1()
-            .border_color(p.border)
-            .child(document_tabs("document-tabs").children(tabs)
-                .when_some(selected, |tabs, selected| tabs.selected_index(selected))
-                .flex_1().min_w(px(0.)))
-            .child(icon_button("new-chat-tab", IconName::Plus, "New session tab · ⌘N")
-                .on_click(cx.listener(|this, _, _, cx| this.new_session(cx))))
-            .when(
-                self.workbench
-                    .tabs
-                    .iter()
-                    .any(|tab| tab.project == self.project().id),
-                |bar| {
-                    bar.child(
-                        dunlin_ui::button("document-tabs-menu").ghost()
-                            .icon(IconName::Ellipsis).accessibility_label("Document tab menu")
-                            .dropdown_menu_with_anchor(Anchor::BottomRight, {
-                                let app = cx.entity().downgrade();
-                                let project = self.project().id.clone();
-                                move |menu, _, _| {
-                                    let app = app.clone(); let project = project.clone();
-                                    menu.item(PopupMenuItem::new("Close all file tabs").on_click(move |_, window, cx| {
-                                        if let Some(app) = app.upgrade() { app.update(cx, |this, cx| {
-                                            if this.project().id == project { this.request_close_all_file_tabs(window, cx); }
-                                        }); }
-                                    }))
-                                }
-                            }),
-                    )
+            .overflow_hidden()
+            .rounded_t(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+            .drag_over::<crate::workspace_panes::TabDrag>(|style, _, _, cx| {
+                style.border_b_2().border_color(palette(cx).blue)
+            })
+            .on_drop(cx.listener(
+                move |this, drag: &crate::workspace_panes::TabDrag, window, cx| {
+                    cx.stop_propagation();
+                    this.drop_workspace_tab(drag, pane, window, cx);
                 },
+            ))
+            .child(
+                document_tabs(format!("document-tabs:{pane}"))
+                    .children(tabs)
+                    // The kit reserves one radius before its first tab for the foot.
+                    .ml(-px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
+                    .when_some(selected, |tabs, selected| tabs.selected_index(selected))
+                    .last_empty_space(new_tab)
+                    .suffix(menu)
+                    .flex_1()
+                    .min_w(px(0.)),
             )
-            .into_any_element()
+            .into_any_element();
+        (strip, selected.is_none_or(|index| index > 0))
     }
     pub(crate) fn preview_panel(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
@@ -924,12 +1511,14 @@ impl DunlinApp {
         if let Some(preview) = &tab.preview
             && preview.pages > 1
         {
-            for (label, icon, delta) in [("Previous page", IconName::ArrowLeft, -1isize), ("Next page", IconName::ArrowRight, 1isize)] {
+            for (label, icon, delta) in [
+                ("Previous page", IconName::ArrowLeft, -1isize),
+                ("Next page", IconName::ArrowRight, 1isize),
+            ] {
                 header = header.child(
-                    icon_button(format!("pdf-page:{label}"), icon, label)
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.change_pdf_page(delta, cx)),
-                        ),
+                    icon_button(format!("pdf-page:{label}"), icon, label).on_click(
+                        cx.listener(move |this, _, _, cx| this.change_pdf_page(delta, cx)),
+                    ),
                 );
             }
             header = header.child(format!("{} / {}", preview.page, preview.pages));
@@ -999,7 +1588,6 @@ impl DunlinApp {
             .flex_1()
             .min_w(px(0.))
             .min_h(px(0.))
-            .bg(p.card)
             .child(header)
             .when_some(self.retained_buffer_banner(cx), |root, banner| {
                 root.child(banner)
@@ -1061,6 +1649,38 @@ impl DunlinApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn scratch_save_creates_only_a_new_project_file_and_never_overwrites_or_escapes() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("draft.txt");
+        assert!(!path.exists());
+        super::save_new_buffer(root.path().to_str().unwrap(), &path, "draft").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "draft");
+        assert!(super::save_new_buffer(root.path().to_str().unwrap(), &path, "overwrite").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "draft");
+        let outside = tempfile::tempdir().unwrap();
+        assert!(
+            super::save_new_buffer(
+                root.path().to_str().unwrap(),
+                &outside.path().join("escape.txt"),
+                "no"
+            )
+            .is_err()
+        );
+        assert!(!outside.path().join("escape.txt").exists());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside.path(), root.path().join("linked")).unwrap();
+            assert!(
+                super::save_new_buffer(
+                    root.path().to_str().unwrap(),
+                    &root.path().join("linked/escape.txt"),
+                    "no"
+                )
+                .is_err()
+            );
+        }
+    }
     use super::{FILE_NOTICE_DURATION, buffer_changed, preview_failure};
     use crate::app::{Toast, ToastAction};
     #[test]

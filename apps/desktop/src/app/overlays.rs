@@ -1,11 +1,17 @@
 use super::*;
-use dunlin_ui::component::{Disableable, Selectable, Sizable, button::{Button, ButtonVariants}};
 use dunlin_ui::component::ThemeStyled as _;
+use dunlin_ui::component::menu::DropdownMenu as _;
+use dunlin_ui::component::{
+    Disableable, Selectable, Sizable,
+    button::{Button, ButtonVariants},
+};
 
 impl DunlinApp {
     pub(super) fn rail(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = palette(cx);
         let mut rail = div()
+            .id("navigation-rail")
+            .relative()
             .w(px(52.))
             .h_full()
             .flex_shrink_0()
@@ -14,8 +20,11 @@ impl DunlinApp {
             .items_center()
             .py(px(9.))
             .gap(px(3.));
+        #[cfg(debug_assertions)]
+        {
+            rail = rail.children(crate::workspace_ui_smoke::probe("navigation-rail"));
+        }
 
-        let security_attention = !self.skill_in_library(crate::skills::SECURITY_AUDIT_SKILL);
         let mut items = vec![
             (
                 SidebarSection::Dashboard,
@@ -33,14 +42,6 @@ impl DunlinApp {
             (SidebarSection::Search, IconName::Search, 0, false),
             (SidebarSection::SourceControl, IconName::GitBranch, 4, true),
         ];
-        if self.security_enabled {
-            items.push((
-                SidebarSection::Security,
-                IconName::ShieldCheck,
-                1,
-                security_attention,
-            ));
-        }
         items.push((
             SidebarSection::Sessions,
             IconName::Clock3,
@@ -50,22 +51,31 @@ impl DunlinApp {
 
         for (section, icon_name, count, has_badge) in items {
             let active = self.section == section && !self.settings_open;
-            let mut button = icon_button(("rail", section as usize), icon_name, section.label())
-                .relative()
-                .size(px(36.))
-                .selected(active)
-                .toggled(active)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.section = section;
-                    if section != SidebarSection::Dashboard { this.sidebar_collapsed = false; }
-                    this.settings_open = false;
-                    if section == SidebarSection::SourceControl {
-                        this.open_git_history(window, cx);
-                        if !this.git_loading { this.refresh_git_status(cx); }
-                    }
-                    this.persist_settings(cx);
-                    cx.notify();
-                }));
+            let mut button =
+                navigation_button(("rail", section as usize), icon_name, section.label())
+                    .relative()
+                    .size(px(36.))
+                    .selected(active)
+                    .toggled(active)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.section = section;
+                        if section != SidebarSection::Dashboard {
+                            this.sidebar_collapsed = false;
+                        }
+                        this.settings_open = false;
+                        if section == SidebarSection::SourceControl {
+                            this.open_git_history(window, cx);
+                            if !this.git_loading {
+                                this.refresh_git_status(cx);
+                            }
+                        }
+                        this.persist_settings(cx);
+                        cx.notify();
+                    }));
+            #[cfg(debug_assertions)]
+            if section == SidebarSection::Projects {
+                button = button.children(crate::workspace_ui_smoke::probe("rail-projects"));
+            }
             if has_badge && count > 0 {
                 button = button.child(
                     div()
@@ -84,57 +94,24 @@ impl DunlinApp {
 
         rail.child(div().flex_1())
             .child(
-                dunlin_ui::button("rail-usage")
-                    .ghost()
-                    .accessibility_label("Account usage")
-                    .tooltip("Account usage")
-                    .size(px(34.))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings_open = true;
-                        this.settings_tab = SettingsTab::Usage;
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_end()
-                                    .gap(px(2.))
-                                    .h(px(13.))
-                                    .child(div().w(px(3.)).h(px(6.)).rounded(px(1.)).bg(p.violet))
-                                    .child(div().w(px(3.)).h(px(10.)).rounded(px(1.)).bg(p.blue))
-                                    .child(div().w(px(3.)).h(px(13.)).rounded(px(1.)).bg(p.teal)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_family(dunlin_ui::theme::code_font())
-                                    .text_color(p.muted_fg)
-                                    .child(
-                                        self.active_usages()
-                                            .first()
-                                            .and_then(|usage| usage.primary())
-                                            .map(|window| format!("{:.0}%", window.used_percent))
-                                            .unwrap_or_else(|| "—".into()),
-                                    ),
-                            ),
-                    ),
-            )
-            .child(
-                icon_button("rail-settings", IconName::Settings, "Settings")
+                navigation_button("rail-settings", IconName::Settings, "Settings · ⌘,")
+                    .relative()
                     .size(px(36.))
                     .selected(self.settings_open)
                     .toggled(self.settings_open)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings_open = !this.settings_open;
-                        this.settings_tab = SettingsTab::Harnesses;
-                        cx.notify();
-                    })),
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("rail-settings")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(crate::native_menu::Settings), cx)
+                    }),
             )
             .into_any_element()
     }
@@ -318,65 +295,76 @@ impl DunlinApp {
                 let selected = installed && self.default_harness == name;
                 let name_owned = name.to_string();
                 let name_for_button = name_owned.clone();
-                let row = action_row(format!("onboarding-harness:{name}"), format!("Use {name} harness"))
-                    .flex_1().min_w(px(0.)).w_auto()
-                    .selected(selected).toggled(selected)
-                    .disabled(!installed)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.default_harness = name_owned.clone();
-                        this.persist_settings(cx);
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .size(px(16.))
-                            .flex_shrink_0()
-                            .rounded_full()
-                            .border_1()
-                            .border_color(if selected { p.fg } else { p.border_strong })
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .children(selected.then(|| div().size(px(7.)).rounded_full().bg(p.fg))),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(12.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(p.fg)
-                                    .child(name),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(5.))
-                                    .child(dot(
-                                        if installed {
-                                            p.green
-                                        } else if detected.cli.is_some() {
-                                            p.amber
-                                        } else {
-                                            p.muted_fg
-                                        },
-                                        4.0,
-                                    ))
-                                    .child(
-                                        div()
-                                            .text_size(px(10.5))
-                                            .text_color(p.muted_fg)
-                                            .child(detected.status()),
-                                    ),
-                            ),
-                    );
-                let row = div().flex().items_center().gap(px(8.)).flex_shrink_0().child(row)
+                let row = action_row(
+                    format!("onboarding-harness:{name}"),
+                    format!("Use {name} harness"),
+                )
+                .flex_1()
+                .min_w(px(0.))
+                .w_auto()
+                .selected(selected)
+                .toggled(selected)
+                .disabled(!installed)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.default_harness = name_owned.clone();
+                    this.persist_settings(cx);
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .size(px(16.))
+                        .flex_shrink_0()
+                        .rounded_full()
+                        .border_1()
+                        .border_color(if selected { p.fg } else { p.border_strong })
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .children(selected.then(|| div().size(px(7.)).rounded_full().bg(p.fg))),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(p.fg)
+                                .child(name),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(5.))
+                                .child(dot(
+                                    if installed {
+                                        p.green
+                                    } else if detected.cli.is_some() {
+                                        p.amber
+                                    } else {
+                                        p.muted_fg
+                                    },
+                                    4.0,
+                                ))
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .text_color(p.muted_fg)
+                                        .child(detected.status()),
+                                ),
+                        ),
+                );
+                let row = div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .flex_shrink_0()
+                    .child(row)
                     .child(div().w(px(96.)).flex().justify_end().child(if selected {
                         div()
                             .flex()
@@ -392,7 +380,11 @@ impl DunlinApp {
                             )
                             .into_any_element()
                     } else if installed {
-                        div().text_size(px(11.)).text_color(p.muted_fg).child("Set default").into_any_element()
+                        div()
+                            .text_size(px(11.))
+                            .text_color(p.muted_fg)
+                            .child("Set default")
+                            .into_any_element()
                     } else {
                         onboarding_secondary_button(
                             format!("onboarding-harness-install:{name}"),
@@ -430,12 +422,26 @@ impl DunlinApp {
                         })),
                     )
                     .child(
-                        onboarding_text_button("onboarding-harness-rescan", if self.harness_scanning { "Scanning…" } else { "Scan again" }, &p)
-                            .on_click(cx.listener(|this, _, _, cx| this.rescan_harnesses(cx))),
+                        onboarding_text_button(
+                            "onboarding-harness-rescan",
+                            if self.harness_scanning {
+                                "Scanning…"
+                            } else {
+                                "Scan again"
+                            },
+                            &p,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.rescan_harnesses(cx))),
                     ),
             );
             if let Some(notice) = &self.harness_setup_notice {
-                body = body.child(div().max_w(px(440.)).text_size(px(11.)).text_color(p.muted_fg).child(notice.clone()));
+                body = body.child(
+                    div()
+                        .max_w(px(440.))
+                        .text_size(px(11.))
+                        .text_color(p.muted_fg)
+                        .child(notice.clone()),
+                );
             }
             if self
                 .harness_discovery
@@ -487,7 +493,10 @@ impl DunlinApp {
                         .h(px(38.))
                         .px(px(18.))
                         .text_size(px(12.5))
-                        .on_click(cx.listener(|this, _, _, cx| this.open_folder(cx))),
+                        .dropdown_menu_with_anchor(Anchor::TopLeft, {
+                            let app = cx.entity().downgrade();
+                            move |menu, _, _| crate::project_import::source_menu(menu, app.clone())
+                        }),
                     )
                     .child(
                         onboarding_text_button("onboarding-back", "Back", &p).on_click(
@@ -505,8 +514,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn finish_terminal_resize(&mut self, cx: &mut Context<Self>) {
-        if self.terminal_resize.take().is_some() || self.terminal_drag {
-            self.terminal_drag = false;
+        if self.terminal_resize.take().is_some() {
             self.persist_settings(cx);
             cx.notify();
         }
@@ -540,7 +548,7 @@ impl DunlinApp {
         self.bottom_panel = panel;
         match panel {
             BottomPanel::Terminal => {
-                if self.terminal.tabs.is_empty()
+                if self.terminal.tabs.iter().all(|tab| tab.workspace)
                     && (self.project().is_remote() || self.project().trusted)
                     && let Err(error) = self.open_terminal_tab(cx)
                 {
@@ -576,64 +584,50 @@ impl DunlinApp {
         let width = self
             .bottom_panel_width
             .clamp(260., (viewport_width * 0.55).max(260.));
-        let mut header = div()
-            .h(px(30.))
-            .flex_shrink_0()
-            .px(px(8.))
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .border_t_1()
-            .border_b_1()
-            .border_color(p.border)
-            .bg(p.subtle)
-            .child(
-                div()
-                    .id("terminal-dock-grip")
-                    .aria_label("Drag to move the terminal panel to the left, right or bottom edge")
-                    .h(px(20.))
-                    .px(px(3.))
-                    .rounded(px(4.))
-                    .flex()
-                    .items_center()
-                    .cursor(CursorStyle::PointingHand)
-                    .text_size(px(11.))
-                    .text_color(p.muted_fg)
-                    .tooltip(|window, cx| {
-                        Tooltip::new("Drag the panel to the bottom, left or right edge")
-                            .build(window, cx)
-                    })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, cx| {
-                            this.terminal_drag = true;
-                            cx.notify();
-                        }),
-                    )
-                    .child("⠿"),
-            );
+        let mut tabs = Vec::new();
+        let mut selected = 0;
         for (panel, label) in [
             (BottomPanel::Terminal, "Terminal"),
             (BottomPanel::Run, "Run"),
             (BottomPanel::Secrets, "Secrets"),
         ] {
             let active = self.bottom_panel == panel;
-            header = header.child(
-                segment_button(format!("bottom-panel:{}", panel as usize), label, active)
-                    .icon(match panel {
-                        BottomPanel::Terminal | BottomPanel::Hidden => IconName::Terminal,
-                        BottomPanel::Run => IconName::SquareTerminal,
-                        BottomPanel::Secrets => IconName::KeyRound,
-                    })
+            if active {
+                selected = tabs.len();
+            }
+            tabs.push(
+                document_tab(label)
+                    .background_motion(!self.reduce_motion)
+                    .focusable()
+                    .tab_stop(true)
+                    .aria_label(format!("Open {label} panel"))
+                    .prefix(
+                        Icon::new(match panel {
+                            BottomPanel::Terminal | BottomPanel::Hidden => IconName::Terminal,
+                            BottomPanel::Run => IconName::SquareTerminal,
+                            BottomPanel::Secrets => IconName::KeyRound,
+                        })
+                        .size(px(14.)),
+                    )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if this.bottom_panel != panel {
                             this.toggle_bottom_panel(panel, window, cx);
                         }
+                    }))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                            cx.stop_propagation();
+                            if this.bottom_panel != panel {
+                                this.toggle_bottom_panel(panel, window, cx);
+                            }
+                        }
                     })),
             );
         }
-        header = header
-            .child(div().flex_1())
+        let menu = div()
+            .flex()
+            .flex_shrink_0()
+            .items_center()
             .child(
                 div().flex().items_center().gap(px(2.)).children(
                     [
@@ -657,6 +651,21 @@ impl DunlinApp {
                 icon_button("bottom-panel-close", IconName::X, "Close bottom panel")
                     .on_click(cx.listener(|this, _, _, cx| this.close_bottom_panel(cx))),
             );
+        let header = div()
+            .h(px(36.))
+            .flex_shrink_0()
+            .flex()
+            .overflow_hidden()
+            .rounded_t(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+            .child(
+                document_tabs("bottom-panel-tabs")
+                    .children(tabs)
+                    .selected_index(selected)
+                    .ml(-px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
+                    .suffix(menu)
+                    .flex_1()
+                    .min_w(px(0.)),
+            );
         let body = match self.bottom_panel {
             BottomPanel::Terminal => crate::terminal::render(self, window, cx),
             BottomPanel::Run => crate::run::render(self, window, cx),
@@ -671,11 +680,27 @@ impl DunlinApp {
             .min_h(px(0.))
             .min_w(px(0.))
             .child(header)
-            .child(div().flex_1().min_h(px(0.)).flex().flex_col().child(body));
+            .child(
+                div()
+                    .flex_1()
+                    .min_h(px(0.))
+                    .flex()
+                    .flex_col()
+                    .bg(p.card)
+                    .rounded_tr(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                    .when(selected > 0, |surface| {
+                        surface.rounded_tl(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                    })
+                    .rounded_b(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                    .pt(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                    .pb(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                    .overflow_hidden()
+                    .child(body),
+            );
         let horizontal_handle = div()
             .id("terminal-dock-resize")
             .aria_label("Drag to resize the terminal panel")
-            .h(px(9.))
+            .h(px(4.))
             .w_full()
             .flex_shrink_0()
             .occlude()
@@ -726,7 +751,7 @@ impl DunlinApp {
                 .overflow_hidden()
                 .flex()
                 .flex_col()
-                .bg(p.bg)
+                .rounded_b(px(dunlin_ui::scale::WORKSPACE_RADIUS))
                 .child(horizontal_handle)
                 .child(content)
                 .into_any_element(),
@@ -736,7 +761,6 @@ impl DunlinApp {
                 .flex_shrink_0()
                 .overflow_hidden()
                 .flex()
-                .bg(p.bg)
                 .child(content)
                 .child(vertical_handle)
                 .into_any_element(),
@@ -746,7 +770,6 @@ impl DunlinApp {
                 .flex_shrink_0()
                 .overflow_hidden()
                 .flex()
-                .bg(p.bg)
                 .child(vertical_handle)
                 .child(content)
                 .into_any_element(),
@@ -754,17 +777,120 @@ impl DunlinApp {
     }
 
     pub(super) fn main_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.has_modal_overlay() || self.section == SidebarSection::Dashboard {
+            self.workbench.new_tab_menu = None;
+            self.workbench.new_tab_press = None;
+        }
         if self.section == SidebarSection::Dashboard {
             return crate::dashboard::render(self, cx);
-        }
-        if self.section == SidebarSection::Security && self.security_enabled {
-            return crate::security::render(self, window, cx);
         }
         if self.projects.is_empty() {
             return self.onboarding(cx);
         }
-        let tabs = self.render_workbench_tabs(cx);
-        let content = if self.spec_tools_enabled && self.spec.is_active_for(self.project()) {
+        self.sync_workspace_panes(window, cx);
+        let count = if self.workbench.panes.enabled { 2 } else { 1 };
+        let mut row = div()
+            .flex()
+            .flex_1()
+            .min_w(px(0.))
+            .min_h(px(0.))
+            .gap(px(6.));
+        for pane in 0..count {
+            let (tabs, rounded_left) = self.render_workbench_tabs(pane, cx);
+            let content =
+                if self.workbench.panes.enabled && self.workbench.panes.active[pane].is_none() {
+                    crate::workbench::empty_workspace(cx)
+                } else if pane == self.workbench.panes.focused {
+                    self.workspace_content(window, cx)
+                } else {
+                    self.render_inactive_pane(pane, window, cx)
+                };
+            let edge_to_edge = matches!(
+                self.workbench.panes.active[pane],
+                Some(
+                    crate::workspace_panes::TabKey::File(_)
+                        | crate::workspace_panes::TabKey::Terminal(_)
+                        | crate::workspace_panes::TabKey::Git(_)
+                )
+            );
+            let surface = div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h(px(0.))
+                .min_w(px(0.))
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        (pane == 0)
+                            .then(|| crate::workspace_ui_smoke::probe("reading-surface"))
+                            .flatten()
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .bg(palette(cx).card)
+                .when(!edge_to_edge, |surface| {
+                    surface.py(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                })
+                .rounded_tr(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                .when(rounded_left, |surface| {
+                    surface.rounded_tl(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                })
+                .rounded_b(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                .overflow_hidden()
+                .child(content);
+            row = row.child(
+                div()
+                    .id(format!("workspace-pane:{pane}"))
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .flex_basis(px(0.))
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe(if pane == 0 {
+                                "workspace-pane-0"
+                            } else {
+                                "workspace-pane-1"
+                            })
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .min_w(px(0.))
+                    .min_h(px(0.))
+                    .overflow_hidden()
+                    .capture_any_mouse_down(cx.listener(move |this, _, window, cx| {
+                        if !this.focus_workspace_pane(pane, window, cx) {
+                            cx.stop_propagation();
+                        }
+                    }))
+                    .capture_key_down(cx.listener(move |this, _, window, cx| {
+                        if !this.focus_workspace_pane(pane, window, cx) {
+                            cx.stop_propagation();
+                        }
+                    }))
+                    .child(tabs)
+                    .child(surface),
+            );
+        }
+        row.into_any_element()
+    }
+
+    pub(crate) fn workspace_content(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if self.spec_tools_enabled && self.spec.is_active_for(self.project()) {
             crate::spec::render(self, cx)
         } else if self.git_history.is_active_for(self.project()) {
             crate::git_history::render(self, cx)
@@ -772,28 +898,22 @@ impl DunlinApp {
             && let Some(inspector) = &self.inspector
         {
             self.inspector_panel(inspector, cx)
+        } else if let Some(id) = self.workbench.terminal.clone().filter(|id| {
+            self.terminal
+                .tabs
+                .iter()
+                .any(|tab| tab.id == *id && tab.project == self.project().id)
+        }) {
+            crate::terminal::render_tab(self, &id, window, cx)
         } else if self.workbench.closed_chats.contains(&self.session().id) {
-            div().flex_1().flex().items_center().justify_center()
-                .child(dunlin_ui::button("reopen-chat-tab").label("Open Chat")
-                    .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx))))
-                .into_any_element()
+            crate::workbench::empty_workspace(cx)
         } else {
             match self.view {
                 MainView::Chat => views::chat::render(self, window, cx),
                 MainView::Graph => views::graph::render(self, window, cx),
                 MainView::Trace => views::trace::render(self, window, cx),
             }
-        };
-        div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h(px(0.))
-            .min_w(px(0.))
-            .overflow_hidden()
-            .child(tabs)
-            .child(content)
-            .into_any_element()
+        }
     }
 
     fn editor_prompt(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -873,20 +993,24 @@ impl DunlinApp {
                             .items_center()
                             .justify_end()
                             .gap(px(7.))
+                            .child(dunlin_ui::button("editor-cancel").label("Cancel").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.cancel_pending_editor(cx);
+                                }),
+                            ))
                             .child(
-                                dunlin_ui::button("editor-cancel").label("Cancel")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cancel_pending_editor(cx);
-                                    })),
-                            )
-                            .child(
-                                dunlin_ui::button("editor-discard").danger().outline().label("Discard")
+                                dunlin_ui::button("editor-discard")
+                                    .danger()
+                                    .outline()
+                                    .label("Discard")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.discard_pending_editor(window, cx);
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("editor-save").primary().label("Save")
+                                dunlin_ui::button("editor-save")
+                                    .primary()
+                                    .label("Save")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_pending_editor(window, cx);
                                     })),
@@ -1021,17 +1145,18 @@ impl DunlinApp {
                                     ),
                             )
                             .child(
-                                dunlin_ui::button("diff-open-file").icon(IconName::ExternalLink).label("Open file")
+                                dunlin_ui::button("diff-open-file")
+                                    .icon(IconName::ExternalLink)
+                                    .label("Open file")
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_diff(window, cx);
                                         this.open_file(&open_path, window, cx);
                                     })),
                             )
                             .child(
-                                icon_button("diff-close", IconName::X, "Close diff")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.close_diff(window, cx)
-                                    })),
+                                icon_button("diff-close", IconName::X, "Close diff").on_click(
+                                    cx.listener(|this, _, window, cx| this.close_diff(window, cx)),
+                                ),
                             ),
                     )
                     .child(body),
@@ -1105,44 +1230,47 @@ impl DunlinApp {
                 let info_for_click = info.clone();
                 let host = host_id.clone();
                 list = list.child(
-                    action_row(format!("remote-project:{}", info.id), format!("Add remote project {}", info.name))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.add_remote_project(&host, &info_for_click, cx);
-                        }))
-                        .child(
-                            div()
-                                .size(px(24.))
-                                .rounded(px(6.))
-                                .bg(p.blue_soft)
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(icon(IconName::Folder, 12.0, p.blue)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(0.))
-                                .flex()
-                                .flex_col()
-                                .gap(px(1.))
-                                .child(
-                                    div()
-                                        .text_size(px(12.0))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(p.fg)
-                                        .child(info.name.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.0))
-                                        .font_family(dunlin_ui::theme::code_font())
-                                        .text_color(p.muted_fg)
-                                        .truncate()
-                                        .child(info.path.clone()),
-                                ),
-                        )
-                        .child(icon(IconName::ChevronRight, 11.0, p.muted_fg)),
+                    action_row(
+                        format!("remote-project:{}", info.id),
+                        format!("Add remote project {}", info.name),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.add_remote_project(&host, &info_for_click, cx);
+                    }))
+                    .child(
+                        div()
+                            .size(px(24.))
+                            .rounded(px(6.))
+                            .bg(p.blue_soft)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icon(IconName::Folder, 12.0, p.blue)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .flex()
+                            .flex_col()
+                            .gap(px(1.))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.fg)
+                                    .child(info.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .truncate()
+                                    .child(info.path.clone()),
+                            ),
+                    )
+                    .child(icon(IconName::ChevronRight, 11.0, p.muted_fg)),
                 );
             }
         }
@@ -1203,11 +1331,17 @@ impl DunlinApp {
                             )
                             .child(div().flex_1())
                             .child(
-                                icon_button("remote-picker-close", IconName::X, "Close remote project picker")
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                icon_button(
+                                    "remote-picker-close",
+                                    IconName::X,
+                                    "Close remote project picker",
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.remote_picker = None;
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
@@ -1283,9 +1417,7 @@ impl DunlinApp {
                                 if location.is_empty() { "." } else { &location }
                             )),
                     )
-                    .child(
-                        Input::new(&self.new_file_input).aria_label("File or folder name"),
-                    )
+                    .child(Input::new(&self.new_file_input).aria_label("File or folder name"))
                     .child(
                         div()
                             .flex()
@@ -1293,7 +1425,8 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("new-file-cancel").label("Cancel")
+                                dunlin_ui::button("new-file-cancel")
+                                    .label("Cancel")
                                     .disabled(self.explorer.busy)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         if this.explorer.busy {
@@ -1304,11 +1437,20 @@ impl DunlinApp {
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("new-file-create").primary()
+                                dunlin_ui::button("new-file-create")
+                                    .primary()
                                     .disabled(self.explorer.busy)
                                     .label(if self.explorer.busy {
-                                        if renaming { "Renaming…" } else { "Creating…" }
-                                    } else if renaming { "Rename" } else { "Create" })
+                                        if renaming {
+                                            "Renaming…"
+                                        } else {
+                                            "Creating…"
+                                        }
+                                    } else if renaming {
+                                        "Rename"
+                                    } else {
+                                        "Create"
+                                    })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.create_remote_file(window, cx);
                                     })),
@@ -1418,7 +1560,11 @@ impl DunlinApp {
             .into_any_element()
     }
 
-    fn project_settings_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn project_settings_modal(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = palette(cx);
         let Some(index) = self.project_settings_target else {
             return div().into_any_element();
@@ -1428,6 +1574,7 @@ impl DunlinApp {
         };
         let selected_harness = project.settings.harness.clone();
         let selected_permission = project.settings.permission_mode;
+        let color_picker = self.project_color_picker(index, window, cx);
         type ChipAction = Box<dyn Fn(&mut DunlinApp, &mut Context<DunlinApp>)>;
 
         let chip =
@@ -1486,7 +1633,8 @@ impl DunlinApp {
                         .child(crate::project_icons::render(self, &project, 32., &p))
                         .child(div().flex_1().text_size(px(12.)).child("Project icon"))
                         .child(chip("choose-project-icon".into(), "Choose image…", false, cx, Box::new(move |this, cx| this.choose_project_icon(index, cx))))
-                        .child(chip("reset-project-icon".into(), "Automatic", project.settings.custom_icon.is_none(), cx, Box::new(move |this, cx| this.reset_project_icon(index, cx)))))
+                         .child(chip("reset-project-icon".into(), "Automatic", project.settings.custom_icon.is_none() && project.settings.custom_color.is_none(), cx, Box::new(move |this, cx| this.reset_project_icon(index, cx)))))
+                    .child(color_picker)
                     .child(
                         div()
                             .text_size(px(10.0))
@@ -1506,6 +1654,7 @@ impl DunlinApp {
                         for name in crate::harness_discovery::catalog_names()
                             .chain(std::iter::once("Custom ACP"))
                         {
+                            if !self.harness_visible(name) { continue; }
                             let active = selected_harness.as_deref() == Some(name);
                             row = row.child(chip(
                                 format!("project-harness-{name}"),
@@ -1607,30 +1756,48 @@ impl DunlinApp {
         };
         let viewport = window.viewport_size();
         let width = 228.0;
+        let height = match &state.target {
+            ContextTarget::Project(_) => 480.,
+            ContextTarget::Session(_) => 260.,
+        };
         let x = f32::from(state.position.x)
             .min(f32::from(viewport.width) - width - 8.0)
             .max(8.0);
         let y = f32::from(state.position.y)
-            .min(f32::from(viewport.height) - 260.0)
+            .min(f32::from(viewport.height) - height)
             .max(8.0);
 
         let item = |id: &'static str, label: &str, color: Hsla| {
             menu_button(id, label.to_owned())
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe(id)
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .when(color == p.red, |button| button.danger().outline())
                 .when(color == p.amber, |button| button.warning().outline())
         };
 
-        let menu =
-            match state.target {
-                ContextTarget::Project(index) => {
-                    let Some(project) = self.projects.get(index) else {
-                        return div().into_any_element();
-                    };
-                    let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
-                    let pinned = project.pinned;
-                    let path = project.path.clone();
-                    let name = project.name.clone();
-                    let mut menu = div()
+        let menu = match state.target {
+            ContextTarget::Project(index) => {
+                let Some(project) = self.projects.get(index) else {
+                    return div().into_any_element();
+                };
+                let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
+                let pinned = project.pinned;
+                let trusted = project.trusted;
+                let remote = project.is_remote();
+                let reveal_path = project.path.clone();
+                let path = project.path.clone();
+                let name = project.name.clone();
+                let mut menu =
+                    div()
                         .flex()
                         .flex_col()
                         .gap(px(1.))
@@ -1652,11 +1819,11 @@ impl DunlinApp {
                             }),
                         ))
                         .child(item("ctx-project-group", "Move to group…", p.fg).on_click(
-                            cx.listener(move |this, _, _, cx| {
+                            cx.listener(move |this, _, window, cx| {
                                 this.context_menu = None;
-                                this.section = SidebarSection::Projects;
                                 this.project_group_editor = Some(index);
-                                this.persist_settings(cx);
+                                this.project_menu_open = false;
+                                this.focus_handle.focus(window, cx);
                                 cx.notify();
                             }),
                         ))
@@ -1684,94 +1851,154 @@ impl DunlinApp {
                                 },
                             )),
                         );
-                    if missing {
-                        menu = menu.child(
-                            item("ctx-project-locate", "Locate folder…", p.amber).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.context_menu = None;
-                                    this.locate_project_at(index, cx);
-                                }),
-                            ),
-                        );
-                    }
-                    menu = menu.child(item("ctx-project-path", "Copy path", p.fg).on_click(
-                        cx.listener(move |this, _, _, cx| {
+                if missing {
+                    menu = menu.child(
+                        item("ctx-project-locate", "Locate folder…", p.amber).on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.context_menu = None;
+                                this.locate_project_at(index, cx);
+                            }),
+                        ),
+                    );
+                }
+                menu = menu
+                    .child(
+                        item(
+                            "ctx-project-trust",
+                            if trusted {
+                                "Untrust project"
+                            } else {
+                                "Trust project"
+                            },
+                            p.fg,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
                             this.context_menu = None;
-                            cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
-                            this.set_notice("Copied the project path", cx);
-                        }),
-                    ));
-                    menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
-                        item("ctx-project-remove", "Remove project…", p.red).on_click(cx.listener(
+                            this.toggle_project_trust_at(index, cx);
+                        })),
+                    )
+                    .child(
+                        item("ctx-project-reveal", "Reveal in Finder", p.fg).on_click(cx.listener(
                             move |this, _, _, cx| {
                                 this.context_menu = None;
-                                this.request_delete_project(index, cx);
+                                if remote {
+                                    this.set_notice("Remote project · files live on the relay", cx);
+                                } else {
+                                    cx.reveal_path(Path::new(&reveal_path));
+                                    cx.notify();
+                                }
                             },
                         )),
                     )
-                }
-                ContextTarget::Session(id) => {
-                    let Some(session) = self.all_sessions.iter().find(|session| session.id == id) else {
-                        return div().into_any_element();
-                    };
-                    let open_id = session.id.clone();
-                    let new_id = session.id.clone();
-                    let delete_id = session.id.clone();
-                    let title = session.title.clone();
-                    let remote = session.origin.is_remote();
-                    let local_index = self.sessions.iter().position(|s| s.id == session.id);
-                    let mut menu =
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(1.))
-                            .child(
-                                div()
-                                    .px(px(8.))
-                                    .pt(px(3.))
-                                    .pb(px(4.))
-                                    .text_size(px(10.0))
-                                    .font_family(dunlin_ui::theme::code_font())
-                                    .text_color(p.muted_fg)
-                                    .truncate()
-                                    .child(title.to_uppercase()),
-                            )
-                            .child(item("ctx-session-open", "Open session", p.fg).on_click(
-                                cx.listener(move |this, _, window, cx| {
+                    .child(
+                        item("ctx-project-path", "Copy path", p.fg).on_click(cx.listener(
+                            move |this, _, _, cx| {
+                                this.context_menu = None;
+                                cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
+                                this.set_notice("Copied the project path", cx);
+                            },
+                        )),
+                    );
+                menu =
+                    menu.child(div().h(px(1.)).my(px(2.)).bg(p.border))
+                        .child(item("ctx-new-group", "New project group…", p.fg).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.context_menu = None;
+                                this.open_new_group_prompt(None, window, cx);
+                            }),
+                        ))
+                        .child(
+                            item("ctx-open-folders", "Open local folders…", p.fg).on_click(
+                                cx.listener(|this, _, _, cx| {
                                     this.context_menu = None;
-                                    if this.open_session_id(&open_id, cx) {
-                                        this.show_chat_tab(window, cx);
-                                    }
+                                    this.open_folder(cx);
                                 }),
-                            ))
-                            .child(item("ctx-session-new", "New session", p.fg).on_click(
-                                cx.listener(move |this, _, _, cx| {
+                            ),
+                        )
+                        .child(
+                            item("ctx-add-remote", "Add remote project…", p.fg).on_click(
+                                cx.listener(|this, _, _, cx| {
                                     this.context_menu = None;
-                                    if this.open_session_id(&new_id, cx) && !this.remote_sessions_loading {
+                                    this.open_remote_picker(cx);
+                                }),
+                            ),
+                        );
+                menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
+                    item("ctx-project-remove", "Remove project…", p.red).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.context_menu = None;
+                            this.request_delete_project(index, cx);
+                        },
+                    )),
+                )
+            }
+            ContextTarget::Session(id) => {
+                let Some(session) = self.all_sessions.iter().find(|session| session.id == id)
+                else {
+                    return div().into_any_element();
+                };
+                let open_id = session.id.clone();
+                let new_id = session.id.clone();
+                let delete_id = session.id.clone();
+                let title = session.title.clone();
+                let remote = session.origin.is_remote();
+                let local_index = self.sessions.iter().position(|s| s.id == session.id);
+                let mut menu =
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(1.))
+                        .child(
+                            div()
+                                .px(px(8.))
+                                .pt(px(3.))
+                                .pb(px(4.))
+                                .text_size(px(10.0))
+                                .font_family(dunlin_ui::theme::code_font())
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(title.to_uppercase()),
+                        )
+                        .child(item("ctx-session-open", "Open session", p.fg).on_click(
+                            cx.listener(move |this, _, window, cx| {
+                                this.context_menu = None;
+                                if this.open_session_id(&open_id, cx) {
+                                    this.show_chat_tab(window, cx);
+                                }
+                            }),
+                        ))
+                        .child(
+                            item("ctx-session-new", "New session", p.fg).on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.context_menu = None;
+                                    if this.open_session_id(&new_id, cx)
+                                        && !this.remote_sessions_loading
+                                    {
                                         this.new_session(cx);
                                     }
-                                }),
-                            ));
-                    if remote && let Some(index) = local_index {
-                        menu = menu.child(
-                            item("ctx-session-takeover", "Take over session", p.fg).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.context_menu = None;
-                                    this.takeover_session_at(index, cx);
-                                }),
-                            ),
+                                },
+                            )),
                         );
-                    }
-                    menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
-                        item("ctx-session-delete", "Delete session…", p.red).on_click(cx.listener(
-                            move |this, _, _, cx| {
+                if remote && let Some(index) = local_index {
+                    menu = menu.child(
+                        item("ctx-session-takeover", "Take over session", p.fg).on_click(
+                            cx.listener(move |this, _, _, cx| {
                                 this.context_menu = None;
-                                this.request_delete_session_id(&delete_id, cx);
-                            },
-                        )),
-                    )
+                                this.takeover_session_at(index, cx);
+                            }),
+                        ),
+                    );
                 }
-            };
+                menu.child(div().h(px(1.)).my(px(2.)).bg(p.border)).child(
+                    item("ctx-session-delete", "Delete session…", p.red).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.context_menu = None;
+                            this.request_delete_session_id(&delete_id, cx);
+                        },
+                    )),
+                )
+            }
+        };
 
         div()
             .id("context-menu-layer")
@@ -1792,12 +2019,14 @@ impl DunlinApp {
                     .left(px(x))
                     .top(px(y))
                     .w(px(width))
+                    .max_h(px((f32::from(viewport.height) - y - 8.).max(1.)))
+                    .overflow_y_scroll()
                     .p(px(5.))
                     .flex()
                     .flex_col()
                     .gap(px(1.))
                     .on_click(|_, _, cx| cx.stop_propagation())
-                    .child(menu),
+                    .child(menu.flex_shrink_0()),
             )
             .into_any_element()
     }
@@ -1843,7 +2072,9 @@ impl DunlinApp {
                     .child(message),
             )
             .child(
-                dunlin_ui::button("toast-action").primary().label(action_label)
+                dunlin_ui::button("toast-action")
+                    .primary()
+                    .label(action_label)
                     .on_click(cx.listener(|this, _, _, cx| this.apply_toast(cx))),
             )
             .child(
@@ -1928,9 +2159,7 @@ impl DunlinApp {
                                     .unwrap_or_else(|| "Top level".into())
                             )),
                     )
-                    .child(
-                        Input::new(&self.group_input).aria_label("Project group name"),
-                    )
+                    .child(Input::new(&self.group_input).aria_label("Project group name"))
                     .child(
                         div()
                             .flex()
@@ -1938,22 +2167,29 @@ impl DunlinApp {
                             .gap(px(7.))
                             .when_some(delete_id, |this, id| {
                                 this.child(
-                                    dunlin_ui::button("group-delete").danger().outline().label("Delete group")
+                                    dunlin_ui::button("group-delete")
+                                        .danger()
+                                        .outline()
+                                        .label("Delete group")
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.delete_project_group(&id, cx);
                                         })),
                                 )
                             })
                             .child(div().flex_1())
+                            .child(dunlin_ui::button("group-cancel").label("Cancel").on_click(
+                                cx.listener(|this, _, _, cx| {
+                                    this.cancel_group_prompt(cx);
+                                }),
+                            ))
                             .child(
-                                dunlin_ui::button("group-cancel").label("Cancel")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.cancel_group_prompt(cx);
-                                    })),
-                            )
-                            .child(
-                                dunlin_ui::button("group-save").primary()
-                                    .label(if editing.is_some() { "Save" } else { "Create group" })
+                                dunlin_ui::button("group-save")
+                                    .primary()
+                                    .label(if editing.is_some() {
+                                        "Save"
+                                    } else {
+                                        "Create group"
+                                    })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.submit_group_prompt(window, cx);
                                     })),
@@ -2001,12 +2237,30 @@ impl DunlinApp {
             .flex()
             .items_center()
             .justify_center()
+            .p(px(20.))
             .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx)))
             .child(
                 dialog_surface(p)
                     .id("delete-dialog")
-                    .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("delete-dialog")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .child(crate::effects::rounded_scroll_probe(
+                        &self.overlay_backdrop,
+                        12.,
+                    ))
                     .w(px(392.))
+                    .max_w_full()
+                    .max_h(relative(0.85))
+                    .overflow_y_scroll()
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
                         div()
@@ -2017,6 +2271,7 @@ impl DunlinApp {
                                 div()
                                     .size(px(30.))
                                     .flex_shrink_0()
+                                    .flex_shrink_0()
                                     .rounded(px(8.))
                                     .bg(p.red_soft)
                                     .flex()
@@ -2026,6 +2281,9 @@ impl DunlinApp {
                             )
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .whitespace_normal()
                                     .flex()
                                     .flex_col()
                                     .gap(px(3.))
@@ -2038,6 +2296,19 @@ impl DunlinApp {
                                     )
                                     .child(
                                         div()
+                                            .relative()
+                                            .children({
+                                                #[cfg(debug_assertions)]
+                                                {
+                                                    crate::workspace_ui_smoke::probe(
+                                                        "delete-message",
+                                                    )
+                                                }
+                                                #[cfg(not(debug_assertions))]
+                                                {
+                                                    None::<AnyElement>
+                                                }
+                                            })
                                             .text_size(px(12.0))
                                             .line_height(relative(1.5))
                                             .text_color(p.muted_fg)
@@ -2050,14 +2321,20 @@ impl DunlinApp {
                             .flex()
                             .items_center()
                             .justify_end()
+                            .flex_wrap()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("delete-cancel").label("Cancel")
+                                dunlin_ui::button("delete-cancel")
+                                    .label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx))),
                             )
                             .child(
-                                dunlin_ui::button("delete-confirm").danger().label(action)
-                                    .on_click(cx.listener(|this, _, _, cx| this.confirm_delete(cx))),
+                                dunlin_ui::button("delete-confirm")
+                                    .danger()
+                                    .label(action)
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.confirm_delete(cx)),
+                                    ),
                             ),
                     ),
             )
@@ -2077,7 +2354,6 @@ impl DunlinApp {
         {
             return self.preview_panel(cx);
         }
-        let p = palette(cx);
         let readonly = self.editor_readonly;
 
         div()
@@ -2087,9 +2363,6 @@ impl DunlinApp {
             .overflow_hidden()
             .flex()
             .flex_col()
-            .border_l_1()
-            .border_color(p.border)
-            .bg(p.card)
             .child(
                 div()
                     .flex()
@@ -2103,8 +2376,14 @@ impl DunlinApp {
                             .min_w(px(0.))
                             .min_h(px(0.))
                             .overflow_hidden()
+                            // GPUI overflow masks are rectangular; keep gutter/selection paint inside the curved edges.
+                            .pl(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                            .when(!self.editor_minimap, |body| {
+                                body.pr(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+                            })
                             .child(
                                 Editor::new(&self.editor)
+                                    .text_size(crate::workspace_text::size(self.code_font_size, cx))
                                     .appearance(false)
                                     .bordered(false)
                                     .readonly(
@@ -2142,14 +2421,77 @@ impl DunlinApp {
             self.git.branch.clone()
         };
         let change_count = self.git.changes.len();
-        let chat = self.view == MainView::Chat;
-        let repository = self.git.repository.as_ref().filter(|link| self.project().trusted && link.validated()).cloned();
+        let chat = matches!(
+            self.current_workspace_tab(),
+            Some(crate::workspace_panes::TabKey::Chat(_))
+        ) && self.view == MainView::Chat;
+        let repository = self
+            .git
+            .repository
+            .as_ref()
+            .filter(|link| self.project().trusted && link.validated())
+            .cloned();
         let hosting_icon = match repository.as_ref().map(|link| &link.provider) {
             Some(dunlin_workspace::git::hosting::Provider::GitHub) => IconName::Github,
             Some(dunlin_workspace::git::hosting::Provider::GitLab) => IconName::GitFork,
             None => IconName::Link,
         };
-        let hosting_label = repository.as_ref().map(|link| format!("Open {}", link.url)).unwrap_or_else(|| "No supported repository host".into());
+        let hosting_label = repository
+            .as_ref()
+            .map(|link| format!("Open {}", link.url))
+            .unwrap_or_else(|| "No supported repository host".into());
+        let owner = cx.entity().downgrade();
+        let usage = dunlin_ui::component::popover::Popover::new("status-usage-popover")
+            .when(self.has_modal_overlay(), |popover| popover.open(false))
+            .anchor(Anchor::BottomRight)
+            .offset(px(6.))
+            .trigger(
+                dunlin_ui::button("status-usage")
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("status-usage")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .label(format!(
+                        "${:.2} · {}",
+                        session.cost_usd,
+                        crate::usage::account_status(&self.active_usages())
+                    ))
+                    .accessibility_label("Session cost and account limits")
+                    .tooltip("Session cost and account allowance · opens current usage details"),
+            )
+            .on_open_change({
+                let owner = cx.entity().downgrade();
+                move |open, _, cx| {
+                    if *open {
+                        let _ = owner.update(cx, |this, cx| this.ensure_usage(cx));
+                    }
+                }
+            })
+            .content(move |_, _, cx| {
+                owner
+                    .update(cx, |this, cx| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .px(px(10.))
+                                    .text_size(px(12.))
+                                    .child(format!("Session · ${:.2}", this.session().cost_usd)),
+                            )
+                            .child(views::sidebar::account_usage_panel(this, cx))
+                            .into_any_element()
+                    })
+                    .unwrap_or_else(|_| div().into_any_element())
+            });
         div()
             .h(px(crate::branch_picker::STATUS_BAR_HEIGHT))
             .flex_shrink_0()
@@ -2158,12 +2500,23 @@ impl DunlinApp {
             .flex()
             .items_center()
             .gap(px(12.))
-            .text_size(px(11.5))
-            .text_color(p.muted_fg)
-            .child(dunlin_ui::button("repository-host-link").ghost().icon(hosting_icon)
-                .accessibility_label(hosting_label.clone()).tooltip(hosting_label)
-                .disabled(repository.is_none())
-                .on_click(move |_, _, cx| { if let Some(link) = &repository { cx.open_url(&link.url); } }))
+            .text_size(px(12.5))
+            .text_color(p.fg)
+            .child(
+                dunlin_ui::button("repository-host-link")
+                    .ghost()
+                    .size(px(24.))
+                    .p(px(0.))
+                    .child(Icon::new(hosting_icon).size(px(15.)))
+                    .accessibility_label(hosting_label.clone())
+                    .tooltip(hosting_label)
+                    .disabled(repository.is_none())
+                    .on_click(move |_, _, cx| {
+                        if let Some(link) = &repository {
+                            cx.open_url(&link.url);
+                        }
+                    }),
+            )
             .child(crate::branch_picker::status_badge(
                 self,
                 &self.project().id,
@@ -2176,7 +2529,7 @@ impl DunlinApp {
                         .flex()
                         .items_center()
                         .gap(px(5.))
-                        .child(icon(IconName::FileDiff, 10.5, p.muted_fg))
+                        .child(icon(IconName::FileDiff, 10.5, p.fg))
                         .child(format!(
                             "{change_count} {}",
                             if change_count == 1 {
@@ -2193,6 +2546,8 @@ impl DunlinApp {
                 let panel = self.bottom_panel;
                 let active = panel == crate::app::BottomPanel::Terminal;
                 segment_button("statusbar-terminal", "Terminal", active)
+                    .with_size(dunlin_ui::component::Size::Medium)
+                    .h(px(28.))
                     .accessibility_label("Toggle terminal panel")
                     .icon(IconName::Terminal)
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -2202,6 +2557,8 @@ impl DunlinApp {
             .child({
                 let active = self.bottom_panel == crate::app::BottomPanel::Run;
                 segment_button("statusbar-run", "Run", active)
+                    .with_size(dunlin_ui::component::Size::Medium)
+                    .h(px(28.))
                     .accessibility_label("Toggle Run panel")
                     .icon(IconName::SquareTerminal)
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -2211,27 +2568,22 @@ impl DunlinApp {
             .child({
                 let active = self.bottom_panel == crate::app::BottomPanel::Secrets;
                 segment_button("statusbar-secrets", "Secrets", active)
+                    .with_size(dunlin_ui::component::Size::Medium)
+                    .h(px(28.))
                     .accessibility_label("Toggle Secrets panel")
                     .icon(IconName::KeyRound)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_bottom_panel(crate::app::BottomPanel::Secrets, window, cx)
                     }))
             })
-            .child(div().w(px(1.)).h(px(12.)).bg(p.border))
-                    .child(
-                        div()
-                            .font_family(dunlin_ui::theme::code_font())
-                            .child(format!("${:.2}", session.cost_usd)),
-                    )
-                    .child(div().w(px(1.)).h(px(12.)).bg(p.border))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(9.))
-                            .child(dot(p.violet, 5.0))
-                            .child(context_status_label(self.harness.usage, session.tokens)),
-                    )
+            .child(usage)
+            .when(self.harness.usage.is_some() || session.tokens > 0, |bar| {
+                bar.child(
+                    div()
+                        .text_color(p.muted_fg)
+                        .child(context_status_label(self.harness.usage, session.tokens)),
+                )
+            })
             .into_any_element()
     }
 
@@ -2239,13 +2591,16 @@ impl DunlinApp {
         self.settings_open || self.navigation_blocked()
     }
     pub(crate) fn navigation_blocked(&self) -> bool {
-        self.pending_delete.is_some()
+        self.group_cleanup.busy
+            || self.remote_connection.open
+            || self.pending_delete.is_some()
             || self.pending_git_action.is_some()
             || self.diff_view.is_some()
             || self.new_file_prompt
             || self.pending_editor.is_some()
             || self.editor_conflict.is_some()
             || self.group_prompt.is_some()
+            || self.project_group_editor.is_some()
             || self.project_import.open
             || self.project_settings_target.is_some()
             || self.group_settings_draft.is_some()
@@ -2261,7 +2616,20 @@ impl DunlinApp {
             || self.project_menu_open
     }
     pub(crate) fn overlay_focus_handle(&self, cx: &App) -> FocusHandle {
-        if self.project_import.open && let Some(focus) = self.project_import.focus(cx) {
+        if self.remote_connection.open {
+            return if self.remote_connection.ssh {
+                self.terminal
+                    .ssh_target
+                    .as_ref()
+                    .map(|input| input.read(cx).focus_handle(cx))
+                    .unwrap_or_else(|| self.focus_handle.clone())
+            } else {
+                self.remote_url_input.read(cx).focus_handle(cx)
+            };
+        }
+        if self.project_import.open
+            && let Some(focus) = self.project_import.focus(cx)
+        {
             return focus;
         }
         if let Some(draft) = &self.group_settings_draft {
@@ -2291,7 +2659,9 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.has_modal_overlay() { self.project_menu_open = false; }
+        if self.has_modal_overlay() {
+            self.project_menu_open = false;
+        }
         let settings = self
             .settings_open
             .then(|| views::settings::render(self, window, cx));
@@ -2299,7 +2669,10 @@ impl DunlinApp {
             .command_open
             .then(|| views::palette::render(self, window, cx));
         let confirm = self.pending_delete.as_ref().map(|_| self.delete_modal(cx));
-        let git_confirm = self.pending_git_action.as_ref().map(|_| crate::git_actions::render(self, cx));
+        let git_confirm = self
+            .pending_git_action
+            .as_ref()
+            .map(|_| crate::git_actions::render(self, cx));
         let diff = self.diff_view.as_ref().map(|_| self.diff_modal(cx));
         let remote = self
             .remote_picker
@@ -2319,7 +2692,7 @@ impl DunlinApp {
             .map(|_| self.context_menu_overlay(window, cx));
         let project = self
             .project_settings_target
-            .map(|_| self.project_settings_modal(cx));
+            .map(|_| self.project_settings_modal(window, cx));
         let group_settings = self
             .group_settings_draft
             .as_ref()
@@ -2331,9 +2704,77 @@ impl DunlinApp {
         let branches = self
             .branch_ui
             .is_open()
-            .then(|| crate::branch_picker::render(self, cx));
-        let project_menu = self.project_menu_open.then(|| crate::views::sidebar::project_menu(self, cx));
-        let import = self.project_import.open.then(|| crate::project_import::render(self, window, cx));
+            .then(|| crate::branch_picker::render(self, window, cx));
+        let project_menu = self
+            .project_menu_open
+            .then(|| crate::views::sidebar::project_menu(self, cx));
+        let import = self
+            .project_import
+            .open
+            .then(|| crate::project_import::render(self, window, cx));
+        let connection = self
+            .remote_connection
+            .open
+            .then(|| crate::remote_connection::render(self, cx));
+        let move_group = self.project_group_editor.and_then(|index| {
+            let project = self.projects.get(index)?;
+            Some(
+                div()
+                    .id("project-group-overlay")
+                    .absolute()
+                    .inset_0()
+                    .size_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.project_group_editor = None;
+                        cx.notify();
+                    }))
+                    .child(
+                        dialog_surface(dunlin_ui::palette(cx))
+                            .id("project-group-dialog")
+                            .w(px(520.))
+                            .max_w(relative(0.95))
+                            .max_h(relative(0.9))
+                            .children({
+                                #[cfg(debug_assertions)]
+                                {
+                                    crate::workspace_ui_smoke::probe("project-group-dialog")
+                                }
+                                #[cfg(not(debug_assertions))]
+                                {
+                                    None::<AnyElement>
+                                }
+                            })
+                            .child(crate::effects::rounded_probe(&self.overlay_backdrop, 12.))
+                            .on_click(|_, _, cx| cx.stop_propagation())
+                            .child(
+                                div()
+                                    .text_size(px(17.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(format!("Move {} to group", project.name)),
+                            )
+                            .child(div().id("project-group-options").overflow_y_scroll().child(
+                                views::sidebar::project_group_picker(
+                                    self,
+                                    index,
+                                    cx,
+                                    &dunlin_ui::palette(cx),
+                                ),
+                            ))
+                            .child(
+                                dunlin_ui::button("project-group-cancel")
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.project_group_editor = None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .into_any_element(),
+            )
+        });
         div()
             .absolute()
             .inset_0()
@@ -2356,13 +2797,24 @@ impl DunlinApp {
             .children(project_menu)
             .children(git_confirm)
             .children(import)
+            .children(connection)
+            .children(move_group)
             .when(self.factory_resetting, |root| {
-                root.child(div().id("factory-reset-progress").absolute().inset_0().size_full()
-                    .bg(dunlin_ui::palette(cx).card.opacity(0.95)).occlude()
-                    .flex().items_center().justify_center()
-                    .on_any_mouse_down(|_, _, cx| cx.stop_propagation())
-                    .on_click(|_, _, cx| cx.stop_propagation())
-                    .child("Factory reset · waiting for confirmation or clearing local data…"))
+                root.child(
+                    div()
+                        .id("factory-reset-progress")
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .bg(dunlin_ui::palette(cx).card.opacity(0.95))
+                        .occlude()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .on_any_mouse_down(|_, _, cx| cx.stop_propagation())
+                        .on_click(|_, _, cx| cx.stop_propagation())
+                        .child("Factory reset · waiting for confirmation or clearing local data…"),
+                )
             })
             .into_any_element()
     }
@@ -2380,96 +2832,103 @@ impl DunlinApp {
             .font_family(dunlin_ui::theme::ui_font())
             .track_focus(&self.focus_handle)
             .capture_key_down(cx.listener(Self::on_key_down))
-            .on_action(cx.listener(|this, _: &crate::native_menu::Back, window, cx| {
-                this.navigate_history(false, window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &crate::native_menu::Forward, window, cx| {
-                this.navigate_history(true, window, cx);
-            }))
-            .when(!self.factory_resetting, |root| root.on_action(
-                cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
-                    if this.dismiss_history_for_menu(cx) {
-                        this.branch_ui.dismiss();
-                        this.settings_open = true;
-                        this.settings_tab = SettingsTab::General;
-                        cx.notify();
-                    }
+            .on_action(
+                cx.listener(|this, _: &crate::native_menu::Back, window, cx| {
+                    this.navigate_history(false, window, cx);
                 }),
             )
             .on_action(
-                cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
-                    this.open_folder(cx)
+                cx.listener(|this, _: &crate::native_menu::Forward, window, cx| {
+                    this.navigate_history(true, window, cx);
                 }),
             )
-            .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
-                if this.dismiss_history_for_menu(cx) {
-                    this.section = SidebarSection::Dashboard;
-                    this.settings_open = false;
-                    cx.notify();
-                }
-            }))
-            .on_action(
-                cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
-                    if this.dismiss_history_for_menu(cx) {
-                        this.section = SidebarSection::Projects;
-                        cx.notify();
-                    }
-                }),
-            )
-            .on_action(
-                cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
-                    this.sidebar_collapsed = !this.sidebar_collapsed;
-                    this.persist_settings(cx);
-                    cx.notify();
-                }),
-            )
-            .on_action(
-                cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
-                    if this.dismiss_history_for_menu(cx) {
-                        this.open_palette(window, cx);
-                    }
-                }),
-            )
-            .when(!self.projects.is_empty(), |root| {
+            .when(!self.factory_resetting, |root| {
                 root.on_action(
-                    cx.listener(|this, _: &crate::native_menu::NewSession, _, cx| {
+                    cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
                         if this.dismiss_history_for_menu(cx) {
-                            this.new_session(cx);
+                            this.branch_ui.dismiss();
+                            this.settings_open = true;
+                            this.settings_tab = SettingsTab::General;
+                            cx.notify();
                         }
                     }),
                 )
-                .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
-                    this.save_all_tabs(cx);
+                .on_action(
+                    cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
+                        this.open_folder(cx)
+                    }),
+                )
+                .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
+                    if this.dismiss_history_for_menu(cx) {
+                        this.section = SidebarSection::Dashboard;
+                        this.settings_open = false;
+                        cx.notify();
+                    }
                 }))
                 .on_action(
-                    cx.listener(|this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                    cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
                         if this.dismiss_history_for_menu(cx) {
-                            this.open_project_settings(this.selected_project, cx);
+                            this.section = SidebarSection::Projects;
+                            cx.notify();
                         }
                     }),
                 )
                 .on_action(
-                    cx.listener(|this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                    cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
+                        this.sidebar_collapsed = !this.sidebar_collapsed;
+                        this.persist_settings(cx);
+                        cx.notify();
+                    }),
+                )
+                .on_action(
+                    cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
                         if this.dismiss_history_for_menu(cx) {
-                            this.open_branch_picker(&this.project().id.clone(), window, cx);
+                            this.open_palette(window, cx);
                         }
                     }),
                 )
-                .on_action(cx.listener(
-                    |this, _: &crate::native_menu::RefreshGit, _, cx| this.refresh_git_status(cx),
-                ))
-            })
-            .when(
-                !self.projects.is_empty() && self.project().trusted,
-                |root| {
+                .when(!self.projects.is_empty(), |root| {
                     root.on_action(cx.listener(
-                        |this, _: &crate::native_menu::GitHistory, window, cx| {
-                            this.open_git_history(window, cx)
+                        |this, _: &crate::native_menu::NewSession, _, cx| {
+                            if this.dismiss_history_for_menu(cx) {
+                                this.new_session(cx);
+                            }
                         },
                     ))
-                },
-            )
-            )
+                    .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
+                        this.save_all_tabs(cx);
+                    }))
+                    .on_action(cx.listener(
+                        |this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                            if this.dismiss_history_for_menu(cx) {
+                                this.open_project_settings(this.selected_project, cx);
+                            }
+                        },
+                    ))
+                    .on_action(cx.listener(
+                        |this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                            if this.dismiss_history_for_menu(cx) {
+                                this.open_branch_picker(&this.project().id.clone(), window, cx);
+                            }
+                        },
+                    ))
+                    .on_action(cx.listener(
+                        |this, _: &crate::native_menu::RefreshGit, _, cx| {
+                            this.refresh_git_status(cx)
+                        },
+                    ))
+                })
+                .when(
+                    !self.projects.is_empty() && self.project().trusted,
+                    |root| {
+                        root.on_action(cx.listener(
+                            |this, _: &crate::native_menu::GitHistory, window, cx| {
+                                this.open_git_history(window, cx)
+                            },
+                        ))
+                    },
+                )
+            })
             .child(self.overlay_backdrop.begin())
             .child(content)
             .child(self.overlay_backdrop.finish())

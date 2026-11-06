@@ -365,7 +365,12 @@ mod tests {
         assert!(paths.contains(&fs::canonicalize(two).unwrap()));
         assert!(!paths.contains(&f.0));
         let collection = fs::canonicalize(&f.0).unwrap();
-        assert!(found.projects.iter().all(|project| project.collection.as_ref() == Some(&collection)));
+        assert!(
+            found
+                .projects
+                .iter()
+                .all(|project| project.collection.as_ref() == Some(&collection))
+        );
     }
     #[test]
     fn selected_collections_follow_the_nearest_parent_in_either_picker_order() {
@@ -380,7 +385,11 @@ mod tests {
             let result = discover(&selected);
             assert_eq!(result.projects.len(), 2);
             for project in result.projects {
-                let parent = if project.path == fs::canonicalize(&one).unwrap() { &f.0 } else { &nested };
+                let parent = if project.path == fs::canonicalize(&one).unwrap() {
+                    &f.0
+                } else {
+                    &nested
+                };
                 assert_eq!(project.collection, Some(fs::canonicalize(parent).unwrap()));
             }
         }
@@ -406,7 +415,12 @@ mod tests {
         let nested = root.join("packages/nested");
         let explicit = discover(&[nested, root]);
         assert_eq!(explicit.projects.len(), 2);
-        assert!(explicit.projects.iter().all(|project| project.collection.is_none()));
+        assert!(
+            explicit
+                .projects
+                .iter()
+                .all(|project| project.collection.is_none())
+        );
     }
     #[test]
     fn worktree_git_files_are_discovered_without_reinterpreting_them_as_collections() {

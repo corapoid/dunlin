@@ -261,6 +261,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .flex_shrink_0()
         .min_h(px(0.))
         .bg(p.panel)
+        .rounded_bl(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+        // Overflow masks are rectangular; keep scrolling row fills above the curved bottom.
+        .pb(px(dunlin_ui::scale::WORKSPACE_RADIUS))
         .border_r_1()
         .border_color(p.border)
         .flex()
@@ -303,6 +306,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         Diff::new(&view.diff)
             .line_number(true)
             .soft_wrap(false)
+            .rounded_br(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+            .pb(px(dunlin_ui::scale::WORKSPACE_RADIUS))
             .into_any_element()
     };
     div()

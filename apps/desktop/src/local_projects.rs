@@ -48,7 +48,7 @@ fn activate_import(was_empty: bool, single: bool, count: usize, same_navigation:
 }
 impl DunlinApp {
     pub(crate) fn import_local_folders(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
-        if self.local_import_running {
+        if self.local_import_running || self.backup.busy || self.backup.cloning {
             self.file_notice("Repository discovery is already running", cx);
             return;
         }
@@ -63,7 +63,7 @@ impl DunlinApp {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.local_import_running = false;
-                this.finish_project_import(discovery, single, Some(navigation), true, cx);
+                this.finish_project_import(discovery, single, Some(navigation), true, None, cx);
             });
         })
         .detach();
@@ -75,9 +75,20 @@ impl DunlinApp {
         single: bool,
         navigation: Option<u64>,
         trusted: bool,
+        target_group: Option<String>,
         cx: &mut Context<Self>,
     ) {
         let this = self;
+        if target_group
+            .as_ref()
+            .is_some_and(|id| !this.project_groups.iter().any(|g| &g.id == id))
+        {
+            this.file_notice(
+                "The selected group no longer exists. Reopen import and select a group.",
+                cx,
+            );
+            return;
+        }
         let mut existing = canonical_local_paths(&this.projects);
         let was_empty = this.projects.iter().all(|p| p.is_chat_space());
         let mut first = None;
@@ -89,6 +100,7 @@ impl DunlinApp {
             .projects
             .iter()
             .filter_map(|project| project.collection.as_ref())
+            .filter(|_| target_group.is_none())
         {
             if collections.contains_key(root) {
                 continue;
@@ -111,12 +123,14 @@ impl DunlinApp {
             collections.insert(root.clone(), Some(group.id));
         }
         for candidate in discovery.projects {
-            let group_id = candidate
-                .collection
-                .as_ref()
-                .and_then(|root| collections.get(root))
-                .cloned()
-                .flatten();
+            let group_id = target_group.clone().or_else(|| {
+                candidate
+                    .collection
+                    .as_ref()
+                    .and_then(|root| collections.get(root))
+                    .cloned()
+                    .flatten()
+            });
             if candidate.collection.is_some() && group_id.is_none() {
                 continue;
             }
@@ -269,7 +283,7 @@ pub(crate) fn language_badge(
             .id(format!("project-languages:{}", project.id))
             .flex()
             .items_center()
-            .justify_end()
+            .justify_start()
             .gap(px(4.))
             .child(dot(color, 5.0))
             .child(

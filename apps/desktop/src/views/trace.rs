@@ -89,7 +89,7 @@ pub(crate) fn render(
     let filter = this.trace_filter;
     let selected = this.selected_span.clone();
     let zoom = this.activity.trace_zoom.clamp(0.6, 1.8);
-    let row_h = trace_row_height(zoom);
+    let row_h = trace_row_height(zoom) * crate::workspace_text::scale(cx);
     let rows = crate::activity::trace_row_indices(&spans, &this.activity.spans_expanded, filter);
     let row_count = rows.len();
     let positions = Rc::new(crate::activity::trace_a11y_positions(&spans, &rows));
@@ -218,19 +218,25 @@ pub(crate) fn render(
         let active = filter == chip;
         let count = spans.iter().filter(|span| chip.matches(span.kind)).count();
         toolbar = toolbar.child(
-            segment_button(format!("trace-filter:{}", chip.label()), format!("{} {count}", chip.label()), active)
-                .accessibility_label(format!("Show {} trace spans", chip.label()))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.trace_filter = chip;
-                    this.activity_normalize_selection(cx);
-                })),
+            segment_button(
+                format!("trace-filter:{}", chip.label()),
+                format!("{} {count}", chip.label()),
+                active,
+            )
+            .accessibility_label(format!("Show {} trace spans", chip.label()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.trace_filter = chip;
+                this.activity_normalize_selection(cx);
+            })),
         );
     }
 
     toolbar = toolbar
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
-            dunlin_ui::button("trace-collapse-requests").icon(IconName::FoldVertical).label("Requests")
+            dunlin_ui::button("trace-collapse-requests")
+                .icon(IconName::FoldVertical)
+                .label("Requests")
                 .accessibility_label("Collapse request details")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.spans_expanded.clear();
@@ -238,7 +244,9 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            dunlin_ui::button("trace-expand-all").ghost().label("Expand all")
+            dunlin_ui::button("trace-expand-all")
+                .ghost()
+                .label("Expand all")
                 .accessibility_label("Expand all trace details")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.activity.spans_expanded =
@@ -396,7 +404,7 @@ pub(crate) fn render(
         .flex_1()
         .min_w(px(0.))
         .min_h(px(0.))
-        .bg(p.bg)
+        .bg(p.card)
         .child(toolbar)
         .child(body)
         .into_any_element()
@@ -586,8 +594,8 @@ fn span_row(
                         .gap(px(3.))
                         .child(
                             div()
-                                .text_size(px(11.5))
-                                .line_height(px(16.))
+                                .text_size(crate::workspace_text::size(11.5, cx))
+                                .line_height(crate::workspace_text::size(16., cx))
                                 .font_weight(
                                     if span.kind == SpanKind::Agent
                                         || crate::activity::is_request(span)
@@ -603,8 +611,8 @@ fn span_row(
                         )
                         .child(
                             div()
-                                .text_size(px(10.5))
-                                .line_height(px(14.))
+                                .text_size(crate::workspace_text::size(10.5, cx))
+                                .line_height(crate::workspace_text::size(14., cx))
                                 .font_family(dunlin_ui::theme::code_font())
                                 .text_color(p.muted_fg.opacity(0.75))
                                 .truncate()
@@ -839,33 +847,36 @@ fn span_detail(
                         .child("PARENT"),
                 )
                 .child(
-                    action_row("trace-parent", format!("Select parent span {}", parent.name))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(id) = &parent_id {
-                                this.selected_span = Some(id.clone());
-                                cx.notify();
-                            }
-                        }))
-                        .child(
-                            Icon::new(span_icon(parent.kind))
-                                .size(px(10.5))
-                                .text_color(span_color(p, parent.kind)),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .text_size(px(11.5))
-                                .text_color(p.fg.opacity(0.85))
-                                .truncate()
-                                .child(parent.name.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg)
-                                .child(format_ms(parent.duration_ms)),
-                        ),
+                    action_row(
+                        "trace-parent",
+                        format!("Select parent span {}", parent.name),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(id) = &parent_id {
+                            this.selected_span = Some(id.clone());
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        Icon::new(span_icon(parent.kind))
+                            .size(px(10.5))
+                            .text_color(span_color(p, parent.kind)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(11.5))
+                            .text_color(p.fg.opacity(0.85))
+                            .truncate()
+                            .child(parent.name.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .font_family(dunlin_ui::theme::code_font())
+                            .text_color(p.muted_fg)
+                            .child(format_ms(parent.duration_ms)),
+                    ),
                 ),
         );
     }
@@ -881,31 +892,34 @@ fn span_detail(
         for child in children.iter().take(5) {
             let child_id = child.id.clone();
             child_list = child_list.child(
-                action_row(format!("trace-child:{}", child.id), format!("Select child span {}", child.name))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.selected_span = Some(child_id.clone());
-                        cx.notify();
-                    }))
-                    .child(
-                        Icon::new(span_icon(child.kind))
-                            .size(px(9.5))
-                            .text_color(span_color(p, child.kind)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(11.0))
-                            .text_color(p.muted_fg)
-                            .truncate()
-                            .child(child.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.muted_fg.opacity(0.7))
-                            .child(format_ms(child.duration_ms)),
-                    ),
+                action_row(
+                    format!("trace-child:{}", child.id),
+                    format!("Select child span {}", child.name),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.selected_span = Some(child_id.clone());
+                    cx.notify();
+                }))
+                .child(
+                    Icon::new(span_icon(child.kind))
+                        .size(px(9.5))
+                        .text_color(span_color(p, child.kind)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.0))
+                        .text_color(p.muted_fg)
+                        .truncate()
+                        .child(child.name.clone()),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg.opacity(0.7))
+                        .child(format_ms(child.duration_ms)),
+                ),
             );
         }
         content = content.child(child_list);
@@ -917,14 +931,19 @@ fn span_detail(
             .items_center()
             .gap(px(5.))
             .child(
-                dunlin_ui::button("span-open-chat").primary().icon(IconName::MessageSquare).label("Open in chat")
+                dunlin_ui::button("span-open-chat")
+                    .primary()
+                    .icon(IconName::MessageSquare)
+                    .label("Open in chat")
                     .accessibility_label("Open this span in chat")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.open_span_in_chat(&span_id, cx);
                     })),
             )
             .child(
-                dunlin_ui::button("span-copy-json").icon(IconName::Copy).label("Copy JSON")
+                dunlin_ui::button("span-copy-json")
+                    .icon(IconName::Copy)
+                    .label("Copy JSON")
                     .accessibility_label("Copy span JSON")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !span_json.is_empty() {

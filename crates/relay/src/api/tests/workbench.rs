@@ -250,11 +250,27 @@ async fn remote_comparison_prepares_creates_grants_and_exposes_only_worktree_pro
 async fn relay_github_and_remote_context_keep_host_credentials_admin_scoped() {
     let f = Fixture::new();
     for endpoint in ["load", "runs", "jobs", "pull", "log", "prepare", "execute"] {
-        let (status, _) = f.post(&format!("/v1/github/{endpoint}"), Some(&f.token), json!({"project": f.project})).await;
+        let (status, _) = f
+            .post(
+                &format!("/v1/github/{endpoint}"),
+                Some(&f.token),
+                json!({"project": f.project}),
+            )
+            .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
-    for (token, expected) in [(None, StatusCode::UNAUTHORIZED), (Some(f.token.as_str()), StatusCode::FORBIDDEN), (Some(f.ungranted_token.as_str()), StatusCode::FORBIDDEN)] {
-        let (status, body) = f.post("/v1/github/metadata", token, json!({"project": f.project, "remote": "origin"})).await;
+    for (token, expected) in [
+        (None, StatusCode::UNAUTHORIZED),
+        (Some(f.token.as_str()), StatusCode::FORBIDDEN),
+        (Some(f.ungranted_token.as_str()), StatusCode::FORBIDDEN),
+    ] {
+        let (status, body) = f
+            .post(
+                "/v1/github/metadata",
+                token,
+                json!({"project": f.project, "remote": "origin"}),
+            )
+            .await;
         assert_eq!(status, expected, "{body}");
         assert!(!body.to_string().contains("do-not-leak"));
     }
@@ -300,9 +316,15 @@ async fn storage_is_project_granted_not_admin_only_and_includes_generated_folder
     fs::create_dir(f.root.join("node_modules")).unwrap();
     fs::write(f.root.join("node_modules/generated"), vec![1; 131_072]).unwrap();
     let path = format!("/v1/fs/storage?project={}", f.project);
-    for (token, expected) in [(None, StatusCode::UNAUTHORIZED), (Some(f.ungranted_token.as_str()), StatusCode::FORBIDDEN), (Some(f.token.as_str()), StatusCode::OK)] {
+    for (token, expected) in [
+        (None, StatusCode::UNAUTHORIZED),
+        (Some(f.ungranted_token.as_str()), StatusCode::FORBIDDEN),
+        (Some(f.token.as_str()), StatusCode::OK),
+    ] {
         let (status, body) = f.get_with_token(&path, token).await;
         assert_eq!(status, expected, "{body}");
-        if status == StatusCode::OK { assert!(body.as_u64().unwrap() >= 131_072); }
+        if status == StatusCode::OK {
+            assert!(body.as_u64().unwrap() >= 131_072);
+        }
     }
 }

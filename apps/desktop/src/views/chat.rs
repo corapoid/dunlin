@@ -5,11 +5,11 @@ use dunlin_agent::{PermissionChoice, PermissionKind, PlanItem, PlanStatus, ToolC
 use dunlin_domain::ToolStatus;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
-use dunlin_ui::component::{Disableable, Selectable, Sizable};
 use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::Textarea;
 use dunlin_ui::component::text::TextView;
 use dunlin_ui::component::tooltip::Tooltip;
+use dunlin_ui::component::{Disableable, Selectable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -36,7 +36,7 @@ pub(crate) fn render(
             .flex_col()
             .items_center()
             .justify_center()
-            .bg(p.bg)
+            .bg(p.card)
             .children(connection_problem)
             .children(trust_notice(this, cx))
             .child(
@@ -72,7 +72,7 @@ pub(crate) fn render(
         .flex_1()
         .min_w(px(0.))
         .min_h(px(0.))
-        .bg(p.bg)
+        .bg(p.card)
         .children(connection_problem)
         .children(trust_notice(this, cx))
         .child(messages)
@@ -272,8 +272,11 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                 this.chat_timestamps,
                 this.chat_duration,
             );
-            let speaker = timing.and_then(|timing| timing.speaker).unwrap_or_else(|| crate::harness::Speaker {
-                harness: this.session_harness(), model: None,
+            let speaker = timing.and_then(|timing| timing.speaker).unwrap_or_else(|| {
+                crate::harness::Speaker {
+                    harness: this.session_harness(),
+                    model: None,
+                }
             });
             inner = inner.child(agent_group(
                 &items[start..index],
@@ -301,7 +304,10 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     }
 
     #[cfg(debug_assertions)]
-    let inner = inner.relative().children(crate::workspace_ui_smoke::probe("conversation"));
+    let inner = inner
+        .relative()
+        .children(crate::workspace_ui_smoke::probe("conversation"));
+    let scroll_session = this.session().id.clone();
     let stream = div()
         .id("chat-stream")
         .flex_1()
@@ -309,27 +315,41 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .w_full()
         .overflow_y_scroll()
         .track_scroll(&this.chat_scroll.handle)
-        .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
-            let delta = event.delta.pixel_delta(px(16.)).y;
-            if delta > px(0.) {
-                this.chat_scroll.pause_following();
-                cx.notify();
-                return;
-            }
-            if delta == px(0.) {
-                return;
-            }
-            // Read the resulting offset after GPUI's default wheel handler.
-            // Sampling during normal renders would confuse growing content
-            // with the reader deliberately scrolling away from the live edge.
-            let app = cx.entity().downgrade();
-            window.defer(cx, move |_, cx| {
-                let _ = app.update(cx, |this, cx| {
-                    this.chat_scroll.user_scrolled();
+        .on_scroll_wheel(
+            cx.listener(move |this, event: &ScrollWheelEvent, window, cx| {
+                let delta = event.delta.pixel_delta(px(16.)).y;
+                let current = this.session().id == scroll_session;
+                if delta > px(0.) {
+                    if current {
+                        this.chat_scroll.pause_following();
+                    } else if let Some(scroll) =
+                        this.workbench.chat_scrolls.get_mut(&scroll_session)
+                    {
+                        scroll.pause_following();
+                    }
                     cx.notify();
+                    return;
+                }
+                if delta == px(0.) {
+                    return;
+                }
+                // Read the resulting offset after GPUI's default wheel handler.
+                // Sampling during normal renders would confuse growing content
+                // with the reader deliberately scrolling away from the live edge.
+                let app = cx.entity().downgrade();
+                let session = scroll_session.clone();
+                window.defer(cx, move |_, cx| {
+                    let _ = app.update(cx, |this, cx| {
+                        if this.session().id == session {
+                            this.chat_scroll.user_scrolled();
+                        } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&session) {
+                            scroll.user_scrolled();
+                        }
+                        cx.notify();
+                    });
                 });
-            });
-        }))
+            }),
+        )
         .px(px(22.))
         .py(px(18.))
         .flex()
@@ -587,14 +607,24 @@ fn agent_group(
                 let mut text_block = div()
                     .id(("agent-text", index))
                     .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("chat-reading-text")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
                     .pr(px(32.))
-                    .text_size(px(13.0))
+                    .text_size(crate::workspace_text::size(13., cx))
                     .line_height(relative(1.62))
                     .text_color(p.fg.opacity(0.92))
-                    .child(markdown_text(
-                        format!("response:{session}:{index}"),
-                        text.clone(),
-                    ));
+                    .child(
+                        markdown_text(format!("response:{session}:{index}"), text.clone())
+                            .text_size(crate::workspace_text::size(13., cx)),
+                    );
                 if !*streaming {
                     text_block = text_block.child(
                         icon_button(("agent-copy", index), IconName::Copy, "Copy response")
@@ -708,17 +738,41 @@ fn agent_group(
         .into_any_element()
 }
 
-fn markdown_text(id: String, text: String) -> TextView {
+pub(crate) fn markdown_text(id: String, text: String) -> TextView {
     TextView::markdown(id, text)
         .scrollable(false)
         .selectable(true)
         .on_link_click(|url, _, _, cx| {
-            if url::Url::parse(url)
-                .is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto"))
-            {
+            if response_link(url) {
                 cx.open_url(url);
             }
         })
+}
+
+fn response_link(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto"))
+}
+
+#[cfg(test)]
+mod link_tests {
+    #[test]
+    fn response_links_allow_web_and_email_but_not_local_files_or_executable_schemes() {
+        for value in [
+            "https://example.com/docs?q=1#section",
+            "http://localhost:3000",
+            "mailto:person@example.com",
+        ] {
+            assert!(super::response_link(value));
+        }
+        for value in [
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "data:text/html,hello",
+            "relative/path",
+        ] {
+            assert!(!super::response_link(value));
+        }
+    }
 }
 
 fn user_message(
@@ -751,7 +805,7 @@ fn user_message(
                 .gap(px(5.))
                 .child(
                     div()
-                        .text_size(px(13.0))
+                        .text_size(crate::workspace_text::size(13., cx))
                         .line_height(relative(1.6))
                         .text_color(p.fg)
                         .child(text.to_string()),
@@ -811,7 +865,12 @@ fn agent_avatar(harness: &str, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn agent_header(logo: bool, speaker: &crate::harness::Speaker, caption: Option<String>, p: &Palette) -> AnyElement {
+fn agent_header(
+    logo: bool,
+    speaker: &crate::harness::Speaker,
+    caption: Option<String>,
+    p: &Palette,
+) -> AnyElement {
     div()
         .flex()
         .items_center()
@@ -822,7 +881,10 @@ fn agent_header(logo: bool, speaker: &crate::harness::Speaker, caption: Option<S
                 .text_size(px(12.5))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(p.fg)
-                .child(crate::harness_brand::signature(&speaker.harness, speaker.model.as_deref())),
+                .child(crate::harness_brand::signature(
+                    &speaker.harness,
+                    speaker.model.as_deref(),
+                )),
         )
         .when_some(caption, |view, caption| {
             view.child(
@@ -848,7 +910,9 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette
         .overflow_hidden()
         .child(
             action_row("reasoning-card", "Toggle thought details")
-                .toggled(open).icon(IconName::Brain).label("Thought")
+                .toggled(open)
+                .icon(IconName::Brain)
+                .label("Thought")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.reasoning_open = !this.reasoning_open;
                     cx.notify();
@@ -954,106 +1018,107 @@ fn tool_card(
     let deletions = tool.deletions;
     let diff = tool.diff.clone();
 
-    let mut card = card_surface(*p)
-        .overflow_hidden()
+    let mut card = card_surface(*p).overflow_hidden().child(
+        action_row(
+            ("tool-card", index),
+            format!("Toggle tool details: {title}"),
+        )
+        .toggled(is_open)
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.expanded_tool = if this.expanded_tool == Some(index) {
+                None
+            } else {
+                Some(index)
+            };
+            cx.notify();
+        }))
         .child(
-            action_row(("tool-card", index), format!("Toggle tool details: {title}"))
-                .toggled(is_open)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.expanded_tool = if this.expanded_tool == Some(index) {
-                        None
-                    } else {
-                        Some(index)
-                    };
-                    cx.notify();
-                }))
+            div()
+                .size(px(22.))
+                .flex_shrink_0()
+                .rounded(px(6.))
+                .bg(p.muted)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(Icon::new(icon_name).size(px(12.)).text_color(p.muted_fg)),
+        )
+        .child(
+            div()
+                .text_size(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.fg)
+                .child(title),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .text_size(px(11.5))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .truncate()
+                .child(target),
+        )
+        .when(additions > 0 || deletions > 0, |this| {
+            this.child(
+                div()
+                    .text_size(px(11.0))
+                    .font_family(dunlin_ui::theme::code_font())
+                    .text_color(p.green)
+                    .child(format!("+{additions}")),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_family(dunlin_ui::theme::code_font())
+                    .text_color(p.red)
+                    .child(format!("−{deletions}")),
+            )
+        })
+        .child(
+            div()
+                .h(px(16.))
+                .px(px(5.))
+                .rounded_full()
+                .bg(status_soft)
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .when(status == ToolStatus::Running, |this| {
+                    this.child(
+                        Icon::new(IconName::LoaderCircle)
+                            .size(px(8.5))
+                            .text_color(status_color),
+                    )
+                })
                 .child(
                     div()
-                        .size(px(22.))
-                        .flex_shrink_0()
-                        .rounded(px(6.))
-                        .bg(p.muted)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(Icon::new(icon_name).size(px(12.)).text_color(p.muted_fg)),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.fg)
-                        .child(title),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .text_size(px(11.5))
+                        .text_size(px(10.5))
                         .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .truncate()
-                        .child(target),
-                )
-                .when(additions > 0 || deletions > 0, |this| {
-                    this.child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.green)
-                            .child(format!("+{additions}")),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.red)
-                            .child(format!("−{deletions}")),
-                    )
-                })
-                .child(
-                    div()
-                        .h(px(16.))
-                        .px(px(5.))
-                        .rounded_full()
-                        .bg(status_soft)
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .when(status == ToolStatus::Running, |this| {
-                            this.child(
-                                Icon::new(IconName::LoaderCircle)
-                                    .size(px(8.5))
-                                    .text_color(status_color),
-                            )
-                        })
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(status_color)
-                                .child(status.label().to_uppercase()),
-                        ),
-                )
-                .when(duration_ms > 0, |this| {
-                    this.child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.muted_fg)
-                            .child(format_ms(duration_ms)),
-                    )
-                })
-                .child(
-                    Icon::new(if is_open {
-                        IconName::ChevronDown
-                    } else {
-                        IconName::ChevronRight
-                    })
-                    .size(px(11.5))
-                    .text_color(p.muted_fg),
+                        .text_color(status_color)
+                        .child(status.label().to_uppercase()),
                 ),
-        );
+        )
+        .when(duration_ms > 0, |this| {
+            this.child(
+                div()
+                    .text_size(px(11.0))
+                    .font_family(dunlin_ui::theme::code_font())
+                    .text_color(p.muted_fg)
+                    .child(format_ms(duration_ms)),
+            )
+        })
+        .child(
+            Icon::new(if is_open {
+                IconName::ChevronDown
+            } else {
+                IconName::ChevronRight
+            })
+            .size(px(11.5))
+            .text_color(p.muted_fg),
+        ),
+    );
 
     if is_open {
         let mut body = div()
@@ -1139,11 +1204,12 @@ fn diff_block(index: usize, patch: &str, cx: &mut Context<DunlinApp>, p: &Palett
                 )
                 .child(div().flex_1())
                 .child(
-                    icon_button(("tool-diff-copy", index), IconName::Copy, "Copy diff")
-                        .on_click(cx.listener(move |this, _, _, cx| {
+                    icon_button(("tool-diff-copy", index), IconName::Copy, "Copy diff").on_click(
+                        cx.listener(move |this, _, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
                             this.set_notice("Copied the diff", cx);
-                        })),
+                        }),
+                    ),
                 ),
         )
         .child(
@@ -1498,14 +1564,24 @@ fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let running = this.harness.running;
     let has_text = !this.composer.read(cx).value().trim().is_empty();
     let queued = this.harness.queued_prompts();
     let queue_open = this.queue_open;
+    let placeholder = format!(
+        "Ask {} to build, fix, or explain…",
+        chat_controls::harness_label(this)
+    );
+    if this.composer.read(cx).presentation().placeholder().as_ref() != placeholder {
+        this.composer.update(cx, |state, cx| {
+            state.set_placeholder(placeholder, window, cx)
+        });
+    }
 
     let input = Textarea::new(&this.composer)
+        .text_size(crate::workspace_text::size(13., cx))
         .appearance(false)
         .bordered(false)
         .h(px(72.));
@@ -1516,13 +1592,8 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
     let card = div()
         .w_full()
         .rounded(px(20.))
-        .border_1()
-        .border_color(if running {
-            p.blue.opacity(0.45)
-        } else {
-            p.border_strong
-        })
-        .bg(p.card)
+        .bg(p.subtle)
+        .shadow_sm()
         .overflow_hidden()
         .child(
             div()
@@ -1534,10 +1605,7 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .items_center()
                 .gap(px(5.))
                 // GPUI overflow masks are rectangular; round this painted child too.
-                .rounded_t(px(19.))
-                .bg(p.subtle)
-                .border_b_1()
-                .border_color(p.border)
+                .rounded_t(px(20.))
                 .when(this.git_history.cancel_check.is_some(), |bar| {
                     bar.child(
                         dunlin_ui::button("composer-stop-check")
@@ -1553,11 +1621,13 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                 .when(!queued.is_empty(), |this| {
                     this.child(
                         dunlin_ui::button("composer-queue")
-                            .warning().outline()
+                            .warning()
+                            .outline()
                             .icon(IconName::Clock3)
                             .label(format!("{} queued", queued.len()))
                             .accessibility_label("Toggle prompt queue")
-                            .selected(queue_open).toggled(queue_open)
+                            .selected(queue_open)
+                            .toggled(queue_open)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.queue_open = !this.queue_open;
                                 cx.notify();
@@ -1592,27 +1662,39 @@ fn composer(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinA
                         .gap(px(5.))
                         .child(model)
                         .child(
-                            icon_button("composer-send", if running {
-                                IconName::CircleStop
-                            } else {
-                                IconName::ArrowUp
-                            }, if running { "Stop response" } else { "Send prompt" })
-                                .primary()
-                                .when(running, |button| button.info())
-                                .disabled(!running && !has_text)
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            icon_button(
+                                "composer-send",
+                                if running {
+                                    IconName::CircleStop
+                                } else {
+                                    IconName::ArrowUp
+                                },
+                                if running {
+                                    "Stop response"
+                                } else {
+                                    "Send prompt"
+                                },
+                            )
+                            .primary()
+                            .when(running, |button| button.info())
+                            .disabled(!running && !has_text)
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     if this.harness.running {
                                         this.cancel_turn(cx);
                                     } else {
                                         this.send_prompt(window, cx);
                                     }
-                                })),
+                                },
+                            )),
                         ),
                 ),
         );
 
     #[cfg(debug_assertions)]
-    let card = card.relative().children(crate::workspace_ui_smoke::probe("composer"));
+    let card = card
+        .relative()
+        .children(crate::workspace_ui_smoke::probe("composer"));
     div()
         .flex_shrink_0()
         .w_full()
@@ -1697,24 +1779,37 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                         })),
                 )
                 .child(
-                    icon_button(("queued-down", index), IconName::ChevronDown, "Move prompt down")
-                        .disabled(last)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.reorder_queued_prompt(id, 1, cx);
-                        })),
+                    icon_button(
+                        ("queued-down", index),
+                        IconName::ChevronDown,
+                        "Move prompt down",
+                    )
+                    .disabled(last)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.reorder_queued_prompt(id, 1, cx);
+                    })),
                 )
                 .child(
-                    icon_button(("queued-edit", index), IconName::Pencil, "Edit queued prompt")
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.edit_queued_prompt(id, window, cx);
-                        })),
+                    icon_button(
+                        ("queued-edit", index),
+                        IconName::Pencil,
+                        "Edit queued prompt",
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.edit_queued_prompt(id, window, cx);
+                    })),
                 )
                 .child(
-                    icon_button(("queued-remove", index), IconName::X, "Remove queued prompt")
-                        .danger().outline()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.remove_queued_prompt(id, cx);
-                        })),
+                    icon_button(
+                        ("queued-remove", index),
+                        IconName::X,
+                        "Remove queued prompt",
+                    )
+                    .danger()
+                    .outline()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.remove_queued_prompt(id, cx);
+                    })),
                 ),
         );
     }
@@ -1746,17 +1841,21 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                 )
                 .child(div().flex_1())
                 .child(
-                    dunlin_ui::button("queue-clear").danger().outline().label("Clear")
+                    dunlin_ui::button("queue-clear")
+                        .danger()
+                        .outline()
+                        .label("Clear")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.clear_queued_prompts(cx);
                         })),
                 )
                 .child(
-                    icon_button("queue-close", IconName::X, "Close prompt queue")
-                        .on_click(cx.listener(|this, _, _, cx| {
+                    icon_button("queue-close", IconName::X, "Close prompt queue").on_click(
+                        cx.listener(|this, _, _, cx| {
                             this.queue_open = false;
                             cx.notify();
-                        })),
+                        }),
+                    ),
                 ),
         )
         .child(rows)
@@ -1770,7 +1869,9 @@ fn attachment_button(
     action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
 ) -> AnyElement {
     dunlin_ui::button(format!("composer-action:{label}"))
-        .ghost().icon(icon_name).label(label.to_owned())
+        .ghost()
+        .icon(icon_name)
+        .label(label.to_owned())
         .on_click(cx.listener(move |this, _, window, cx| {
             action(this, window, cx);
         }))

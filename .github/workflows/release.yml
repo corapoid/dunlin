@@ -249,8 +249,62 @@ jobs:
           fi
           rm -f "$RUNNER_TEMP/certificate.p12"
 
-  publish:
+  relay-linux:
     needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Install static Linux toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup target add "${{ matrix.target }}"
+      - name: Test and package Linux relay
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: |
+          cargo test -p dunlin-relay -p dunlin-workspace -p dunlin-vault --locked
+          CC=musl-gcc cargo build --release -p dunlin-relay --target "$TARGET" --locked
+          "target/$TARGET/release/dunlin-relay" --help
+          mkdir -p dist
+          tar -czf "dist/dunlin-relay-$VERSION-linux-$ARCH.tar.gz" -C "target/$TARGET/release" dunlin-relay
+          python3 scripts/verify-relay-release.py "dist/dunlin-relay-$VERSION-linux-$ARCH.tar.gz" --arch "$ARCH"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: linux-relay-${{ matrix.arch }}
+          if-no-files-found: error
+          path: dist/*.tar.gz
+
+  publish:
+    needs: [release, relay-linux]
     runs-on: macos-15
     timeout-minutes: 10
     permissions:
@@ -273,6 +327,22 @@ jobs:
           python3 scripts/release_gate.py metadata --version "$VERSION"
           python3 scripts/release_gate.py verify --version "$VERSION" --directory dist \
             --app-name "$APP_NAME" --bundle-id "$BUNDLE_ID"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: linux-relay-*
+          merge-multiple: true
+          path: dist
+      - name: Verify server distribution and bootstrap scripts
+        run: |
+          python3 scripts/verify-relay-release.py "dist/dunlin-relay-$VERSION-linux-x86_64.tar.gz" --arch x86_64
+          python3 scripts/verify-relay-release.py "dist/dunlin-relay-$VERSION-linux-arm64.tar.gz" --arch arm64
+          bash -n scripts/install-relay.sh scripts/install-harness.sh
+          python3 -m unittest discover -s scripts/tests -p 'test_relay_installer.py' -v
+          cp scripts/install-relay.sh scripts/install-harness.sh dist/
+          (cd dist && shasum -a 256 "dunlin-relay-$VERSION-macos-arm64.tar.gz" \
+            "dunlin-relay-$VERSION-linux-x86_64.tar.gz" "dunlin-relay-$VERSION-linux-arm64.tar.gz" \
+            install-relay.sh install-harness.sh) > dist/RELAY-SHA256SUMS
+          printf '\nServer setup: macOS arm64 and Linux x86_64/arm64 relay archives, interactive bootstrap and RELAY-SHA256SUMS are included. See docs/relay-setup.md for trust boundaries and acceptance requirements.\n' >> dist/release-notes.md
       - name: Publish only verified existing tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -285,7 +355,10 @@ jobs:
             "dist/$APP_NAME-$VERSION-macos-arm64.zip" \
             "dist/$APP_NAME-$VERSION-macos-arm64.dmg" \
             "dist/$APP_NAME-$VERSION-macos-arm64.pkg" \
-            "dist/dunlin-relay-$VERSION-macos-arm64.tar.gz" \
+             "dist/dunlin-relay-$VERSION-macos-arm64.tar.gz" \
+             "dist/dunlin-relay-$VERSION-linux-x86_64.tar.gz" \
+             "dist/dunlin-relay-$VERSION-linux-arm64.tar.gz" \
+             dist/install-relay.sh dist/install-harness.sh dist/RELAY-SHA256SUMS \
             dist/SHA256SUMS \
             --title "$APP_NAME $VERSION" \
             --notes-file dist/release-notes.md \

@@ -4,10 +4,38 @@ use serde::Deserialize;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
-    time::Duration,
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
 
 pub const MAX_RESULTS: usize = 1000;
+
+pub struct PreviewRequest {
+    pub(crate) cancelled: AtomicBool,
+    started: Instant,
+}
+impl Default for PreviewRequest {
+    fn default() -> Self {
+        Self {
+            cancelled: AtomicBool::new(false),
+            started: Instant::now(),
+        }
+    }
+}
+impl PreviewRequest {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+    }
+    pub(crate) fn remaining(&self) -> Result<Duration, String> {
+        if self.cancelled.load(Ordering::Relaxed) {
+            return Err("Search cancelled".into());
+        }
+        Duration::from_secs(30)
+            .checked_sub(self.started.elapsed())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(|| "Repository search timed out. Narrow the query and try again.".into())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Source {
@@ -66,7 +94,20 @@ pub fn status() -> CliStatus {
     }
 }
 
-fn api<T: serde::de::DeserializeOwned>(endpoint: &str, fields: &[String]) -> Result<T, String> {
+pub(crate) fn api<T: serde::de::DeserializeOwned>(
+    endpoint: &str,
+    fields: &[String],
+) -> Result<T, String> {
+    let bytes = request(endpoint, fields, false, &PreviewRequest::default())?;
+    serde_json::from_slice(&bytes).map_err(|_| "Invalid GitHub repository response".into())
+}
+
+fn request(
+    endpoint: &str,
+    fields: &[String],
+    include_headers: bool,
+    search: &PreviewRequest,
+) -> Result<Vec<u8>, String> {
     let mut command = cli_command();
     command.args([
         "api",
@@ -81,11 +122,15 @@ fn api<T: serde::de::DeserializeOwned>(endpoint: &str, fields: &[String]) -> Res
     for field in fields {
         command.arg("-f").arg(field);
     }
-    let (status, bytes) = process::run(command, None, Duration::from_secs(30), super::LIMIT)?;
+    if include_headers {
+        command.arg("--include");
+    }
+    let (status, bytes) = process::run_cancellable(command, None, search.remaining()?, super::LIMIT, &search.cancelled)
+        .map_err(|_| "GitHub repository lookup unavailable, cancelled or timed out. Check connectivity or narrow the query.".to_string())?;
     if !status.success() {
         return Err("GitHub request failed. Check the query, gh auth login, repository permissions and rate limits.".into());
     }
-    serde_json::from_slice(&bytes).map_err(|_| "Invalid GitHub repository response".into())
+    Ok(bytes)
 }
 #[derive(Deserialize)]
 struct Repo {
@@ -97,18 +142,69 @@ struct Page {
     incomplete_results: bool,
     items: Vec<Repo>,
 }
+
+fn search_page(query: &str, page: usize, search: &PreviewRequest) -> Result<(Page, bool), String> {
+    let bytes = request(
+        "search/repositories",
+        &[
+            format!("q={query}"),
+            "per_page=100".into(),
+            format!("page={page}"),
+        ],
+        true,
+        search,
+    )?;
+    let (end, separator) = bytes
+        .windows(4)
+        .position(|part| part == b"\r\n\r\n")
+        .map(|end| (end, 4))
+        .or_else(|| {
+            bytes
+                .windows(2)
+                .position(|part| part == b"\n\n")
+                .map(|end| (end, 2))
+        })
+        .ok_or("Missing GitHub response headers")?;
+    let headers =
+        std::str::from_utf8(&bytes[..end]).map_err(|_| "Invalid GitHub response headers")?;
+    if !headers.starts_with("HTTP/") {
+        return Err("Invalid GitHub response headers".into());
+    }
+    let next = headers
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .filter(|(name, _)| name.eq_ignore_ascii_case("link"))
+        .flat_map(|(_, value)| value.split(','))
+        .any(|link| {
+            link.split(';')
+                .skip(1)
+                .any(|part| part.trim() == "rel=\"next\"")
+        });
+    let result = serde_json::from_slice(&bytes[end + separator..])
+        .map_err(|_| "Invalid GitHub repository response")?;
+    Ok((result, next))
+}
 fn valid_name(name: &str) -> bool {
     let parts: Vec<_> = name.split('/').collect();
     parts.len() == 2 && parts.iter().all(|part| component(part))
 }
 
 pub fn preview(source: &Source) -> Result<Vec<String>, String> {
+    preview_cancellable(source, &PreviewRequest::default())
+}
+
+pub fn preview_cancellable(
+    source: &Source,
+    search: &PreviewRequest,
+) -> Result<Vec<String>, String> {
     match source {
         Source::Repository(name) => {
             if !valid_name(name) {
                 return Err("Invalid GitHub repository name".into());
             }
-            let repo: Repo = api(&format!("repos/{name}"), &[])?;
+            let repo: Repo =
+                serde_json::from_slice(&request(&format!("repos/{name}"), &[], false, search)?)
+                    .map_err(|_| "Invalid GitHub repository response")?;
             if !valid_name(&repo.full_name) {
                 return Err("Invalid GitHub repository name".into());
             }
@@ -119,25 +215,12 @@ pub fn preview(source: &Source) -> Result<Vec<String>, String> {
             let mut seen = HashSet::new();
             let mut expected = None;
             for page in 1..=10 {
-                let result: Page = api(
-                    "search/repositories",
-                    &[
-                        format!("q={query}"),
-                        "per_page=100".into(),
-                        format!("page={page}"),
-                    ],
-                )?;
+                let (result, next) = search_page(query, page, search)?;
                 if result.incomplete_results {
                     return Err(
                         "GitHub returned incomplete results. Narrow the filter and preview again."
                             .into(),
                     );
-                }
-                if result.total_count > MAX_RESULTS {
-                    return Err(format!(
-                        "{} repositories match. Narrow the filter to at most {MAX_RESULTS} repositories.",
-                        result.total_count
-                    ));
                 }
                 if expected.is_some_and(|count| count != result.total_count) {
                     return Err("Search results changed. Preview again before importing.".into());
@@ -145,6 +228,9 @@ pub fn preview(source: &Source) -> Result<Vec<String>, String> {
                 expected = Some(result.total_count);
                 if result.items.len() > 100 {
                     return Err("Oversized GitHub search page".into());
+                }
+                if next && result.items.is_empty() {
+                    return Err("Incomplete GitHub search results. Preview again.".into());
                 }
                 for repo in result.items {
                     if !valid_name(&repo.full_name) || !seen.insert(repo.full_name.to_lowercase()) {
@@ -154,11 +240,14 @@ pub fn preview(source: &Source) -> Result<Vec<String>, String> {
                     }
                     repos.push(repo.full_name);
                 }
-                if repos.len() == result.total_count {
+                // Match gh: Link pagination, not total_count, determines the actual result set.
+                if !next {
                     return Ok(repos);
                 }
-                if repos.len() > result.total_count || repos.len() < page * 100 {
-                    return Err("Incomplete GitHub search results. Preview again.".into());
+                if page == MAX_RESULTS / 100 {
+                    return Err(format!(
+                        "Search exceeds the 10-page limit (up to {MAX_RESULTS} repositories). Narrow the filter and search again."
+                    ));
                 }
             }
             Err("Incomplete GitHub search results. Narrow the filter.".into())
@@ -170,21 +259,40 @@ pub fn clone_repository(name: &str, destination: &Path) -> Result<PathBuf, Strin
     if !valid_name(name) {
         return Err("Invalid GitHub repository name".into());
     }
+    clone_with(cli_command(), "github.com", name, destination)
+}
+
+pub fn clone_with(
+    mut command: std::process::Command,
+    host: &str,
+    name: &str,
+    destination: &Path,
+) -> Result<PathBuf, String> {
+    if !matches!(host, "github.com" | "gitlab.com")
+        || name.split('/').count() < 2
+        || !name.split('/').all(component)
+    {
+        return Err("Invalid hosting repository path".into());
+    }
     if !destination.is_absolute() {
         return Err("Choose an absolute destination folder".into());
     }
     std::fs::create_dir_all(destination).map_err(|e| format!("Cannot create destination: {e}"))?;
     let destination = std::fs::canonicalize(destination).map_err(|e| e.to_string())?;
-    let (owner, repo) = name.split_once('/').unwrap();
-    let parent = destination.join(owner);
-    match std::fs::create_dir(&parent) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(format!("Cannot create owner folder: {e}")),
-    }
-    if !std::fs::symlink_metadata(&parent).is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
-    {
-        return Err("The owner folder must be a real directory, not a symlink".into());
+    let (namespace, repo) = name.rsplit_once('/').unwrap();
+    let mut parent = destination.clone();
+    for part in namespace.split('/') {
+        parent.push(part);
+        match std::fs::create_dir(&parent) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(format!("Cannot create owner folder: {e}")),
+        }
+        if !std::fs::symlink_metadata(&parent)
+            .is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
+        {
+            return Err("The owner folder must be a real directory, not a symlink".into());
+        }
     }
     let path = parent.join(repo);
     // Reserve the name atomically. Never reuse or delete an existing checkout.
@@ -194,11 +302,10 @@ pub fn clone_repository(name: &str, destination: &Path) -> Result<PathBuf, Strin
             path.display()
         )
     })?;
-    let mut command = cli_command();
     command
         .current_dir(&destination)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .args(["repo", "clone", &format!("https://github.com/{name}")])
+        .args(["repo", "clone", &format!("https://{host}/{name}")])
         .arg(&path)
         .args([
             "--",
@@ -211,7 +318,7 @@ pub fn clone_repository(name: &str, destination: &Path) -> Result<PathBuf, Strin
     let result = process::run(command, None, Duration::from_secs(600), super::LIMIT);
     if !result.is_ok_and(|(status, _)| status.success()) || !crate::git::is_repository_root(&path) {
         return Err(format!(
-            "Clone failed for {name}. Any partial files remain at {}; inspect them before retrying. Check gh authentication, Git credentials and disk space.",
+            "Clone failed for {name}. Any partial files remain at {}; inspect them before retrying. Check hosting CLI authentication, Git credentials and disk space.",
             path.display()
         ));
     }
@@ -221,6 +328,18 @@ pub fn clone_repository(name: &str, destination: &Path) -> Result<PathBuf, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preview_deadline_is_shared_across_pages_and_cancellation_is_immediate() {
+        let request = PreviewRequest::default();
+        assert!(request.remaining().unwrap() <= Duration::from_secs(30));
+        request.cancel();
+        assert_eq!(request.remaining().unwrap_err(), "Search cancelled");
+        let expired = PreviewRequest {
+            cancelled: AtomicBool::new(false),
+            started: Instant::now() - Duration::from_secs(31),
+        };
+        assert!(expired.remaining().unwrap_err().contains("timed out"));
+    }
     #[test]
     fn parses_urls_without_inventing_a_filter_language() {
         for value in [

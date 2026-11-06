@@ -174,11 +174,24 @@ pub(crate) struct ParkedRuntime {
     pub state: HarnessState,
 }
 
-pub(crate) fn status_label(state: &HarnessState, waiting: bool) -> (&'static str, dunlin_ui::assets::IconName) {
+pub(crate) fn status_label(
+    state: &HarnessState,
+    waiting: bool,
+) -> (&'static str, dunlin_ui::assets::IconName) {
     use dunlin_ui::assets::IconName;
-    if state.running { return if waiting { ("Waiting for permission", IconName::ShieldCheck) } else { ("Working", IconName::LoaderCircle) }; }
-    if state.local_session_loading { return ("Loading session…", IconName::LoaderCircle); }
-    if state.mode_changing || state.model_changing { return ("Updating agent…", IconName::LoaderCircle); }
+    if state.running {
+        return if waiting {
+            ("Waiting for permission", IconName::ShieldCheck)
+        } else {
+            ("Working", IconName::LoaderCircle)
+        };
+    }
+    if state.local_session_loading {
+        return ("Loading session…", IconName::LoaderCircle);
+    }
+    if state.mode_changing || state.model_changing {
+        return ("Updating agent…", IconName::LoaderCircle);
+    }
     match state.status {
         HarnessStatus::Ready { .. } => ("Ready", IconName::Check),
         HarnessStatus::Starting => ("Connecting…", IconName::LoaderCircle),
@@ -196,10 +209,15 @@ mod status_tests {
         assert_eq!(super::status_label(&state, false).0, "Offline");
         state.running = true;
         assert_eq!(super::status_label(&state, false).0, "Working");
-        assert_eq!(super::status_label(&state, true).0, "Waiting for permission");
-        state.running = false; state.local_session_loading = true;
+        assert_eq!(
+            super::status_label(&state, true).0,
+            "Waiting for permission"
+        );
+        state.running = false;
+        state.local_session_loading = true;
         assert_eq!(super::status_label(&state, false).0, "Loading session…");
-        state.local_session_loading = false; state.status = super::HarnessStatus::Failed("failure".into());
+        state.local_session_loading = false;
+        state.status = super::HarnessStatus::Failed("failure".into());
         assert_eq!(super::status_label(&state, false).0, "Connection failed");
     }
 }
@@ -401,6 +419,10 @@ impl DunlinApp {
     }
     /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
+        if self.group_cleanup.busy {
+            self.file_notice("Wait for generated-folder cleanup to finish", cx);
+            return;
+        }
         if self.harness.status.is_busy() {
             return;
         }
@@ -895,7 +917,9 @@ impl DunlinApp {
         self.sessions = sessions;
         self.selected_session = selected;
         for session in &mut self.sessions {
-            if session.id == previous_id { session.id = id.clone(); }
+            if session.id == previous_id {
+                session.id = id.clone();
+            }
             if let Some(updated) = self.all_sessions.iter().find(|s| s.id == session.id) {
                 *session = updated.clone();
             }
@@ -915,36 +939,77 @@ impl DunlinApp {
         let mut project = self.project().clone();
         project.id = "mock-remote-tabs".into();
         project.path = "/mock/remote-tabs".into();
-        project.remote = Some(dunlin_domain::RemoteProject { host_id: "no-network-fixture".into(), project_id: "mock-project".into(), path: project.path.clone() });
-        self.store.as_ref().unwrap().upsert_project(&project).unwrap();
+        project.remote = Some(dunlin_domain::RemoteProject {
+            host_id: "no-network-fixture".into(),
+            project_id: "mock-project".into(),
+            path: project.path.clone(),
+        });
+        self.store
+            .as_ref()
+            .unwrap()
+            .upsert_project(&project)
+            .unwrap();
         let mut session = crate::app::blank_session(&project.id, "OpenCode", None);
         session.id = "pending-mock-remote".into();
-        session.origin = dunlin_domain::SessionOrigin::Remote { host_id: "no-network-fixture".into() };
+        session.origin = dunlin_domain::SessionOrigin::Remote {
+            host_id: "no-network-fixture".into(),
+        };
         let pending = session.id.clone();
         let project_id = project.id.clone();
         let generation = next_generation();
-        self.parked_runtimes.insert(pending.clone(), ParkedRuntime {
-            project: project.id.clone(), root: project.path.clone(),
-            state: HarnessState { generation, ..Default::default() },
-        });
+        self.parked_runtimes.insert(
+            pending.clone(),
+            ParkedRuntime {
+                project: project.id.clone(),
+                root: project.path.clone(),
+                state: HarnessState {
+                    generation,
+                    ..Default::default()
+                },
+            },
+        );
         self.projects.push(project);
         self.sessions.push(session.clone());
         self.all_sessions.push(session);
         self.workbench.chat_tabs.push(pending.clone());
-        self.project_session_selections.insert(project_id.clone(), pending.clone());
-        self.route_harness_event(generation, HarnessEvent::SessionCreated { session_id: "mock-remote-created".into() }, cx);
+        self.project_session_selections
+            .insert(project_id.clone(), pending.clone());
+        self.route_harness_event(
+            generation,
+            HarnessEvent::SessionCreated {
+                session_id: "mock-remote-created".into(),
+            },
+            cx,
+        );
         assert!(!self.parked_runtimes.contains_key(&pending));
         assert!(self.parked_runtimes.contains_key("mock-remote-created"));
-        assert!(self.workbench.chat_tabs.iter().any(|id| id == "mock-remote-created"));
+        assert!(
+            self.workbench
+                .chat_tabs
+                .iter()
+                .any(|id| id == "mock-remote-created")
+        );
         assert!(self.sessions.iter().any(|s| s.id == "mock-remote-created"));
-        assert_eq!(self.project_session_selections.get(&project_id).map(String::as_str), Some("mock-remote-created"));
+        assert_eq!(
+            self.project_session_selections
+                .get(&project_id)
+                .map(String::as_str),
+            Some("mock-remote-created")
+        );
         for id in ["unrelated-session", "mock-remote-created"] {
-            self.route_harness_event(generation, HarnessEvent::Update {
-                session_id: id.into(), update: HarnessUpdate::AgentMessage(id.into()),
-            }, cx);
+            self.route_harness_event(
+                generation,
+                HarnessEvent::Update {
+                    session_id: id.into(),
+                    update: HarnessUpdate::AgentMessage(id.into()),
+                },
+                cx,
+            );
         }
         let runtime = &self.parked_runtimes["mock-remote-created"].state;
-        assert!(runtime.transcript.iter().any(|item| matches!(item, ChatItem::AgentText { text, .. } if text == "mock-remote-created")));
+        assert!(runtime.transcript.iter().any(
+            |item| matches!(item, ChatItem::AgentText { text, .. } if text == "mock-remote-created")
+        ));
         assert!(!runtime.transcript.iter().any(|item| matches!(item, ChatItem::AgentText { text, .. } if text.contains("unrelated-session"))));
         assert_eq!(self.session().id, foreground);
         assert_eq!(self.harness.generation, foreground_generation);
@@ -954,7 +1019,9 @@ impl DunlinApp {
         self.all_sessions.retain(|s| s.project_id != project_id);
         self.sessions.retain(|s| s.project_id != project_id);
         self.project_session_selections.remove(&project_id);
-        self.workbench.chat_tabs.retain(|id| id != "mock-remote-created");
+        self.workbench
+            .chat_tabs
+            .retain(|id| id != "mock-remote-created");
     }
 
     fn handle_background_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
@@ -1078,6 +1145,10 @@ impl DunlinApp {
 
     /// Send the composer contents to the active harness, connecting lazily.
     pub(crate) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.group_cleanup.busy {
+            self.file_notice("Wait for generated-folder cleanup to finish", cx);
+            return;
+        }
         if let Err(e) = self.budget_gate() {
             self.file_notice(format!("Task budget: {e}"), cx);
             return;
@@ -1433,7 +1504,10 @@ impl DunlinApp {
         if self.project().is_remote() && self.remote_sessions_loading {
             return;
         }
-        if self.harness.local_session_loading || self.harness.session_metadata_pending || self.harness.status.is_busy() {
+        if self.harness.local_session_loading
+            || self.harness.session_metadata_pending
+            || self.harness.status.is_busy()
+        {
             self.set_notice("Wait for the harness to finish connecting", cx);
             return;
         }
@@ -1444,7 +1518,9 @@ impl DunlinApp {
         let title = self.session().title.clone();
         if !self.restore_runtime(&session_id) {
             self.load_transcript(&session_id);
-            if self.auto_connect { self.connect_harness(cx); }
+            if self.auto_connect {
+                self.connect_harness(cx);
+            }
         }
         self.refresh_mcp(cx);
         self.refresh_providers(cx);
@@ -1555,7 +1631,11 @@ impl DunlinApp {
         if sent {
             let speaker = Speaker {
                 harness: self.session_harness(),
-                model: self.harness.models.as_ref().map(|models| models.label().to_string()),
+                model: self
+                    .harness
+                    .models
+                    .as_ref()
+                    .map(|models| models.label().to_string()),
             };
             let index = self.harness.transcript.iter().position(|item| matches!(item, ChatItem::User { text: body, at_ms, timing: None } if body == &text && *at_ms == prompt.created_at_ms));
             if let Some(index) = index {
@@ -1633,7 +1713,7 @@ impl DunlinApp {
                 self.harness.restarts = 0;
                 self.notice = Some(format!("{agent} {version} connected over ACP"));
                 self.refresh_providers(cx);
-                self.refresh_usage(cx);
+                self.ensure_usage(cx);
                 if self.project().is_remote()
                     && let Some(action) = self.harness.pending_remote_session.take()
                 {
@@ -1724,7 +1804,9 @@ impl DunlinApp {
                 if self.is_current_session(&session_id) {
                     self.apply_models(state);
                     self.ensure_usage(cx);
-                    if !self.harness.pending_prompts.is_empty() { self.dispatch_pending_prompt(cx); }
+                    if !self.harness.pending_prompts.is_empty() {
+                        self.dispatch_pending_prompt(cx);
+                    }
                 }
             }
             HarnessEvent::ModelChangeFailed {
@@ -1742,7 +1824,9 @@ impl DunlinApp {
                     // Session metadata arrives after the session id: sign and send
                     // only once the agent's initial model/mode snapshot is known.
                     self.harness.session_metadata_pending = false;
-                    if !self.harness.pending_prompts.is_empty() { self.dispatch_pending_prompt(cx); }
+                    if !self.harness.pending_prompts.is_empty() {
+                        self.dispatch_pending_prompt(cx);
+                    }
                 }
             }
             HarnessEvent::ModeChangeFailed {
@@ -1824,7 +1908,7 @@ impl DunlinApp {
                     self.save_current_transcript();
                     self.refresh_workspace_after_turn(cx);
                     self.refresh_git_status(cx);
-                    self.refresh_usage(cx);
+                    self.ensure_usage(cx);
                     self.refresh_mcp(cx);
                     self.dispatch_pending_prompt(cx);
                 }
@@ -2664,6 +2748,29 @@ pub(crate) fn custom_harness_configured(command: &str) -> bool {
 /// Harnesses the user can pick in the composer. The complete catalog stays in
 /// Settings; here we only advertise installed adapters and a configured Custom
 /// ACP command. An uninstalled adapter must not reappear in the short picker.
+impl DunlinApp {
+    pub(crate) fn harness_visible(&self, name: &str) -> bool {
+        !self.hidden_harnesses.iter().any(|hidden| hidden == name)
+    }
+
+    pub(crate) fn visible_harness_names(&self) -> Vec<String> {
+        configured_harness_names(&self.custom_harness_command)
+            .into_iter()
+            .filter(|name| self.harness_visible(name))
+            .collect()
+    }
+
+    pub(crate) fn toggle_harness_visibility(&mut self, name: &str, cx: &mut Context<Self>) {
+        if self.harness_visible(name) {
+            self.hidden_harnesses.push(name.to_owned());
+        } else {
+            self.hidden_harnesses.retain(|hidden| hidden != name);
+        }
+        self.persist_settings(cx);
+        cx.notify();
+    }
+}
+
 pub(crate) fn configured_harness_names(custom: &str) -> Vec<String> {
     let mut names = crate::harness_discovery::catalog_names()
         .filter(|name| command_available(&harness_command(name, "")))

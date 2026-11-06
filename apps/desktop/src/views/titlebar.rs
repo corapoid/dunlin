@@ -1,14 +1,9 @@
 //! Custom window title bar: brand, project breadcrumb, primary view switcher
 //! and the quiet utility cluster on the right.
 
-use std::time::Duration;
-
 use dunlin_domain::{MainView, SidebarSection};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::{
-    ActiveTheme, Disableable, Icon, Sizable, TitleBar,
-    button::ButtonVariants,
-};
+use dunlin_ui::component::{Disableable, Icon, TitleBar, button::ButtonVariants};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -33,7 +28,12 @@ pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
         || this.git_history.is_active_for(this.project())
     {
         Switcher::Git
-    } else if this.workbench.show_file {
+    } else if this.workbench.show_file
+        || matches!(
+            this.current_workspace_tab(),
+            None | Some(crate::workspace_panes::TabKey::Terminal(_))
+        )
+    {
         Switcher::None
     } else {
         Switcher::Agent
@@ -46,7 +46,6 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let compact = window.viewport_size().width < px(1050.);
     let has_projects = !this.projects.is_empty();
     let dashboard = this.section == SidebarSection::Dashboard;
     let security = this.section == SidebarSection::Security && this.security_enabled;
@@ -59,30 +58,60 @@ pub(crate) fn render(
 
     let left = div()
         .flex_1()
+        .h_full()
         .min_w(px(0.))
         .flex()
         .items_center()
         .gap(px(8.))
-        .when(has_projects, |bar| bar.child(
-            dunlin_ui::button("title-sidebar").ghost()
-                .icon(if sidebar_collapsed { IconName::PanelLeftOpen } else { IconName::PanelLeftClose })
-                .accessibility_label("Toggle sidebar")
+        .when(has_projects, |bar| {
+            bar.child(
+                navigation_button(
+                    "title-sidebar",
+                    if sidebar_collapsed {
+                        IconName::PanelLeftOpen
+                    } else {
+                        IconName::PanelLeftClose
+                    },
+                    "Toggle sidebar",
+                )
+                .size(px(28.))
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("title-sidebar")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.sidebar_collapsed = !this.sidebar_collapsed;
-                    this.persist_settings(cx); cx.notify();
-                }))
-        ))
+                    this.persist_settings(cx);
+                    cx.notify();
+                })),
+            )
+        })
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap(px(2.))
                 .child(
-                    dunlin_ui::button("navigation-back")
-                        .ghost()
-                        .small()
-                        .icon(IconName::ArrowLeft)
-                        .accessibility_label("Back")
+                    navigation_button("navigation-back", IconName::ArrowLeft, "Back")
+                        .size(px(28.))
+                        .relative()
+                        .children({
+                            #[cfg(debug_assertions)]
+                            {
+                                crate::workspace_ui_smoke::probe("navigation-back")
+                            }
+                            #[cfg(not(debug_assertions))]
+                            {
+                                None::<AnyElement>
+                            }
+                        })
                         .tooltip(if show_shortcut_hints {
                             "Back (⌘[)"
                         } else {
@@ -94,11 +123,8 @@ pub(crate) fn render(
                         })),
                 )
                 .child(
-                    dunlin_ui::button("navigation-forward")
-                        .ghost()
-                        .small()
-                        .icon(IconName::ArrowRight)
-                        .accessibility_label("Forward")
+                    navigation_button("navigation-forward", IconName::ArrowRight, "Forward")
+                        .size(px(28.))
                         .tooltip(if show_shortcut_hints {
                             "Forward (⌘])"
                         } else {
@@ -110,8 +136,12 @@ pub(crate) fn render(
                         })),
                 ),
         )
-        .when(has_projects, |bar| bar.child(super::sidebar::project_switcher(this, cx)))
-        .when(!has_projects, |bar| bar.child(div().text_size(px(13.)).child("Dunlin")))
+        .when(has_projects, |bar| {
+            bar.child(super::sidebar::project_switcher(this, cx))
+        })
+        .when(!has_projects, |bar| {
+            bar.child(div().text_size(px(13.)).child("Dunlin"))
+        })
         .when(show_session_context, |this| {
             this.child(
                 div()
@@ -128,59 +158,17 @@ pub(crate) fn render(
             )
         });
 
-    let mut center = segment_group(p).flex_shrink_0();
-
-    let epoch = this.view_epoch;
+    let view_selector = super::view_switcher::render(this, agent, window, cx);
+    let mut center = div().flex().flex_shrink_0();
     if agent {
-        for view in MainView::ALL {
-            let active = this.view == view;
-            let (icon_name, hint) = match view {
-                MainView::Chat => (IconName::MessageSquare, "⌘1"),
-                MainView::Graph => (IconName::Waypoints, "⌘2"),
-                MainView::Trace => (IconName::ChartNoAxesGantt, "⌘3"),
-            };
-            let tab = segment_button(("view-tab", view as usize), view.label(), active)
-                .accessibility_label(format!("Open {} view", view.label()))
-                .icon(icon_name)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.set_view(view, cx);
-                }))
-                .when(!compact && this.show_shortcut_hints, |this| {
-                    this.child(
-                        div()
-                            .text_size(px(11.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(if active {
-                                p.muted_fg
-                            } else {
-                                p.muted_fg.opacity(0.55)
-                            })
-                            .child(hint),
-                    )
-                });
-
-            let tab = if active {
-                let card = p.card;
-                let border = p.border;
-                tab.with_animation(
-                    ElementId::NamedInteger("view-tab-active".into(), epoch),
-                    Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
-                    move |this, t| {
-                        this.bg(card.opacity(t))
-                            .border_color(border.opacity(t))
-                            .opacity(0.68 + 0.32 * t)
-                    },
-                )
-                .into_any_element()
-            } else {
-                tab.into_any_element()
-            };
-
-            center = center.child(tab);
-        }
+        center = center.child(view_selector);
     } else if switcher == Switcher::Git {
-        center = center.child(dunlin_ui::button("title-git-history").ghost().label("History")
-            .on_click(cx.listener(|this, _, window, cx| this.show_git_history(window, cx))));
+        center = center.child(
+            dunlin_ui::button("title-git-history")
+                .ghost()
+                .label("History")
+                .on_click(cx.listener(|this, _, window, cx| this.show_git_history(window, cx))),
+        );
     }
     let center = if dashboard {
         div().into_any_element()
@@ -218,6 +206,7 @@ pub(crate) fn render(
     let right = div()
         .flex_1()
         .min_w(px(0.))
+        .pr(px(12.))
         .flex()
         .items_center()
         .justify_end()
@@ -229,19 +218,16 @@ pub(crate) fn render(
                 |bar| bar.child(super::chat::reasoning_toggle(this, cx)),
             )
         })
-        .child(
-            icon_button("title-theme", if cx.theme().is_dark() { IconName::Sun } else { IconName::Moon }, "Toggle light or dark theme")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.toggle_appearance(window, cx);
-                })),
-        );
+        .child(crate::user_profile::render(this, cx));
 
     TitleBar::new()
         .h(px(dunlin_ui::scale::TITLEBAR_HEIGHT))
+        .border_b_0()
         .bg(transparent_black())
         .border_color(transparent_black())
         .child(
             div()
+                .relative()
                 .w_full()
                 .h_full()
                 .flex()
@@ -249,7 +235,17 @@ pub(crate) fn render(
                 .gap(px(6.))
                 .child(left)
                 .child(center)
-                .child(right),
+                .child(right)
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("titlebar-content")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                }),
         )
         .into_any_element()
 }
