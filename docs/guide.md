@@ -10,11 +10,11 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.9` (release pending); see
+release. Source builds are now `0.1.0-beta.10` (release pending); see
 [CHANGELOG.md](../CHANGELOG.md). The latest published beta is `0.1.0-beta.8`.
 Website download links are advanced only after release assets are verified.
 
-### Beta.9 highlights
+### Upcoming beta highlights
 
 - [Server setup](relay-setup.md): interactive macOS/Linux bootstrap, optional
   private Tailscale HTTPS, server-owned harness installation/authorization,
@@ -687,7 +687,7 @@ Release artifacts are published on the
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
 
-Starting with beta.9, the release workflow also builds
+The upcoming beta release workflow also builds
 `dunlin-relay-<version>-linux-x86_64.tar.gz` and
 `dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
 `install-harness.sh` and `RELAY-SHA256SUMS`. These are pending publication and
