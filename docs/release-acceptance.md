@@ -24,6 +24,11 @@ as a published release.
   exists after the intended conflict, and adds native tests/static musl builds
   on both Linux architectures to pre-tag CI. No test assertion or release gate
   is removed. Fresh signed PR/main checks remain required before a beta.10 tag.
+- Initial beta.10 PR CI passed 245 native tests per Linux architecture, then
+  exposed a static musl link failure: its libc lacks the `renameat2` wrapper.
+  The Linux move helper now invokes `SYS_renameat2` directly with the same
+  `RENAME_NOREPLACE` flag and errno handling. No check-then-rename fallback or
+  overwrite is introduced; existing atomic-collision tests exercise the helper.
 - Local final beta.9 validation passed 837 Rust tests; only the live-account
   Codex rate-limit probe was excluded locally. HTTP/IPC/PTY and seatbelt tests
   passed after correcting test-environment isolation. Real-provider and manual

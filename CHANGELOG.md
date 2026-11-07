@@ -18,6 +18,9 @@ prevented publication.
 - Git-history fixtures now configure their own repository-local author instead
   of depending on a global Git identity. The conflict test verifies `MERGE_HEAD`
   exists so an unrelated Git error cannot masquerade as a merge conflict.
+- Linux non-replacing moves invoke the `renameat2` kernel syscall directly,
+  preserving atomic collision protection while supporting static musl builds
+  whose libc does not export a `renameat2` wrapper.
 
 ### Changed
 
