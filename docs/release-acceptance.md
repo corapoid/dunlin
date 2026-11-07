@@ -2,7 +2,39 @@
 
 ## 0.1.0-beta.10 recovery — 2026-11-07
 
-**Status: release preparation, not published.** The beta.9 tag is retained at
+**Status: published prerelease; automated distribution checks passed. Manual
+acceptance remains deferred, not passed.**
+
+- [Beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10) was
+  published at `2026-11-07T01:58:02Z` from signed merge
+  `c385d88a245fc3b5958a815a6ce0aec59883cd79` ([PR #19](https://github.com/corapoid/dunlin/pull/19)).
+  Rule suite `4963400407` passed without bypass; required PR checks and main
+  Security `42320374046` and CI `42320374047` passed before tagging.
+- Main CI's first ARM64 attempt failed the existing recipe execution assertion
+  at `recipe.rs:251`; an isolated same-commit retry passed without code/check
+  changes. Its cause remains unexplained, not fixed.
+  [Retained failure and retry evidence](https://github.com/corapoid/dunlin/pull/19#issuecomment-6700159379).
+- [Release run 42322836185](https://github.com/corapoid/dunlin/actions/runs/42322836185)
+  passed source authorization, security, macOS tests/build/packaging/provenance,
+  native Linux tests and static builds on both architectures, publication and
+  OCI publication/pull verification.
+- All ten public assets were independently downloaded after publication. Their
+  SHA-256 values matched GitHub asset digests; every `SHA256SUMS` and
+  `RELAY-SHA256SUMS` entry matched. The release verifier checked version
+  `0.1.0-beta.10`, bundle ID `dev.dunlin.ide`, macOS 15 minimum, ARM64 app/relay,
+  ZIP/tar members and DMG/PKG headers. Both Linux archive member sets and ELF
+  architectures passed `scripts/verify-relay-release.py`. Nothing downloaded
+  was installed or executed during this independent check.
+- Verified DMG SHA-256 for the Homebrew channel:
+  `9b056b8c806d3ff78728b524f28d27e7cb2087c98cca8459efe2b2fc528af058`.
+  Website/download documentation now targets these verified beta.10 assets.
+- The app/relay remain ad-hoc signed and **not Apple-notarized**; the PKG is
+  unsigned. Real provider sign-in, GUI, Tailscale, clean-machine installation
+  and reboot acceptance remain deferred, not passed.
+
+### Historical preparation and recovery evidence
+
+The beta.9 tag is retained at
 `b67d73e8415f0eba0ba1ad88a5c16b5cbddce1e5`; it must not be moved or described
 as a published release.
 
@@ -19,7 +51,7 @@ as a published release.
   passed source/security and macOS tests/build/package/provenance checks, but both
   Linux native-test jobs failed on a fixture that ran `git merge` without its own
   author identity. Publish and OCI jobs were correctly skipped; no release assets
-  were published and download channels remain beta.8.
+  were published and download channels stayed on beta.8 at that point.
 - Beta.10 fixes the fixture's repository-local identity, asserts `MERGE_HEAD`
   exists after the intended conflict, and adds native tests/static musl builds
   on both Linux architectures to pre-tag CI. No test assertion or release gate
@@ -34,9 +66,10 @@ as a published release.
   passed after correcting test-environment isolation. Real-provider and manual
   GUI/Tailscale/clean-install/reboot acceptance remain deferred, not passed.
 
-## 0.1.0-beta.9 preparation — 2026-11-06
+## Historical 0.1.0-beta.9 preparation — 2026-11-06
 
-**Status: prepared locally, not published or accepted.** The requested scope is
+**Historical status: prepared locally, not published or accepted.** Superseded
+by the beta.10 publication evidence above. The requested scope was
 the complete current working tree and the seven local commits ahead of
 `origin/main`, explicitly confirmed during this release session. Scope approval
 does not waive any release check or authorize a claim of passed manual tests.
