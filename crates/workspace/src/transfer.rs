@@ -244,7 +244,9 @@ fn rename_new(source: &Path, destination: &Path) -> std::io::Result<()> {
             unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) };
         #[cfg(target_os = "linux")]
         let result = unsafe {
-            libc::renameat2(
+            // musl toolchains may lack the libc wrapper; retain the same fail-closed kernel operation.
+            libc::syscall(
+                libc::SYS_renameat2,
                 libc::AT_FDCWD,
                 source.as_ptr(),
                 libc::AT_FDCWD,

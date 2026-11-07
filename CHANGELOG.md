@@ -6,6 +6,27 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0-beta.10] — 2026-11-07
+
+Includes all beta.9 workspace/server changes in the
+[full changelog](https://github.com/corapoid/dunlin/blob/main/CHANGELOG.md#010-beta9--2026-11-06).
+Beta.9 was tagged but never published: its Linux test jobs failed and correctly
+prevented publication.
+
+### Fixed
+
+- Git-history fixtures now configure their own repository-local author instead
+  of depending on a global Git identity. The conflict test verifies `MERGE_HEAD`
+  exists so an unrelated Git error cannot masquerade as a merge conflict.
+- Linux non-replacing moves invoke the `renameat2` kernel syscall directly,
+  preserving atomic collision protection while supporting static musl builds
+  whose libc does not export a `renameat2` wrapper.
+
+### Changed
+
+- CI now tests and statically builds Linux relays on x86_64 and ARM64 before
+  release tagging, in addition to the existing publication checks.
+
 ## [0.1.0-beta.9] — 2026-11-06
 
 ### Added
@@ -847,7 +868,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...HEAD
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.10...HEAD
+[0.1.0-beta.10]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [0.1.0-beta.9]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...v0.1.0-beta.9
 [0.1.0-beta.8]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.8
 [0.1.0-beta.6]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.4...v0.1.0-beta.6

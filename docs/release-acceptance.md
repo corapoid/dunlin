@@ -1,5 +1,39 @@
 # Release acceptance / hardening
 
+## 0.1.0-beta.10 recovery — 2026-11-07
+
+**Status: release preparation, not published.** The beta.9 tag is retained at
+`b67d73e8415f0eba0ba1ad88a5c16b5cbddce1e5`; it must not be moved or described
+as a published release.
+
+- [PR #18](https://github.com/corapoid/dunlin/pull/18) passed all required checks
+  and merged normally as the GitHub-verified signed commit above. Rule suite
+  `4961961581` passed without bypass. Main CI `42307969066` and Security
+  `42307969057` then passed; the source-authorization gate accepted the commit.
+- Thirteen new CodeQL alerts were traced through their complete SARIF flows.
+  Each incorrectly treated axum `State<AppState>` as HTTP input while the flagged
+  paths came from immutable operator startup `Config.db`. They were recorded as
+  false positives with individual explanations, not accepted risk or disabled
+  queries. [Full source evidence](https://github.com/corapoid/dunlin/pull/18#issuecomment-6698200961).
+- [Beta.9 Release run](https://github.com/corapoid/dunlin/actions/runs/42310836232)
+  passed source/security and macOS tests/build/package/provenance checks, but both
+  Linux native-test jobs failed on a fixture that ran `git merge` without its own
+  author identity. Publish and OCI jobs were correctly skipped; no release assets
+  were published and download channels remain beta.8.
+- Beta.10 fixes the fixture's repository-local identity, asserts `MERGE_HEAD`
+  exists after the intended conflict, and adds native tests/static musl builds
+  on both Linux architectures to pre-tag CI. No test assertion or release gate
+  is removed. Fresh signed PR/main checks remain required before a beta.10 tag.
+- Initial beta.10 PR CI passed 245 native tests per Linux architecture, then
+  exposed a static musl link failure: its libc lacks the `renameat2` wrapper.
+  The Linux move helper now invokes `SYS_renameat2` directly with the same
+  `RENAME_NOREPLACE` flag and errno handling. No check-then-rename fallback or
+  overwrite is introduced; existing atomic-collision tests exercise the helper.
+- Local final beta.9 validation passed 837 Rust tests; only the live-account
+  Codex rate-limit probe was excluded locally. HTTP/IPC/PTY and seatbelt tests
+  passed after correcting test-environment isolation. Real-provider and manual
+  GUI/Tailscale/clean-install/reboot acceptance remain deferred, not passed.
+
 ## 0.1.0-beta.9 preparation — 2026-11-06
 
 **Status: prepared locally, not published or accepted.** The requested scope is

@@ -11,6 +11,8 @@ use tower::ServiceExt;
 impl Fixture {
     fn git_history_fixture(&self) -> (String, String) {
         self.history_git(&["init", "-qb", "main"]);
+        self.history_git(&["config", "user.name", "Relay Test"]);
+        self.history_git(&["config", "user.email", "test@example.invalid"]);
         fs::write(self.root.join("old name"), "base\n").unwrap();
         self.history_git(&["add", "--all"]);
         self.history_git(&["commit", "-qm", "first"]);
@@ -198,6 +200,11 @@ async fn overview_matches_local_stashes_worktrees_and_conflicts_without_mutation
         .output()
         .unwrap();
     assert!(!merge.status.success());
+    assert!(
+        f.root.join(".git/MERGE_HEAD").is_file(),
+        "{}",
+        String::from_utf8_lossy(&merge.stderr)
+    );
     let index = fs::read(f.root.join(".git/index")).unwrap();
     let head = fs::read(f.root.join(".git/HEAD")).unwrap();
     let reflog = fs::read(f.root.join(".git/logs/refs/stash")).unwrap();

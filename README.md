@@ -25,11 +25,12 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac or your explicitly selected self-hosted server.
 
-**Source: 0.1.0-beta.9 (release pending)** · macOS 15+ · Apple Silicon desktop
+**Source: 0.1.0-beta.10 (release pending)** · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
 The latest published release is [0.1.0-beta.8](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.8).
-Download links remain on that version until beta.9 assets pass verification.
+Download links remain on that version until beta.10 assets pass verification.
+Beta.9 was tagged but its Linux test gate blocked publication; the tag is retained.
 
 ## What you won't find combined anywhere else
 
@@ -134,10 +135,10 @@ is unsigned. macOS may ask you to approve the app in
 
 ## Set up a remote server
 
-Beta.9 adds an interactive terminal installer that collects the server name,
+The upcoming beta adds an interactive terminal installer that collects the server name,
 optional Tailscale, autostart, Git tools and harness choices before installation.
 It needs the new release's archives and checksums; **the published beta.8 does
-not contain these assets**. Until publication, follow the source-build route in
+not contain these assets**. Until beta.10 publication, follow the source-build route in
 the [full guide](docs/guide.md#remote-relay).
 
 Pair in **Settings → Remote**, then choose **Manage** or use the title-bar host

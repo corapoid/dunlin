@@ -1,8 +1,9 @@
 # Server setup and remote workspace
 
-**Availability:** source version `0.1.0-beta.9`, publication pending. The latest
+**Availability:** source version `0.1.0-beta.10`, publication pending. The latest
 published beta.8 does not include the bootstrap scripts or Linux relay archives.
-Until beta.9 assets are published and verified, use the source-build commands in
+Beta.9's Linux test gate prevented publication; its tag is retained unchanged.
+Until beta.10 assets are published and verified, use the source-build commands in
 the [full guide](guide.md#remote-relay), not the one-command bootstrap below.
 
 The relay starts and supports pairing, files and Git without an installed agent.
