@@ -10,11 +10,11 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. Source builds are now `0.1.0-beta.10` (release pending); see
-[CHANGELOG.md](../CHANGELOG.md). The latest published beta is `0.1.0-beta.8`.
-Website download links are advanced only after release assets are verified.
+release. The latest published beta and source version are `0.1.0-beta.10`; see
+[CHANGELOG.md](../CHANGELOG.md). Published checksums, bundle identity/version and
+relay architectures were independently verified before advancing download links.
 
-### Upcoming beta highlights
+### Beta.10 highlights
 
 - [Server setup](relay-setup.md): interactive macOS/Linux bootstrap, optional
   private Tailscale HTTPS, server-owned harness installation/authorization,
@@ -30,7 +30,7 @@ Website download links are advanced only after release assets are verified.
 - Usage adds rolling billing ranges and cached account limits; Secrets defaults
   to storage-only keys until agent access is explicitly configured.
 
-This is a prepared beta, not a claim of completed clean-machine acceptance.
+Publication is not a claim of completed clean-machine acceptance.
 See [release acceptance](release-acceptance.md) for the publication boundary.
 
 ## Why Dunlin
@@ -687,12 +687,11 @@ Release artifacts are published on the
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
 
-The upcoming beta release workflow also builds
+Beta.10 also publishes
 `dunlin-relay-<version>-linux-x86_64.tar.gz` and
 `dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
-`install-harness.sh` and `RELAY-SHA256SUMS`. These are pending publication and
-are not present in beta.8. `RELAY-SHA256SUMS` covers all three relay archives and
-the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
+`install-harness.sh` and `RELAY-SHA256SUMS`. `RELAY-SHA256SUMS` covers all three
+relay archives and the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
 
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
 supported in 0.1.

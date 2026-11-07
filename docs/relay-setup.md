@@ -1,10 +1,9 @@
 # Server setup and remote workspace
 
-**Availability:** source version `0.1.0-beta.10`, publication pending. The latest
-published beta.8 does not include the bootstrap scripts or Linux relay archives.
+**Availability:** [0.1.0-beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10)
+is published with verified bootstrap scripts and macOS/Linux relay archives.
 Beta.9's Linux test gate prevented publication; its tag is retained unchanged.
-Until beta.10 assets are published and verified, use the source-build commands in
-the [full guide](guide.md#remote-relay), not the one-command bootstrap below.
+For source builds, use the commands in the [full guide](guide.md#remote-relay).
 
 The relay starts and supports pairing, files and Git without an installed agent.
 An agent is started only when an ACP conversation is opened. The desktop client
@@ -12,10 +11,10 @@ does not need local OpenCode, Codex or Claude Code to use a relay.
 
 ## One-command setup
 
-Once a release containing the bootstrap assets has been published:
+Run the published bootstrap as your regular service user:
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/corapoid/dunlin/main/scripts/install-relay.sh)
+bash <(curl -fsSL https://github.com/corapoid/dunlin/releases/download/v0.1.0-beta.10/install-relay.sh)
 ```
 
 Review `scripts/install-relay.sh` before running it. Run it as your regular

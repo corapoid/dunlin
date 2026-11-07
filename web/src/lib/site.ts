@@ -1,5 +1,5 @@
 // Only advance this after verifying the published assets, not merely a tag push.
-const version = "0.1.0-beta.8";
+const version = "0.1.0-beta.10";
 const github = "https://github.com/corapoid/dunlin";
 const releaseAssets = `${github}/releases/download/v${version}`;
 

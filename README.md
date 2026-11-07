@@ -25,11 +25,11 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac or your explicitly selected self-hosted server.
 
-**Source: 0.1.0-beta.10 (release pending)** · macOS 15+ · Apple Silicon desktop
+**0.1.0-beta.10** · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
-The latest published release is [0.1.0-beta.8](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.8).
-Download links remain on that version until beta.10 assets pass verification.
+The latest published release is [0.1.0-beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10).
+Published downloads have passed independent checksum, bundle and architecture checks.
 Beta.9 was tagged but its Linux test gate blocked publication; the tag is retained.
 
 ## What you won't find combined anywhere else
@@ -135,11 +135,16 @@ is unsigned. macOS may ask you to approve the app in
 
 ## Set up a remote server
 
-The upcoming beta adds an interactive terminal installer that collects the server name,
+The interactive terminal installer collects the server name,
 optional Tailscale, autostart, Git tools and harness choices before installation.
-It needs the new release's archives and checksums; **the published beta.8 does
-not contain these assets**. Until beta.10 publication, follow the source-build route in
-the [full guide](docs/guide.md#remote-relay).
+Beta.10 includes the bootstrap scripts, macOS/Linux relay archives and checksums.
+
+```sh
+bash <(curl -fsSL https://github.com/corapoid/dunlin/releases/download/v0.1.0-beta.10/install-relay.sh)
+```
+
+Review the script before running it as your regular service user, not root.
+For source builds, see the [full guide](docs/guide.md#remote-relay).
 
 Pair in **Settings → Remote**, then choose **Manage** or use the title-bar host
 switcher. Server tool settings and authorization stay remote; appearance stays
