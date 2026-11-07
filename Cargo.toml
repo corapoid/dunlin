@@ -25,7 +25,7 @@ repository = "https://github.com/corapoid/dunlin"
 homepage = "https://github.com/corapoid/dunlin"
 
 [workspace.dependencies]
-gpui-kit = { version = "0.8.0", features = ["syntect"] }
+gpui-kit = { version = "0.9.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
