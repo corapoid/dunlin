@@ -62,6 +62,11 @@ All notable changes to Dunlin are documented here. The format follows
   indexed by task in [`docs/README.md`](docs/README.md).
 - The unfinished non-macOS client scaffold and its project files were removed so
   the source tree only advertises the supported macOS client.
+- CI and security checks run on pull requests instead of repeating after merge
+  and during release. Release authorization verifies the signed squash merge has
+  the exact reviewed source tree and successful PR checks, including both Linux
+  architectures; CD retains release builds, signing, artifact verification,
+  provenance and publication. Weekly and manual security scans remain available.
 
 ### Fixed
 
