@@ -1721,6 +1721,7 @@ name = "dunlin-ssh"
 version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-domain",
+ "libc",
  "security-framework",
  "serde",
  "serde_json",
