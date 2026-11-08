@@ -97,9 +97,33 @@ impl RecipeExecutor for CommandExecutor {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("Could not start the recipe program: {error}"))?;
+        let mut child = {
+            // Process creation can fail transiently on loaded CI hosts (fork
+            // pressure, or a just-written executable still busy). Retry only
+            // unambiguous transient errors; all other spawn failures stay
+            // visible and fail closed.
+            let mut attempt = 0;
+            loop {
+                match command.spawn() {
+                    Ok(child) => break child,
+                    Err(error)
+                        if attempt < 5
+                            && matches!(
+                                error.kind(),
+                                std::io::ErrorKind::Interrupted
+                                    | std::io::ErrorKind::WouldBlock
+                                    | std::io::ErrorKind::ExecutableFileBusy
+                            ) =>
+                    {
+                        attempt += 1;
+                        std::thread::sleep(Duration::from_millis(20 * attempt));
+                    }
+                    Err(error) => {
+                        return Err(format!("Could not start the recipe program: {error}"));
+                    }
+                }
+            }
+        };
         let stdout = child
             .stdout
             .take()
@@ -248,7 +272,11 @@ mod tests {
         let cwd = tempfile::tempdir().unwrap();
         plan.cwd = cwd.path().to_path_buf();
         plan.program_hash = Some(program_hash(&script).unwrap());
-        assert!(CommandExecutor.execute(&plan).is_ok());
+        let executed = CommandExecutor.execute(&plan);
+        assert!(
+            executed.is_ok(),
+            "hashed script outside the project should run: {executed:?}"
+        );
         std::fs::write(&script, "#!/bin/sh\necho changed\n").unwrap();
         assert!(CommandExecutor.execute(&plan).is_err());
     }
