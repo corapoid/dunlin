@@ -4,9 +4,9 @@ The README shows the dark set. This page keeps both appearances side by side and
 adds close-ups of features that are unusual in a native, agent-first workspace.
 
 All captures come from the current source build over a desktop background so the
-translucent chrome is visible. They use a fresh application reset and a local
-`Dunlin project` fixture. The agent session uses the OpenCode ACP harness with the
-free **Iceman Free** model. Images are 1800×1076.
+translucent chrome is visible. They use a controlled local `Dunlin project`
+fixture and a disposable demo session with the OpenCode ACP harness and the free
+**Iceman Free** model. Images are 1800×1076.
 
 ## Main views
 
