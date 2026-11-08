@@ -3,13 +3,19 @@
 
 Uses read-only contents/check/security APIs, not an owner/admin credential. The
 separate repository-policy audit verifies settings; this verifies the actual
-source history, completed PR checks and outstanding security alerts.
+source history, identical reviewed source trees, completed PR checks and
+outstanding security alerts. CI/security run on the PR, not again after merge.
 """
 import argparse
 import json
 import re
 import subprocess
 from repository_policy import CHECKS, GITHUB_ACTIONS_APP
+
+RELEASE_CHECKS = CHECKS | {
+    "relay-linux (ubuntu-24.04, x86_64-unknown-linux-musl)",
+    "relay-linux (ubuntu-24.04-arm, aarch64-unknown-linux-musl)",
+}
 
 
 def merged_source(repo, sha, commit, comparison, pulls):
@@ -25,7 +31,7 @@ def merged_source(repo, sha, commit, comparison, pulls):
     return matches[0]
 
 
-def trusted_checks(repo, response, required=CHECKS):
+def trusted_checks(repo, response, required=RELEASE_CHECKS):
     runs = response.get("check_runs", [])
     if response.get("total_count") != len(runs):
         raise ValueError("Check-run result is incomplete; do not infer success")
@@ -51,6 +57,29 @@ def clean_alerts(alerts):
         raise ValueError("Open CodeQL security alerts on main require remediation")
 
 
+def authorize_source(repo, sha, api):
+    base = f"repos/{repo}"
+    commit = api(f"{base}/commits/{sha}")
+    comparison = api(f"{base}/compare/main...{sha}")
+    pulls = api(f"{base}/commits/{sha}/pulls?per_page=100")
+    if len(pulls) >= 100:
+        raise ValueError("PR association list might be truncated")
+    pull = merged_source(repo, sha, commit, comparison, pulls)
+    head = pull["head"]["sha"]
+    reviewed = api(f"{base}/commits/{head}")
+    tree = commit.get("commit", {}).get("tree", {}).get("sha", "")
+    # Squash changes the commit identity, not the reviewed files. Fail closed if
+    # the base moved or the merge introduced anything absent from the green PR.
+    if (not re.fullmatch(r"[a-f0-9]{40}", tree) or reviewed.get("sha") != head
+            or reviewed.get("commit", {}).get("tree", {}).get("sha") != tree):
+        raise ValueError("Release source tree does not match the reviewed PR head")
+    trusted_checks(repo, api(f"{base}/commits/{head}/check-runs?filter=latest&per_page=100"))
+    clean_alerts(api(f"{base}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100"))
+    return {"authorized": True, "source": sha, "merged_pr": pull["number"],
+            "verified_signature": True, "reviewed_tree": tree,
+            "required_checks": sorted(RELEASE_CHECKS), "open_security_alerts": 0}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
@@ -66,21 +95,7 @@ def main():
         return json.loads(result.stdout)
 
     try:
-        base = f"repos/{args.repo}"
-        commit = api(f"{base}/commits/{args.commit}")
-        comparison = api(f"{base}/compare/main...{args.commit}")
-        pulls = api(f"{base}/commits/{args.commit}/pulls?per_page=100")
-        if len(pulls) >= 100:
-            raise ValueError("PR association list might be truncated")
-        pull = merged_source(args.repo, args.commit, commit, comparison, pulls)
-        trusted_checks(args.repo, api(f"{base}/commits/{pull['head']['sha']}/check-runs?filter=latest&per_page=100"))
-        # Squash produces a new signed source identity; require its own push CI
-        # (including provenance) and security scans as well as the reviewed PR.
-        trusted_checks(args.repo, api(f"{base}/commits/{args.commit}/check-runs?filter=latest&per_page=100"), CHECKS - {"dependency-review"})
-        clean_alerts(api(f"{base}/code-scanning/alerts?state=open&ref=refs/heads/main&per_page=100"))
-        print(json.dumps({"authorized": True, "source": args.commit, "merged_pr": pull["number"],
-                          "verified_signature": True, "required_checks": sorted(CHECKS),
-                          "open_security_alerts": 0}, indent=2))
+        print(json.dumps(authorize_source(args.repo, args.commit, api), indent=2))
     except (ValueError, OSError, KeyError, subprocess.TimeoutExpired) as error:
         parser.exit(1, f"Release source authorization failed: {error}\n")
 

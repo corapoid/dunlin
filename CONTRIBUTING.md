@@ -96,9 +96,19 @@ urgent and review them even when CI is green.
 ## Release process
 
 Releases are cut from an existing `v*` tag matching the workspace, lockfile and
-changelog. The hardening workflow runs security/source gates, builds on macOS,
-packages/verifies the app and relay, attests artifact provenance and publishes
-only after those jobs pass. Beta tags produce a prerelease, not a draft. Missing
+changelog, or manually dispatched against that same tagged commit. CI and Security
+run on pull requests, not again on pushes to `main`. Security also runs weekly
+and on manual dispatch to detect newly disclosed vulnerabilities on `main`.
+
+Release authorizes the GitHub-signed squash merge, requires its tree to match
+the reviewed PR head exactly, and checks the PR's successful CI/security results,
+including both Linux architectures, plus open CodeQL alerts. It does not rerun
+formatting, lint, unit/integration tests or security scans. It builds the release
+on macOS and Linux, signs/packages/verifies the artifacts, attests their provenance
+and publishes only after those jobs pass. Artifact verification and release-binary
+smokes remain in CD. Merging alone does not publish a release.
+
+Beta tags produce a prerelease, not a draft. Missing
 Apple credentials produce explicitly ad-hoc builds; partial credentials fail.
 Developer ID signing alone must never be described as notarization.
 

@@ -83,9 +83,12 @@ The following are known limitations, not vulnerabilities by themselves:
 
 ## Release security gates
 
-The release path runs `cargo deny --locked check advisories licenses bans sources`
+Pull requests run `cargo deny --locked check advisories licenses bans sources`
 for the shipped macOS arm64 graph and CodeQL scans for Rust, web, Python and
-workflow sources. No advisory exemptions are configured. All five
+workflow sources. These results authorize release without rerunning the same
+checks after merge or on the release tag. Weekly and manually dispatched scans
+still audit `main` for newly disclosed vulnerabilities. No advisory exemptions
+are configured. All five
 obsolete GPUI/syntect/font/image packages found by the initial audit have been
 migrated out of the entire lockfile, with maintained local forks, preserved
 licenses and verified upstream provenance. `scripts/verify_vendor.py` checks
@@ -99,7 +102,8 @@ merges, with no bypass actors. Its remote audit passes. Zero independent approva
 is intentional, not a claim of second-person review; CODEOWNERS documents ownership.
 GitHub signs the squash merge; no personal key or reviewer is impersonated.
 Release source authorization independently verifies the actual mainline merge,
-trusted PR/source checks and open CodeQL security alerts via read-only APIs, without
+an identical source tree at the reviewed PR head, trusted green PR checks
+(including both Linux architectures) and open CodeQL security alerts via read-only APIs, without
 giving build jobs owner/admin credentials. Manual GUI/TCC/real-host acceptance is
 explicitly deferred for beta releases, never marked passed or reused for stable/RC.
 

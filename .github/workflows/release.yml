@@ -19,12 +19,6 @@ permissions:
   contents: read
 
 jobs:
-  security:
-    uses: ./.github/workflows/security.yml
-    permissions:
-      contents: read
-      security-events: write
-
   source-authorization:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -43,7 +37,7 @@ jobs:
         run: python3 scripts/release_source.py --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA"
 
   release:
-    needs: [security, source-authorization]
+    needs: source-authorization
     runs-on: macos-15
     timeout-minutes: 60
     permissions:
@@ -65,7 +59,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
-          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
@@ -84,16 +77,6 @@ jobs:
           test "$(git rev-parse --verify "refs/tags/v$VERSION^{commit}")" = "$(git rev-parse HEAD)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Test source before packaging
-        run: |
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets --locked -- -D warnings
-          cargo test --workspace --locked
-          python3 -m unittest discover -s scripts/tests -v
-          python3 scripts/verify_vendor.py
-          ./scripts/relay-smoke.sh
-          python3 scripts/git-operations-smoke.py --tmp-root "$RUNNER_TEMP"
 
       - name: Build
         env:
@@ -280,7 +263,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
           rustup target add "${{ matrix.target }}"
-      - name: Test and package Linux relay
+      - name: Build and verify Linux relay package
         env:
           VERSION: ${{ needs.release.outputs.version }}
           ARCH: ${{ matrix.arch }}
@@ -288,7 +271,6 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: |
-          cargo test -p dunlin-relay -p dunlin-workspace -p dunlin-vault --locked
           CC=musl-gcc cargo build --release -p dunlin-relay --target "$TARGET" --locked
           "target/$TARGET/release/dunlin-relay" --help
           mkdir -p dist
@@ -337,7 +319,6 @@ jobs:
           python3 scripts/verify-relay-release.py "dist/dunlin-relay-$VERSION-linux-x86_64.tar.gz" --arch x86_64
           python3 scripts/verify-relay-release.py "dist/dunlin-relay-$VERSION-linux-arm64.tar.gz" --arch arm64
           bash -n scripts/install-relay.sh scripts/install-harness.sh
-          python3 -m unittest discover -s scripts/tests -p 'test_relay_installer.py' -v
           cp scripts/install-relay.sh scripts/install-harness.sh dist/
           (cd dist && shasum -a 256 "dunlin-relay-$VERSION-macos-arm64.tar.gz" \
             "dunlin-relay-$VERSION-linux-x86_64.tar.gz" "dunlin-relay-$VERSION-linux-arm64.tar.gz" \
