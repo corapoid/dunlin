@@ -48,6 +48,12 @@ impl DunlinApp {
             self.sessions.len(),
             false,
         ));
+        items.push((
+            SidebarSection::Knowledge,
+            IconName::BookOpen,
+            self.knowledge.graph.objects.len(),
+            false,
+        ));
 
         for (section, icon_name, count, has_badge) in items {
             let active = self.section == section && !self.settings_open;
@@ -478,7 +484,7 @@ impl DunlinApp {
                     ),
             );
         } else {
-            body = body.child(onboarding_permission_card(self, cx, &p)).child(
+            body = body.child(
                 div()
                     .flex()
                     .flex_col()
@@ -783,6 +789,9 @@ impl DunlinApp {
         }
         if self.section == SidebarSection::Dashboard {
             return crate::dashboard::render(self, cx);
+        }
+        if self.section == SidebarSection::Knowledge {
+            return crate::knowledge::render(self, window, cx);
         }
         if self.projects.is_empty() {
             return self.onboarding(cx);
@@ -1759,6 +1768,7 @@ impl DunlinApp {
         let height = match &state.target {
             ContextTarget::Project(_) => 480.,
             ContextTarget::Session(_) => 260.,
+            ContextTarget::Tab(_) => 170.,
         };
         let x = f32::from(state.position.x)
             .min(f32::from(viewport.width) - width - 8.0)
@@ -1997,6 +2007,54 @@ impl DunlinApp {
                         },
                     )),
                 )
+            }
+            ContextTarget::Tab(id) => {
+                let Some(tab) = self.workbench.tabs.iter().find(|tab| tab.id == id) else {
+                    return div().into_any_element();
+                };
+                let name = tab.inspector.name.clone();
+                let locked = tab.locked;
+                let close_id = id.clone();
+                let lock_id = id.clone();
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.))
+                    .child(
+                        div()
+                            .px(px(8.))
+                            .pt(px(3.))
+                            .pb(px(4.))
+                            .text_size(px(10.0))
+                            .font_family(dunlin_ui::theme::code_font())
+                            .text_color(p.muted_fg)
+                            .truncate()
+                            .child(name.to_uppercase()),
+                    )
+                    .child(
+                        item(
+                            "ctx-tab-lock",
+                            if locked { "Unlock tab" } else { "Lock tab" },
+                            p.fg,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.context_menu = None;
+                            if let Some(tab) =
+                                this.workbench.tabs.iter_mut().find(|tab| tab.id == lock_id)
+                            {
+                                tab.locked = !tab.locked;
+                            }
+                            cx.notify();
+                        })),
+                    )
+                    .child(
+                        item("ctx-tab-close", "Close tab", p.fg).on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                this.context_menu = None;
+                                this.request_close_tab(&close_id, window, cx);
+                            },
+                        )),
+                    )
             }
         };
 
@@ -2397,7 +2455,7 @@ impl DunlinApp {
                             .child(crate::inline_blame::overlay(self, cx)),
                     )
                     .when(self.editor_minimap, |body| {
-                        body.child(crate::minimap::render(self, cx))
+                        body.child(crate::minimap::render(self, true, cx))
                     }),
             )
             .when_some(self.retained_buffer_banner(cx), |root, banner| {
@@ -2421,6 +2479,21 @@ impl DunlinApp {
             self.git.branch.clone()
         };
         let change_count = self.git.changes.len();
+        let project = self.project();
+        let remote = self
+            .repo_summaries
+            .values
+            .get(&project.id)
+            .filter(|summary| summary.path == project.path)
+            .map(|summary| &summary.activity);
+        let upstream = remote.and_then(|activity| {
+            activity
+                .remote_name
+                .as_ref()
+                .and_then(|_| activity.upstream.clone())
+        });
+        let ahead = remote.and_then(|activity| activity.ahead);
+        let behind = remote.and_then(|activity| activity.behind);
         let chat = matches!(
             self.current_workspace_tab(),
             Some(crate::workspace_panes::TabKey::Chat(_))
@@ -2524,11 +2597,58 @@ impl DunlinApp {
                 cx,
             ))
             .when(!chat, |view| {
-                view.child(
+                let mut row = view;
+                if let Some(upstream) = upstream.clone() {
+                    let incoming = behind.unwrap_or(0);
+                    let outgoing = ahead.unwrap_or(0);
+                    let diverged = incoming > 0 && outgoing > 0;
+                    let label = if incoming > 0 {
+                        format!("Pull {incoming}")
+                    } else if behind == Some(0) {
+                        "Up to date".into()
+                    } else {
+                        "Fetch".into()
+                    };
+                    let tooltip = match (behind, ahead) {
+                        (Some(0), Some(0)) => {
+                            format!("Up to date with {upstream} · click to fetch again")
+                        }
+                        (Some(0), Some(ahead)) => format!(
+                            "No incoming commits · {ahead} local {} ahead of {upstream} · click to fetch",
+                            if ahead == 1 { "commit" } else { "commits" }
+                        ),
+                        (Some(behind), Some(ahead)) if ahead > 0 => format!(
+                            "Diverged: {behind} behind and {ahead} ahead of {upstream} · click to fetch; fast-forward may be blocked"
+                        ),
+                        (Some(behind), _) => format!(
+                            "{behind} remote {} behind {upstream} · click to fetch and fast-forward",
+                            if behind == 1 { "commit" } else { "commits" }
+                        ),
+                        _ => format!("Fetch {upstream} to check for incoming commits"),
+                    };
+                    row = row.child(
+                        segment_button("status-remote-pull", label, false)
+                            .with_size(dunlin_ui::component::Size::Medium)
+                            .h(px(28.))
+                            .icon(IconName::CloudDownload)
+                            .text_color(if diverged {
+                                p.amber
+                            } else if incoming > 0 {
+                                p.blue
+                            } else {
+                                p.muted_fg
+                            })
+                            .accessibility_label(format!("Pull remote changes from {upstream}"))
+                            .tooltip(tooltip)
+                            .on_click(cx.listener(|this, _, _, cx| this.git_pull(cx))),
+                    );
+                }
+                row.child(
                     div()
                         .flex()
                         .items_center()
                         .gap(px(5.))
+                        .text_sm()
                         .child(icon(IconName::FileDiff, 10.5, p.fg))
                         .child(format!(
                             "{change_count} {}",
@@ -2934,98 +3054,6 @@ impl DunlinApp {
             .child(self.overlay_backdrop.finish())
             .into_any_element()
     }
-}
-
-fn onboarding_permission_card(
-    this: &DunlinApp,
-    cx: &mut Context<DunlinApp>,
-    p: &Palette,
-) -> AnyElement {
-    let status = crate::platform::notification_permission();
-    let (color, action): (Hsla, AnyElement) = match status.state {
-        crate::platform::PermissionState::Granted => (
-            p.green,
-            div()
-                .text_size(px(10.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.green)
-                .child("On")
-                .into_any_element(),
-        ),
-        crate::platform::PermissionState::NotDetermined => (
-            p.amber,
-            onboarding_secondary_button("onboarding-notifications-allow", "Enable", p)
-                .on_click(cx.listener(|this, _, _, cx| this.request_notifications(cx)))
-                .into_any_element(),
-        ),
-        _ => (
-            p.amber,
-            onboarding_secondary_button("onboarding-notifications-settings", "Open Settings", p)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    match crate::platform::open_permission_settings(
-                        crate::platform::PermissionKind::Notifications,
-                    ) {
-                        Ok(()) => this.set_notice("Opened notification settings", cx),
-                        Err(error) => this.set_notice(error, cx),
-                    }
-                }))
-                .into_any_element(),
-        ),
-    };
-    div()
-        .w(px(460.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .p(px(12.))
-        .flex()
-        .flex_col()
-        .gap(px(6.))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(Icon::new(IconName::Bell).size(px(14.)).text_color(color))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.fg)
-                        .child("Notifications"),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.5))
-                        .text_color(p.muted_fg)
-                        .child(status.state.label()),
-                )
-                .child(
-                    onboarding_text_button(
-                        "onboarding-notifications-recheck",
-                        if this.permissions_refreshing { "Checking…" } else { "Recheck" },
-                        p,
-                    ).on_click(cx.listener(|this, _, _, cx| this.refresh_permissions(cx))),
-                )
-                .child(action),
-        )
-        .child(
-            div()
-                .text_size(px(10.5))
-                .line_height(relative(1.4))
-                .text_color(p.muted_fg)
-                .child(status.detail),
-        )
-        .child(
-            div()
-                .text_size(px(10.0))
-                .line_height(relative(1.4))
-                .text_color(p.muted_fg.opacity(0.8))
-                .child("Optional. Accessibility, Screen Recording, Automation and Full Disk Access can be reviewed later in Settings › Permissions."),
-        )
-        .into_any_element()
 }
 
 fn onboarding_primary_button(

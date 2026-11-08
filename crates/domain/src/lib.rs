@@ -49,10 +49,11 @@ pub enum SidebarSection {
     SourceControl,
     Security,
     Sessions,
+    Knowledge,
 }
 
 impl SidebarSection {
-    pub const ALL: [SidebarSection; 7] = [
+    pub const ALL: [SidebarSection; 8] = [
         SidebarSection::Dashboard,
         SidebarSection::Projects,
         SidebarSection::Files,
@@ -60,6 +61,7 @@ impl SidebarSection {
         SidebarSection::SourceControl,
         SidebarSection::Security,
         SidebarSection::Sessions,
+        SidebarSection::Knowledge,
     ];
 
     pub fn label(self) -> &'static str {
@@ -71,6 +73,7 @@ impl SidebarSection {
             SidebarSection::SourceControl => "Source Control",
             SidebarSection::Security => "Security",
             SidebarSection::Sessions => "Sessions",
+            SidebarSection::Knowledge => "Knowledge",
         }
     }
 }

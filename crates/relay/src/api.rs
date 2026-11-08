@@ -5,7 +5,9 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State, ws::WebSocketUpgrade};
+use axum::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::http::{HeaderName, HeaderValue, StatusCode, header::AUTHORIZATION, request::Parts};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -27,7 +29,7 @@ mod history;
 mod operations;
 
 use crate::config::Config;
-use crate::store::{Device, Project, Store, StoreError, User};
+use crate::store::{ArtifactRow, Device, Project, Store, StoreError, User};
 
 pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
 
@@ -37,6 +39,7 @@ pub struct AppState {
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
     pub(crate) vault: Option<Arc<crate::vault::RelayVault>>,
+    pub(crate) artifact_dir: PathBuf,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
     history_reads: Arc<tokio::sync::Semaphore>,
@@ -86,6 +89,11 @@ impl AppState {
         Self {
             management: Arc::new(Mutex::new(crate::management::Management::default())),
             store: Arc::new(Mutex::new(store)),
+            artifact_dir: config
+                .db
+                .parent()
+                .unwrap_or(FsPath::new("."))
+                .join("artifacts"),
             config: Arc::new(config),
             vault,
             leases: Arc::new(Mutex::new(HashMap::new())),
@@ -344,6 +352,16 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/compare/changes", post(compare_changes))
         .route("/v1/compare/validate", post(compare_validate))
         .route("/v1/context", get(remote_context))
+        .route("/v1/artifacts", get(artifacts_list).post(artifact_upload))
+        .route(
+            "/v1/artifacts/{id}",
+            get(artifact_download).delete(artifact_delete),
+        )
+        .route(
+            "/v1/artifacts/{id}/share",
+            post(artifact_share).delete(artifact_revoke_share),
+        )
+        .route("/a/{token}", get(public_artifact))
         .route("/v1/sessions", get(sessions))
         .route("/v1/sessions/{id}", delete(delete_session))
         .route("/v1/sessions/{id}/takeover", post(takeover))
@@ -395,6 +413,290 @@ pub fn router(state: AppState) -> Router {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+const MAX_ARTIFACT_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Deserialize)]
+struct ArtifactUpload {
+    project_id: String,
+    kind: String,
+    title: String,
+    mime: String,
+    data: String,
+}
+
+#[derive(Deserialize)]
+struct ArtifactQuery {
+    project: String,
+}
+
+#[derive(Deserialize)]
+struct ShareRequest {
+    #[serde(default)]
+    ttl_secs: Option<u64>,
+}
+
+async fn artifacts_list(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Query(query): Query<ArtifactQuery>,
+) -> Result<Json<Vec<ArtifactRow>>, ApiError> {
+    let project = state.project_for_user(&user.id, &query.project)?;
+    let rows = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifacts_for_project(&user.id, &project.id)
+        .map_err(ApiError::from)?;
+    Ok(Json(rows))
+}
+
+async fn artifact_upload(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Json(request): Json<ArtifactUpload>,
+) -> Result<Json<ArtifactRow>, ApiError> {
+    let project = state.project_for_user(&user.id, &request.project_id)?;
+    let bytes = STANDARD
+        .decode(request.data.as_bytes())
+        .map_err(|_| ApiError::bad_request("Artifact data is not valid base64"))?;
+    if bytes.is_empty() || bytes.len() > MAX_ARTIFACT_BYTES {
+        return Err(ApiError::bad_request(format!(
+            "Artifact must be between 1 byte and {} MiB",
+            MAX_ARTIFACT_BYTES / 1024 / 1024
+        )));
+    }
+    let kind = clean_label(&request.kind, 40, "artifact")?;
+    let title = clean_label(&request.title, 240, "Untitled artifact")?;
+    let mime = clean_mime(&request.mime)?;
+    let id = uuid::Uuid::now_v7().to_string();
+    let sha256 = sha256_hex(&bytes);
+    let directory = state.artifact_dir.join(&project.id);
+    tokio::fs::create_dir_all(&directory)
+        .await
+        .map_err(|_| ApiError::internal("Could not create artifact directory"))?;
+    let blob_path = directory.join(&id);
+    tokio::fs::write(&blob_path, &bytes)
+        .await
+        .map_err(|_| ApiError::internal("Could not write artifact"))?;
+    let row = ArtifactRow {
+        id,
+        project_id: project.id,
+        user_id: user.id,
+        kind,
+        title,
+        mime,
+        bytes: bytes.len() as i64,
+        sha256,
+        blob_path: blob_path.to_string_lossy().to_string(),
+        created_at: crate::store::now_secs(),
+    };
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .insert_artifact(&row)
+        .map_err(ApiError::from)?;
+    Ok(Json(row))
+}
+
+async fn artifact_download(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let row = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    state.project_for_user(&user.id, &row.project_id)?;
+    let bytes = tokio::fs::read(&row.blob_path)
+        .await
+        .map_err(|_| ApiError::internal("Could not read artifact"))?;
+    Ok(Json(json!({
+        "artifact": row,
+        "data": STANDARD.encode(bytes),
+    })))
+}
+
+async fn artifact_delete(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let row = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    state.project_for_user(&user.id, &row.project_id)?;
+    if row.user_id != user.id {
+        return Err(ApiError::forbidden());
+    }
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .delete_artifact(&id)
+        .map_err(ApiError::from)?;
+    let _ = tokio::fs::remove_file(&row.blob_path).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn artifact_share(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Path(id): Path<String>,
+    Json(request): Json<ShareRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let row = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    state.project_for_user(&user.id, &row.project_id)?;
+    if row.user_id != user.id {
+        return Err(ApiError::forbidden());
+    }
+    let ttl = request
+        .ttl_secs
+        .unwrap_or(7 * 24 * 60 * 60)
+        .clamp(60, 30 * 24 * 60 * 60);
+    let token = format!(
+        "{}{}",
+        uuid::Uuid::now_v7().simple(),
+        uuid::Uuid::now_v7().simple()
+    );
+    let token_hash = sha256_hex(token.as_bytes());
+    let expires_at = crate::store::now_secs() + ttl as i64;
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .create_artifact_share(&id, &token_hash, expires_at)
+        .map_err(ApiError::from)?;
+    Ok(Json(json!({
+        "token": token,
+        "expires_at": expires_at,
+        "url": format!("/a/{token}"),
+    })))
+}
+
+async fn artifact_revoke_share(
+    State(state): State<AppState>,
+    AuthUser { user, .. }: AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let row = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact(&id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    state.project_for_user(&user.id, &row.project_id)?;
+    if row.user_id != user.id {
+        return Err(ApiError::forbidden());
+    }
+    state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .revoke_artifact_shares(&id)
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn public_artifact(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Response, ApiError> {
+    if token.is_empty() || token.len() > 128 {
+        return Err(ApiError::not_found());
+    }
+    let token_hash = sha256_hex(token.as_bytes());
+    let share = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact_share_by_token(&token_hash)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    let now = crate::store::now_secs();
+    if share.revoked_at.is_some() || share.expires_at <= now {
+        return Err(ApiError::not_found());
+    }
+    let row = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .artifact(&share.artifact_id)
+        .map_err(ApiError::from)?
+        .ok_or_else(ApiError::not_found)?;
+    let bytes = tokio::fs::read(&row.blob_path)
+        .await
+        .map_err(|_| ApiError::internal("Could not read artifact"))?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, public_mime(&row.mime))
+        .header(CONTENT_DISPOSITION, "inline; filename=\"dunlin-artifact\"")
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "sandbox; default-src 'none'")
+        .header(CACHE_CONTROL, "no-store")
+        .body(Body::from(bytes))
+        .map_err(|_| ApiError::internal("Could not build artifact response"))
+}
+
+fn clean_label(value: &str, max: usize, fallback: &str) -> Result<String, ApiError> {
+    let value = value.trim();
+    if value.len() > max || value.chars().any(char::is_control) {
+        return Err(ApiError::bad_request("Artifact label is invalid"));
+    }
+    if value.is_empty() {
+        Ok(fallback.into())
+    } else {
+        Ok(value.to_string())
+    }
+}
+
+fn clean_mime(value: &str) -> Result<String, ApiError> {
+    let value = value.trim().to_ascii_lowercase();
+    let allowed = value.starts_with("text/")
+        || value.starts_with("image/")
+        || matches!(
+            value.as_str(),
+            "application/json" | "application/pdf" | "application/octet-stream"
+        );
+    if !allowed || value.len() > 120 || value.chars().any(char::is_control) {
+        return Err(ApiError::bad_request("Artifact MIME type is not allowed"));
+    }
+    Ok(value)
+}
+
+fn public_mime(value: &str) -> &'static str {
+    match value {
+        "text/markdown" => "text/markdown; charset=utf-8",
+        "application/json" => "application/json",
+        "application/pdf" => "application/pdf",
+        "image/png" => "image/png",
+        "image/jpeg" => "image/jpeg",
+        "image/gif" => "image/gif",
+        "image/webp" => "image/webp",
+        _ => "text/plain; charset=utf-8",
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[derive(Deserialize)]

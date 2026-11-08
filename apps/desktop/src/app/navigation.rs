@@ -240,7 +240,9 @@ impl DunlinApp {
                 self.settings_open = false;
                 if matches!(
                     self.section,
-                    SidebarSection::Dashboard | SidebarSection::Security
+                    SidebarSection::Dashboard
+                        | SidebarSection::Security
+                        | SidebarSection::Knowledge
                 ) {
                     self.section = SidebarSection::Projects;
                 }

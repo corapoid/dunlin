@@ -21,6 +21,7 @@ pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
         || this.settings_open
         || this.section == SidebarSection::Dashboard
         || (this.section == SidebarSection::Security && this.security_enabled)
+        || this.section == SidebarSection::Knowledge
         || (this.spec_tools_enabled && this.spec.is_active_for(this.project()))
     {
         Switcher::None
@@ -51,9 +52,7 @@ pub(crate) fn render(
     let security = this.section == SidebarSection::Security && this.security_enabled;
     let switcher = switcher(this);
     let agent = switcher == Switcher::Agent;
-    let show_session_context = agent && this.view != MainView::Chat;
     let show_shortcut_hints = this.show_shortcut_hints;
-    let session = this.session().clone();
     let sidebar_collapsed = this.sidebar_collapsed;
 
     let left = div()
@@ -64,6 +63,12 @@ pub(crate) fn render(
         .items_center()
         .gap(px(8.))
         .when(has_projects, |bar| {
+            let sidebar_label = match (sidebar_collapsed, show_shortcut_hints) {
+                (true, true) => "Show sidebar (⌘B)",
+                (true, false) => "Show sidebar",
+                (false, true) => "Hide sidebar (⌘B)",
+                (false, false) => "Hide sidebar",
+            };
             bar.child(
                 navigation_button(
                     "title-sidebar",
@@ -72,7 +77,7 @@ pub(crate) fn render(
                     } else {
                         IconName::PanelLeftClose
                     },
-                    "Toggle sidebar",
+                    sidebar_label,
                 )
                 .size(px(28.))
                 .relative()
@@ -141,21 +146,6 @@ pub(crate) fn render(
         })
         .when(!has_projects, |bar| {
             bar.child(div().text_size(px(13.)).child("Dunlin"))
-        })
-        .when(show_session_context, |this| {
-            this.child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(p.border_strong)
-                    .child("/"),
-            )
-            .child(
-                div()
-                    .text_size(px(12.5))
-                    .text_color(p.muted_fg.opacity(0.85))
-                    .truncate()
-                    .child(session.title),
-            )
         });
 
     let view_selector = super::view_switcher::render(this, agent, window, cx);

@@ -1,6 +1,7 @@
 //! Bounded, asynchronous file overview. Git marks compare to HEAD; a separate
 //! blue rail tracks unsaved edits against the saved buffer, including Undo.
 use crate::app::DunlinApp;
+use dunlin_ui::component::input::EditorState;
 use dunlin_ui::*;
 use similar::{DiffTag, TextDiff};
 use std::{ops::Range, sync::Arc, time::Duration};
@@ -114,6 +115,28 @@ fn line_at(y: f32, height: f32, lines: usize) -> usize {
         .min(lines.saturating_sub(1) as f32) as usize
 }
 
+fn scroll_to(
+    editor: &Entity<EditorState>,
+    lines: usize,
+    y: f32,
+    height: f32,
+    focus: bool,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let line = line_at(y, height, lines);
+    editor.update(cx, |state, cx| {
+        let row = state.display_map().buffer_line_to_display_row(line);
+        let line_height = state.line_height().unwrap_or(px(20.));
+        let mut offset = state.scroll_offset();
+        offset.y = -(line_height * row as f32 - state.input_bounds().size.height / 2.).max(px(0.));
+        state.set_scroll_offset(offset, cx);
+        if focus {
+            state.focus(window, cx);
+        }
+    });
+}
+
 impl DunlinApp {
     pub(crate) fn refresh_minimap(&mut self, cx: &mut Context<Self>) {
         if !self.editor_minimap || !self.workbench.show_file {
@@ -181,7 +204,11 @@ impl DunlinApp {
     }
 }
 
-pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn render(
+    this: &DunlinApp,
+    at_workspace_top: bool,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
     let p = palette(cx);
     let editor = this.editor.clone();
     let snapshot = this
@@ -213,24 +240,47 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .border_l_1()
         .border_color(p.border)
         .bg(p.subtle)
-        .rounded_r(px(dunlin_ui::scale::WORKSPACE_RADIUS))
+        .rounded_tr(px(if at_workspace_top {
+            dunlin_ui::scale::WORKSPACE_RADIUS
+        } else {
+            0.
+        }))
+        .rounded_br(px(dunlin_ui::scale::WORKSPACE_RADIUS))
         .cursor_pointer()
-        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-            let bounds = hit_bounds.get();
-            let line = line_at(
-                f32::from(event.position.y - bounds.origin.y),
-                f32::from(bounds.size.height),
-                click_snapshot.lines,
-            );
-            click_editor.update(cx, |state, cx| {
-                let row = state.display_map().buffer_line_to_display_row(line);
-                let line_height = state.line_height().unwrap_or(px(20.));
-                let mut offset = state.scroll_offset();
-                offset.y =
-                    -(line_height * row as f32 - state.input_bounds().size.height / 2.).max(px(0.));
-                state.set_scroll_offset(offset, cx);
-                state.focus(window, cx);
-            });
+        .on_mouse_down(MouseButton::Left, {
+            let hit_bounds = hit_bounds.clone();
+            move |event, window, cx| {
+                let bounds = hit_bounds.get();
+                scroll_to(
+                    &click_editor,
+                    click_snapshot.lines,
+                    f32::from(event.position.y - bounds.origin.y),
+                    f32::from(bounds.size.height),
+                    true,
+                    window,
+                    cx,
+                );
+            }
+        })
+        .on_mouse_move({
+            let hit_bounds = hit_bounds.clone();
+            let editor = editor.clone();
+            let snapshot = snapshot.clone();
+            move |event: &MouseMoveEvent, window, cx| {
+                if event.pressed_button != Some(MouseButton::Left) {
+                    return;
+                }
+                let bounds = hit_bounds.get();
+                scroll_to(
+                    &editor,
+                    snapshot.lines,
+                    f32::from(event.position.y - bounds.origin.y),
+                    f32::from(bounds.size.height),
+                    false,
+                    window,
+                    cx,
+                );
+            }
         })
         .child(
             canvas(
@@ -303,15 +353,26 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         let viewport = Bounds::new(
                             bounds.origin + point(px(7.), px(top)),
                             size(
-                                // The canvas has a rectangular clip; leave the curved right edge to its background.
-                                (bounds.size.width - px(7. + dunlin_ui::scale::WORKSPACE_RADIUS))
-                                    .max(px(0.)),
+                                // The parent clips to the rounded workspace edge, so
+                                // the indicator can extend fully to the right frame.
+                                (bounds.size.width - px(7.)).max(px(0.)),
                                 px(((end.saturating_sub(start)) as f32 * scale)
                                     .max(4.)
                                     .min((height - top).max(0.))),
                             ),
                         );
-                        window.paint_quad(fill(viewport, p.blue.opacity(0.12)));
+                        let radius = dunlin_ui::scale::WORKSPACE_RADIUS;
+                        let corners = Corners {
+                            top_right: px(if at_workspace_top && start == 0 {
+                                radius
+                            } else {
+                                0.
+                            }),
+                            bottom_right: px(if end >= snapshot.lines { radius } else { 0. }),
+                            ..Corners::default()
+                        };
+                        window
+                            .paint_quad(fill(viewport, p.blue.opacity(0.12)).corner_radii(corners));
                     }
                 },
             )

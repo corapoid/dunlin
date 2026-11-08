@@ -278,7 +278,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .child(crate::inline_blame::overlay(this, cx)),
         );
         if this.editor_minimap && mode == Mode::Source {
-            body = body.child(crate::minimap::render(this, cx));
+            body = body.child(crate::minimap::render(this, false, cx));
         }
     }
     div()

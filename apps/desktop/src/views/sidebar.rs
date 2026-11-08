@@ -36,6 +36,7 @@ pub(crate) fn render(
         SidebarSection::SourceControl => source_control_body(this, cx),
         SidebarSection::Security => projects_body(this, width, cx),
         SidebarSection::Sessions => sessions_body(this, cx),
+        SidebarSection::Knowledge => knowledge_body(this, cx),
     };
     let header = section_header(this, section, cx);
 
@@ -94,8 +95,8 @@ pub(crate) fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) ->
     .px(px(10.))
     .rounded(px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
     .border_1()
-    .border_color(p.border.opacity(0.6))
-    .bg(p.subtle.opacity(0.55))
+    .border_color(p.fg.opacity(0.06))
+    .bg(p.fg.opacity(0.035))
     .on_click(cx.listener(|this, _, _, cx| {
         this.project_menu_open = !this.project_menu_open;
         cx.notify();
@@ -158,6 +159,7 @@ fn section_header(
         SidebarSection::SourceControl => ("Source control", Some(this.git.changes.len())),
         SidebarSection::Security => ("Security", None),
         SidebarSection::Sessions => ("Sessions", Some(this.visible_session_count())),
+        SidebarSection::Knowledge => ("Knowledge", Some(this.knowledge.graph.objects.len())),
     };
 
     let right: AnyElement =
@@ -2101,8 +2103,6 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 IconName::Undo2,
                 "Discard working tree changes",
             )
-            .danger()
-            .outline()
             .on_click(cx.listener(move |this, _, window, cx| {
                 cx.stop_propagation();
                 this.request_discard_file(&discard_path, window, cx);
@@ -2245,6 +2245,68 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     }
 
     list.into_any_element()
+}
+
+fn knowledge_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for object in &this.knowledge.graph.objects {
+        *counts.entry(object.kind.as_str()).or_default() += 1;
+    }
+    let mut body = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .p(px(8.))
+        .gap(px(4.))
+        .child(
+            div()
+                .px(px(6.))
+                .py(px(4.))
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .child("Intent, concepts, decisions and linked artifacts."),
+        );
+    for (kind, count) in counts {
+        body = body.child(
+            div()
+                .px(px(8.))
+                .py(px(5.))
+                .rounded(px(5.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(11.))
+                        .text_color(p.fg)
+                        .child(crate::knowledge::kind_label(kind).to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(9.5))
+                        .font_family(dunlin_ui::theme::code_font())
+                        .text_color(p.muted_fg)
+                        .child(count.to_string()),
+                ),
+        );
+    }
+    if this.knowledge.graph.objects.is_empty() {
+        body = body.child(
+            div()
+                .px(px(6.))
+                .py(px(6.))
+                .text_size(px(10.5))
+                .text_color(p.muted_fg)
+                .child(if this.knowledge.loading {
+                    "Indexing…"
+                } else {
+                    "No knowledge files indexed yet."
+                }),
+        );
+    }
+    body.into_any_element()
 }
 
 fn sessions_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {

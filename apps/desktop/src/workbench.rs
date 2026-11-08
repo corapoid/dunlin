@@ -114,10 +114,10 @@ fn save_new_buffer(
 
 fn closing_tab_ids<'a>(
     project: &str,
-    tabs: impl Iterator<Item = (&'a str, &'a str)>,
+    tabs: impl Iterator<Item = (&'a str, &'a str, bool)>,
 ) -> Vec<String> {
-    tabs.filter(|(_, owner)| *owner == project)
-        .map(|(id, _)| id.to_string())
+    tabs.filter(|(_, owner, locked)| *owner == project && !locked)
+        .map(|(id, _, _)| id.to_string())
         .collect()
 }
 fn preview_fit() -> ObjectFit {
@@ -157,6 +157,7 @@ pub(crate) struct Tab {
     pub loading: bool,
     pub untitled: bool,
     pub saving: bool,
+    pub locked: bool,
     pub minimap: crate::minimap::State,
     pub markdown: crate::markdown_editor::State,
     pub blame: crate::inline_blame::State,
@@ -726,6 +727,7 @@ impl DunlinApp {
             loading: !untitled,
             untitled,
             saving: false,
+            locked: false,
             minimap: Default::default(),
             markdown: Default::default(),
             blame: Default::default(),
@@ -927,13 +929,26 @@ impl DunlinApp {
     pub(crate) fn request_close_all_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stash_editor_tab();
         let project = self.project().id.clone();
-        let keys = self.workspace_tab_keys();
+        let locked: std::collections::HashSet<String> = self
+            .workbench
+            .tabs
+            .iter()
+            .filter(|tab| tab.locked)
+            .map(|tab| tab.id.clone())
+            .collect();
+        let keys: Vec<_> = self
+            .workspace_tab_keys()
+            .into_iter()
+            .filter(|key| {
+                !matches!(key, crate::workspace_panes::TabKey::File(id) if locked.contains(id))
+            })
+            .collect();
         let ids = closing_tab_ids(
             &project,
             self.workbench
                 .tabs
                 .iter()
-                .map(|tab| (tab.id.as_str(), tab.project.as_str())),
+                .map(|tab| (tab.id.as_str(), tab.project.as_str(), tab.locked)),
         );
         if keys.is_empty() {
             return;
@@ -1146,7 +1161,11 @@ impl DunlinApp {
         }) {
             let id = tab.id.clone();
             let close = id.clone();
+            let lock = id.clone();
+            let menu = id.clone();
             let active = selection == Some(&TabKey::File(id.clone()));
+            let name = tab.inspector.name.clone();
+            let locked = tab.locked;
             let dirty = if self.workbench.active.as_deref() == Some(&id) {
                 self.editor_dirty
             } else {
@@ -1154,41 +1173,70 @@ impl DunlinApp {
             };
             keys.push(TabKey::File(id.clone()));
             tabs.push(
-                document_tab(format!(
-                    "{}{}",
-                    tab.inspector.name,
-                    if dirty { " •" } else { "" }
-                ))
-                .prefix(
-                    div()
-                        .relative()
-                        .flex()
-                        .items_center()
-                        .child(
-                            Icon::new(crate::file_icons::appearance(&tab.inspector.name, &p).0)
-                                .size(px(14.)),
-                        )
-                        .when(active, |view| view.children(tab_probe("file-tab-drag"))),
-                )
-                .on_click(
-                    cx.listener(move |this, _, window, cx| this.activate_file_tab(&id, window, cx)),
-                )
-                .suffix(
-                    icon_button(
-                        format!("close-tab:{close}"),
-                        IconName::X,
-                        format!("Close {}", tab.inspector.name),
+                document_tab(format!("{}{}", name, if dirty { " •" } else { "" }))
+                    .prefix(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .child(
+                                Icon::new(crate::file_icons::appearance(&name, &p).0).size(px(14.)),
+                            )
+                            .when(active, |view| view.children(tab_probe("file-tab-drag"))),
                     )
-                    .relative()
-                    .when(active, |button| {
-                        button.children(tab_probe("close-file-tab"))
-                    })
-                    .size(px(24.))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.request_close_tab(&close, window, cx);
-                    })),
-                ),
+                        this.activate_file_tab(&id, window, cx)
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.context_menu = Some(crate::app::ContextMenuState {
+                                target: crate::app::ContextTarget::Tab(menu.clone()),
+                                position: event.position,
+                            });
+                            cx.notify();
+                        }),
+                    )
+                    .suffix(if locked {
+                        icon_button(
+                            format!("lock-tab:{lock}"),
+                            IconName::Lock,
+                            format!("{name} is locked · click to unlock"),
+                        )
+                        .relative()
+                        .when(active, |button| {
+                            button.children(tab_probe("close-file-tab"))
+                        })
+                        .size(px(24.))
+                        .text_color(p.amber)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            if let Some(tab) =
+                                this.workbench.tabs.iter_mut().find(|tab| tab.id == lock)
+                            {
+                                tab.locked = false;
+                            }
+                            cx.notify();
+                        }))
+                    } else {
+                        icon_button(
+                            format!("close-tab:{close}"),
+                            IconName::X,
+                            format!("Close {name}"),
+                        )
+                        .relative()
+                        .when(active, |button| {
+                            button.children(tab_probe("close-file-tab"))
+                        })
+                        .size(px(24.))
+                        .on_click(cx.listener(
+                            move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.request_close_tab(&close, window, cx);
+                            },
+                        ))
+                    }),
             );
         }
         for terminal in self
@@ -1684,11 +1732,16 @@ mod tests {
     use super::{FILE_NOTICE_DURATION, buffer_changed, preview_failure};
     use crate::app::{Toast, ToastAction};
     #[test]
-    fn close_all_only_targets_the_visible_projects_file_tabs() {
-        let tabs = [("one", "project"), ("other", "another"), ("two", "project")];
+    fn close_all_only_targets_the_visible_projects_unlocked_file_tabs() {
+        let tabs = [
+            ("one", "project", false),
+            ("other", "another", false),
+            ("two", "project", true),
+            ("three", "project", false),
+        ];
         assert_eq!(
             super::closing_tab_ids("project", tabs.into_iter()),
-            ["one", "two"]
+            ["one", "three"]
         );
         assert!(super::closing_tab_ids("missing", tabs.into_iter()).is_empty());
     }

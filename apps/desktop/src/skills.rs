@@ -18,6 +18,7 @@ use url::Url;
 pub(crate) const COMMIT_SKILL: &str = "conventional-commits";
 pub(crate) const SECURITY_AUDIT_SKILL: &str = "cloudflare-security-audit";
 pub(crate) const SPEC_KIT_SKILL: &str = "spec-driven-development";
+pub(crate) const PLUGIN_BUILDER_SKILL: &str = "plugin-builder";
 const MAX_SKILL_BYTES: usize = 64 * 1024;
 const MAX_SKILL_FILE_BYTES: usize = 256 * 1024;
 const MAX_SKILL_TOTAL_BYTES: usize = 2 * 1024 * 1024;
@@ -26,6 +27,7 @@ pub(crate) const COMMIT_INSTRUCTIONS: &str =
     include_str!("../../../assets/skills/conventional-commits.md");
 const SPEC_KIT_INSTRUCTIONS: &str =
     include_str!("../../../assets/skills/spec-driven-development.md");
+const PLUGIN_BUILDER_INSTRUCTIONS: &str = include_str!("../../../assets/skills/plugin-builder.md");
 
 /// Pinned Cloudflare `security-audit-skill` bundle. Every companion file is
 /// installed together so relative references in `SKILL.md` keep working.
@@ -384,21 +386,26 @@ pub(crate) struct CatalogEntry {
     pub file_count: usize,
 }
 pub(crate) fn catalog_metadata() -> Vec<CatalogEntry> {
-    [security_audit_cached(), spec_kit_cached()]
-        .into_iter()
-        .map(|skill| CatalogEntry {
-            id: skill.id.clone(),
-            title: skill.title.clone(),
-            description: skill.description.clone(),
-            origin: skill.origin.clone(),
-            file_count: skill.files.len() + 1,
-        })
-        .collect()
+    [
+        security_audit_cached(),
+        spec_kit_cached(),
+        plugin_builder_cached(),
+    ]
+    .into_iter()
+    .map(|skill| CatalogEntry {
+        id: skill.id.clone(),
+        title: skill.title.clone(),
+        description: skill.description.clone(),
+        origin: skill.origin.clone(),
+        file_count: skill.files.len() + 1,
+    })
+    .collect()
 }
 pub(crate) fn catalog_skill(id: &str) -> Option<Skill> {
     match id {
         SECURITY_AUDIT_SKILL => Some(security_audit_cached().clone()),
         SPEC_KIT_SKILL => Some(spec_kit_cached().clone()),
+        PLUGIN_BUILDER_SKILL => Some(plugin_builder_cached().clone()),
         _ => None,
     }
 }
@@ -413,6 +420,18 @@ fn spec_kit_cached() -> &'static Skill {
         skill
     })
 }
+fn plugin_builder_cached() -> &'static Skill {
+    static CACHE: std::sync::OnceLock<Skill> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut skill = parse_skill_contents(PLUGIN_BUILDER_INSTRUCTIONS, PLUGIN_BUILDER_SKILL)
+            .expect("bundled plugin-builder skill is valid");
+        skill.title = "Build Dunlin plugins".into();
+        skill.origin = "Dunlin · bundled instruction · MIT".into();
+        skill.source_hash = skill.content_hash();
+        skill
+    })
+}
+
 fn security_audit_cached() -> &'static Skill {
     static CACHE: std::sync::OnceLock<Skill> = std::sync::OnceLock::new();
     CACHE.get_or_init(security_audit_skill)
@@ -2063,8 +2082,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 #[cfg(test)]
 mod tests {
     use super::{
-        InstalledFile, SECURITY_AUDIT_SKILL, SPEC_KIT_SKILL, Scope, SkillFile, Target,
-        catalog_skill, defaults, discover, install_at, install_at_scoped, uninstall,
+        InstalledFile, PLUGIN_BUILDER_SKILL, SECURITY_AUDIT_SKILL, SPEC_KIT_SKILL, Scope,
+        SkillFile, Target, catalog_metadata, catalog_skill, defaults, discover, install_at,
+        install_at_scoped, uninstall,
     };
     use std::{fs, path::PathBuf};
     struct Temp(PathBuf);
@@ -2384,6 +2404,21 @@ mod tests {
         let temp = Temp::new();
         let installed = install_at(&temp.0, &skill, Target::Claude).unwrap();
         assert!(PathBuf::from(&installed.path).is_file());
+    }
+
+    #[test]
+    fn plugin_builder_skill_is_bundled_and_complete() {
+        let skill = catalog_skill(PLUGIN_BUILDER_SKILL).unwrap();
+        assert_eq!(skill.id, PLUGIN_BUILDER_SKILL);
+        assert!(skill.body.contains("dunlin_alloc"));
+        assert!(skill.body.contains("plugin.json"));
+        assert!(skill.body.contains("Security checklist"));
+        assert!(skill.body.contains("object_propose"));
+        assert!(
+            catalog_metadata()
+                .iter()
+                .any(|entry| entry.id == PLUGIN_BUILDER_SKILL)
+        );
     }
 
     #[test]

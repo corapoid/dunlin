@@ -470,6 +470,7 @@ impl ToastAction {
 pub(crate) enum ContextTarget {
     Project(usize),
     Session(String),
+    Tab(String),
 }
 
 #[derive(Clone, Debug)]
@@ -519,6 +520,8 @@ pub(crate) enum Command {
     Context,
     Review,
     CopyTrace,
+    SaveClipboardArtifact,
+    SaveFileArtifact,
     Pack(usize),
     SwitchProject(usize),
     CloseInspector,
@@ -598,7 +601,11 @@ pub(crate) struct DunlinApp {
     pub git_history: crate::git_history::State,
     pub spec: crate::spec::State,
     pub spec_tools_enabled: bool,
+    pub knowledge: crate::knowledge::State,
     pub plugins: crate::plugins::State,
+    pub ssh_hosts: Vec<dunlin_domain::SshHost>,
+    pub ssh_status: std::collections::HashMap<String, String>,
+    pub ssh_tunnels: std::collections::HashMap<String, dunlin_ssh::Tunnel>,
     pub task_budgets: crate::task_budgets::State,
     pub subtask_worktrees: crate::subtask_worktrees::State,
     pub comparisons: crate::comparisons::State,
@@ -861,6 +868,10 @@ impl DunlinApp {
         }
         let vault_start = stored.vault_enabled && store.is_some();
         let (project_groups, projects, mut all_sessions) = snapshot.unwrap_or_default();
+        let ssh_hosts = store
+            .as_ref()
+            .and_then(|store| store.ssh_hosts().ok())
+            .unwrap_or_default();
         let fallback_project = Project {
             id: "none".into(),
             name: "Welcome".into(),
@@ -1183,6 +1194,10 @@ impl DunlinApp {
             git_history: Default::default(),
             spec: Default::default(),
             spec_tools_enabled: stored.spec_tools_enabled,
+            knowledge: Default::default(),
+            ssh_hosts,
+            ssh_status: std::collections::HashMap::new(),
+            ssh_tunnels: std::collections::HashMap::new(),
             plugins: crate::plugins::State::new(
                 stored.disabled_plugins.clone(),
                 stored.enabled_plugins.clone(),
@@ -1438,6 +1453,12 @@ impl DunlinApp {
         {
             restored_project = index != app.selected_project;
             app.select_project_internal(index, false, cx);
+        }
+        // The first project is already selected before restore. Its Git status
+        // still needs a background refresh so the branch/remote status bar is
+        // accurate instead of showing its default empty state.
+        if !restored_project && !app.project().is_remote() && !app.project().path.is_empty() {
+            app.refresh_git_status(cx);
         }
         if app.restore_session
             && let Some(index) = stored
@@ -2086,6 +2107,13 @@ impl DunlinApp {
                 keywords: "history runs conversations".into(),
             },
             CommandItem {
+                command: Command::Section(SidebarSection::Knowledge),
+                label: "Show Knowledge".into(),
+                hint: None,
+                icon: IconName::BookOpen,
+                keywords: "intent concept decision graph evidence proposals".into(),
+            },
+            CommandItem {
                 command: Command::Section(SidebarSection::Projects),
                 label: "Show Projects".into(),
                 hint: None,
@@ -2226,6 +2254,20 @@ impl DunlinApp {
                 hint: None,
                 icon: IconName::ChartNoAxesColumn,
                 keywords: "quota subscription tokens cost".into(),
+            },
+            CommandItem {
+                command: Command::SaveClipboardArtifact,
+                label: "Save Clipboard as Artifact".into(),
+                hint: None,
+                icon: IconName::FilePlus,
+                keywords: "artifact evidence clipboard capture".into(),
+            },
+            CommandItem {
+                command: Command::SaveFileArtifact,
+                label: "Save Current File as Artifact".into(),
+                hint: None,
+                icon: IconName::FilePlus,
+                keywords: "artifact evidence file capture".into(),
             },
             CommandItem {
                 command: Command::CopyTrace,
@@ -2434,7 +2476,9 @@ impl DunlinApp {
                 self.section = section;
                 self.settings_open = false;
                 self.persist_settings(cx);
-                if section == SidebarSection::Search {
+                if section == SidebarSection::Knowledge {
+                    self.refresh_knowledge(cx);
+                } else if section == SidebarSection::Search {
                     let handle = self.search_input.read(cx).focus_handle(cx);
                     window.focus(&handle, cx);
                 } else if section == SidebarSection::SourceControl {
@@ -2533,6 +2577,8 @@ impl DunlinApp {
             Command::Checks => self.open_checks(window, cx),
             Command::Context => self.open_context_inspector(window, cx),
             Command::Review => self.open_task_review(window, cx),
+            Command::SaveClipboardArtifact => self.save_clipboard_artifact(cx),
+            Command::SaveFileArtifact => self.save_file_artifact(cx),
             Command::CopyTrace => {
                 let session = self.session().clone();
                 let spans = projection::spans(&self.harness.transcript, &session);
@@ -5082,6 +5128,7 @@ impl DunlinApp {
         }
         if !missing {
             self.refresh_git_status(cx);
+            self.refresh_project_summaries(cx);
         }
         self.ensure_usage(cx);
         self.persist_settings(cx);
@@ -5181,6 +5228,7 @@ impl DunlinApp {
 
     /// Read branch and working-tree state off the UI thread.
     pub(crate) fn refresh_git_status(&mut self, cx: &mut Context<Self>) {
+        self.refresh_project_summaries(cx);
         self.invalidate_impact_map();
         self.invalidate_minimap_baselines();
         let expected = self.project().path.clone();
@@ -5534,6 +5582,24 @@ impl DunlinApp {
     ) where
         F: FnOnce(remote::WorkspaceBackend) -> Result<(), String> + Send + 'static,
     {
+        fn task_error(error: String) -> String {
+            let lower = error.to_ascii_lowercase();
+            if lower.contains("not possible to fast-forward")
+                || lower.contains("diverged")
+                || lower.contains("conflict")
+                || lower.contains("would be overwritten")
+            {
+                "Pull stopped: local and remote changes conflict. Resolve them manually; nothing was merged."
+                    .into()
+            } else if lower.contains("non-fast-forward")
+                || lower.contains("fetch first")
+                || lower.contains("rejected")
+            {
+                "Push rejected: the remote branch has newer commits. Pull first.".into()
+            } else {
+                error
+            }
+        }
         let backend = match self.backend() {
             Ok(backend) => backend,
             Err(error) => {
@@ -5563,10 +5629,12 @@ impl DunlinApp {
                 match result {
                     Ok(()) => {
                         this.notice = Some(success);
+                        this.repo_summaries.invalidate();
+                        this.refresh_project_summaries(cx);
                         this.refresh_file_tree(cx);
                         this.refresh_git_status(cx);
                     }
-                    Err(error) => this.set_notice(error, cx),
+                    Err(error) => this.set_notice(task_error(error), cx),
                 }
                 cx.notify();
             })
@@ -5642,7 +5710,10 @@ impl DunlinApp {
         self.spec.active = false;
         if matches!(
             self.section,
-            SidebarSection::Dashboard | SidebarSection::Security | SidebarSection::SourceControl
+            SidebarSection::Dashboard
+                | SidebarSection::Security
+                | SidebarSection::SourceControl
+                | SidebarSection::Knowledge
         ) {
             self.section = SidebarSection::Projects;
         }

@@ -123,6 +123,8 @@ pub(crate) fn render(
         .w(px(width))
         .h(px(height))
         .rounded(px(20.))
+        .border_1()
+        .border_color(p.border_strong)
         .shadow_lg()
         .bg(p.subtle)
         .overflow_hidden()
@@ -184,6 +186,7 @@ pub(crate) fn render(
         .top_0()
         .left_0()
         .size_full()
+        .bg(black().opacity(0.45))
         .flex()
         .items_center()
         .justify_center()
@@ -3279,7 +3282,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
         }
     }
 
-    body = body.child(
+    body = body.child(crate::ssh::settings_section(this, cx)).child(
         dunlin_ui::button("settings-connect-server")
             .primary()
             .label("Connect to server…")

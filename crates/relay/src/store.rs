@@ -75,6 +75,27 @@ pub struct BillingEvidenceRow {
     pub updated_at: i64,
 }
 
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+pub struct ArtifactRow {
+    pub id: String,
+    pub project_id: String,
+    pub user_id: String,
+    pub kind: String,
+    pub title: String,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    pub blob_path: String,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ArtifactShareRow {
+    pub artifact_id: String,
+    pub expires_at: i64,
+    pub revoked_at: Option<i64>,
+}
+
 pub struct Store {
     connection: Connection,
 }
@@ -204,6 +225,38 @@ impl Store {
                 );
 
                 PRAGMA user_version = 4;
+                "#,
+            )?;
+        }
+        if version < 5 {
+            self.connection.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS relay_artifacts (
+                    id          TEXT PRIMARY KEY,
+                    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    kind        TEXT NOT NULL,
+                    title       TEXT NOT NULL,
+                    mime        TEXT NOT NULL,
+                    bytes       INTEGER NOT NULL,
+                    sha256      TEXT NOT NULL,
+                    blob_path   TEXT NOT NULL,
+                    created_at  INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS relay_artifacts_project_idx
+                    ON relay_artifacts(project_id, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS relay_artifact_shares (
+                    token_hash  TEXT PRIMARY KEY,
+                    artifact_id TEXT NOT NULL REFERENCES relay_artifacts(id) ON DELETE CASCADE,
+                    created_at  INTEGER NOT NULL,
+                    expires_at  INTEGER NOT NULL,
+                    revoked_at  INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS relay_artifact_shares_artifact_idx
+                    ON relay_artifact_shares(artifact_id);
+
+                PRAGMA user_version = 5;
                 "#,
             )?;
         }
@@ -708,6 +761,126 @@ impl Store {
             )
             .optional()?)
     }
+
+    pub fn insert_artifact(&self, row: &ArtifactRow) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO relay_artifacts
+             (id, project_id, user_id, kind, title, mime, bytes, sha256, blob_path, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                row.id,
+                row.project_id,
+                row.user_id,
+                row.kind,
+                row.title,
+                row.mime,
+                row.bytes,
+                row.sha256,
+                row.blob_path,
+                row.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn artifact(&self, id: &str) -> Result<Option<ArtifactRow>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT id, project_id, user_id, kind, title, mime, bytes, sha256, blob_path, created_at
+                 FROM relay_artifacts WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok(ArtifactRow {
+                        id: row.get(0)?,
+                        project_id: row.get(1)?,
+                        user_id: row.get(2)?,
+                        kind: row.get(3)?,
+                        title: row.get(4)?,
+                        mime: row.get(5)?,
+                        bytes: row.get(6)?,
+                        sha256: row.get(7)?,
+                        blob_path: row.get(8)?,
+                        created_at: row.get(9)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn artifacts_for_project(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<ArtifactRow>> {
+        let mut statement = self.connection.prepare(
+        "SELECT id, project_id, user_id, kind, title, mime, bytes, sha256, blob_path, created_at
+             FROM relay_artifacts WHERE user_id = ?1 AND project_id = ?2
+             ORDER BY created_at DESC, id",
+    )?;
+        let rows = statement.query_map(params![user_id, project_id], |row| {
+            Ok(ArtifactRow {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                user_id: row.get(2)?,
+                kind: row.get(3)?,
+                title: row.get(4)?,
+                mime: row.get(5)?,
+                bytes: row.get(6)?,
+                sha256: row.get(7)?,
+                blob_path: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn create_artifact_share(
+        &self,
+        artifact_id: &str,
+        token_hash: &str,
+        expires_at: i64,
+    ) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO relay_artifact_shares (token_hash, artifact_id, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![token_hash, artifact_id, now_secs(), expires_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn artifact_share_by_token(&self, token_hash: &str) -> Result<Option<ArtifactShareRow>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT artifact_id, expires_at, revoked_at
+                 FROM relay_artifact_shares WHERE token_hash = ?1",
+                [token_hash],
+                |row| {
+                    Ok(ArtifactShareRow {
+                        artifact_id: row.get(0)?,
+                        expires_at: row.get(1)?,
+                        revoked_at: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn revoke_artifact_shares(&self, artifact_id: &str) -> Result<()> {
+        self.connection.execute(
+            "UPDATE relay_artifact_shares SET revoked_at = ?2
+             WHERE artifact_id = ?1 AND revoked_at IS NULL",
+            params![artifact_id, now_secs()],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_artifact(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM relay_artifacts WHERE id = ?1", [id])?;
+        Ok(())
+    }
 }
 
 pub fn now_secs() -> i64 {
@@ -791,6 +964,57 @@ mod tests {
 
         store.delete_session("ses-1").unwrap();
         assert!(store.session_owner("ses-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn artifacts_and_shares_round_trip_and_revoke() {
+        let store = Store::open_in_memory().unwrap();
+        let user = store.create_user("marek", "member").unwrap();
+        let project = store.create_project("dunlin", "/tmp/dunlin").unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        let row = super::ArtifactRow {
+            id: "art-1".into(),
+            project_id: project.id.clone(),
+            user_id: user.id.clone(),
+            kind: "diff".into(),
+            title: "Diff".into(),
+            mime: "text/plain".into(),
+            bytes: 3,
+            sha256: "hash".into(),
+            blob_path: "/tmp/art-1".into(),
+            created_at: super::now_secs(),
+        };
+        store.insert_artifact(&row).unwrap();
+        assert_eq!(store.artifact("art-1").unwrap().unwrap().title, "Diff");
+        assert_eq!(
+            store
+                .artifacts_for_project(&user.id, &project.id)
+                .unwrap()
+                .len(),
+            1
+        );
+        store
+            .create_artifact_share("art-1", "token-hash", super::now_secs() + 60)
+            .unwrap();
+        assert_eq!(
+            store
+                .artifact_share_by_token("token-hash")
+                .unwrap()
+                .unwrap()
+                .artifact_id,
+            "art-1"
+        );
+        store.revoke_artifact_shares("art-1").unwrap();
+        assert!(
+            store
+                .artifact_share_by_token("token-hash")
+                .unwrap()
+                .unwrap()
+                .revoked_at
+                .is_some()
+        );
+        store.delete_artifact("art-1").unwrap();
+        assert!(store.artifact("art-1").unwrap().is_none());
     }
 
     #[test]
