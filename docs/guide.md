@@ -9,12 +9,12 @@ messages, plans, tool calls, diffs and permission requests rendered as native
 UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
-self-hosted relay beta**. The latest published beta is `0.1.0-beta.10`; the current source
-version is `0.1.0-beta.11`; see [CHANGELOG.md](../CHANGELOG.md). Published
-checksums, bundle identity/version and relay architectures were independently
-verified before advancing download links.
+self-hosted relay beta**. The current version and the latest published beta are
+on the [releases page](https://github.com/corapoid/dunlin/releases) and in
+[CHANGELOG.md](../CHANGELOG.md). Published checksums, bundle identity/version and
+relay architectures are independently verified before advancing download links.
 
-### 0.1.0-beta.11 highlights
+### Current highlights
 
 - [Knowledge](governance-wasm-plugin.md): a file-first Intent/Concept/Decision
   spine, relation graph and evidence workspace, with an optional sandboxed WASM
@@ -27,7 +27,7 @@ verified before advancing download links.
 - The extensions panel can install the bundled governance pack, validate its
   WASM module and start a guided plugin-builder chat.
 
-### Beta.10 highlights
+### Earlier highlights
 
 - [Server setup](relay-setup.md): interactive macOS/Linux bootstrap, optional
   private Tailscale HTTPS, server-owned harness installation/authorization,
@@ -700,14 +700,14 @@ Release artifacts are published on the
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
 
-Beta.10 also publishes
+Published releases also include
 `dunlin-relay-<version>-linux-x86_64.tar.gz` and
 `dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
 `install-harness.sh` and `RELAY-SHA256SUMS`. `RELAY-SHA256SUMS` covers all three
 relay archives and the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
 
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
-supported in 0.1.
+supported in the current beta.
 
 ### GitHub Packages (OCI)
 
@@ -1223,7 +1223,7 @@ OpenSSH through the bundled `dunlin-ssh-askpass` helper. Private keys are never
 copied or stored. Bootstrap requires a relay binary matching the remote OS and
 architecture.
 
-## What is not in 0.1
+## What is not in the current beta
 
 - Real-host SSH acceptance for MFA, changed host keys, network drops and
   service cleanup. The host manager, Keychain passphrase storage, bootstrap,

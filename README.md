@@ -14,6 +14,8 @@
   <img alt="Platform: macOS 15+ Apple Silicon" src="https://img.shields.io/badge/macOS%2015%2B-Apple%20Silicon-111111" />
   <img alt="Status: public beta" src="https://img.shields.io/badge/status-public%20beta-f0a020" />
   <a href="https://github.com/corapoid/dunlin/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corapoid/dunlin/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/corapoid/dunlin/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/corapoid/dunlin?include_prereleases&label=release" /></a>
+  <a href="https://github.com/corapoid/dunlin/releases"><img alt="Last release date" src="https://img.shields.io/github/release-date/corapoid/dunlin?include_prereleases&label=released" /></a>
 </p>
 
 <p align="center">
@@ -25,12 +27,12 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac or your explicitly selected self-hosted server.
 
-**0.1.0-beta.11** source · macOS 15+ · Apple Silicon desktop
+**Public beta** · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
-The latest published release is [0.1.0-beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10).
-Published downloads have passed independent checksum, bundle and architecture checks.
-Beta.9 was tagged but its Linux test gate blocked publication; the tag is retained.
+Download the latest verified beta from the
+[releases page](https://github.com/corapoid/dunlin/releases). Every published
+download passes independent checksum, bundle and architecture checks.
 
 ## What you won't find combined anywhere else
 
@@ -90,7 +92,7 @@ Rust/GPUI app is the unusual part.
 Measured on an Apple M1 / 16 GB / macOS 27.0.1 with the release build, no agent
 connected, median of three warm launches:
 
-| | |
+| Metric | Measured |
 | --- | ---: |
 | First window, empty onboarding | **0.31 s** |
 | First window, local project | **0.30 s** |
@@ -146,10 +148,14 @@ is unsigned. macOS may ask you to approve the app in
 
 The interactive terminal installer collects the server name,
 optional Tailscale, autostart, Git tools and harness choices before installation.
-Beta.10 includes the bootstrap scripts, macOS/Linux relay archives and checksums.
+The latest release includes the bootstrap script, macOS/Linux relay archives and
+checksums.
+
+Download `install-relay.sh` from the
+[releases page](https://github.com/corapoid/dunlin/releases), then run:
 
 ```sh
-bash <(curl -fsSL https://github.com/corapoid/dunlin/releases/download/v0.1.0-beta.10/install-relay.sh)
+bash install-relay.sh
 ```
 
 Review the script before running it as your regular service user, not root.
@@ -207,7 +213,7 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 
 ## Status
 
-Dunlin is an early public beta. Intel Macs are not supported in 0.1. See the
+Dunlin is an early public beta. Intel Macs are not supported in the current beta. See the
 [roadmap](docs/ROADMAP.md) for what is still open and the
 [documentation index](docs/README.md) for the detailed references.
 

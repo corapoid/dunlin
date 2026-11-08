@@ -1,6 +1,6 @@
 # Dunlin — roadmap
 
-Last reviewed against the `0.1.0-beta.11` source tree on 2026-11-08. This is the
+Last reviewed against the current source tree on 2026-11-08. This is the
 single backlog for Dunlin: completed scopes have been removed after checking the
 current code, tests and acceptance notes.
 

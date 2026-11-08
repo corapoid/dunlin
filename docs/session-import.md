@@ -100,7 +100,7 @@ OpenCode database remain unchanged.
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 | --- | --- | --- | --- | --- | --- |
-| The 512/256/64 MiB limits were local preview policy, not a harness limit | `session_import.rs`: `collect_session_files`, `discover_session_files`, `read_files`; `adapters.rs::parse`; `opencode_db.rs`: session queries | Dunlin beta.8 / working tree | High | None | Tests for 600 files >64 MiB and both database schemas |
+| The 512/256/64 MiB limits were local preview policy, not a harness limit | `session_import.rs`: `collect_session_files`, `discover_session_files`, `read_files`; `adapters.rs::parse`; `opencode_db.rs`: session queries | current source | High | None | Tests for 600 files >64 MiB and both database schemas |
 | The source is read-only; the target identity is harness + source ID | `opencode_db.rs::visit`, `session_import.rs::imported_id`, `adapters.rs::match_project`, `Store::import_session_stream` | Working tree | High | Real user histories were not tested | Isolated JSON/JSONL/SQLite fixtures |
 | A stream failure rolls back new sessions; a retry does not overwrite conversations | `storage/src/lib.rs::streamed_import_reports_duplicates_and_rolls_back_on_a_source_read_failure`, `session_import.rs::staged_read_failure_rolls_back_inserts_and_leaves_preview_available_for_retry` | Working tree | High | None | `cargo test -p dunlin-storage`; app tests |
 | Project history uses the local `SessionSummary.project_id`, not the harness project ID or repo name | `session_list.rs::session_scope`, `views/sidebar.rs::sessions_section`, `storage/src/lib.rs::sessions` | Working tree | High | None | Import smoke with two projects |

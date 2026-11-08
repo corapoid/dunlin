@@ -46,7 +46,7 @@ public/             Favicon, brand icon, OG image, robots.txt, licenses
 
 - Site metadata, GitHub links, release version and download URLs live in
   `src/lib/site.ts`.
-- Download links are pinned to verified published `v0.1.0-beta.10` artifacts.
+- Download links are pinned to the currently verified published artifacts; update them only after a release is verified.
   All ten GitHub asset digests, both checksum manifests, bundle identity/version
   and macOS/Linux relay architectures were independently checked after publication.
   Advance the single version constant only after checking publication, asset

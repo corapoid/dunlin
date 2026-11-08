@@ -59,7 +59,7 @@ Initial state: `38c0853` + existing local changes. Existing contracts used:
 
 | Claim | Evidence and location | Version | Confidence | Missing link | Next verification |
 |---|---|---|---|---|---|
-| A remote project means a relay project, not a Git remote | `crates/domain/src/lib.rs`: `RemoteProject`, `Project::is_remote` | workspace 0.1.0-beta.8 | high | none | export exclusion test |
+| A remote project means a relay project, not a Git remote | `crates/domain/src/lib.rs`: `RemoteProject`, `Project::is_remote` | current source | high | none | export exclusion test |
 | Supported repo identities are github.com/gitlab.com URLs | `crates/workspace/src/git/hosting.rs`: `RepositoryLink::parse`, `detect` | as above | high | none | test with real local Git remotes |
 | Safe clones through the CLI exist | `github/imports.rs::clone_with`, `gitlab.rs::clone_repository` | as above | high | none | test for overwrite and symlink refusal |
 | Preferences belong to the local store | `apps/desktop/src/app.rs::StoredSettings`, `stored_settings`; `crates/storage/src/lib.rs` | as above | high | none | transaction and database reopen test |
