@@ -48,7 +48,6 @@ body:
       options:
         - Local project
         - Remote relay project
-        - iOS client
         - Settings or onboarding
         - Build or release tooling
         - Not sure

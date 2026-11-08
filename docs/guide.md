@@ -9,8 +9,7 @@ messages, plans, tool calls, diffs and permission requests rendered as native
 UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
-self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. The latest published beta is `0.1.0-beta.10`; the current source
+self-hosted relay beta**. The latest published beta is `0.1.0-beta.10`; the current source
 version is `0.1.0-beta.11`; see [CHANGELOG.md](../CHANGELOG.md). Published
 checksums, bundle identity/version and relay architectures were independently
 verified before advancing download links.
@@ -1087,8 +1086,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 ```
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
-**Settings → Remote** on macOS. The iOS scaffold is not a supported release client.
-A paired device receives its
+**Settings → Remote** on macOS. A paired device receives its
 own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
 admin-only because it describes the host account, not a per-project grant.
 Non-admin members see an explicit **Admin-only** state without a relay request
@@ -1227,7 +1225,6 @@ architecture.
 
 ## What is not in 0.1
 
-- iOS build and sync (the SwiftUI client is a scaffold).
 - Real-host SSH acceptance for MFA, changed host keys, network drops and
   service cleanup. The host manager, Keychain passphrase storage, bootstrap,
   loopback tunnel and launchd/systemd service are implemented.
@@ -1236,8 +1233,8 @@ architecture.
 - Parallel worktrees and multi-agent orchestration.
 - Universal or Intel builds.
 
-See [`ROADMAP.md`](ROADMAP.md) for the release gate and the next
-milestones, and [`PLAN.md`](PLAN.md) for the architecture.
+See [`ROADMAP.md`](ROADMAP.md) for the single remaining-work backlog and
+[`README.md`](README.md) for the documentation index.
 
 ## Development
 
@@ -1311,7 +1308,6 @@ Useful diagnostics:
 
 ```
 apps/desktop        GPUI application, views, git, search and local state
-apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
 web                 Astro marketing site (static build, React islands)
 crates/ui           Design system on top of GPUI Kit
 crates/domain       Shared project, session, usage, graph and trace types

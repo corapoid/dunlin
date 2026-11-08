@@ -4,8 +4,6 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
 ## [0.1.0-beta.11] — 2026-11-08
 
 ### Added
@@ -55,6 +53,11 @@ All notable changes to Dunlin are documented here. The format follows
   and narrow branch badges use a flatter, quieter chrome.
 - Roadmap, plan, remaining-work and operations documentation are now English
   and refreshed for the knowledge, artifact and SSH work.
+- Planning documents were consolidated into one priority-ordered
+  [`docs/ROADMAP.md`](docs/ROADMAP.md) table and the remaining documentation is
+  indexed by task in [`docs/README.md`](docs/README.md).
+- The unfinished non-macOS client scaffold and its project files were removed so
+  the source tree only advertises the supported macOS client.
 
 ### Fixed
 
@@ -555,7 +558,7 @@ USD is not a guaranteed billing cap, and Rust AST impact is not compiler/LSP-com
   effective project/group default for the current harness. Require an idle ACP
   session and an advertised, visible model; preserve other conversations and saved
   defaults on rejection, without sending prompts or restarting the process.
-- Plan the remaining subsystems in `docs/IMPLEMENTATION-PLAN.md`, with dependencies,
+- Plan the remaining subsystems in `docs/ROADMAP.md`, with dependencies,
   acceptance criteria and explicit relay/security boundaries.
 - Add **Project settings → Model & environment…** for local projects: per-harness
   default ACP model IDs and validated literal child-process environment overrides.
@@ -610,7 +613,7 @@ are preserved; imports do not resume or send prompts to source sessions.
   branch creation from a selected commit without checkout or worktree changes.
 - Add embedded custom project icons with automatic-icon reset, a local-time Home
   greeting and native macOS File/View/Repository menus including Settings.
-- Reconcile stale development milestones and publish `docs/REMAINING-WORK.md`.
+- Reconcile stale development milestones into the roadmap.
 - Add multi-folder/collection repository imports with canonical deduplication,
   bounded read-only scanning, worktree support and persistent partial-import
   reports. Stop at repository roots; do not split monorepos/submodules or switch
@@ -881,8 +884,8 @@ are preserved; imports do not resume or send prompts to source sessions.
   automatic source discovery/sync or billing scanners. Git history is local-only;
   advanced Git operations and relay history parity remain planned.
 - Standalone chat/repository context, terminal, computer use, automations,
-  artifacts, visual Markdown editing and a working iOS client remain planned.
-  See `docs/REMAINING-WORK.md` for the reconciled backlog.
+  artifacts and visual Markdown editing remain planned. See `docs/ROADMAP.md` for
+  the reconciled backlog.
 
 ## [0.1.0-beta.1] — 2026-10-25
 
@@ -921,7 +924,6 @@ surfaces are intentionally absent.
 - macOS 15+ on Apple Silicon only.
 - Builds are ad-hoc signed until an Apple Developer ID is available. Gatekeeper
   may require approval in **System Settings → Privacy & Security**.
-- The iOS client is a scaffold and is not part of this release.
 - No terminal, computer use, automations, skills, artifacts or visual Markdown
   editor yet.
 - All relay users share the OpenCode credentials installed on the relay host.
@@ -930,7 +932,6 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.11...HEAD
 [0.1.0-beta.11]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [0.1.0-beta.10]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [0.1.0-beta.9]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...v0.1.0-beta.9

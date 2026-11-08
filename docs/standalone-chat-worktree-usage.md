@@ -183,4 +183,4 @@ accounting is finished.
 - automatic agent start per subtask and auto-merge,
 - a guaranteed provider bill cap,
 - automatic discovery and background billing evidence sync,
-- remote removal of subtask worktrees and full group/usage sync on iOS.
+- remote removal of subtask worktrees and cross-device group/usage synchronization.

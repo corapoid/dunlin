@@ -198,7 +198,8 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 ## Learn more
 
 - [Full guide](docs/guide.md) — the detailed feature and operations reference.
-- [Roadmap](docs/ROADMAP.md) and [remaining work](docs/REMAINING-WORK.md).
+- [Roadmap](docs/ROADMAP.md) — the single remaining-work backlog.
+- [Documentation index](docs/README.md) — guides, references and acceptance notes grouped by task.
 - [Changelog](CHANGELOG.md) · [Performance methodology](docs/performance.md).
 - [Project import](docs/project-import.md) · [Session import](docs/session-import.md) · [Markdown editor](docs/markdown-editor.md) · [Server setup](docs/relay-setup.md).
 - [Settings and project backup](docs/settings-project-backup.md) — JSON or GitHub/GitLab, with deferred repository downloads.
@@ -206,9 +207,9 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 
 ## Status
 
-Dunlin is an early public beta. The iOS client is a scaffold, not part of this
-release. Intel Macs are not supported in 0.1. See the
-[roadmap](docs/ROADMAP.md) for what is built and what is still open.
+Dunlin is an early public beta. Intel Macs are not supported in 0.1. See the
+[roadmap](docs/ROADMAP.md) for what is still open and the
+[documentation index](docs/README.md) for the detailed references.
 
 ## License
 
