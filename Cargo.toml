@@ -53,9 +53,18 @@ uuid = { version = "1", features = ["v7", "serde"] }
 [profile.dev]
 debug = 0
 incremental = false
+# `debug = 0` makes Cargo strip debug info with the toolchain's rust-objcopy.
+# Some macOS rustup layouts ship an objcopy that cannot load libLLVM, which
+# prints a warning for every crate. There is nothing to strip beyond the
+# debug=0 default here, so keep the linker output untouched and warnings clean.
+strip = false
+
+[profile.dev.build-override]
+debug = 0
+strip = false
 
 [profile.dev.package]
-gpui-pre = { opt-level = 3 }
+gpui-pre = { opt-level = 3, strip = false }
 gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
