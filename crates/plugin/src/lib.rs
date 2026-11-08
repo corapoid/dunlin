@@ -1,6 +1,7 @@
 //! Declarative plugin packs. A pack contributes methodology metadata,
-//! templates, commands and skill names; it never links GPUI and cannot execute
-//! code. MCP declarations are data only until a connector host is added.
+//! templates, commands, skill names and an optional sandboxed WASM schema. It
+//! never links GPUI; WASM modules execute only in `dunlin-plugin-host` under
+//! hash, fuel, memory and output limits. MCP declarations are data only.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
