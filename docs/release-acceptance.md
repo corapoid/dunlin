@@ -1,3 +1,5 @@
+> Historical release evidence. Version numbers and dates below are intentionally retained for past releases; the current version lives on the [releases page](https://github.com/corapoid/dunlin/releases).
+
 # Release acceptance / hardening
 
 ## 0.1.0-beta.10 recovery — 2026-11-07

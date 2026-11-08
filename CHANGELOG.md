@@ -53,6 +53,10 @@ All notable changes to Dunlin are documented here. The format follows
   and narrow branch badges use a flatter, quieter chrome.
 - Roadmap, plan, remaining-work and operations documentation are now English
   and refreshed for the knowledge, artifact and SSH work.
+- Screenshots now capture translucent window chrome and overlays over a desktop
+  background, in light and dark themes.
+- Current documentation no longer pins release versions in README, SECURITY or
+  guides; versions and dates stay in this changelog and GitHub Releases.
 - Planning documents were consolidated into one priority-ordered
   [`docs/ROADMAP.md`](docs/ROADMAP.md) table and the remaining documentation is
   indexed by task in [`docs/README.md`](docs/README.md).

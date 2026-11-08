@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./scripts/publish-oci.sh [VERSION]
-#   DUNLIN_OCI_REPOSITORY=ghcr.io/corapoid/dunlin ./scripts/publish-oci.sh 0.1.0-beta.8
+#   DUNLIN_OCI_REPOSITORY=ghcr.io/corapoid/dunlin ./scripts/publish-oci.sh 1.2.3-beta.1
 #
 # Requires oras (https://oras.land) and an authenticated registry session.
 set -euo pipefail
