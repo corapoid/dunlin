@@ -92,6 +92,26 @@ pub struct RemoteProject {
     pub path: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SshHost {
+    pub id: Id,
+    pub name: String,
+    /// OpenSSH alias, `user@host` or bare host.
+    pub target: String,
+    pub user: String,
+    pub port: u16,
+    #[serde(default)]
+    pub identity: Option<String>,
+    #[serde(default)]
+    pub relay_port: u16,
+    #[serde(default)]
+    pub local_port: u16,
+    #[serde(default)]
+    pub host_key: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
 /// A project is normally a repository/folder. A chat space is a standalone
 /// conversation workspace with its own history; it is never rendered as a
 /// synthetic repository project in the sidebar.

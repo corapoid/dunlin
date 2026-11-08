@@ -8,7 +8,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const API_VERSION: u32 = 1;
+pub const API_VERSION: u32 = 2;
+pub const MIN_API_VERSION: u32 = 1;
 pub const MANIFEST: &str = "plugin.json";
 pub const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
@@ -22,6 +23,37 @@ pub const BUNDLED: &[(&str, &str)] = &[
         include_str!("../../../assets/plugins/agent-contract/plugin.json"),
     ),
 ];
+
+/// WASM packs that ship with the app but are not installed until the user
+/// explicitly chooses Install in Settings → Extensions.
+pub const GOVERNANCE_MANIFEST: &str =
+    include_str!("../../../assets/plugins/governance/plugin.json");
+pub const GOVERNANCE_WASM: &[u8] = include_bytes!("../../../assets/plugins/governance/plugin.wasm");
+
+#[derive(Clone, Debug)]
+pub struct CatalogPlugin {
+    pub id: String,
+    pub manifest: Manifest,
+    pub manifest_text: &'static str,
+    pub manifest_hash: String,
+    pub wasm: &'static [u8],
+}
+
+pub fn catalog() -> Vec<CatalogPlugin> {
+    let manifest = parse(GOVERNANCE_MANIFEST).expect("bundled governance manifest is valid");
+    let manifest_hash = format!("{:x}", Sha256::digest(GOVERNANCE_MANIFEST.as_bytes()));
+    vec![CatalogPlugin {
+        id: manifest.id.clone(),
+        manifest,
+        manifest_text: GOVERNANCE_MANIFEST,
+        manifest_hash,
+        wasm: GOVERNANCE_WASM,
+    }]
+}
+
+pub fn catalog_plugin(id: &str) -> Option<CatalogPlugin> {
+    catalog().into_iter().find(|plugin| plugin.id == id)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Manifest {
@@ -37,9 +69,51 @@ pub struct Manifest {
     #[serde(default)]
     pub license: String,
     #[serde(default)]
+    pub min_app: String,
+    /// Optional sandboxed WASM module. API v1 packs cannot use it.
+    #[serde(default)]
+    pub wasm: Option<WasmModule>,
+    /// Generic knowledge schema contributed by an API v2 pack.
+    #[serde(default)]
+    pub knowledge: Option<dunlin_knowledge::KnowledgeSchema>,
+    #[serde(default)]
     pub contributes: Contributions,
     #[serde(default)]
     pub permissions: Permissions,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WasmModule {
+    /// Project-relative path inside the plugin directory.
+    pub path: String,
+    /// Lowercase SHA-256 of the exact bytes.
+    pub sha256: String,
+    #[serde(default)]
+    pub exports: Vec<String>,
+    #[serde(default = "default_fuel")]
+    pub fuel: u64,
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_max_memory")]
+    pub max_memory_bytes: usize,
+    #[serde(default = "default_max_output")]
+    pub max_output_bytes: usize,
+}
+
+fn default_fuel() -> u64 {
+    10_000_000
+}
+
+fn default_timeout_ms() -> u64 {
+    100
+}
+
+fn default_max_memory() -> usize {
+    64 * 1024 * 1024
+}
+
+fn default_max_output() -> usize {
+    1024 * 1024
 }
 
 fn default_api() -> u32 {
@@ -60,6 +134,9 @@ pub struct Contributions {
     pub artifact_kinds: Vec<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
+    /// Knowledge section ids the host may include in an intent envelope.
+    #[serde(default)]
+    pub context_sections: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,6 +219,12 @@ impl LoadedPack {
         if !c.views.is_empty() {
             parts.push(format!("{} view(s)", c.views.len()));
         }
+        if let Some(knowledge) = &self.manifest.knowledge {
+            parts.push(format!("{} knowledge kind(s)", knowledge.kinds.len()));
+        }
+        if self.manifest.wasm.is_some() {
+            parts.push("WASM".into());
+        }
         if parts.is_empty() {
             "metadata only".into()
         } else {
@@ -179,11 +262,81 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
     if manifest.version.trim().is_empty() || manifest.version.len() > 64 {
         return Err("Plugin version is required".into());
     }
-    if manifest.api != API_VERSION {
+    if !(MIN_API_VERSION..=API_VERSION).contains(&manifest.api) {
         return Err(format!(
-            "Plugin {} targets API {}, but this build supports {}",
-            manifest.id, manifest.api, API_VERSION
+            "Plugin {} targets API {}, but this build supports {}..={}",
+            manifest.id, manifest.api, MIN_API_VERSION, API_VERSION
         ));
+    }
+    if manifest.wasm.is_some() && manifest.api < 2 {
+        return Err(format!(
+            "Plugin {} uses a WASM module but targets API {} (requires 2)",
+            manifest.id, manifest.api
+        ));
+    }
+    if let Some(wasm) = &manifest.wasm {
+        if manifest.permissions.process {
+            return Err(format!(
+                "Plugin {} cannot combine a sandboxed WASM module with process execution",
+                manifest.id
+            ));
+        }
+        let path = std::path::Path::new(&wasm.path);
+        if wasm.path.is_empty()
+            || path.is_absolute()
+            || path.components().any(|part| {
+                !matches!(
+                    part,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )
+            })
+            || !wasm.path.ends_with(".wasm")
+        {
+            return Err(format!("Plugin {} has an invalid WASM path", manifest.id));
+        }
+        if wasm.sha256.len() != 64 || !wasm.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!(
+                "Plugin {} has an invalid WASM SHA-256",
+                manifest.id
+            ));
+        }
+        if wasm.fuel == 0 || wasm.fuel > 1_000_000_000 {
+            return Err(format!(
+                "Plugin {} has an invalid WASM fuel limit",
+                manifest.id
+            ));
+        }
+        if wasm.timeout_ms == 0 || wasm.timeout_ms > 5_000 {
+            return Err(format!(
+                "Plugin {} has an invalid WASM timeout limit",
+                manifest.id
+            ));
+        }
+        if wasm.max_memory_bytes < 64 * 1024 || wasm.max_memory_bytes > 512 * 1024 * 1024 {
+            return Err(format!(
+                "Plugin {} has an invalid WASM memory limit",
+                manifest.id
+            ));
+        }
+        if wasm.max_output_bytes == 0 || wasm.max_output_bytes > 16 * 1024 * 1024 {
+            return Err(format!(
+                "Plugin {} has an invalid WASM output limit",
+                manifest.id
+            ));
+        }
+        for required in ["dunlin_alloc", "dunlin_free", "dunlin_call"] {
+            if !wasm.exports.iter().any(|export| export == required) {
+                return Err(format!(
+                    "Plugin {} does not declare required WASM export {required}",
+                    manifest.id
+                ));
+            }
+        }
+    }
+    if let Some(knowledge) = &manifest.knowledge {
+        knowledge
+            .validate()
+            .map_err(|error| format!("Plugin {} knowledge schema: {error}", manifest.id))?;
     }
     let mut commands = HashSet::new();
     for command in &manifest.contributes.commands {
@@ -365,7 +518,7 @@ mod tests {
     fn invalid_or_duplicate_bundled_ids_are_rejected() {
         let manifest = parse(r#"{"id":"Bad_Id","name":"Bad","version":"1.0.0","api":1}"#);
         assert!(manifest.is_err());
-        let manifest = parse(r#"{"id":"ok","name":"OK","version":"1.0.0","api":2}"#);
+        let manifest = parse(r#"{"id":"ok","name":"OK","version":"1.0.0","api":3}"#);
         assert!(manifest.is_err());
         let manifest = parse(
             r#"{"id":"ok","name":"OK","version":"1.0.0","api":1,"contributes":{"commands":[{"id":"run","label":"Run"},{"id":"run","label":"Again"}]}}"#,
@@ -410,10 +563,61 @@ mod tests {
     }
 
     #[test]
+    fn bundled_wasm_catalog_has_a_valid_manifest_and_hash() {
+        let catalog = catalog();
+        assert_eq!(catalog.len(), 1);
+        let plugin = &catalog[0];
+        assert_eq!(plugin.id, "dunlin-governance");
+        assert!(plugin.manifest.wasm.is_some());
+        let wasm_hash = format!("{:x}", Sha256::digest(plugin.wasm));
+        assert_eq!(wasm_hash, plugin.manifest.wasm.as_ref().unwrap().sha256);
+        assert_eq!(
+            plugin.manifest_hash,
+            format!("{:x}", Sha256::digest(plugin.manifest_text.as_bytes()))
+        );
+    }
+
+    #[test]
     fn process_plus_full_write_is_rejected() {
         let manifest = parse(
             r#"{"id":"danger","name":"Danger","version":"1.0.0","api":1,"permissions":{"process":true,"project_write":["**"]}}"#,
         );
         assert!(manifest.is_err());
+    }
+
+    #[test]
+    fn v2_wasm_and_knowledge_manifest_is_validated() {
+        let manifest = parse(
+            r#"{
+                "id":"governance","name":"Governance","version":"1.0.0","api":2,
+                "wasm":{
+                    "path":"plugin.wasm",
+                    "sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "exports":["dunlin_alloc","dunlin_free","dunlin_call"]
+                },
+                "knowledge":{
+                    "api":1,
+                    "kinds":[{
+                        "id":"intent","label":"Intent","directory":"intent",
+                        "statuses":["draft","accepted"],"default_status":"draft"
+                    }],
+                    "relations":[]
+                },
+                "contributes":{"context_sections":["intent"]}
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(manifest.api, 2);
+        assert!(manifest.wasm.is_some());
+        assert_eq!(manifest.knowledge.unwrap().kinds.len(), 1);
+
+        let bad_path = parse(
+            r#"{"id":"bad","name":"Bad","version":"1.0.0","api":2,"wasm":{"path":"../plugin.wasm","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","exports":["dunlin_alloc","dunlin_free","dunlin_call"]}}"#,
+        );
+        assert!(bad_path.is_err());
+        let missing_export = parse(
+            r#"{"id":"bad","name":"Bad","version":"1.0.0","api":2,"wasm":{"path":"plugin.wasm","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","exports":["dunlin_call"]}}"#,
+        );
+        assert!(missing_export.is_err());
     }
 }

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["apps/desktop", "crates/*"]
-exclude = ["vendor/*"]
+exclude = ["vendor/*", "plugins/*"]
 
 [patch.crates-io]
 block = { path = "vendor/block-0.1.6" }
@@ -31,7 +31,10 @@ dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
 dunlin-artifacts = { path = "crates/artifacts" }
 dunlin-audit = { path = "crates/audit" }
+dunlin-knowledge = { path = "crates/knowledge" }
 dunlin-plugin = { path = "crates/plugin" }
+dunlin-plugin-host = { path = "crates/plugin-host" }
+dunlin-ssh = { path = "crates/ssh" }
 dunlin-storage = { path = "crates/storage" }
 dunlin-vault = { path = "crates/vault" }
 dunlin-workspace = { path = "crates/workspace" }
