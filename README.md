@@ -25,7 +25,7 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac or your explicitly selected self-hosted server.
 
-**0.1.0-beta.10** · macOS 15+ · Apple Silicon desktop
+**0.1.0-beta.11** source · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
 The latest published release is [0.1.0-beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10).

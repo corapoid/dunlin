@@ -1545,7 +1545,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "dunlin"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "async-channel",
  "base64 0.22.1",
@@ -1597,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-agent"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "agent-client-protocol",
  "async-channel",
@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-artifacts"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -1625,7 +1625,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-audit"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "libc",
  "serde",
@@ -1636,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-domain"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -1645,7 +1645,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-knowledge"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -1655,7 +1655,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-knowledge-mcp"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-knowledge",
  "dunlin-plugin-host",
@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-plugin"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-knowledge",
  "serde",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-plugin-host"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-knowledge",
  "dunlin-plugin",
@@ -1690,7 +1690,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-relay"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1718,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-ssh"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-domain",
  "security-framework",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-storage"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "dunlin-artifacts",
  "dunlin-domain",
@@ -1743,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-terminal"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "async-channel",
  "portable-pty",
@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-ui"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "gpui-kit",
  "sha2 0.10.9",
@@ -1763,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-usage"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "chrono",
  "dunlin-domain",
@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-vault"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1798,7 +1798,7 @@ dependencies = [
 
 [[package]]
 name = "dunlin-workspace"
-version = "0.1.0-beta.10"
+version = "0.1.0-beta.11"
 dependencies = [
  "base64 0.22.1",
  "libc",

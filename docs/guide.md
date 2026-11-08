@@ -10,9 +10,23 @@ UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
 self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. The latest published beta and source version are `0.1.0-beta.10`; see
-[CHANGELOG.md](../CHANGELOG.md). Published checksums, bundle identity/version and
-relay architectures were independently verified before advancing download links.
+release. The latest published beta is `0.1.0-beta.10`; the current source
+version is `0.1.0-beta.11`; see [CHANGELOG.md](../CHANGELOG.md). Published
+checksums, bundle identity/version and relay architectures were independently
+verified before advancing download links.
+
+### 0.1.0-beta.11 highlights
+
+- [Knowledge](governance-wasm-plugin.md): a file-first Intent/Concept/Decision
+  spine, relation graph and evidence workspace, with an optional sandboxed WASM
+  governance pack and human-reviewed agent proposals.
+- Artifacts: capture the clipboard or current file, preview text/images, link
+  evidence and share content through relay capability links with revocation.
+- [SSH](#ssh-execution-fabric): import `~/.ssh/config`, test
+  ControlMaster connections, store passphrases in Keychain, bootstrap the relay
+  and reopen loopback tunnels without a separate SSH implementation.
+- The extensions panel can install the bundled governance pack, validate its
+  WASM module and start a guided plugin-builder chat.
 
 ### Beta.10 highlights
 
