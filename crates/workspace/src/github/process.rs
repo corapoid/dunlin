@@ -52,7 +52,29 @@ pub(crate) fn run_cancellable(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
-    let mut child = Child(command.spawn().map_err(|_| "Could not start GitHub CLI")?);
+    let mut child = {
+        // A just-written fixture or a loaded host can transiently fail to spawn.
+        // Retry only unambiguous transient errors; all other failures stay closed.
+        let mut attempt = 0;
+        loop {
+            match command.spawn() {
+                Ok(child) => break Child(child),
+                Err(error)
+                    if attempt < 5
+                        && matches!(
+                            error.kind(),
+                            std::io::ErrorKind::Interrupted
+                                | std::io::ErrorKind::WouldBlock
+                                | std::io::ErrorKind::ExecutableFileBusy
+                        ) =>
+                {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(20 * attempt));
+                }
+                Err(_) => return Err("Could not start GitHub CLI".into()),
+            }
+        }
+    };
     let mut stdout = child.0.stdout.take().ok_or("Missing GitHub output")?;
     let (out_tx, out_rx) = mpsc::sync_channel(1);
     std::thread::spawn(move || {
