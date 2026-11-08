@@ -1,0 +1,28 @@
+{
+  "id": "dunlin-governance",
+  "name": "Intent, Concepts & Decisions",
+  "version": "1.0.0",
+  "api": 2,
+  "min_app": "0.2.0",
+  "description": "File-first intent, concept and decision schema with a sandboxed WASM validator. Disabled by default.",
+  "author": "Dunlin contributors",
+  "license": "MIT",
+  "wasm": {
+    "path": "plugin.wasm",
+    "sha256": "289b0009c1ae6f191b645d07181f057b8a4b302c989d524cebc4fd2746fc37fa",
+    "exports": ["dunlin_alloc", "dunlin_free", "dunlin_call"],
+    "fuel": 10000000,
+    "timeout_ms": 100,
+    "max_memory_bytes": 67108864,
+    "max_output_bytes": 1048576
+  },
+  "contributes": {
+    "context_sections": ["intent", "concepts", "decisions", "open_questions"]
+  },
+  "permissions": {
+    "project_read": ["intent/**", "concepts/**", "decisions/**", "specs/**"],
+    "project_write": ["intent/**", "concepts/**", "decisions/**"],
+    "network": [],
+    "process": false
+  }
+}

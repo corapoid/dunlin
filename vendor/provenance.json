@@ -102,7 +102,7 @@
       "version": "0.8.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "4097e161cc81e86323b439664be0cdd4f7c56148e867ed6f67fd72b966b6c2d1",
-      "tree_sha256": "45011052fc21ac432cd1047b88fac8503b19b80f0a3f249b6499296fe2c6f6fe",
+      "tree_sha256": "2be1db773937ffaa1bfafac8fe42b16e26e48743d52f770a9b98987c189f4904",
       "files": 280,
       "changes": [
         {
@@ -113,12 +113,12 @@
         {
           "path": "src/tab/tab.rs",
           "upstream_sha256": "936e7c460695b3222bb8dbcc2b2e0bfd27675eb941999baef2b75b7bc1872b08",
-          "patched_sha256": "6ecea64eecf7a0ddbaaac4040fc012591d487f838925c58d44062cde2c4c435b"
+          "patched_sha256": "decd9c704c993a85f98ef027f8f3f1440006f5e92605a57b268d6060d676c005"
         },
         {
           "path": "src/tab/tab_bar.rs",
           "upstream_sha256": "49e96968a222446580405469201b4505544f2f38a77eb2a21b61ce5e08a6c1b8",
-          "patched_sha256": "cd8e6c39be3737f75553dd28039d5a239a7a81c778d7ebffae2ff53823f5c820"
+          "patched_sha256": "c5c20c588ecac5d5158260550e303e218de52a31ac8d14753ab8d4492a421b80"
         }
       ]
     },

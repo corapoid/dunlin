@@ -3,11 +3,14 @@
 
 use crate::app::DunlinApp;
 use dunlin_plugin::{LoadedPack, Source};
+use dunlin_plugin_host::InstalledPlugin;
 use dunlin_ui::component::Sizable;
 use dunlin_ui::component::button::ButtonVariants;
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub(crate) struct PackCommandEntry {
     pub pack_id: String,
@@ -101,11 +104,84 @@ pub(crate) struct State {
     enabled: Vec<String>,
     project_disabled: HashMap<String, Vec<String>>,
     project_enabled: HashMap<String, Vec<String>>,
+    pub(crate) wasm_status: HashMap<String, String>,
+    pub(crate) available: Vec<dunlin_plugin::CatalogPlugin>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self::new(Vec::new(), Vec::new(), HashMap::new(), HashMap::new())
+    }
+}
+
+fn governance_mcp_config(
+    pack: &LoadedPack,
+    project: &dunlin_domain::Project,
+    binary: &str,
+) -> Option<dunlin_agent::McpServerConfig> {
+    if project.is_remote() || !project.trusted {
+        return None;
+    }
+    let directory = pack.directory.as_deref()?;
+    Some(dunlin_agent::McpServerConfig::stdio(
+        "dunlin-knowledge",
+        binary,
+        vec![
+            "--project".into(),
+            project.path.clone(),
+            "--plugin".into(),
+            directory.to_string(),
+        ],
+        Vec::new(),
+    ))
+}
+
+impl DunlinApp {
+    pub(crate) fn start_plugin_builder_chat(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.add_catalog_skill(crate::skills::PLUGIN_BUILDER_SKILL, cx);
+        let target = crate::skills::Target::from_harness(&self.session_harness());
+        if target != crate::skills::Target::Other {
+            self.install_catalog_skill(
+                crate::skills::PLUGIN_BUILDER_SKILL,
+                target,
+                crate::skills::Scope::Global,
+                "",
+                None,
+                cx,
+            );
+        }
+        let local_project = !self.projects.is_empty() && !self.project().is_remote();
+        if local_project {
+            self.new_session(cx);
+        } else {
+            self.new_chat_space(cx);
+        }
+        let prompt = r#"Use the `plugin-builder` skill. We are going to build a fully working Dunlin WASM plugin together. If the skill is not visible in this harness yet, tell me and I will install it from Settings → Skills.
+
+Start by interviewing me one question at a time. Do not write any files yet. Ask me, in order:
+1. What should the plugin do, in one sentence?
+2. Plugin id, name, version and author.
+3. Which knowledge kinds should it contribute (id, label, directory, statuses, fields, relations)?
+4. Which context sections should it add to the intent envelope?
+5. Which MCP tools should it expose, and which are proposal-only?
+6. Which project paths may it read or write?
+7. How should we test it (sample files and expected output)?
+8. Should it be bundled with Dunlin or installed as an external pack?
+
+After my answers, propose the manifest v2, the Rust WASM ABI implementation, build/install commands, tests and a security checklist. Follow the skill exactly: sandboxed WASM only, no WASI/network/process/Keychain, disabled by default, installed under Application Support/Dunlin/plugins, never inside Dunlin.app. Ask before writing any file."#;
+        self.composer.update(cx, |state, cx| {
+            state.set_value(prompt.to_string(), window, cx)
+        });
+        self.set_view(dunlin_domain::MainView::Chat, cx);
+        self.set_notice(
+            "Plugin builder chat started. The agent will interview you first.",
+            cx,
+        );
+        cx.notify();
     }
 }
 
@@ -126,6 +202,8 @@ impl State {
             enabled,
             project_disabled,
             project_enabled,
+            wasm_status: HashMap::new(),
+            available: Vec::new(),
         };
         state.load();
         state
@@ -230,12 +308,140 @@ impl State {
         self.loaded = true;
         let directory = crate::app::data_dir().map(|data| data.join("plugins"));
         let (packs, warnings) = dunlin_plugin::discover(directory.as_deref());
+        self.available = dunlin_plugin::catalog()
+            .into_iter()
+            .filter(|catalog| !packs.iter().any(|pack| pack.manifest.id == catalog.id))
+            .collect();
         self.packs = packs;
         self.warnings = warnings;
         self.error = None;
     }
+    pub(crate) fn attach_governance_mcp(
+        &self,
+        config: &mut dunlin_agent::HarnessConfig,
+        project: &dunlin_domain::Project,
+    ) {
+        if project.is_remote() || !project.trusted {
+            return;
+        }
+        let Some(pack) = self.packs.iter().find(|pack| {
+            pack.manifest.id == "dunlin-governance" && self.is_enabled_for(Some(&project.id), pack)
+        }) else {
+            return;
+        };
+        let binary = Self::mcp_binary();
+        if !Path::new(&binary).is_file() && !crate::harness::command_available(&binary) {
+            crate::logging::warn(
+                "governance pack is enabled but dunlin-knowledge-mcp is not available",
+            );
+            return;
+        }
+        if let Some(server) = governance_mcp_config(pack, project, &binary) {
+            config.mcp_servers.push(server);
+        }
+    }
+
+    pub(crate) fn install_bundled(&mut self, id: &str) -> Result<String, String> {
+        let catalog = dunlin_plugin::catalog_plugin(id)
+            .ok_or_else(|| format!("Unknown bundled plugin {id}"))?;
+        let root = Self::directory().ok_or("Application data directory is unavailable")?;
+        let directory = root.join(&catalog.id);
+        std::fs::create_dir_all(&directory)
+            .map_err(|error| format!("Create plugin directory: {error}"))?;
+        let wasm = catalog
+            .manifest
+            .wasm
+            .as_ref()
+            .ok_or("Bundled plugin has no WASM module")?;
+        let actual = format!("{:x}", Sha256::digest(catalog.wasm));
+        if !actual.eq_ignore_ascii_case(&wasm.sha256) {
+            return Err("Bundled WASM failed its SHA-256 check".into());
+        }
+        let manifest_path = directory.join("plugin.json");
+        let wasm_path = directory.join("plugin.wasm");
+        std::fs::write(&manifest_path, catalog.manifest_text)
+            .map_err(|error| format!("Write plugin.json: {error}"))?;
+        std::fs::write(&wasm_path, catalog.wasm)
+            .map_err(|error| format!("Write plugin.wasm: {error}"))?;
+        self.loaded = false;
+        self.load();
+        Ok(format!(
+            "Installed {} in {}. Enable it explicitly to load its WASM module.",
+            catalog.id,
+            directory.display()
+        ))
+    }
+
+    pub(crate) fn validate_wasm_by_id(&mut self, id: &str) -> Result<String, String> {
+        let pack = self
+            .packs
+            .iter()
+            .find(|pack| pack.manifest.id == id)
+            .cloned()
+            .ok_or_else(|| "Plugin is no longer discovered".to_string())?;
+        self.validate_wasm(&pack)
+    }
+
+    pub(crate) fn validate_wasm(&mut self, pack: &LoadedPack) -> Result<String, String> {
+        let wasm = pack
+            .manifest
+            .wasm
+            .as_ref()
+            .ok_or_else(|| "This pack has no WASM module".to_string())?;
+        let directory = pack.directory.as_deref().ok_or_else(|| {
+            "Bundled WASM packs are not installed from a directory yet".to_string()
+        })?;
+        let directory = PathBuf::from(directory);
+        let installed = InstalledPlugin {
+            manifest: pack.manifest.clone(),
+            manifest_hash: pack.manifest_hash.clone(),
+            directory: directory.clone(),
+            wasm_path: Some(directory.join(&wasm.path)),
+        };
+        let plugin = installed.load().map_err(|error| error.to_string())?;
+        let schema = plugin.describe().map_err(|error| error.to_string())?;
+        let status = format!(
+            "WASM ok · {} kind(s) · {} relation(s) · fuel {}",
+            schema.kinds.len(),
+            schema.relations.len(),
+            wasm.fuel
+        );
+        self.wasm_status
+            .insert(pack.manifest.id.clone(), status.clone());
+        Ok(status)
+    }
+
     fn directory() -> Option<PathBuf> {
         crate::app::data_dir().map(|data| data.join("plugins"))
+    }
+
+    fn proposals_directory() -> Option<PathBuf> {
+        crate::app::data_dir().map(|data| data.join("proposals"))
+    }
+
+    pub(crate) fn mcp_binary() -> String {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("dunlin-knowledge-mcp")))
+            .filter(|path| path.is_file())
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_else(|| "dunlin-knowledge-mcp".into())
+    }
+
+    fn pending_proposals() -> usize {
+        let Some(directory) = Self::proposals_directory() else {
+            return 0;
+        };
+        std::fs::read_dir(directory)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|entry| {
+                        entry.path().extension().and_then(|ext| ext.to_str()) == Some("json")
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
     }
 }
 
@@ -275,6 +481,9 @@ fn permissions(pack: &LoadedPack) -> String {
     if permissions.process {
         parts.push("process execution".into());
     }
+    if pack.manifest.wasm.is_some() {
+        parts.push("sandboxed WASM".into());
+    }
     if parts.is_empty() {
         "no host capabilities requested".into()
     } else {
@@ -311,13 +520,44 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     div()
                         .text_size(px(11.))
                         .text_color(p.muted_fg)
-                        .child("A pack can contribute methodology metadata, commands, skill names, view names and MCP server declarations. It cannot link GPUI, inject context silently or execute code. MCP connectors and sidecar processes are later phases."),
+                        .child("A pack can contribute methodology metadata, commands, skill names, view names, MCP declarations and an optional sandboxed WASM validator. It cannot link GPUI, inject context silently or run native code. WASM packs are disabled by default and loaded only when explicitly enabled."),
                 )
                 .child(
                     div()
                         .text_size(px(10.))
                         .text_color(p.muted_fg)
                         .child(format!("External pack folder: {directory}")),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(p.muted_fg)
+                                .child(format!(
+                                    "Pending governance proposals: {}",
+                                    State::pending_proposals()
+                                )),
+                        )
+                        .child(
+                            dunlin_ui::button("extensions-open-proposals")
+                                .ghost()
+                                .small()
+                                .label("Open proposals folder")
+                                .on_click(cx.listener(|_, _, _, cx| {
+                                    if let Some(directory) = State::proposals_directory()
+                                        && std::fs::create_dir_all(&directory).is_ok()
+                                    {
+                                        let _ = std::process::Command::new("open")
+                                            .arg(&directory)
+                                            .spawn();
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
                 )
                 .child(
                     div()
@@ -388,6 +628,104 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .child(warning.clone()),
         );
     }
+    let available = this.plugins.available.clone();
+    if !available.is_empty() {
+        content = content.child(
+            div()
+                .text_size(px(11.))
+                .font_family(dunlin_ui::theme::code_font())
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(p.muted_fg)
+                .child("AVAILABLE · NOT INSTALLED"),
+        );
+        for (index, catalog) in available.iter().enumerate() {
+            let id = catalog.id.clone();
+            content = content.child(
+                card(&p)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(7.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.5))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(catalog.manifest.name.clone()),
+                                    )
+                                    .child(div().text_size(px(10.)).text_color(p.muted_fg).child(
+                                        format!(
+                                            "{} · v{} · bundled WASM · disabled after install",
+                                            catalog.id, catalog.manifest.version
+                                        ),
+                                    )),
+                            )
+                            .child(
+                                dunlin_ui::button(format!("extension-install:{index}"))
+                                    .primary()
+                                    .small()
+                                    .label("Install automatically")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        match this.plugins.install_bundled(&id) {
+                                            Ok(message) => this.set_notice(message, cx),
+                                            Err(error) => this
+                                                .set_notice(format!("Install failed: {error}"), cx),
+                                        }
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(p.muted_fg)
+                            .child(catalog.manifest.description.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(p.muted_fg)
+                            .child(format!(
+                                "Permissions: {}",
+                                permissions(&LoadedPack {
+                                    manifest: catalog.manifest.clone(),
+                                    source: Source::Bundled,
+                                    directory: None,
+                                    manifest_hash: catalog.manifest_hash.clone(),
+                                })
+                            )),
+                    ),
+            );
+        }
+    }
+    content = content.child(
+        card(&p)
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Build your own plugin"),
+            )
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .text_color(p.muted_fg)
+                    .child("The plugin-builder skill contains the full manifest v2, sandboxed WASM ABI, knowledge schema, MCP proposal tools, security checklist, build and install steps. Start a guided chat and the agent will interview you one question at a time."),
+            )
+            .child(
+                dunlin_ui::button("plugins-build-with-skill")
+                    .primary()
+                    .small()
+                    .label("Use skills and build plugins")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.start_plugin_builder_chat(window, cx);
+                    })),
+            ),
+    );
     for (index, pack) in this.plugins.packs.iter().enumerate() {
         let enabled = this.plugins.is_enabled_for(scope.as_deref(), pack);
         let id = pack.manifest.id.clone();
@@ -441,9 +779,16 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                         let enabled =
                                             this.plugins.toggle_for(scope_id.as_deref(), &pack);
                                         this.persist_settings(cx);
+                                        if this.section == dunlin_domain::SidebarSection::Knowledge
+                                        {
+                                            this.refresh_knowledge(cx);
+                                        }
+                                        if this.spec.is_active_for(this.project()) {
+                                            this.refresh_spec_workspace(cx);
+                                        }
                                         this.set_notice(
                                             format!(
-                                                "{} {}",
+                                                "{} {} · restart the harness to attach or detach its MCP server",
                                                 id,
                                                 if enabled { "enabled" } else { "disabled" }
                                             ),
@@ -472,6 +817,83 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .text_color(p.muted_fg)
                         .child(format!("Permissions: {}", permissions(pack))),
                 );
+        if let Some(wasm) = &pack.manifest.wasm {
+            let wasm_id = pack.manifest.id.clone();
+            let status = this.plugins.wasm_status.get(&wasm_id).cloned();
+            let mcp_command = pack.directory.as_ref().map(|directory| {
+                format!(
+                    "{:?} --project {:?} --plugin {:?}",
+                    State::mcp_binary(),
+                    project.path,
+                    directory
+                )
+            });
+            item = item
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(p.muted_fg)
+                        .child(format!(
+                            "WASM: {} · sha256 {}… · fuel {} · max {} MiB",
+                            wasm.path,
+                            &wasm.sha256[..wasm.sha256.len().min(12)],
+                            wasm.fuel,
+                            wasm.max_memory_bytes / 1024 / 1024
+                        )),
+                )
+                .when_some(mcp_command, |item, command| {
+                    item.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(p.muted_fg)
+                                    .truncate()
+                                    .child(command.clone()),
+                            )
+                            .child(
+                                dunlin_ui::button(format!("extension-copy-mcp:{index}"))
+                                    .ghost()
+                                    .small()
+                                    .label("Copy MCP command")
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            command.clone(),
+                                        ));
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                })
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .child(
+                            dunlin_ui::button(format!("extension-validate-wasm:{index}"))
+                                .ghost()
+                                .small()
+                                .label("Validate WASM")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    match this.plugins.validate_wasm_by_id(&wasm_id) {
+                                        Ok(status) => this.set_notice(status, cx),
+                                        Err(error) => this.set_notice(
+                                            format!("WASM validation failed: {error}"),
+                                            cx,
+                                        ),
+                                    }
+                                    cx.notify();
+                                })),
+                        )
+                        .when_some(status, |row, status| {
+                            row.child(div().text_size(px(10.)).text_color(p.green).child(status))
+                        }),
+                );
+        }
         if !pack.manifest.contributes.commands.is_empty() {
             item = item.child(
                 div()
@@ -518,8 +940,61 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
 
 #[cfg(test)]
 mod tests {
-    use super::State;
+    use super::{State, governance_mcp_config};
     use std::collections::HashMap;
+
+    #[test]
+    fn governance_mcp_config_is_project_scoped_and_trusted() {
+        let manifest = dunlin_plugin::parse(
+            r#"{"id":"dunlin-governance","name":"Governance","version":"1.0.0","api":2,"wasm":{"path":"plugin.wasm","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","exports":["dunlin_alloc","dunlin_free","dunlin_call"]}}"#,
+        )
+        .unwrap();
+        let pack = dunlin_plugin::LoadedPack {
+            manifest,
+            source: dunlin_plugin::Source::External,
+            directory: Some("/tmp/governance".into()),
+            manifest_hash: "hash".into(),
+        };
+        let project = dunlin_domain::Project {
+            id: "project".into(),
+            name: "Project".into(),
+            path: "/tmp/project".into(),
+            branch: None,
+            tone: dunlin_domain::ProjectTone::Blue,
+            pinned: false,
+            trusted: true,
+            running_sessions: 0,
+            kind: Default::default(),
+            remote: None,
+            group_id: None,
+            settings: Default::default(),
+        };
+        let config = governance_mcp_config(&pack, &project, "/tmp/dunlin-knowledge-mcp").unwrap();
+        assert_eq!(config.name, "dunlin-knowledge");
+        assert_eq!(config.args[0], "--project");
+        assert_eq!(config.args[1], "/tmp/project");
+        let mut untrusted = project.clone();
+        untrusted.trusted = false;
+        assert!(governance_mcp_config(&pack, &untrusted, "/tmp/mcp").is_none());
+    }
+
+    #[test]
+    fn external_wasm_packs_are_disabled_by_default() {
+        let manifest = dunlin_plugin::parse(
+            r#"{"id":"dunlin-governance","name":"Governance","version":"1.0.0","api":2,"wasm":{"path":"plugin.wasm","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","exports":["dunlin_alloc","dunlin_free","dunlin_call"]}}"#,
+        )
+        .unwrap();
+        let pack = dunlin_plugin::LoadedPack {
+            manifest,
+            source: dunlin_plugin::Source::External,
+            directory: Some("/tmp/governance".into()),
+            manifest_hash: "hash".into(),
+        };
+        let mut state = State::new(Vec::new(), Vec::new(), HashMap::new(), HashMap::new());
+        assert!(!state.is_enabled_for(Some("project-a"), &pack));
+        assert!(state.toggle_for(Some("project-a"), &pack));
+        assert!(state.is_enabled_for(Some("project-a"), &pack));
+    }
 
     #[test]
     fn project_override_can_enable_or_disable_a_bundled_pack() {

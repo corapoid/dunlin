@@ -6,3 +6,4 @@
 *.db-wal
 __pycache__/
 *.py[cod]
+plugins/*/target/

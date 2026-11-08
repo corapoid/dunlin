@@ -577,6 +577,7 @@ impl DunlinApp {
             .map(str::to_owned);
         config.resume_session_id = self.session().acp_session_id.clone();
         let vault_session = self.attach_vault(&mut config, &project, self.vault_read_only());
+        self.plugins.attach_governance_mcp(&mut config, &project);
         self.start_harness(config, None, vault_session, cx);
     }
 

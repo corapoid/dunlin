@@ -135,10 +135,10 @@ completion of every capability in the approved proposals.
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 | --- | --- | --- | --- | --- | --- |
-| Repository identity comes from a validated named GitHub.com remote, not the project label | `crates/workspace/src/github.rs`: `repository`, `repository_name`, `current` | beta.8 working tree | Confirmed | None | None |
-| Connected tabs require a successful authenticated, repository-scoped overview; a remote alone is not a connection | `apps/desktop/src/git_history/github.rs`: `detect_github`, `github_connected`; `crates/workspace/src/github.rs`: `account`, `load` | beta.8 working tree | Confirmed | Real-account acceptance | Manual acceptance below |
-| Runs are repo-wide by default, PR-head filtering stays exact-SHA, details pin ID/attempt/SHA | `crates/workspace/src/github.rs`: `load`, `read_runs`, `refresh_run`, `details`; `crates/workspace/src/github/tests.rs` | beta.8 working tree | Confirmed | None | None |
-| Remote reads use the relay host account, require admin and project access, and never fall back locally | `apps/desktop/src/git_history/github.rs`: `GithubBackend`; `apps/desktop/src/remote.rs`: `github_load`; `crates/relay/src/api.rs`: `github_load`, `github_runs`, `github_jobs` | beta.8 working tree | Confirmed | Deployed-relay acceptance | Manual acceptance below |
+| Repository identity comes from a validated named GitHub.com remote, not the project label | `crates/workspace/src/github.rs`: `repository`, `repository_name`, `current` | current source | Confirmed | None | None |
+| Connected tabs require a successful authenticated, repository-scoped overview; a remote alone is not a connection | `apps/desktop/src/git_history/github.rs`: `detect_github`, `github_connected`; `crates/workspace/src/github.rs`: `account`, `load` | current source | Confirmed | Real-account acceptance | Manual acceptance below |
+| Runs are repo-wide by default, PR-head filtering stays exact-SHA, details pin ID/attempt/SHA | `crates/workspace/src/github.rs`: `load`, `read_runs`, `refresh_run`, `details`; `crates/workspace/src/github/tests.rs` | current source | Confirmed | None | None |
+| Remote reads use the relay host account, require admin and project access, and never fall back locally | `apps/desktop/src/git_history/github.rs`: `GithubBackend`; `apps/desktop/src/remote.rs`: `github_load`; `crates/relay/src/api.rs`: `github_load`, `github_runs`, `github_jobs` | current source | Confirmed | Deployed-relay acceptance | Manual acceptance below |
 
 Proven read path: active trusted project → named remote → validated owner/repository
 → `gh api user` → `repos/{owner}/{repo}/actions/runs?per_page=20` and

@@ -21,12 +21,15 @@ mod git_actions;
 mod git_history;
 #[cfg(debug_assertions)]
 mod glass_smoke;
+#[cfg(debug_assertions)]
+mod governance_smoke;
 mod group_cleanup;
 mod group_settings;
 mod harness;
 mod harness_brand;
 mod harness_discovery;
 mod inline_blame;
+mod knowledge;
 mod local_projects;
 mod logging;
 mod markdown_editor;
@@ -59,6 +62,7 @@ mod session_list;
 mod sidebar_layout;
 mod skills;
 mod spec;
+mod ssh;
 mod subtask_worktrees;
 mod task_budgets;
 mod terminal;
@@ -94,6 +98,19 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--workspace-ui-smoke") {
         workspace_ui_smoke::run();
         return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--governance-smoke") {
+        match governance_smoke::run() {
+            Ok(()) => {
+                println!("governance smoke passed");
+                return;
+            }
+            Err(error) => {
+                eprintln!("governance smoke failed: {error}");
+                std::process::exit(1);
+            }
+        }
     }
     if std::env::args().nth(1).as_deref() == Some("--mcp-vault") {
         std::process::exit(dunlin_vault::mcp::run_stdio());

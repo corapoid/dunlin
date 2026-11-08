@@ -23,6 +23,8 @@ pub const AGENT_CONTRACT: &str = ".dunlin/agent-contract.md";
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
     Intent,
+    Concept,
+    Decision,
     AgentContract,
     Constitution,
     Spec,
@@ -36,6 +38,8 @@ impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Intent => "Intent",
+            Self::Concept => "Concept",
+            Self::Decision => "Decision",
             Self::AgentContract => "Agent contract",
             Self::Constitution => "Constitution",
             Self::Spec => "Spec",
@@ -48,13 +52,15 @@ impl Kind {
     fn order(self) -> u8 {
         match self {
             Self::Intent => 0,
-            Self::AgentContract => 1,
-            Self::Constitution => 2,
-            Self::Spec => 3,
-            Self::Plan => 4,
-            Self::Tasks => 5,
-            Self::Checklist => 6,
-            Self::Other => 7,
+            Self::Concept => 1,
+            Self::Decision => 2,
+            Self::AgentContract => 3,
+            Self::Constitution => 4,
+            Self::Spec => 5,
+            Self::Plan => 6,
+            Self::Tasks => 7,
+            Self::Checklist => 8,
+            Self::Other => 9,
         }
     }
 }
@@ -64,9 +70,11 @@ impl Kind {
 pub enum Status {
     #[default]
     Draft,
+    Proposed,
     InReview,
     Accepted,
     Rejected,
+    Deprecated,
     Superseded,
     Unknown,
 }
@@ -75,9 +83,11 @@ impl Status {
     pub fn label(self) -> &'static str {
         match self {
             Self::Draft => "draft",
+            Self::Proposed => "proposed",
             Self::InReview => "in review",
             Self::Accepted => "accepted",
             Self::Rejected => "rejected",
+            Self::Deprecated => "deprecated",
             Self::Superseded => "superseded",
             Self::Unknown => "unknown",
         }
@@ -85,9 +95,11 @@ impl Status {
     fn parse(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
             "draft" => Self::Draft,
+            "proposed" => Self::Proposed,
             "in-review" | "in review" | "review" => Self::InReview,
             "accepted" | "approved" | "done" => Self::Accepted,
             "rejected" | "closed" => Self::Rejected,
+            "deprecated" => Self::Deprecated,
             "superseded" => Self::Superseded,
             "" => Self::Unknown,
             _ => Self::Unknown,
@@ -783,6 +795,10 @@ fn kind_for(path: &str) -> Kind {
         Kind::AgentContract
     } else if lower.starts_with("intent/") {
         Kind::Intent
+    } else if lower.starts_with("concepts/") {
+        Kind::Concept
+    } else if lower.starts_with("decisions/") {
+        Kind::Decision
     } else if file == "constitution.md" {
         Kind::Constitution
     } else if file == "spec.md" {
@@ -835,16 +851,19 @@ fn build_artifact(
         .filter(|title| !title.trim().is_empty())
         .or_else(|| first_heading(&document.body))
         .unwrap_or_else(|| title_from_path(relative));
-    let status = if kind == Kind::Intent {
-        document
+    let status = match kind {
+        Kind::Intent => document
             .get("status")
             .map(Status::parse)
-            .unwrap_or(Status::Draft)
-    } else {
-        document
+            .unwrap_or(Status::Draft),
+        Kind::Concept | Kind::Decision => document
             .get("status")
             .map(Status::parse)
-            .unwrap_or(Status::Unknown)
+            .unwrap_or(Status::Proposed),
+        _ => document
+            .get("status")
+            .map(Status::parse)
+            .unwrap_or(Status::Unknown),
     };
     let author = document
         .get("author")
@@ -1283,9 +1302,11 @@ pub fn discover(root: &Path) -> Result<Snapshot, String> {
     let mut scanner = Scanner::new();
     let mut artifacts = Vec::new();
 
-    let intent_dir = canonical.join(INTENT_DIR);
-    if intent_dir.is_dir() {
-        scanner.walk(&canonical, &intent_dir, 0, &mut artifacts);
+    for directory in [INTENT_DIR, "concepts", "decisions"] {
+        let path = canonical.join(directory);
+        if path.is_dir() {
+            scanner.walk(&canonical, &path, 0, &mut artifacts);
+        }
     }
     for (relative, path) in [
         (AGENT_CONTRACT, canonical.join(AGENT_CONTRACT)),
@@ -1921,6 +1942,30 @@ mod tests {
             fs::read_to_string(root.path().join("specs/003-claims/spec.md")).unwrap(),
             before
         );
+    }
+
+    #[test]
+    fn concepts_and_decisions_are_indexed_without_changing_the_phase_model() {
+        let root = tempdir().unwrap();
+        write(
+            root.path(),
+            "concepts/CON-001-workspace.md",
+            "---\nid: CON-001\ntitle: Workspace\nstatus: accepted\n---\n\n# Workspace\n",
+        );
+        write(
+            root.path(),
+            "decisions/DEC-001-file-first.md",
+            "---\nid: DEC-001\ntitle: File-first\nstatus: proposed\n---\n\n# Decision\n",
+        );
+        let snapshot = discover(root.path()).unwrap();
+        assert_eq!(snapshot.by_kind(Kind::Concept).count(), 1);
+        assert_eq!(snapshot.by_kind(Kind::Decision).count(), 1);
+        let concept = snapshot.by_kind(Kind::Concept).next().unwrap();
+        assert_eq!(concept.title, "Workspace");
+        assert_eq!(concept.status, Status::Accepted);
+        let decision = snapshot.by_kind(Kind::Decision).next().unwrap();
+        assert_eq!(decision.status, Status::Proposed);
+        assert_eq!(snapshot.phases.len(), 10);
     }
 
     #[test]

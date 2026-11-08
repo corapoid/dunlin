@@ -8,11 +8,11 @@ and how can opening/deleting a general conversation retain its original owner?
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 |---|---|---|---|---|---|
-| Every session has an owning project, including standalone chats | `crates/domain/src/lib.rs`: `ProjectKind`, `SessionSummary.project_id`; `apps/desktop/src/app.rs`: `create_chat_space` | working tree / beta.8 | High | None | None |
-| A group conversation is stored under an anchor repository, not a separate group project | `apps/desktop/src/project_groups.rs`: `start_group_session`; `apps/desktop/src/app.rs`: `new_session`, `StoredSettings.group_contexts` | working tree / beta.8 | High | None | None |
-| Group identity comes from the session's frozen context, not current project membership | `apps/desktop/src/project_groups.rs`: `GroupContext`, snapshot test; `apps/desktop/src/session_list.rs`: `session_scope` | working tree / beta.8 | High | None | None |
+| Every session has an owning project, including standalone chats | `crates/domain/src/lib.rs`: `ProjectKind`, `SessionSummary.project_id`; `apps/desktop/src/app.rs`: `create_chat_space` | current source | High | None | None |
+| A group conversation is stored under an anchor repository, not a separate group project | `apps/desktop/src/project_groups.rs`: `start_group_session`; `apps/desktop/src/app.rs`: `new_session`, `StoredSettings.group_contexts` | current source | High | None | None |
+| Group identity comes from the session's frozen context, not current project membership | `apps/desktop/src/project_groups.rs`: `GroupContext`, snapshot test; `apps/desktop/src/session_list.rs`: `session_scope` | current source | High | None | None |
 | The old list and draft scan only used the current project's sessions | `apps/desktop/src/views/sidebar.rs`: `sessions_body`; `apps/desktop/src/session_list.rs`: previous `refresh_session_list` | b2c4d02 | High | None | None |
-| Opening retains existing navigation, runtime parking, dirty-editor guards and remote loading | `apps/desktop/src/session_list.rs`: `open_session_id`; `apps/desktop/src/app.rs`: `select_project_internal`, `import_remote_sessions`; `apps/desktop/src/harness.rs`: `select_session` | working tree / beta.8 | High | Live relay verification | Relay acceptance test |
+| Opening retains existing navigation, runtime parking, dirty-editor guards and remote loading | `apps/desktop/src/session_list.rs`: `open_session_id`; `apps/desktop/src/app.rs`: `select_project_internal`, `import_remote_sessions`; `apps/desktop/src/harness.rs`: `select_session` | current source | High | Live relay verification | Relay acceptance test |
 
 ```text
 all_sessions --project_id--> projects                         [proven]

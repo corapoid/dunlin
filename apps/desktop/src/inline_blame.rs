@@ -347,6 +347,7 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
     }
     let tooltip = info(value, line);
     let oid = line.oid.clone();
+    let line_height = editor.line_height().unwrap_or(px(20.));
     div()
         .absolute()
         .left(bounds.right() - input.left() + px(24.))
@@ -357,7 +358,7 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
             dunlin_ui::button("editor-inline-blame")
                 .ghost()
                 .small()
-                .h(px(18.))
+                .h(line_height)
                 .rounded(px(2.))
                 .text_size(px(10.5))
                 .text_color(palette(cx).muted_fg.opacity(0.6))

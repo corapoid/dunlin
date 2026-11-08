@@ -1,444 +1,77 @@
-# Dunlin — roadmapa
+# Dunlin — roadmap
 
-Legenda: `S` mały, `M` średni, `L` duży, `XL` osobny subsystem.
+Last reviewed against the current source tree on 2026-11-08. This is the
+single backlog for Dunlin: completed scopes have been removed after checking the
+current code, tests and acceptance notes.
 
-Statusy: `[x]` = zaimplementowany i automatycznie sprawdzony **opisany zakres**;
-nie oznacza ukończenia całego nadrzędnego modułu ani odbioru ręcznego. `[ ]` =
-pozostał kod, integracja lub odbiór. „v1” oznacza jawnie ograniczoną implementację.
+## How to read the table
 
-Aktualny przegląd brakujących zakresów (2026-11-01):
-[`REMAINING-WORK.md`](REMAINING-WORK.md). Duże niezaznaczone milestone'y poniżej
-mogą mieć gotowe części — nie należy traktować ich jako całkowicie niewdrożonych.
+| Column | Meaning |
+| --- | --- |
+| **Priority** | `P0` release/acceptance blocker, `P1` close a started scope or a daily-work gap, `P2` next feature slice, `P3` separate subsystem. |
+| **Section** | Product area or subsystem the item belongs to. |
+| **Item** | A short, independently trackable outcome. |
+| **Size** | `S` small, `M` medium, `L` large, `XL` a separate subsystem. |
+| **Type** | `Feature`, `QA` (manual/real-host acceptance), `Release`, `Refactor` or `Runtime`. |
+| **Remaining scope** | Only what is still missing; already delivered parts are not repeated. |
+| **Reference** | Detailed scope, safety boundary or acceptance matrix. |
 
-Kolejność wdrożeń, zależności i kryteria odbioru:
-[`IMPLEMENTATION-PLAN.md`](IMPLEMENTATION-PLAN.md).
+Rows are ordered by priority and then by product importance. A row is not a
+promise of a release date, and manual acceptance is never implied by automated
+tests or CI.
 
-## Stan implementacji
+## Remaining work
 
-### Przegląd working tree po `0.1.0-beta.6` — 2026-11-03
-
-**Nie wszystkie rozpoczęte elementy są skończone.** Wszystkie osiem obszarów
-agent workbench oraz GitHub mają kod v1 i testy, ale pełny zaakceptowany zakres
-i ręczna macierz odbioru nie są zamknięte. Nie ma podstaw do oznaczenia całych
-M1–M6 jako gotowych ani do wyliczania procentu ukończenia z samych checkboxów.
-
-| Rozpoczęty obszar | Co działa | Co blokuje zamknięcie pełnego obszaru |
-| --- | --- | --- |
-| Rozmowy / ergonomia M1 | Kolejka, copy/retry/edit, powiadomienia, watcher, brakujący folder, podstawowe menu | Branch od wiadomości, Undo projektu/sesji, menu wiadomości/tool calli, zawijanie composera |
-| Ustawienia / grupy M2 | Lokalne modele/env, dziedziczenie i źródła wartości, jawne Apply model, hierarchia/drag & drop, jawne granty multi-root local/relay | Model/env relay dla memberów, dalsze capability adapterów, kolejność/kolory/sync grup i ręczna QA |
-| Usage / budżety | Skanery Claude/Codex/OpenCode z checkpointami i dedupe, cennik cache/long-context/`unpriced`, przekroje i alerty w Usage, limity kont, reader OAuth Claude, trwały ledger żądań/czasu/raportowanego USD; remote account usage pokazuje `Admin-only` dla `member`; attribution `Main/Subagent/Internal/Unknown`, źródła QA i sync agregatów przez relay (member zapisuje, admin czyta) | Ręczna QA prawdziwych logów, pełne rozliczenie providera i dalsze adaptery |
-| Git v2 | Lokalna/zdalna historia, checkout commita, zdalny branch create, stash/worktree, operacje i blame z ochroną buforów | Ręczny odbiór i docelowy relay |
-| Markdown | Visual/Raw, edycja/struktura/selekcja/zasoby i regresje natywne | Ręczne GUI/IME/bidi, złożone przypadki graniczne i rzeczywisty relay |
-| Agent workbench / GitHub | Osiem implementacji v1, lokalne CI/PR i zdalne checkpointy/compare/context/GitHub admin-only | Odbiór na prawdziwym GitHubie i relayu, dalsze capability, pełny billing i compiler/LSP impact; patrz M3c |
-| Skills | Własna biblioteka, discovery/import, instalacja per projekt, hash/pochodzenie, bezpieczny eksport/usuwanie, paczki wieloplikowe, katalog Cloudflare Security Audit, odczyt/walidacja artefaktów Cloudflare oraz wyników Codex Security, fazy, triage, świeży verifier, eksporty, sandbox lokalnych checks i remote audits przez relay | Ręczna QA UI i zdalne uruchamianie Codex CLI na hoście relay |
-| Graph / Trace | Hierarchie, disclosure, filtry/timing, eksport grafu, search z przodkami, minimapa, zoom i skróty, sticky axis, tidy-tree bez limitu głębokości, wirtualizacja viewportu grafu/minimapy i wierszy trace, drzewo ARIA z aktywnym potomkiem oraz fokus ze scrollowaniem do wyboru | Ręczna QA fokusu/a11y (VoiceOver, obie motywy, wąskie okno) |
-| Design / onboarding / uprawnienia | Design settings, tokeny scale, Compact/Comfortable, Reduce motion, jednostajne płaskie Ustawienia, dwustopniowy onboarding, katalog ACP, języki repozytoriów, odporny Explorer i centrum TCC | Pełna migracja pozostałych literalnych rozmiarów, SSH/trust po otwarciu projektu, ręczna QA klawiatury/a11y/TCC |
-| iOS | Źródła klienta SwiftUI/ACP i konfiguracja projektu | Potwierdzony build Xcode, test urządzenia/relay, brakujący sync i powiadomienia; nie jest ukończonym klientem |
-| Fundament / release / security | Feature-moduły, migracje, zweryfikowana beta.3, migracja bez wyjątków, reguły solo, zielone skany/main CI i atestacje; `app.rs` podzielony na `app/overlays.rs`, `app/helpers.rs` i `app/tests.rs` | Wspólne Services/event bus, odroczone R11; stabilne wydanie i notaryzacja wymagają osobnego odbioru |
-
-Lokalna walidacja beta.3: **487 testów zaliczonych, 4 opcjonalne pominięte**;
-build desktop/relay, Clippy `-D warnings`, fmt, natywne smoke dark/light-narrow
-(Git, Markdown, GitHub, workbench) i sparowany loopback HTTP Git przeszły.
-Nie zastępuje to manualnej QA ani testu wdrożonego hosta.
-
-Bieżąca walidacja working tree po PR #9 (beta.4), zakresie beta.5 i nowym v1:
-**592 testów zaliczonych, 0 pominiętych**; build, fmt i Clippy `-D warnings`
-przechodzą. Cztery testy
-`#[ignore]` usunięto, a remote usage dla roli `member` pokazuje jawny stan
-`Admin-only` bez żądania do relay i bez błędu. CI odrzuca `todo!()`/
-`unimplemented!()` w `apps`/`crates`.
-
-### Zamknięte opisane zakresy bazowe
-
-Kolejka promptów, file watching, obsługa brakującego folderu, bazowe powiadomienia
-macOS/badge, import plików sesji, bulk import repozytoriów oraz obecne taby edytora/
-podglądy mają implementację i testy. Ich ukończenie nie zamyka odpowiednio całych
-rozmów, onboardingu, usage, Git ani pełnego warsztatu.
-
-Zrealizowane funkcje szczegółowe:
-
-- kolejka promptów z edycją, usuwaniem, zmianą kolejności i czyszczeniem,
-- kopiowanie i ponawianie wiadomości użytkownika,
-- powiadomienia macOS przez `UNUserNotificationCenter` i badge w Docku,
-- debounced file watching dla lokalnych projektów,
-- wykrywanie brakującego folderu, badge i `Locate folder…`,
-- toast z `Undo` po usunięciu grupy,
-- kompaktowa szerokość sidebara, zwijanie `⌘B` i ukrywanie hintów w wąskim oknie,
-- edycja i ponowienie promptu, podgląd unified diff przy tool callu,
-- prawy klik na projektach i sesjach,
-- inspector jako overlay w wąskim oknie,
-- per-project override harnessu i permission mode,
-- ustawienie pokazywania/ukrywania hintów klawiaturowych,
-- import plików sesji per harness z podglądem, dopasowaniem ścieżek i dedupe,
-- lokalny graf Git/refs i branch z wybranego commita bez checkoutu,
-- custom ikona projektu, lokalnoczasowe powitanie i natywne menu macOS,
-- hierarchia grup/List/Tree, bulk import repozytoriów i badge monorepo,
-- Design settings, edytor z tabami/minimapą, podgląd obrazów/PDF i scoped diffy,
-- globalny katalog skills i instalacja własnych kopii do harnessów,
-- ograniczony [agent workbench i GitHub](agent-workbench-and-github.md): CI/PR,
-  context/decision memory, review/checkpoints/checks, trwałe budżety, porównanie
-  A/B w worktree i inkrementalna mapa Rust AST. Pełny billing, semantyka LSP,
-  zdalne nowe narzędzia i ręczna akceptacja pozostają otwarte,
-- pierwsze tokeny skali w `crates/ui/src/scale.rs`.
-- krótki README i pełny przewodnik w `docs/guide.md`; usunięte porównanie konkurencyjne,
-  sekcja wyróżników i zweryfikowany baseline wydajności w
-  [`performance.md`](performance.md) (M1: ~0.30–0.36 s do pierwszego okna,
-  99–106 MiB idle, 0.4% CPU, 42.4 MiB binary).
-- composer czata inspirowany VS Code: wyśrodkowany start rozmowy, rozwijany
-  wybór środowiska (Mac / sparowane relaye), harnessa, trybu ACP/uprawnień i modelu;
-  zmiana harnessa tworzy nową sesję, a poprzednia zachowuje swój harness.
-
-Następne w M1: menu kontekstowe dla wiadomości/tool calls, branch od
-wiadomości, zawijanie composera, `Undo` dla projektów i sesji, status
-uprawnień powiadomień z linkiem do System Settings oraz tokeny typografii we
-wszystkich widokach.
-
-## Release 0.1 — public beta gate
-
-Status źródeł: `0.1.0-beta.3`, commit `36398df`, tag wypchnięty 1 listopada 2026.
-[CI](https://github.com/corapoid/dunlin/actions/runs/41291827294) i
-[Release](https://github.com/corapoid/dunlin/actions/runs/41291827251) zakończyły się
-**success**. Prerelease opublikowano `2026-11-01T09:19:50Z`; pobrane ZIP/DMG/relay
-mają zgodne SHA-256, wersję/tożsamość/arm64, poprawny podpis ad-hoc i weryfikację DMG.
-Nie instalowano artefaktów. Bieżące zmiany hardening są częścią
-**0.1.0-beta.6**: nie były częścią tamtych runów i nie zmieniają istniejącego taga.
-[Dowody i blokery domknięcia](release-acceptance.md).
-
-Zakres 0.1: macOS 15+, Apple Silicon, projekty lokalne i remote relay w wersji
-beta. Beta.3 zawiera także wizualny Markdown, własną bibliotekę skills oraz
-ograniczony agent workbench/GitHub. Poza ukończonym zakresem pozostają iOS,
-terminal, computer use, scheduler automatyzacji, artefakty i pełna orkiestracja.
-
-- [x] **R1. Nazwa i tożsamość** — Dunlin, bundle ID `dev.dunlin.ide`, Keychain
-  service `dev.dunlin.remote`, katalog danych `Dunlin`, ikona, copyright.
-  Stare dane i tokeny migrują przy pierwszym uruchomieniu.
-- [x] **R2. Onboarding i prawdziwe dane** — usunięte demo projekty/sesje i
-  compile-time `workspace_root`; ekran pierwszego uruchomienia.
-- [x] **R3. Empty states** — brak projektu, brak sesji, brak wyników
-  wyszukiwania; harness offline ma status i akcję ponowienia.
-- [x] **R4. Okno i aplikacja** — clamp zapisanej pozycji do widocznego ekranu,
-  jedna instancja, ostrzeżenie przy zamykaniu w trakcie tury, domyślne menu
-  aplikacji macOS.
-- [x] **R5. Powiadomienia** — `UNUserNotificationCenter`, autoryzacja przy
-  pierwszym powiadomieniu, zachowanie przy odmowie. Status i link do System
-  Settings zostają jako polishing w M1.
-- [x] **R6. Licencja** — MIT, `LICENSE`, `THIRD_PARTY_NOTICES`, licencja Geist,
-  zmiana `license` w Cargo i `Info.plist`.
-- [x] **R7. Release engineering** — wersja z taga, arm64 build, DMG/ZIP,
-  checksums, podpis/notaryzacja opcjonalna przez sekrety.
-- [x] **R8. CI** — fmt, clippy, testy, relay smoke na macOS runnerze.
-- [x] **R9. GitHub Release — mechanizm** — workflow `v*`, źródła + binaria;
-  aktualny skrypt publikuje release (prerelease dla wersji beta), nie draft.
-  Powodzenie mechanizmu nie oznacza potwierdzenia bieżącego runu beta.3.
-- [x] **R10. Dokumentacja** — README ze screenshotami i sekcją wyróżników,
-  CHANGELOG, CONTRIBUTING, SECURITY, issue/PR templates.
-- [ ] **R11. QA** — świeże konto macOS, brak harnessa, odmowa powiadomień,
-  upgrade bazy, duży projekt, remote beta. Ręczny GUI/TCC/realny host jawnie
-  odroczone decyzją użytkownika wyłącznie dla `0.1.0-beta.N`, nie zaliczone.
-  [Macierz manualna](r11-qa.md); raport automatyczny nie zastępuje odbioru.
-- [x] **R12. Bezpieczeństwo publicznego repo — zatwierdzony zakres solo/beta**
-  - [x] workflow dependency review i konfiguracja Dependabot,
-  - [x] GitHub secret scanning i push protection włączone (odczyt API 2026-11-01),
-  - [x] reguły `main`: PR, osiem ścisłych checków przypiętych do aplikacji Actions,
-    podpisane squash merge, brak bypassów, zakaz usuwania/non-fast-forward;
-    jawnie zatwierdzony tryb solo bez fikcyjnego review drugiej osoby,
-  - [x] kod workflow CodeQL (Rust/web/Python/Actions), cargo-deny, walidatora artefaktów,
-    raportów QA i audytu reguł; potwierdzone runy PR/main i walidacja tokena workflow,
-  - [x] migracja pięciu obsolete pakietów z całego lockfile, dziewięć utrzymywanych
-    forków i integralność/provenance; cargo-deny bez wyjątków, 491 testów Rust,
-    25 Python, audyt reguł solo i dziewięć natywnych smoke zaliczone lokalnie,
-  - [x] świeże skany zmigrowanych/poprawionych źródeł, podpisany squash `f61251f`,
-    main CI/Security i atestacje obu binariów; zero otwartych alertów security.
-    Sześć false positive udokumentowano indywidualnie, bez wyłączania reguł
-    ani wykluczania źródeł Rust. Reguły merge: pass, bez bypassu.
-    [Pełna macierz i odroczenia](release-acceptance.md).
-
-Bez konta Apple Developer pierwszy build będzie ad-hoc signed i oznaczony jako
-unsigned beta. Po dodaniu konta workflow podpisze i znotaryzuje artefakt.
-
-## Pozostałe kierunki po beta.3
-
-- dokładne usage scanners/cennik i pełne przekroje (podstawowy Dashboard już działa),
-- terminal + autowykrywanie komend,
-- brakujące operacje/QA Git v2 + global search FTS5,
-- odbiór i przypadki brzegowe istniejącego Visual/Raw Markdown,
-- standalone chat,
-- artefakty,
-- discovery/import/per-project skills (własny katalog i eksport już działają),
-- automatyzacje,
-- SSH hosty,
-- computer use + helper TCC,
-- graph/trace advanced,
-- iOS build i sync.
-
-## M1 — Codzienna praca i zaufanie
-
-- [x] **2. Kolejka promptów** (M)
-  - kolejka per sesja, edycja, usuwanie, zmiana kolejności, czyszczenie,
-  - panel kolejki w composerze, licznik `N queued`,
-  - dispatch tylko po `PromptFinished`, bez gubienia promptów.
-- [ ] **3. Akcje wiadomości** (M)
-  - [x] kopiuj i ponów dla wiadomości użytkownika,
-  - [x] kopiowanie odpowiedzi agenta,
-  - [x] edytuj i wyślij,
-  - [x] podgląd unified diff przy tool callu,
-  - [ ] branch od wiadomości.
-- [x] **4. Powiadomienia macOS + badge** (M)
-  - permission request i koniec tury,
-  - tylko gdy okno nieaktywne, ustawienie on/off,
-  - badge w Docku dla oczekujących sesji.
-- [x] **5. File watching** (M)
-  - FSEvents/`notify`, debounce, ignorowanie `.git`, `node_modules`, `target`,
-  - odświeżanie drzewa, gita i oznaczenie otwartego pliku jako stale.
-- [x] **6. Brakujący folder projektu** (S)
-  - badge w sidebarze, `Locate folder…`, blokada auto-connectu, czytelny błąd.
-- [ ] **13. Design tokens i skala UI** (M)
-  - [x] pierwsze tokeny w `crates/ui/src/scale.rs`,
-  - [ ] tokeny typografii/spacing w istniejących widokach,
-  - [ ] gęstość Compact/Comfortable.
-- [ ] **15. Toasty z akcją** (S)
-  - [x] kolejka toastów i `Undo` dla usunięcia grupy,
-  - [ ] `Undo` dla projektów/sesji.
-- [ ] **16. Menu kontekstowe** (M)
-  - [x] prawy klik na projekcie i sesji,
-  - [x] plik/folder (tworzenie, rename/delete, Reveal in Finder),
-  - [ ] wiadomość, tool call.
-- [ ] **20. Wąskie okno** (M)
-  - [x] kompaktowy sidebar i ukrywanie hintów w titlebarze,
-  - [x] zwijany sidebar (`⌘B`, przycisk w titlebarze),
-  - [x] inspector jako overlay poniżej 1100 px,
-  - [ ] zawijanie composera.
-
-## M2 — Projekty, statystyki, onboarding
-
-- [ ] **10. Ustawienia per projekt** (M)
-  - [x] override harness i permission mode, modal w menu projektu,
-  - [x] precedence global → projekt,
-  - [x] własna ikona projektu (embedded image, powrót do automatycznej),
-  - [x] lokalne domyślne modele per projekt/harness i env lokalnego procesu,
-  - [x] ustawienia per grupa, dziedziczenie global → przodkowie → projekt i źródła wartości,
-  - [ ] domyślne model/env przez relay,
-  - [ ] pozostałe ustawienia stosowane automatycznie bez restartu harnessu;
-    wybór harnessa z composera już tworzy nową rozmowę, a domyślne ustawienia
-    globalne/projektowe dotyczą nowych sesji.
-- [ ] **11. Grupy v2** (M)
-  - [x] drag & drop przypisań/reparenting, zagnieżdżanie, List/Tree i sortowanie,
-  - [ ] ręczna kolejność, wybór kolorów, sync relay/iOS.
-- [ ] **12/28/31. Usage i statystyki** (XL)
-  - [x] recorded-data Dashboard i scope-aware limity kont (nie pełny billing),
-  - skanery Claude/Codex/OpenCode, incremental checkpoints, dedupe,
-  - cennik z cache i long-context, `unpriced`, cache reuse rate,
-  - dashboard global/projekt/model/harness, sesje, tokeny, koszt, czas,
-  - oddzielny „context estimate” od „billing usage”.
-- [ ] **19. Onboarding** (M)
-   - [x] podstawowy pierwszy ekran, wykrywanie adapterów, projekt i trust,
-   - [x] opcjonalna karta powiadomień, request TCC i stan **Not granted**,
-   - [x] banner zaufania projektu w Chat i raport QA w Advanced,
-   - [ ] pełny wznawialny kreator model/auth/relay/SSH i odbiór.
-- [ ] **30. Centrum uprawnień macOS** (M)
-  - Notifications, Accessibility, Screen Recording, Automation, FDA;
-  - statusy, otwieranie System Settings, ponowne sprawdzenie.
-
-## M3a — Warsztat
-
-- [ ] **7. Git v2** (L)
-  - [x] bezpieczny branch switch oraz lokalny log/DAG/refs i branch create z commita,
-  - [x] read-only stash/worktree oraz stan operacji i konfliktów, lokalnie/przez relay (QA GUI oczekuje),
-  - [x] mutacje stash/worktree, merge/rebase/cherry-pick i continue/abort z preflightem/potwierdzeniami, local/relay (ręczna QA oczekuje),
-  - [x] **git graph w głównym panelu**, szczegóły/lista plików i diff commita
-    (root, jawny wybór rodzica merge, rename/delete/binary; QA GUI oczekuje),
-  - [x] read-only historia przez relay: graf, szczegóły, pliki i patche z grantami projektu,
-  - [x] wskazanie commita w grafie → formularz merge/rebase/cherry-pick i potwierdzenie,
-  - [x] inline git blame na linii kursora z hoverem i przejściem do commita, cache HEAD/plik/backend oraz brak autorstwa niezapisanych linii,
-  - [ ] checkout commita bezpośrednio z grafu i zdalny branch create,
-  - [ ] ręczny odbiór mutacji, hoverów i rzeczywistego relay — [zakres i ograniczenia](git-operations-and-blame.md).
-- [ ] **8. Global search** (M)
-  - FTS5 transkrypty/sesje + pliki, filtry, snippety.
-- [x] **25. Terminal — lokalny, relay i SSH v1** (L)
-  - PTY (`portable-pty`) + VT (`vt100`), taby, bounded scrollback, resize,
-    copy/paste, podstawowe klawisze i ANSI/RGB są wdrożone;
-  - zaznaczanie myszą (słowo/linia/Shift), splity z przeciąganym dividerem,
-    shell integration OSC 133/633/7/1337, OSC 8 oraz transport relay i SSH v1
-    są wdrożone;
-  - pozostają ręczna QA GUI/IME/bidi/splitów i rzeczywisty host; szczegóły:
-    [terminal-and-run.md](terminal-and-run.md).
-- [x] **26. Autowykrywanie komend — v1** (S/M)
-  - package.json, Cargo.toml, Makefile, justfile, pyproject, go, deno, composer,
-    Rakefile, mix, gradle/maven i scripts/*;
-  - panel „Run”, preview/potwierdzenie, PTY, status/exit, historia i rerun.
-
-## M3b — Treść i rozszerzenia
-
-- [ ] **21. Artefakty** (L)
-  - „zapisz jako artefakt”, model i panel, Markdown/HTML/CSV/obraz/diff,
-  - preview/source, open in browser, później share przez relay.
-- [ ] **24. Katalog skills** (L)
-  - [x] globalna biblioteka, add/edit/validate, bezpieczna instalacja i usuwanie
-    własnych kopii do rootów harnessa,
-  - [ ] discovery zewnętrznych bibliotek, enable per projekt, import folder/repo,
-    pełny audyt hash/pochodzenia.
-- [ ] **27a. Markdown** (XL)
-  - [x] domyślny Visual + Raw, stała typografia przy kliknięciu, edytowalne komórki tabel/kod/proza i pola składni pozostałych bloków (QA GUI oczekuje),
-  - [x] operacje wierszy/kolumn tabel, wyrównanie i Tab/Shift+Tab między komórkami (QA GUI oczekuje),
-  - [x] kompaktowa typografia, Enter dla akapitów/prostych list oraz Backspace/Delete na zgodnych granicach (QA GUI oczekuje),
-  - [x] selekcja/edycja między blokami, strzałki i grafemy, zagnieżdżone listy/cytaty i wcięcia poddrzew (z walidacją i ograniczeniami),
-  - [x] właściwości linków/obrazów, jawny podgląd obrazów projektu local/relay i potwierdzane linki HTTP(S),
-  - [x] automatyczne QA: unit/transport/security oraz natywny smoke ciemny + jasny/wąski,
-  - [ ] ręczny odbiór GUI/IME/bidi i rzeczywistego sparowanego relay; dalsze złożone przypadki strukturalne — [zakres](markdown-editor.md).
-- [ ] **27b. Standalone chat** (M) — v1 wdrożony, QA GUI otwarte
-  - [x] `ChatSpace`, scratch workspace i `ProjectKind` z migracją v8; brak
-    sztucznego projektu w drzewie Projects,
-  - [x] główny composer z wyborem środowiska, harnessa, modelu i trybu pracy,
-  - [x] **New Standalone Chat** i **New Chat in Repository…** z jawnym
-    potwierdzeniem kontekstu; bez skanowania całego dysku,
-  - [x] izolowana historia przez osobne `project_id`; sesje projektowe
-    nigdy nie zmieniają po cichu `cwd`,
-  - [ ] ręczna QA GUI, pełny picker ostatnich repozytoriów i zmiana kontekstu
-    bez tworzenia nowej przestrzeni — [zakres](standalone-chat-worktree-usage.md).
-
-## M3c — Agent workbench i GitHub — v1 w kodzie, pełny odbiór otwarty
-
-Wszystkie poniższe pozycje mają implementację oraz automatyczne testy. Nie są
-mockupami, ale nie oznaczają też pełnej realizacji pierwotnych propozycji.
-Wspólny brak odbioru: ręczne dialogi/focus/klawiatura/a11y; dla GitHuba także
-rzeczywiste konto/CI/PR. Dokładne limity i potwierdzone scenariusze:
-[agent workbench i GitHub](agent-workbench-and-github.md).
-
-| Obszar | Dostarczony zakres v1 | Granice v1 / niezakończone rozszerzenia |
-| --- | --- | --- |
-| Review zadania | Baseline, obserwowane diffy, komentarz/evidence → draft | Brak automatycznego autorstwa per tura i dowodu pokrycia testami |
-| Context inspector | Rzeczywista koperta klienta, provenance, MCP/skills | System/history/context należące do harnessa pozostają jawnie nieznane |
-| Checkpointy | Nazwane snapshoty zapisanych plików, selektywny restore z potwierdzeniem | Nie snapshot RAM/index/refs; zdalne checkpointy/restore niewdrożone |
-| Checks / problems | Potwierdzany JSON argv, wynik/exit/logi, diagnostyka Cargo; zdalne uruchamianie dla każdego z grantem | Dalsze adaptery testów i sandbox/limity per użytkownik |
-| Budżety zadania | Trwała rezerwacja żądań, czas, raportowane USD, stop/zgody/retencja | Nie limit rachunku providera; wewnętrzne retry/subagenci mogą mieć nieznany koszt |
-| Porównanie A/B | Dwa detached worktree z jednego HEAD, identyczny prompt, wspólny budżet, diff/checks/preferencja | Local-only, bez sandboxa i auto-merge; nie zastępuje koordynatora M6 |
-| Impact map | Inkrementalny Rust AST, zależności leksykalne, kandydaci testów i zdalny indeks przez relay | Nie compiler/LSP/type/cfg-complete; non-Rust pozostaje poza zakresem |
-| Decision memory | Jawne lokalne wersje, stale, evidence i wybrany wpis → draft | Brak sync; nie automatyczne wstrzykiwanie instrukcji ani magazyn sekretów |
-| GitHub CI/PR | GitHub.com + `gh`, polling job/step, logi zakończonych jobów, potwierdzane operacje PR/CI | Brak relay/Enterprise, fork-head creation, reviewer/assignee/labels, merge queues i pełnego live log stream |
-
-„Nieznane” koszty/context/coverage są celowymi granicami bezpieczeństwa, nie
-wynikiem równym zero ani obietnicą pełnej funkcji. Wyłączenie auto-merge,
-auto-send i cichego restartu jest zamierzonym zachowaniem, nie zaległym zadaniem.
-
-## M4 — Zdalnie i autonomicznie
-
-- [ ] **22. Automatyzacje** (XL)
-  - cron/RRULE, precheck, worktree, runy, historia, usage, powiadomienia,
-  - lokalny scheduler + LaunchAgent + relay scheduler.
-- [ ] **29. SSH hosty** (XL) — terminal SSH v1 wdrożony
-  - [x] OpenSSH PTY, ControlMaster, ssh-agent/known_hosts, jawny target i ścieżka,
-  - [ ] Keychain, bootstrap relay, tunel loopback, reconnect i cleanup procesów;
-  - [ ] terminal i projekty zdalne w pełnym zakresie SSH.
-- [ ] **23. Computer use** (XL)
-  - Swift helper, TCC, AX/ScreenCaptureKit/CGEvent, allowlist, HITL, audit.
-- [ ] **30. Pełne uprawnienia** (M)
-  - integracja z helperem i onboardingiem.
-
-## M5 — Wizualizacja i polish
-
-- [ ] **17. Graf** (M)
-  - [x] hierarchia agentów, zwijanie/rozwijanie i eksport SVG,
-  - [x] pan/zoom, tidy-tree auto-layout bez limitu głębokości, minimapa,
-        search i wirtualizacja viewportu.
-  - [ ] ręczna QA fokusu/a11y.
-- [ ] **18. Trace** (M)
-  - [x] hierarchia, collapse/expand i filtry typów,
-  - [x] search, rozszerzona klawiatura, sticky axis, wirtualizacja wierszy.
-  - [ ] ręczna QA fokusu/a11y.
-- [ ] **12. Budżety i alerty** (M)
-  - [x] trwałe limity żądań/czasu/raportowanego USD per zadanie (także w tle),
-  - [ ] pełne rozliczanie providera/subagentów i alerty kont/globalne.
-- [ ] **21. Sharing artefaktów** (M)
-- [ ] **20/13. Accessibility i gęstość UI** (M)
-- [ ] **iOS** — sync grup/usage/artefaktów, powiadomienia, build z Xcode.
-  Źródła SwiftUI/ACP już istnieją, ale build i działanie na urządzeniu nie są
-  potwierdzone; to rozpoczęty, nieodebrany obszar, a nie gotowa aplikacja.
-
-## M6 — Multi-agent orchestration
-
-Cel: agenci nie tylko współistnieją w sesjach, ale przekazują sobie pracę przez
-widoczny, kontrolowany graf. To rozwinięcie graph/trace i odpowiedź na potrzebę
-orkiestracji znaną z dojrzałych agent-first IDE, ale oparte o ACP i nasze worktree.
-
-- [ ] **M6.1. Message bus** (L) — strukturalne wiadomości między sesjami,
-  inbox człowieka, trwałość w SQLite, uprawnienia nadawcy/odbiorcy.
-- [ ] **M6.2. Coordinator** (XL) — spec/task → dekompozycja → zależności →
-  przydział do harnessów/modeli; każdy subtask w osobnym worktree.
-  Worktree per subtask v1 jest wdrożony (`SubtaskAdd`, branch
-  `dunlin/subtask/<name>`, trwały rejestr, jawny UI); brakuje automatycznej
-  dekompozycji, startu agenta i merge.
-  [Zakres](standalone-chat-worktree-usage.md).
-- [ ] **M6.3. Handoff i review** (L) — zakończenie zadania automatycznie
-  uruchamia review/merge; konflikty: auto → agent → człowiek.
-- [ ] **M6.4. Model routing i budżet** (M) — model per rola, limity kosztu,
-   usage attribution per task.
-  Osobne porównanie A/B ma już wybór modeli, wspólny ledger i potwierdzenia;
-  nie oznacza wdrożenia routingu ról ani gwarantowanego limitu rachunku.
-- [ ] **M6.5. Living spec / task board** (M) — spec aktualizowany przez agentów,
-  widok zależności i statusów w grafie.
-- [ ] **M6.6. Human gates** (M) — zatwierdzanie handoffów, merge i kosztownych
-  decyzji; pełny audit trail.
-
-Zależności: terminal, Git worktree, skills, automations, usage i graph.
-
-
-## M7 — Spec workspace, intent i governance agenta
-
-Cel: artefakty governance (intent, spec, plan, tasks, agent contract) są
-natywnymi, wersjonowanymi obiektami workspace'u, a nie tekstem w czacie.
-Źródłem prawdy pozostają pliki; SQLite jest indeksem i magazynem dowodów.
-
-Zrealizowane:
-
-- [x] **M7.1. Intent + spec cockpit** — intent capture/interview, 10 faz SDD,
-  Clarify/Checklist/Analyze/Converge, bramki implementacji, drift i coverage.
-- [x] **M7.2. Approval i dowody** — decyzje hash-bound, HEAD commit, notatki,
-  eksport logu, indeks artefaktów, evidence per task.
-- [x] **M7.3. Relay read-only indexing** — artefakty z projektów relay/SSH przez
-  istniejący backend, ładowane w tle.
-- [x] **M7.4. Task worktree + merge gate** — automatyczne tworzenie worktree po
-  potwierdzeniu, `task_id` w rejestrze, gate ukończenia taska i dowody
-  commit/branch/GitHub CI/PR.
-- [x] **M7.5. Traceability** — interaktywne drzewo requirement → task →
-  worktree/evidence/sesja.
-- [x] **M7.6. Contract runtime audit** — heurystyczny audyt tool calli,
-  permission ceiling, policy lint z `AGENTS.md`, manual eval prompt.
-- [x] **M7.7. Global switch** — Settings → General wyłącza intent/spec/contract
-  i powiązane komendy packów bez usuwania plików.
-
-Pozostałe:
-
-- [ ] **M7.8. Compare harnesses on one spec** (M) — ten sam intent/spec,
-  dwa harnessy/modele, wspólny ledger i human preference.
-- [ ] **M7.9. Spec Kit extension runtime** (M) — wykonywanie hooków/komend
-  rozszerzeń Spec Kit z jawnymi uprawnieniami i timeoutami.
-- [ ] **M7.10. Spec-aware review** (M) — kryteria akceptacji i coverage obok
-  diffu, podpis reviewera powiązany z commitem.
-- [ ] **M7.11. MCP connector host + sidecar** (XL) — launch MCP z manifestu,
-  capability grants, sandbox/seatbelt, audyt i kill switch.
-- [ ] **M7.12. Podpisy i katalog packów** (L) — publisher keys, pinning,
-  aktualizacje wymagające ponownej zgody, prywatne katalogi.
-- [ ] **M7.13. Team/relay governance** (XL) — komentarze, współdzielone
-  approvals, role, publikacja speców i read-only linki.
-- [ ] **M7.14. Remote authoring** (M) — tworzenie/edycja intentu i agent
-  contractu na relayu, nie tylko read-only indexing.
-- [ ] **M7.15. Cost attribution** (M) — koszt per requirement/task, nie tylko
-  per sesja/projekt.
-- [ ] **M7.16. Automated behavior evals** (L) — grader, scenariusze i wyniki
-  per harness/model; manual eval prompt już istnieje.
-
-Zależności: storage, Git worktree, relay grants, skills, usage, M6 handoff.
-
-## Rekomendowana kolejność domknięcia
-
-1. Beta.3 i automatyczny hardening są potwierdzone: migracja bez wyjątków,
-   reguły solo, skany, podpisany merge i mainline provenance. Nowe wydanie wymaga
-   osobnej decyzji; nie retagować beta.3 ani udawać odroczonego odbioru R11.
-2. Odebrać rozpoczęte zakresy: ustawienia/grupy, Git, Markdown i workbench/GitHub
-   na izolowanych danych; osobno realny relay, GitHub i GUI/IME/a11y.
-3. Domknąć małe braki M1 (branch rozmowy, Undo, menu wiadomości/tool calli,
-   composer) oraz wskazane luki R12, bez automatycznej zmiany zasad repo.
-4. Potem wybrać następny zakres funkcjonalny: FTS5, billing usage albo skills
-   discovery/per-project. Nie rozpoczynać jednocześnie wszystkich dużych modułów.
-5. Terminal/Run, standalone chat, artefakty, scheduler, SSH, computer use i M6
-   pozostają osobnymi etapami; bazowe checks, relay i A/B nie realizują ich za nas.
+| # | Priority | Section | Item | Size | Type | Remaining scope | Reference |
+| ---: | --- | --- | --- | --- | --- | --- | --- |
+| 1 | P0 | Release & QA | Release acceptance (R11) | M | QA | Fresh macOS account, no harness, notification denial, database upgrade, large project and remote beta. GUI/TCC/real-host acceptance is deferred for the beta series, not passed. | [r11-qa.md](r11-qa.md) |
+| 2 | P0 | Release & QA | Developer ID signing and notarization | S | Release | Apple Developer certificate, notarized DMG/PKG and clean-machine Gatekeeper acceptance. Ad-hoc signing remains the fallback until the account exists. | [release-acceptance.md](release-acceptance.md) |
+| 3 | P1 | Settings & Groups | Real-dialog acceptance of runtime defaults | M | QA | Keyboard/focus, validation and cancel/save in project and group editors; admin/member relay behaviour; reserved environment keys; inheritance after move/delete/Undo. | [project-runtime-settings.md](project-runtime-settings.md) |
+| 4 | P1 | Git | Manual acceptance of Git v2 | M | QA | Mutation dialogs, graph details, inline blame hover and buffer protection on isolated data, then a deployed relay. | [git-operations-and-blame.md](git-operations-and-blame.md) · [git-history.md](git-history.md) |
+| 5 | P1 | Markdown | Manual GUI/IME/bidi acceptance | M | QA | Visual/Raw editing with IME and bidi text, complex nested structures and a real paired relay. | [markdown-editor.md](markdown-editor.md) |
+| 6 | P1 | Workbench & GitHub | Acceptance on real GitHub and relay | L | QA | Dialogs, keyboard and accessibility; a real GitHub account; a deployed relay for checkpoints, compare, context and GitHub admin flows. | [agent-workbench-and-github.md](agent-workbench-and-github.md) |
+| 7 | P1 | Graph & Trace | Manual accessibility acceptance | M | QA | VoiceOver, keyboard focus and scroll-to-selection in both themes and a narrow window. | [graph-trace-virtualization.md](graph-trace-virtualization.md) |
+| 8 | P1 | Terminal & Run | Manual terminal/Run acceptance | M | QA | Unicode/IME/bidi, multi-line paste, SIGINT, drag selection in splits, process shutdown and a real relay/SSH host. | [terminal-and-run.md](terminal-and-run.md) |
+| 9 | P1 | Usage | Real-log acceptance and further adapters | M | QA | Real Claude/Codex/OpenCode logs, full provider accounting and additional provider adapters. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 10 | P1 | Skills & Security | Manual UI and remote audit acceptance | M | QA | Skills/Security dialogs and a remote Codex CLI scan on the relay host. | [secrets.md](secrets.md) |
+| 11 | P1 | SSH | Real-host acceptance | M | QA | MFA, changed host keys, network drops, reconnect, remote service cleanup and Keychain removal. | [guide.md](guide.md#ssh-execution-fabric) |
+| 12 | P1 | Conversation | Branch from a message | M | Feature | Create a branch that starts from a chosen message without duplicating the whole transcript. | [guide.md](guide.md) |
+| 13 | P1 | Conversation | Undo for project/session deletion | S | Feature | Restore a deleted project or session from a toast without touching repository files. | [guide.md](guide.md) |
+| 14 | P1 | Conversation | Message and tool-call context menus | M | Feature | Right-click actions for messages and tool calls, with the same copy/retry/edit boundaries as the visible controls. | [guide.md](guide.md) |
+| 15 | P1 | Conversation | Composer wrapping in narrow windows | S | Feature | Wrap long composer content without clipping controls or widening the conversation column. | [guide.md](guide.md) |
+| 16 | P1 | Design & A11y | Migrate remaining literal sizes to tokens | M | Refactor | Replace hard-coded typography and spacing in older views with the semantic scale; keep hit targets unchanged. | — |
+| 17 | P1 | Design & A11y | Manual keyboard/focus/contrast/AX audit | M | QA | Tab/Shift-Tab/Esc/Enter, dialog focus trap/restore, contrast, AX labels and Reduce Motion in both themes and the smallest window. | [r11-qa.md](r11-qa.md) |
+| 18 | P1 | Onboarding & Permissions | Resumable harness/auth/project/relay/SSH wizard | M | Feature | A resumable onboarding path covering model/auth, project/trust and optional relay/SSH, with skipping and returning without data loss. | [guide.md](guide.md) |
+| 19 | P1 | Git | Safe commit checkout from the graph | S/M | Feature | Expose the existing clean-worktree, exact-commit checkout behind an explicit confirmation; never move branches or discard changes. | [git-history.md](git-history.md) |
+| 20 | P1 | Artifacts & Evidence | Direct capture on chat/tool cards, diffs and check reports | M | Feature | "Save as artifact" next to the existing clipboard and current-file capture. | [governance-wasm-plugin.md](governance-wasm-plugin.md) |
+| 21 | P1 | Artifacts & Evidence | Full claims/evidence list in the cockpit | M | Feature | Status, freshness, support/refute and links to artifacts/tasks, not only the link from an artifact. | [governance-wasm-plugin.md](governance-wasm-plugin.md) |
+| 22 | P1 | Standalone Chat | Recent-repositories picker and in-place context switching | M | Feature | A full recent-repositories picker and changing context without creating a new chat space. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 23 | P2 | Search | Global FTS5 search | M | Feature | Versioned transcript/session/file index, backfill off the UI thread, filters, snippets, ranking, pagination and cancellation. | — |
+| 24 | P2 | Usage | Full provider/subagent accounting and alerts | M | Feature | Account/global alerts and complete retry/subagent accounting; keep unknown/unpriced values explicit instead of zero. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 25 | P2 | Projects & Groups | Group/settings sync across paired relay devices | L | Feature | Synchronize group definitions and appearance settings without overwriting local-only state or silently widening access. | [project-runtime-settings.md](project-runtime-settings.md) |
+| 26 | P2 | Settings & Groups | Further adapter-specific runtime settings | M | Feature | Settings beyond harness/model/env where an ACP adapter exposes a safe, acknowledged option. | [project-runtime-settings.md](project-runtime-settings.md) |
+| 27 | P2 | Terminal & Run | Remote Run on a relay | M | Feature | Run detected recipes on a relay project with the same preview, confirmation and bounded output as local Run. | [terminal-and-run.md](terminal-and-run.md) |
+| 28 | P2 | Terminal & Run | More manifest formats for Run detection | S | Feature | Additional static manifests and script conventions; never evaluate project code during detection. | [terminal-and-run.md](terminal-and-run.md) |
+| 29 | P2 | Knowledge & Governance | Knowledge graph pan/zoom and minimap | S/M | Feature | Navigate larger relation graphs without losing selection or focus. | [governance-wasm-plugin.md](governance-wasm-plugin.md) |
+| 30 | P2 | Knowledge & Governance | Compare harnesses on one spec | M | Feature | Run the same intent/spec with two harnesses/models, one shared ledger and a human preference. | [spec-workspace.md](spec-workspace.md) |
+| 31 | P2 | Knowledge & Governance | Spec-aware review | M | Feature | Acceptance criteria and coverage beside the diff, with reviewer signature bound to the commit. | [spec-workspace.md](spec-workspace.md) |
+| 32 | P2 | Knowledge & Governance | Remote authoring of intent/spec/contract | M | Feature | Create and edit governance objects on a relay, not only read-only indexing. | [spec-workspace.md](spec-workspace.md) |
+| 33 | P2 | Knowledge & Governance | Per-requirement/task cost attribution | M | Feature | Cost per requirement/task rather than only per session/project, preserving unknown values. | [spec-workspace.md](spec-workspace.md) |
+| 34 | P2 | Knowledge & Governance | Spec Kit extension runtime | M | Feature | Execute Spec Kit extension hooks/commands with explicit permissions and timeouts. | [spec-workspace.md](spec-workspace.md) |
+| 35 | P2 | Knowledge & Governance | Automated behaviour evals | L | Feature | Grader, scenarios and results per harness/model; the manual eval prompt is not a substitute. | [spec-workspace.md](spec-workspace.md) |
+| 36 | P2 | Knowledge & Governance | Team/relay governance | XL | Feature | Comments, shared approvals, roles, spec publishing and read-only links. | [spec-workspace.md](spec-workspace.md) |
+| 37 | P2 | Plugins & MCP | MCP connector host and sidecar | XL | Feature | Launch MCP servers from a manifest with capability grants, sandbox/seatbelt, audit and a kill switch. | [spec-workspace.md](spec-workspace.md) |
+| 38 | P2 | Plugins & MCP | Plugin signatures and pack catalog | L | Feature | Publisher keys, pinning, updates requiring renewed consent and private catalogs. | [governance-wasm-plugin.md](governance-wasm-plugin.md) |
+| 39 | P2 | Workbench & GitHub | Compiler/LSP and non-Rust impact map | L | Feature | Go beyond the current Rust AST/lexical map; coverage must remain evidence, not a guarantee. | [agent-workbench-and-github.md](agent-workbench-and-github.md) |
+| 40 | P2 | Workbench & GitHub | Further check adapters and per-user limits | M | Feature | More test adapters and per-user sandbox/quotas for remote checks. | [agent-workbench-and-github.md](agent-workbench-and-github.md) |
+| 41 | P2 | Workbench & GitHub | GitHub workflow extensions | L | Feature | Enterprise hosts, fork-head creation, reviewers/labels, merge queues and a live log stream. | [agent-workbench-and-github.md](agent-workbench-and-github.md) |
+| 42 | P2 | Foundation | Extract shared Services and event bus | L | Refactor | Move app-wide state and events out of `app.rs` into explicit services without changing visible behaviour. | — |
+| 43 | P3 | Multi-agent | Durable message bus and inbox | L | Feature | Structured messages between sessions with authorization, dedupe, idempotency and SQLite durability. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 44 | P3 | Multi-agent | Coordinator and task DAG | XL | Feature | Spec/task decomposition, dependencies, assignment to harnesses/models and one worktree per task. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 45 | P3 | Multi-agent | Handoff, review and merge | L | Feature | Task completion triggers review/merge; conflicts route to an agent or human with a full audit. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 46 | P3 | Multi-agent | Model routing and per-role budgets | M | Feature | Model per role and cost/concurrency limits that also cover retries and subtasks. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 47 | P3 | Multi-agent | Living spec and task board | M | Feature | Spec updated by agents with a dependency/status view in the graph. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 48 | P3 | Multi-agent | Human gates and audit trail | M | Feature | Approval of handoffs, merges and expensive decisions with a complete audit trail. | [standalone-chat-worktree-usage.md](standalone-chat-worktree-usage.md) |
+| 49 | P3 | Automations | Scheduler, runs and notifications | XL | Feature | Cron/RRULE, precheck, optional worktree, run history/usage/limits, local LaunchAgent and a relay scheduler. | — |
+| 50 | P3 | Computer Use | Native helper and TCC permissions | XL | Feature | Separate signed Swift/AppKit helper with AX/ScreenCaptureKit/CGEvent, allowlist, human approval, global stop and audit without secrets. | — |
+| 51 | P3 | Computer Use | Permission helper integration and onboarding | M | Feature | Integrate the helper's TCC status, revocation and onboarding flow without self-granting permissions. | — |

@@ -9,12 +9,25 @@ messages, plans, tool calls, diffs and permission requests rendered as native
 UI instead of a terminal transcript.
 
 The current beta targets **macOS 15+, Apple Silicon, local projects and a
-self-hosted relay beta**. The iOS client is a scaffold and is not part of this
-release. The latest published beta and source version are `0.1.0-beta.10`; see
+self-hosted relay beta**. The current version and the latest published beta are
+on the [releases page](https://github.com/corapoid/dunlin/releases) and in
 [CHANGELOG.md](../CHANGELOG.md). Published checksums, bundle identity/version and
-relay architectures were independently verified before advancing download links.
+relay architectures are independently verified before advancing download links.
 
-### Beta.10 highlights
+### Current highlights
+
+- [Knowledge](governance-wasm-plugin.md): a file-first Intent/Concept/Decision
+  spine, relation graph and evidence workspace, with an optional sandboxed WASM
+  governance pack and human-reviewed agent proposals.
+- Artifacts: capture the clipboard or current file, preview text/images, link
+  evidence and share content through relay capability links with revocation.
+- [SSH](#ssh-execution-fabric): import `~/.ssh/config`, test
+  ControlMaster connections, store passphrases in Keychain, bootstrap the relay
+  and reopen loopback tunnels without a separate SSH implementation.
+- The extensions panel can install the bundled governance pack, validate its
+  WASM module and start a guided plugin-builder chat.
+
+### Earlier highlights
 
 - [Server setup](relay-setup.md): interactive macOS/Linux bootstrap, optional
   private Tailscale HTTPS, server-owned harness installation/authorization,
@@ -446,10 +459,10 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   opens the right System Settings pane and rechecks without granting anything or
   triggering a request. Notifications can be requested explicitly; the status is
   cached briefly so rendering settings does not block on TCC.
-- Onboarding step 2 offers an optional Notifications card with **Enable** (system
-  request) or **Open Settings**; other TCC categories stay reviewable later.
-  An untrusted project shows a **Trust project** banner in Chat and cannot start
-  an agent or runtime until trusted.
+- Onboarding stays focused on the folder choice. Notifications and the other
+  macOS permissions are reviewed—and requested explicitly—later in
+  **Settings → Permissions**. An untrusted project shows a **Trust project**
+  banner in Chat and cannot start an agent or runtime until trusted.
 - Long imported conversations render the newest 120 items first; **Show earlier
   messages** expands the window without rebuilding the whole transcript. Sending
   a prompt returns to the live edge.
@@ -687,14 +700,14 @@ Release artifacts are published on the
 - `dunlin-relay-<version>-macos-arm64.tar.gz`
 - `SHA256SUMS`
 
-Beta.10 also publishes
+Published releases also include
 `dunlin-relay-<version>-linux-x86_64.tar.gz` and
 `dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
 `install-harness.sh` and `RELAY-SHA256SUMS`. `RELAY-SHA256SUMS` covers all three
 relay archives and the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
 
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
-supported in 0.1.
+supported in the current beta.
 
 ### GitHub Packages (OCI)
 
@@ -760,8 +773,8 @@ onboarding also rescans when you return to Dunlin. Detection checks the executab
 not whether the adapter can connect or is signed in.
 
 Permission statuses refresh in the background when you return from System
-Settings. Onboarding's notification card and **Settings → Permissions** also
-provide **Recheck**, without requesting new permissions.
+Settings. **Settings → Permissions** also provides **Recheck**, without
+requesting new permissions.
 
 | Harness | Command |
 | --- | --- |
@@ -1073,8 +1086,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 ```
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
-**Settings → Remote** on macOS. The iOS scaffold is not a supported release client.
-A paired device receives its
+**Settings → Remote** on macOS. A paired device receives its
 own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
 admin-only because it describes the host account, not a per-project grant.
 Non-admin members see an explicit **Admin-only** state without a relay request
@@ -1130,18 +1142,99 @@ injects the relay MCP proxy into ACP sessions and revokes it when the connection
 or lingering turn ends. The relay vault is per host: any relay user with a grant
 to the project can use the key within policy.
 
-## What is not in 0.1
+## Governance WASM pack (Intent / Concept / Decision)
 
-- iOS build and sync (the SwiftUI client is a scaffold).
-- Full SSH host management: the SSH terminal v1 uses OpenSSH config/agent, but
-  Keychain UI, relay bootstrap and loopback tunnels are not implemented.
+Dunlin ships a generic knowledge core and treats Intent, Concept and Decision as
+an optional, disabled-by-default WASM pack. The host owns files, SQLite, UI,
+permissions and context envelopes; the plugin owns only the schema and pure
+validation/rendering logic. No plugin WASM is compiled or instantiated at app
+startup.
+
+Build and install the pack:
+
+```sh
+./scripts/build-governance-plugin.sh
+./scripts/install-governance-plugin.sh
+```
+
+Settings → Extensions lists `dunlin-governance` as an **available bundled pack**
+with **Install automatically**. Installation writes the manifest and WASM under
+`Application Support/Dunlin/plugins`; the pack stays disabled until you enable
+it. Use **Validate WASM** before enabling. The pack indexes `intent/`,
+`concepts/` and `decisions/` and
+contributes these kinds to the Spec workspace and to the bounded context
+envelope. Disabling it hides the kinds but never deletes project files or
+knowledge rows.
+
+The **Build your own plugin** card in the same section opens a guided chat with
+the default or last-used harness/model. The agent uses the bundled
+`plugin-builder` skill and interviews you before writing a manifest, WASM
+module, tests or install steps.
+
+The `dunlin-knowledge-mcp` binary exposes read-only context/list/get tools and
+proposal tools (`object_propose`, `relation_propose`, `evidence_link`). Write
+tools only enqueue pending proposals under
+`Application Support/Dunlin/proposals`; a human must accept them. See
+[the implementation plan](governance-wasm-plugin.md) for the ABI, limits and
+remaining cockpit/artifact/SSH work.
+
+## Artifacts as evidence
+
+The Knowledge workspace has an **Artifacts** tab. Artifacts are content-addressed
+blobs stored under `Application Support/Dunlin/artifacts/<project>/`, with
+metadata in SQLite. They are never written into the project repository.
+
+Capture explicitly:
+
+- Command palette → **Save Clipboard as Artifact**;
+- Command palette → **Save Current File as Artifact**;
+- Knowledge → Artifacts → **Save clipboard**.
+
+Local artifacts have native text/image preview and can be deleted. Remote
+artifacts can be uploaded, previewed through the relay, shared with a one-use
+token and revoked. Share links are public capability URLs served by the relay
+with a TTL, `nosniff` and a sandbox CSP; HTML is served as plain text. Local-only
+projects can export but cannot share. Revoke stops future access; it cannot
+recall copies already downloaded.
+
+Direct capture buttons on chat/tool cards, diffs and check reports remain a
+later UI slice.
+
+## SSH execution fabric
+
+Settings → Remote → **SSH hosts** imports aliases from `~/.ssh/config`. Dunlin
+uses the system OpenSSH binary; it never implements SSH cryptography and never
+disables `StrictHostKeyChecking`. The first host key must be verified in an SSH
+terminal.
+
+For each host:
+
+- **Test** establishes a `ControlMaster` (ControlPath under
+  `Application Support/Dunlin/ssh`).
+- **Bootstrap relay** uploads a matching `dunlin-relay`, verifies its SHA-256,
+  installs a user launchd/systemd service on `127.0.0.1`, starts a loopback
+  tunnel and pairs the relay. The resulting remote host can be used like any
+  other relay.
+- **Tunnel** reopens only the loopback tunnel; the remote host URL is updated.
+- **Remove** exits the master, stops the tunnel and removes the profile.
+
+Passphrases can be stored in Keychain (`dev.dunlin.ssh`) and are supplied to
+OpenSSH through the bundled `dunlin-ssh-askpass` helper. Private keys are never
+copied or stored. Bootstrap requires a relay binary matching the remote OS and
+architecture.
+
+## What is not in the current beta
+
+- Real-host SSH acceptance for MFA, changed host keys, network drops and
+  service cleanup. The host manager, Keychain passphrase storage, bootstrap,
+  loopback tunnel and launchd/systemd service are implemented.
 - Computer use.
-- Automations and artifacts.
+- Automations.
 - Parallel worktrees and multi-agent orchestration.
 - Universal or Intel builds.
 
-See [`ROADMAP.md`](ROADMAP.md) for the release gate and the next
-milestones, and [`PLAN.md`](PLAN.md) for the architecture.
+See [`ROADMAP.md`](ROADMAP.md) for the single remaining-work backlog and
+[`README.md`](README.md) for the documentation index.
 
 ## Development
 
@@ -1215,7 +1308,6 @@ Useful diagnostics:
 
 ```
 apps/desktop        GPUI application, views, git, search and local state
-apps/ios            SwiftUI remote client (Xcode project generated from project.yml)
 web                 Astro marketing site (static build, React islands)
 crates/ui           Design system on top of GPUI Kit
 crates/domain       Shared project, session, usage, graph and trace types

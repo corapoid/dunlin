@@ -36,7 +36,7 @@ if [[ "$BUILD" == "1" ]]; then
     echo "Cargo was not found. Install Rust from https://rustup.rs or add its bin directory to PATH." >&2
     exit 1
   fi
-  cargo build --release -p dunlin --locked
+  cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
 fi
 
 BIN="${DUNLIN_BIN:-}"
@@ -80,6 +80,12 @@ mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "$DIST"
 
 cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
+for helper in dunlin-knowledge-mcp dunlin-ssh-askpass dunlin-relay; do
+  if [[ -x "target/release/$helper" ]]; then
+    cp "target/release/$helper" "$MACOS/$helper"
+    chmod +x "$MACOS/$helper"
+  fi
+done
 cp LICENSE THIRD_PARTY_NOTICES.md "$RESOURCES/"
 cp licenses/Apache-2.0.txt "$RESOURCES/Apache-2.0.txt"
 cp assets/fonts/OFL.txt "$RESOURCES/Geist-OFL.txt"

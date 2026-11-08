@@ -1,135 +1,134 @@
-# Import sesji
+# Session import
 
-**Settings → Harnesses → karta harnessa → Import sessions…** automatycznie
-skanuje standardowe foldery sesji wybranego harnessa. Najpierw pojawia się
-podgląd tytułów, katalogów, liczby wpisów i przypisań. Nic nie jest zapisywane
-przed potwierdzeniem. Osobny link **Import a portable file…** pozostaje dla
-jawnego formatu przenośnego; nie otwiera się on jako domyślna akcja importu.
+**Settings → Harnesses → harness card → Import sessions…** automatically
+scans the standard session folders of the selected harness. A preview of titles,
+directories, entry counts and assignments appears first. Nothing is saved
+before confirmation. The separate **Import a portable file…** link remains for the
+explicit portable format; it does not open as the default import action.
 
-## Obsługiwane źródła
+## Supported sources
 
-- **OpenCode**: Dunlin otwiera lokalny `opencode.db` wyłącznie w trybie
-  read-only i czyta sesje najwyższego poziomu z bieżącego schematu
-  (`session_v2` + `session_message`), z fallbackiem do starszych tabel
-  `session`/`message`/`part`. Importuje tekst, reasoning, historię narzędzi,
-  zapisane liczniki tokenów oraz statystyki diffów plików; nie odczytuje
-  credentiali, blobów ani snapshotów. Nadal obsługiwany jest eksport
-  JSON `experimental.session.export` V2 przez **Import a portable file…**:
-  `{ "data": { "info": {…}, "messages": […] } }`, albo samo `{info,messages}`.
-  Akceptowane są także eksporty z wiadomościami `{info,parts}`.
-  Publiczny endpoint to `GET /api/experimental/session/{sessionID}/export`;
-  eksport można uzyskać przez udokumentowany klient/API OpenCode. Dunlin nigdy
-  nie odczytuje credentiali ani nie zapisuje do bazy OpenCode.
-- **Claude Code**: jeden log sesji JSONL na plik (`sessionId`, `cwd`, `message`).
-  Skan obejmuje `$CLAUDE_CONFIG_DIR/projects` lub `~/.claude/projects`, rekurencyjnie.
+- **OpenCode**: Dunlin opens the local `opencode.db` in
+  read-only mode only and reads top-level sessions from the current schema
+  (`session_v2` + `session_message`), with a fallback to the older `session`/`message`/`part`
+  tables. It imports text, reasoning, tool history,
+  saved token counters and file diff statistics; it does not read
+  credentials, blobs or snapshots. The V2 `experimental.session.export` JSON export is still
+  supported through **Import a portable file…**:
+  `{ "data": { "info": {…}, "messages": […] } }`, or just `{info,messages}`.
+  Exports with `{info,parts}` messages are also accepted.
+  The public endpoint is `GET /api/experimental/session/{sessionID}/export`;
+  the export can be obtained through the documented OpenCode client/API. Dunlin never
+  reads credentials or writes to the OpenCode database.
+- **Claude Code**: one JSONL session log per file (`sessionId`, `cwd`, `message`).
+  The scan covers `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`, recursively.
 - **OpenAI Codex**: rollout JSONL (`session_meta`, `response_item`, `turn_context`).
-  Skan obejmuje `$CODEX_HOME/sessions` lub `~/.codex/sessions`, rekurencyjnie.
-- **Custom ACP** (również Claude/Codex): jawny format przenośny poniżej.
-  ACP nie definiuje uniwersalnego eksportu historii; aplikacja nie zgaduje
-  prywatnego formatu bazy niestandardowego adaptera.
+  The scan covers `$CODEX_HOME/sessions` or `~/.codex/sessions`, recursively.
+- **Custom ACP** (also Claude/Codex): the explicit portable format below.
+  ACP does not define a universal history export; the app does not guess
+  the private database format of a custom adapter.
 
 ```json
 {
   "format": "dunlin.session.v1",
   "id": "stable-source-session-id",
-  "title": "Refaktoryzacja API",
+  "title": "API refactoring",
   "directory": "/Users/me/code/project",
   "model": "model-name",
   "updated_at": "2026-10-30T12:00:00Z",
   "messages": [
-    {"role": "user", "content": "Sprawdź API", "timestamp": "2026-10-30T11:59:00Z"},
-    {"role": "assistant", "content": "Wynik analizy", "timestamp": "2026-10-30T12:00:00Z"}
+    {"role": "user", "content": "Check the API", "timestamp": "2026-10-30T11:59:00Z"},
+    {"role": "assistant", "content": "Analysis result", "timestamp": "2026-10-30T12:00:00Z"}
   ]
 }
 ```
 
-Plik JSON może być tablicą eksportów tego samego typu. **Nie ma limitu liczby
-skanowanych plików ani importowanych sesji**, również w jednej tablicy JSON lub
-bazie OpenCode. Nie ma też zbiorczego limitu 64 MiB. Pojedyncze pliki nadal
-podlegają walidacji: maksymalnie 16 MiB i 30 000 wpisów/sesję. Błędny lub zbyt
-duży plik jest zgłaszany, ale nie zatrzymuje odczytu pozostałych plików.
+The JSON file may be an array of exports of the same type. **There is no limit on the number
+of scanned files or imported sessions**, including in a single JSON array or
+OpenCode database. There is also no aggregate 64 MiB limit. Individual files are still
+validated: at most 16 MiB and 30,000 entries/session. An invalid or too
+large file is reported, but does not stop reading the remaining files.
 
-Skanowanie i zapis działają w tle. Status pokazuje liczbę znalezionych plików,
-następnie odczytanych plików/sesji i zapisywanych sesji (`wykonane / wszystkie`).
-Podgląd trzyma pełne historie w prywatnym katalogu tymczasowym na dysku, nie
-wszystkie naraz w RAM. Lista renderuje tylko widoczne wiersze; ostrzeżenia mają
-osobny przewijany obszar. Katalog tymczasowy jest sprzątany po anulowaniu,
-zastąpieniu podglądu lub zakończeniu importu. Potrzebne jest wolne miejsce na
-kopie historii i transakcję SQLite.
+Scanning and saving run in the background. The status shows the number of found files,
+then read files/sessions and saved sessions (`done / all`).
+The preview keeps full histories in a private temporary directory on disk, not
+all at once in RAM. The list renders only visible rows; warnings have
+a separate scrollable area. The temporary directory is cleaned up after cancellation,
+preview replacement or import completion. Free space is needed for
+history copies and the SQLite transaction.
 
-## Dopasowanie i bezpieczeństwo
+## Matching and safety
 
-- Automatyczne przypisanie tylko do istniejących lokalnych projektów po
-  kanonicznej ścieżce. Dla katalogu wewnątrz projektu wygrywa najgłębszy root.
-- Nazwy projektów nie służą do dopasowania. Brak katalogu, przeniesiony projekt,
-  duplikaty rootów lub ścieżka z innego komputera wymagają ręcznego przypisania.
-- Sesje bez przypisania są pomijane. Można zmienić automatyczne przypisanie
-  i odznaczyć wybrane sesje przed potwierdzeniem.
-- Import zapisuje katalog źródłowy jako workspace sesji. Ponowny skan pozwala
-  poprawić projekt także dla **Update · nazwa projektu**; jeśli ścieżka nie daje
-  dopasowania, podgląd zachowuje dotychczasowy projekt. Zatwierdzenie zmienia
-  przypisanie w historii bez nadpisywania treści i lokalnych kontynuacji.
-  Przed przeniesieniem otwartej sesji zamknij jej agenta i wybierz inną sesję;
-  aplikacja nie przenosi działających ani zaparkowanych runtime'ów między projektami.
-- Stała tożsamość harnessa i źródłowego ID chroni przed ponownym importem.
-  Nowe sesje są zapisywane strumieniowo w jednej transakcji. Błąd zapisu lub
-  odczytu tymczasowej historii wycofuje nowe sesje i pozostawia podgląd do ponowienia.
-  Zwykłe zamknięcie/Quit jest blokowane do zakończenia zapisu.
-  Otwarcie Dashboardu uruchamia
-  jednorazowe uzupełnienie metryk w istniejących kopiach OpenCode; ręczny skan
-  oznacza je dodatkowo jako **Update · nazwa projektu**. Obie ścieżki dokładają
-  brakujące tokeny/diffy i normalizują stare wpisy narzędzi; ręczny import pozwala
-  też poprawić projekt i workspace. Nie zastępują tekstu rozmowy ani lokalnych
-  kontynuacji.
-- Import jest **kopią historii**, nie wznowieniem sesji źródłowej. Nie podpinamy
-  oryginalnego ACP session ID. Żaden prompt, tool call ani skrypt nie jest
-  wykonywany podczas importu. Rekordy narzędzi i nieznane typy są zachowane jako
-  tekst; załączniki nie są automatycznie pobierane ani otwierane ze źródła.
-- To nie jest skaner billing usage: import nie rekonstruuje cen ani czasu pracy.
-  Przenosi wyłącznie liczniki tokenów i zmienionych linii zapisane przez źródło.
+- Automatic assignment only to existing local projects by
+  canonical path. For a directory inside a project, the deepest root wins.
+- Project names are not used for matching. A missing directory, moved project,
+  duplicate roots or a path from another computer require manual assignment.
+- Sessions without an assignment are skipped. The automatic assignment can be changed
+  and selected sessions unchecked before confirmation.
+- Import saves the source directory as the session workspace. A rescan lets you
+  correct the project also for **Update · project name**; if the path gives no
+  match, the preview keeps the existing project. Confirmation changes the
+  assignment in history without overwriting content and local continuations.
+  Before moving an open session, close its agent and select another session;
+  the app does not move running or parked runtimes between projects.
+- A stable harness identity and source ID protect against re-import.
+  New sessions are streamed in a single transaction. A save or
+  temporary-history read failure rolls back new sessions and leaves the preview for retry.
+  A normal close/Quit is blocked until saving finishes.
+  Opening the Dashboard triggers
+  a one-time metric backfill in existing OpenCode copies; a manual scan
+  additionally marks them as **Update · project name**. Both paths add
+  missing tokens/diffs and normalize old tool entries; manual import also lets you
+  correct the project and workspace. They do not replace conversation text or local
+  continuations.
+- Import is a **copy of history**, not a resume of the source session. We do not attach the
+  original ACP session ID. No prompt, tool call or script is
+  executed during import. Tool records and unknown types are preserved as
+  text; attachments are not automatically downloaded or opened from the source.
+- This is not a billing usage scanner: import does not reconstruct prices or work time.
+  It carries only token counters and changed lines saved by the source.
 
-Skan plików obejmuje standardowe foldery harnessa, bez limitu liczby plików ani
-głębokości katalogów; pomija ukryte katalogi i dowiązania symboliczne. OpenCode
-odczytuje wszystkie sesje najwyższego poziomu; istniejące zabezpieczenia pojedynczej
-historii (30 000 wiadomości, 60 000 części, skracanie dużych wyników narzędzi)
-pozostają bez zmian. Uzupełnianie metryk również przetwarza historie pojedynczo.
-Nie ma synchronizacji w tle ani importu sesji z relay/SSH; źródłowe pliki i baza
-OpenCode pozostają niezmienione.
+The file scan covers standard harness folders, with no limit on the number of files or
+directory depth; it skips hidden directories and symbolic links. OpenCode
+reads all top-level sessions; the existing safeguards for a single
+history (30,000 messages, 60,000 parts, truncating large tool outputs)
+remain unchanged. Metric backfill also processes histories one at a time.
+There is no background sync or session import from relay/SSH; source files and the
+OpenCode database remain unchanged.
 
-## Kontrakt i regresje
+## Contract and regressions
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 | --- | --- | --- | --- | --- | --- |
-| Ograniczenia 512/256/64 MiB były lokalną polityką podglądu, nie limitem harnessa | `session_import.rs`: `collect_session_files`, `discover_session_files`, `read_files`; `adapters.rs::parse`; `opencode_db.rs`: zapytania sesji | Dunlin beta.8 / working tree | High | Brak | Testy 600 plików >64 MiB i obu schematów bazy |
-| Źródło jest read-only; docelowa tożsamość to harness + source ID | `opencode_db.rs::visit`, `session_import.rs::imported_id`, `adapters.rs::match_project`, `Store::import_session_stream` | Working tree | High | Nie testowano rzeczywistych historii użytkownika | Izolowane fixture JSON/JSONL/SQLite |
-| Błąd strumienia wycofuje nowe sesje; powtórzenie nie nadpisuje rozmów | `storage/src/lib.rs::streamed_import_reports_duplicates_and_rolls_back_on_a_source_read_failure`, `session_import.rs::staged_read_failure_rolls_back_inserts_and_leaves_preview_available_for_retry` | Working tree | High | Brak | `cargo test -p dunlin-storage`; testy aplikacji |
-| Historia projektu używa lokalnego `SessionSummary.project_id`, nie ID projektu harnessa ani nazwy repo | `session_list.rs::session_scope`, `views/sidebar.rs::sessions_section`, `storage/src/lib.rs::sessions` | Working tree | High | Brak | Smoke importu z dwoma projektami |
-| Stare kopie można przypisać ponownie; zmiana dotyczy tylko projektu i workspace | `session_import.rs::finalize_import`, `assign_imported_location`, `Store::update_session_location` | Working tree | High | Stare importy nie zapisywały cwd; bez ponownego skanu nie da się go odzyskać | Ponowny skan źródłowego harnessa i zatwierdzenie podglądu |
+| The 512/256/64 MiB limits were local preview policy, not a harness limit | `session_import.rs`: `collect_session_files`, `discover_session_files`, `read_files`; `adapters.rs::parse`; `opencode_db.rs`: session queries | current source | High | None | Tests for 600 files >64 MiB and both database schemas |
+| The source is read-only; the target identity is harness + source ID | `opencode_db.rs::visit`, `session_import.rs::imported_id`, `adapters.rs::match_project`, `Store::import_session_stream` | Working tree | High | Real user histories were not tested | Isolated JSON/JSONL/SQLite fixtures |
+| A stream failure rolls back new sessions; a retry does not overwrite conversations | `storage/src/lib.rs::streamed_import_reports_duplicates_and_rolls_back_on_a_source_read_failure`, `session_import.rs::staged_read_failure_rolls_back_inserts_and_leaves_preview_available_for_retry` | Working tree | High | None | `cargo test -p dunlin-storage`; app tests |
+| Project history uses the local `SessionSummary.project_id`, not the harness project ID or repo name | `session_list.rs::session_scope`, `views/sidebar.rs::sessions_section`, `storage/src/lib.rs::sessions` | Working tree | High | None | Import smoke with two projects |
+| Old copies can be reassigned; the change affects only project and workspace | `session_import.rs::finalize_import`, `assign_imported_location`, `Store::update_session_location` | Working tree | High | Old imports did not save cwd; without a rescan it cannot be recovered | Rescan the source harness and confirm the preview |
 
-Ścieżka danych: wybór harnessa → standardowy folder/baza lub ręcznie wskazane
-pliki → walidowany `Candidate.source_id` → prywatna tymczasowa historia → ręczne
-potwierdzenie/przypisanie lokalnego projektu → `imported_id(harness, source_id)` →
-transakcja w bazie Dunlina. Każdy krok ma implementację w powyższych plikach;
-żaden nie wymaga uruchamiania agenta, dostępu do credentiali ani zapisu do źródła.
+Data path: harness selection → standard folder/database or manually selected
+files → validated `Candidate.source_id` → private temporary history → manual
+confirmation/assignment of a local project → `imported_id(harness, source_id)` →
+transaction in the Dunlin database. Every step has an implementation in the above files;
+none requires starting an agent, accessing credentials or writing to the source.
 
-Powiązanie potwierdzone w kodzie: `Candidate.directory` →
-`match_project(kanoniczna ścieżka)` → lokalne `Project.id` →
-`SessionSummary.project_id` → `session_scope` → historia wybranego projektu.
-Nazwy repo i identyfikatory projektów z obcych harnessów nie są zamiennikami tego
-powiązania. Pełna historia nie ma limitu 8 godzin; limit dotyczy wyłącznie skrótu
-ostatnich sesji pod repozytorium w drzewie projektów. Nie zweryfikowano prywatnych
-historii użytkownika. Weryfikacja poprawki: 17 testów importu, 34 testy storage
-i natywny smoke 700 sesji w dwóch projektach przeszły. Smoke sprawdza widoczność
-w historii projektu, korektę przypisania przez ponowny import, zachowanie treści,
-fallback bez cwd i blokadę przeniesienia otwartej sesji. Następny krok: ponowny
-import w aplikacji przez użytkownika. Właściciel: maintainer/użytkownik.
+Link confirmed in code: `Candidate.directory` →
+`match_project(canonical path)` → local `Project.id` →
+`SessionSummary.project_id` → `session_scope` → history of the selected project.
+Repo names and project identifiers from foreign harnesses are not substitutes for this
+link. Full history has no 8-hour limit; the limit applies only to the recent-sessions
+shortcut under a repository in the project tree. Private user
+histories were not verified. Fix verification: 17 import tests, 34 storage tests
+and native smoke with 700 sessions in two projects passed. The smoke checks visibility
+in project history, assignment correction through re-import, content preservation,
+fallback without cwd and blocking a move of an open session. Next step: re-import
+in the app by the user. Owner: maintainer/user.
 
-Potwierdzono: brak limitu liczby sesji, postęp i zapis strumieniowy. Odrzucono:
-zwiększenie limitu do kolejnej arbitralnej liczby lub usunięcie walidacji plików.
-Następny właściciel: maintainer aplikacji — testy jednostkowe, natywny smoke
-dużego importu i ręczna ocena UX na rzeczywistych historiach (bez automatycznego
-importowania danych użytkownika). Izolowany test GUI:
-`dunlin --session-import-smoke <nowy absolutny katalog dunlin-session-import-smoke-…>`
-tworzy 700 syntetycznych sesji i jeden błędny journal, renderuje rzeczywisty podgląd,
-sprawdza postęp, zapis w tle, powtórzenie bez duplikatów, sprzątanie i blokadę Quit.
-Sukces zapisuje w pliku `PASS` we wskazanym katalogu.
+Confirmed: no session count limit, progress and streamed saving. Rejected:
+raising the limit to another arbitrary number or removing file validation.
+Next owner: app maintainer — unit tests, native large-import smoke and manual UX
+assessment on real histories (without automatically importing user data). Isolated GUI test:
+`dunlin --session-import-smoke <new absolute dunlin-session-import-smoke-… directory>`
+creates 700 synthetic sessions and one invalid journal, renders the real preview,
+checks progress, background saving, retry without duplicates, cleanup and the Quit block.
+Success writes `PASS` to a file in the specified directory.

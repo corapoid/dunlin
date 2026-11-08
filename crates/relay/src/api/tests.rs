@@ -33,9 +33,13 @@ impl Fixture {
         store.grant(&project.id, &user.id).unwrap();
         let (_, token) = store.create_device(&user.id, "test").unwrap();
         let (_, ungranted_token) = store.create_device(&outsider.id, "test").unwrap();
+        let config = Config {
+            db: root.join("relay.db"),
+            ..Default::default()
+        };
         Self {
             root,
-            state: AppState::new(store, Config::default()),
+            state: AppState::new(store, config),
             project: project.id,
             token,
             ungranted_token,
@@ -101,6 +105,29 @@ impl Fixture {
         let status = response.status();
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
         (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    async fn get_raw(&self, path: &str) -> (StatusCode, Vec<u8>) {
+        let request = Request::get(path);
+        let response = router(self.state.clone())
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        (status, bytes.to_vec())
+    }
+
+    async fn delete(&self, path: &str, token: Option<&str>) -> StatusCode {
+        let mut request = Request::delete(path);
+        if let Some(token) = token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+        router(self.state.clone())
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+            .status()
     }
 
     async fn get_json(&self, path: &str, token: Option<&str>) -> (StatusCode, Value) {
@@ -614,4 +641,63 @@ async fn audit_artifacts_are_scoped_to_the_granted_project() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn artifacts_upload_share_revoke_and_public_read() {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+    let fixture = Fixture::new();
+    let payload = STANDARD.encode(b"test evidence");
+    let (status, artifact) = fixture
+        .post(
+            "/v1/artifacts",
+            Some(&fixture.token),
+            json!({
+                "project_id": fixture.project,
+                "kind": "check",
+                "title": "Test report",
+                "mime": "text/plain",
+                "data": payload,
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let id = artifact["id"].as_str().unwrap().to_string();
+    let (status, list) = fixture
+        .get_json(
+            &format!("/v1/artifacts?project={}", fixture.project),
+            Some(&fixture.token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    let (status, share) = fixture
+        .post(
+            &format!("/v1/artifacts/{id}/share"),
+            Some(&fixture.token),
+            json!({"ttl_secs": 3600}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let token = share["token"].as_str().unwrap();
+    let (status, bytes) = fixture.get_raw(&format!("/a/{token}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(bytes, b"test evidence");
+    assert_eq!(
+        fixture
+            .delete(&format!("/v1/artifacts/{id}/share"), Some(&fixture.token))
+            .await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        fixture.get_raw(&format!("/a/{token}")).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        fixture
+            .delete(&format!("/v1/artifacts/{id}"), Some(&fixture.token))
+            .await,
+        StatusCode::NO_CONTENT
+    );
 }

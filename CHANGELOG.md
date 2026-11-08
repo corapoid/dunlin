@@ -4,7 +4,76 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0-beta.11] — 2026-11-08
+
+### Added
+
+- File-first knowledge spine shared by the desktop, storage and relay:
+  Markdown frontmatter parsing for `intent/`, `concepts/` and `decisions/`,
+  bounded discovery, graph validation and transport-neutral context envelopes.
+  SQLite adds rebuildable knowledge, evidence, run, artifact and plugin tables;
+  project files remain canonical.
+- Knowledge workspace with object list, detail, relation graph, pending
+  proposal inbox and artifact evidence. Accepting a proposal writes the
+  Markdown file atomically; rejecting one never touches the project.
+- Optional bundled governance pack (`dunlin-governance`) using manifest API v2
+  and a sandboxed WASM validator. It ships disabled, is installed explicitly,
+  runs without WASI, network, filesystem or host imports, and is bounded by
+  SHA-256, fuel, memory, request and output limits.
+- `dunlin-knowledge-mcp` stdio server exposing read-only context/list/get tools
+  plus proposal-only write tools; the desktop injects it for trusted local
+  projects when the governance pack is enabled.
+- `plugin-builder` skill and guided chat that interviews the user before
+  creating a manifest, WASM module, tests and install steps.
+- Artifacts as evidence: capture the clipboard or current editor file,
+  content-addressed local blobs, native text/image preview, evidence linking
+  and deletion. Relay hosts can upload, list, download, share and revoke
+  artifacts through expiring capability links; public responses use `nosniff`,
+  a sandbox CSP and plain-text HTML.
+- SSH execution fabric: import OpenSSH aliases, test `ControlMaster`
+  connections, store passphrases in Keychain through `dunlin-ssh-askpass`,
+  upload and hash-verify a matching relay, install a launchd/systemd user
+  service, pair the relay and reopen loopback tunnels.
+- Document tab locking with context-menu and close-all protection, draggable
+  minimap scrolling, a status-bar fetch/pull indicator with ahead/behind
+  counts, and a screenshot gallery for light/dark and feature close-ups.
+- `--governance-smoke` end-to-end check covering discovery, explicit WASM load,
+  schema validation and context envelope construction.
+
+### Changed
+
+- Project README previews render the same safe HTML subset as the in-app text
+  view, including HTML READMEs, while stripping images so hovering a project
+  never fetches local or remote assets.
+- Onboarding no longer asks for notification permission; permissions are
+  reviewed explicitly in Settings → Permissions.
+- Release bundling includes `dunlin-knowledge-mcp`, `dunlin-ssh-askpass` and
+  `dunlin-relay` beside the app executable.
+- The view switcher, title bar, conversation avatar, settings modal, tab hover
+  and narrow branch badges use a flatter, quieter chrome.
+- Roadmap, plan, remaining-work and operations documentation are now English
+  and refreshed for the knowledge, artifact and SSH work.
+- Screenshots now capture translucent window chrome and overlays over a desktop
+  background, in light and dark themes.
+- Current documentation no longer pins release versions in README, SECURITY or
+  guides; versions and dates stay in this changelog and GitHub Releases.
+- Planning documents were consolidated into one priority-ordered
+  [`docs/ROADMAP.md`](docs/ROADMAP.md) table and the remaining documentation is
+  indexed by task in [`docs/README.md`](docs/README.md).
+- The unfinished non-macOS client scaffold and its project files were removed so
+  the source tree only advertises the supported macOS client.
+
+### Fixed
+
+- Dev builds no longer print `rust-objcopy` strip warnings on macOS toolchains
+  whose objcopy cannot load `libLLVM`; the build-script and `gpui-pre` profiles
+  keep their output unstripped.
+- New tabs are revealed without stealing focus, and hovered tabs no longer
+  draw an extra slab.
+- Pull and push failures explain divergent or non-fast-forward states without
+  pretending a merge happened, and project summaries refresh after remote
+  operations.
+- Inline blame aligns to the configured editor line height.
 
 ## [0.1.0-beta.10] — 2026-11-07
 
@@ -493,7 +562,7 @@ USD is not a guaranteed billing cap, and Rust AST impact is not compiler/LSP-com
   effective project/group default for the current harness. Require an idle ACP
   session and an advertised, visible model; preserve other conversations and saved
   defaults on rejection, without sending prompts or restarting the process.
-- Plan the remaining subsystems in `docs/IMPLEMENTATION-PLAN.md`, with dependencies,
+- Plan the remaining subsystems in `docs/ROADMAP.md`, with dependencies,
   acceptance criteria and explicit relay/security boundaries.
 - Add **Project settings → Model & environment…** for local projects: per-harness
   default ACP model IDs and validated literal child-process environment overrides.
@@ -548,7 +617,7 @@ are preserved; imports do not resume or send prompts to source sessions.
   branch creation from a selected commit without checkout or worktree changes.
 - Add embedded custom project icons with automatic-icon reset, a local-time Home
   greeting and native macOS File/View/Repository menus including Settings.
-- Reconcile stale development milestones and publish `docs/REMAINING-WORK.md`.
+- Reconcile stale development milestones into the roadmap.
 - Add multi-folder/collection repository imports with canonical deduplication,
   bounded read-only scanning, worktree support and persistent partial-import
   reports. Stop at repository roots; do not split monorepos/submodules or switch
@@ -819,8 +888,8 @@ are preserved; imports do not resume or send prompts to source sessions.
   automatic source discovery/sync or billing scanners. Git history is local-only;
   advanced Git operations and relay history parity remain planned.
 - Standalone chat/repository context, terminal, computer use, automations,
-  artifacts, visual Markdown editing and a working iOS client remain planned.
-  See `docs/REMAINING-WORK.md` for the reconciled backlog.
+  artifacts and visual Markdown editing remain planned. See `docs/ROADMAP.md` for
+  the reconciled backlog.
 
 ## [0.1.0-beta.1] — 2026-10-25
 
@@ -859,7 +928,6 @@ surfaces are intentionally absent.
 - macOS 15+ on Apple Silicon only.
 - Builds are ad-hoc signed until an Apple Developer ID is available. Gatekeeper
   may require approval in **System Settings → Privacy & Security**.
-- The iOS client is a scaffold and is not part of this release.
 - No terminal, computer use, automations, skills, artifacts or visual Markdown
   editor yet.
 - All relay users share the OpenCode credentials installed on the relay host.
@@ -868,7 +936,7 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
-[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.10...HEAD
+[0.1.0-beta.11]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [0.1.0-beta.10]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [0.1.0-beta.9]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...v0.1.0-beta.9
 [0.1.0-beta.8]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.6...v0.1.0-beta.8

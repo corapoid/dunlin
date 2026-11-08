@@ -67,6 +67,25 @@ pub(crate) struct RemoteHost {
     pub device_id: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct RemoteArtifact {
+    pub id: String,
+    pub project_id: String,
+    pub kind: String,
+    pub title: String,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RemoteArtifactShare {
+    pub token: String,
+    pub expires_at: i64,
+    pub url: String,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[allow(dead_code)]
 pub(crate) struct RemoteUser {
@@ -798,6 +817,78 @@ impl RemoteWorkspace {
         ))
     }
 
+    pub fn artifact_list(&self) -> Result<Vec<RemoteArtifact>, String> {
+        self.get(&format!(
+            "/v1/artifacts?project={}",
+            encode(&self.project.project_id)
+        ))
+    }
+
+    pub fn upload_artifact(
+        &self,
+        kind: &str,
+        title: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Result<RemoteArtifact, String> {
+        self.post(
+            "/v1/artifacts",
+            &serde_json::json!({
+                "project_id": self.project.project_id,
+                "kind": kind,
+                "title": title,
+                "mime": mime,
+                "data": STANDARD.encode(bytes),
+            }),
+        )
+    }
+
+    pub fn download_artifact(&self, id: &str) -> Result<Vec<u8>, String> {
+        #[derive(Deserialize)]
+        struct Payload {
+            data: String,
+        }
+        let payload: Payload = self.get(&format!("/v1/artifacts/{id}"))?;
+        STANDARD
+            .decode(payload.data.as_bytes())
+            .map_err(|_| "Relay returned invalid artifact base64".into())
+    }
+
+    pub fn share_artifact(&self, id: &str, ttl_secs: u64) -> Result<RemoteArtifactShare, String> {
+        self.post(
+            &format!("/v1/artifacts/{id}/share"),
+            &serde_json::json!({ "ttl_secs": ttl_secs }),
+        )
+    }
+
+    pub fn delete_artifact(&self, id: &str) -> Result<(), String> {
+        validate_relay_url(&self.host.url)?;
+        http_agent()
+            .delete(&format!(
+                "{}/v1/artifacts/{id}",
+                self.host.url.trim_end_matches('/')
+            ))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .call()
+            .map(|_| ())
+            .map_err(http_error)
+    }
+
+    pub fn revoke_artifact_shares(&self, id: &str) -> Result<(), String> {
+        validate_relay_url(&self.host.url)?;
+        http_agent()
+            .delete(&format!(
+                "{}/v1/artifacts/{id}/share",
+                self.host.url.trim_end_matches('/')
+            ))
+            .set("Authorization", &format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(30))
+            .call()
+            .map(|_| ())
+            .map_err(http_error)
+    }
+
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, String> {
         validate_relay_url(&self.host.url)?;
         let response = http_agent()
@@ -850,6 +941,54 @@ pub(crate) enum WorkspaceBackend {
 }
 
 impl WorkspaceBackend {
+    pub fn artifact_list(&self) -> Result<Vec<RemoteArtifact>, String> {
+        match self {
+            Self::Remote(remote) => remote.artifact_list(),
+            Self::Local { .. } => Err("Artifacts are local-only here".into()),
+        }
+    }
+
+    pub fn upload_artifact(
+        &self,
+        kind: &str,
+        title: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Result<RemoteArtifact, String> {
+        match self {
+            Self::Remote(remote) => remote.upload_artifact(kind, title, mime, bytes),
+            Self::Local { .. } => Err("Artifacts are local-only here".into()),
+        }
+    }
+
+    pub fn download_artifact(&self, id: &str) -> Result<Vec<u8>, String> {
+        match self {
+            Self::Remote(remote) => remote.download_artifact(id),
+            Self::Local { .. } => Err("Artifacts are local-only here".into()),
+        }
+    }
+
+    pub fn share_artifact(&self, id: &str, ttl_secs: u64) -> Result<RemoteArtifactShare, String> {
+        match self {
+            Self::Remote(remote) => remote.share_artifact(id, ttl_secs),
+            Self::Local { .. } => Err("Pair a relay to share an artifact".into()),
+        }
+    }
+
+    pub fn revoke_artifact_shares(&self, id: &str) -> Result<(), String> {
+        match self {
+            Self::Remote(remote) => remote.revoke_artifact_shares(id),
+            Self::Local { .. } => Err("Pair a relay to revoke an artifact share".into()),
+        }
+    }
+
+    pub fn delete_artifact(&self, id: &str) -> Result<(), String> {
+        match self {
+            Self::Remote(remote) => remote.delete_artifact(id),
+            Self::Local { .. } => Err("Artifacts are local-only here".into()),
+        }
+    }
+
     pub fn branch_context(&self) -> Result<git::BranchContext, String> {
         match self {
             Self::Local { root } => git::branch_context(root),

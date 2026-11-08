@@ -51,6 +51,91 @@ pub struct TaskEvidence {
     pub created_at: i64,
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RunRecord {
+    pub id: String,
+    pub project_id: String,
+    pub session_id: Option<String>,
+    pub intent_id: Option<String>,
+    pub task_id: Option<String>,
+    pub handoff_id: Option<String>,
+    pub harness: String,
+    pub model: String,
+    pub permission_mode: String,
+    pub worktree: Option<String>,
+    pub budget_id: Option<String>,
+    pub envelope_hash: Option<String>,
+    pub status: String,
+    pub started_ms: Option<i64>,
+    pub ended_ms: Option<i64>,
+    pub result: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactRecord {
+    pub id: String,
+    pub project_id: String,
+    pub run_id: Option<String>,
+    pub session_id: Option<String>,
+    pub intent_id: Option<String>,
+    pub task_id: Option<String>,
+    pub kind: String,
+    pub title: String,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    pub blob_path: String,
+    pub created_ms: i64,
+    pub visibility: String,
+    pub expires_ms: Option<i64>,
+    pub revoked_ms: Option<i64>,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ClaimRecord {
+    pub id: String,
+    pub project_id: String,
+    pub intent_id: Option<String>,
+    pub task_id: Option<String>,
+    pub statement: String,
+    pub status: String,
+    pub confidence: String,
+    pub scope: String,
+    pub last_verified_ms: Option<i64>,
+    pub stale_reason: Option<String>,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EvidenceRecord {
+    pub id: String,
+    pub project_id: String,
+    pub kind: String,
+    pub artifact_id: Option<String>,
+    pub run_id: Option<String>,
+    pub source: String,
+    pub revision: String,
+    pub hash: String,
+    pub observed_ms: i64,
+    pub freshness: String,
+    pub summary: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PluginRecord {
+    pub id: String,
+    pub version: String,
+    pub manifest_hash: String,
+    pub wasm_hash: Option<String>,
+    pub directory: String,
+    pub enabled: bool,
+    pub installed_ms: i64,
+    pub payload: serde_json::Value,
+}
+
 pub struct Store {
     connection: Connection,
 }
@@ -90,7 +175,16 @@ impl Store {
     pub fn factory_reset(&self) -> Result<()> {
         let transaction = self.connection.unchecked_transaction()?;
         transaction.execute_batch(
-            "DELETE FROM task_evidence;
+            "DELETE FROM evidence_claims;
+             DELETE FROM evidence;
+             DELETE FROM claims;
+             DELETE FROM artifacts;
+             DELETE FROM runs;
+             DELETE FROM knowledge_edges;
+             DELETE FROM knowledge_objects;
+             DELETE FROM plugin_registry;
+             DELETE FROM ssh_hosts;
+             DELETE FROM task_evidence;
              DELETE FROM artifact_index;
              DELETE FROM artifact_approvals;
              DELETE FROM secret_audit;
@@ -419,6 +513,181 @@ impl Store {
             }
             // Legacy display labels were not timestamps; use the last persisted transcript instead.
             transaction.execute_batch("UPDATE sessions SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', COALESCE((SELECT updated_at FROM transcripts WHERE session_id = sessions.id), created_at), 'unixepoch') WHERE updated_at = 'now' OR updated_at GLOB '[0-9]*m ago' OR updated_at GLOB '[0-9]*h ago' OR updated_at GLOB '[0-9]*d ago'; PRAGMA user_version = 14;")?;
+            transaction.commit()?;
+        }
+        if version < 15 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS knowledge_objects (
+                    project_id TEXT NOT NULL,
+                    id         TEXT NOT NULL,
+                    kind       TEXT NOT NULL,
+                    title      TEXT NOT NULL,
+                    status     TEXT NOT NULL,
+                    revision   TEXT NOT NULL,
+                    path       TEXT,
+                    payload    TEXT NOT NULL,
+                    updated_ms INTEGER NOT NULL,
+                    PRIMARY KEY (project_id, id)
+                );
+                CREATE INDEX IF NOT EXISTS knowledge_objects_project_kind_idx
+                    ON knowledge_objects(project_id, kind, status);
+
+                CREATE TABLE IF NOT EXISTS knowledge_edges (
+                    project_id TEXT NOT NULL,
+                    from_id    TEXT NOT NULL,
+                    to_id      TEXT NOT NULL,
+                    relation   TEXT NOT NULL,
+                    metadata   TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY (project_id, from_id, to_id, relation)
+                );
+                CREATE INDEX IF NOT EXISTS knowledge_edges_from_idx
+                    ON knowledge_edges(project_id, from_id, relation);
+                CREATE INDEX IF NOT EXISTS knowledge_edges_to_idx
+                    ON knowledge_edges(project_id, to_id, relation);
+
+                PRAGMA user_version = 15;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
+        if version < 16 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS runs (
+                    id              TEXT PRIMARY KEY,
+                    project_id      TEXT NOT NULL,
+                    session_id      TEXT,
+                    intent_id       TEXT,
+                    task_id         TEXT,
+                    handoff_id      TEXT,
+                    harness         TEXT NOT NULL,
+                    model           TEXT NOT NULL,
+                    permission_mode TEXT NOT NULL,
+                    worktree        TEXT,
+                    budget_id       TEXT,
+                    envelope_hash   TEXT,
+                    status          TEXT NOT NULL,
+                    started_ms      INTEGER,
+                    ended_ms        INTEGER,
+                    result          TEXT NOT NULL DEFAULT '',
+                    payload         TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS runs_project_idx ON runs(project_id, started_ms DESC);
+
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    id          TEXT PRIMARY KEY,
+                    project_id  TEXT NOT NULL,
+                    run_id      TEXT,
+                    session_id  TEXT,
+                    intent_id   TEXT,
+                    task_id     TEXT,
+                    kind        TEXT NOT NULL,
+                    title       TEXT NOT NULL,
+                    mime        TEXT NOT NULL,
+                    bytes       INTEGER NOT NULL,
+                    sha256      TEXT NOT NULL,
+                    blob_path   TEXT NOT NULL,
+                    created_ms  INTEGER NOT NULL,
+                    visibility  TEXT NOT NULL DEFAULT 'local',
+                    expires_ms  INTEGER,
+                    revoked_ms  INTEGER,
+                    payload     TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS artifacts_project_idx
+                    ON artifacts(project_id, created_ms DESC);
+
+                CREATE TABLE IF NOT EXISTS claims (
+                    id               TEXT PRIMARY KEY,
+                    project_id       TEXT NOT NULL,
+                    intent_id        TEXT,
+                    task_id          TEXT,
+                    statement        TEXT NOT NULL,
+                    status           TEXT NOT NULL,
+                    confidence       TEXT NOT NULL,
+                    scope            TEXT NOT NULL DEFAULT '',
+                    last_verified_ms INTEGER,
+                    stale_reason     TEXT,
+                    payload          TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS claims_project_idx
+                    ON claims(project_id, status);
+
+                CREATE TABLE IF NOT EXISTS evidence (
+                    id          TEXT PRIMARY KEY,
+                    project_id  TEXT NOT NULL,
+                    kind        TEXT NOT NULL,
+                    artifact_id TEXT,
+                    run_id      TEXT,
+                    source      TEXT NOT NULL,
+                    revision    TEXT NOT NULL,
+                    hash        TEXT NOT NULL,
+                    observed_ms INTEGER NOT NULL,
+                    freshness   TEXT NOT NULL,
+                    summary     TEXT NOT NULL DEFAULT '',
+                    payload     TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS evidence_project_idx
+                    ON evidence(project_id, observed_ms DESC);
+
+                CREATE TABLE IF NOT EXISTS evidence_claims (
+                    evidence_id TEXT NOT NULL,
+                    claim_id    TEXT NOT NULL,
+                    relation    TEXT NOT NULL,
+                    PRIMARY KEY (evidence_id, claim_id, relation)
+                );
+                CREATE INDEX IF NOT EXISTS evidence_claims_claim_idx
+                    ON evidence_claims(claim_id, relation);
+
+                PRAGMA user_version = 16;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
+        if version < 17 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS plugin_registry (
+                    id            TEXT PRIMARY KEY,
+                    version       TEXT NOT NULL,
+                    manifest_hash TEXT NOT NULL,
+                    wasm_hash     TEXT,
+                    directory     TEXT NOT NULL,
+                    enabled       INTEGER NOT NULL DEFAULT 0,
+                    installed_ms  INTEGER NOT NULL DEFAULT (unixepoch()),
+                    payload       TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS plugin_registry_enabled_idx
+                    ON plugin_registry(enabled, id);
+
+                PRAGMA user_version = 17;
+                "#,
+            )?;
+            transaction.commit()?;
+        }
+        if version < 18 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS ssh_hosts (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    target      TEXT NOT NULL,
+                    user        TEXT NOT NULL,
+                    port        INTEGER NOT NULL,
+                    identity    TEXT,
+                    relay_port  INTEGER NOT NULL DEFAULT 8787,
+                    local_port  INTEGER NOT NULL DEFAULT 0,
+                    host_key    TEXT NOT NULL DEFAULT '',
+                    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+
+                PRAGMA user_version = 18;
+                "#,
+            )?;
             transaction.commit()?;
         }
         Ok(())
@@ -1464,6 +1733,489 @@ impl Store {
             None => Ok(None),
         }
     }
+
+    /// Replace the derived knowledge index for one project. Files remain the
+    /// canonical source; this method never touches the project directory.
+    pub fn replace_knowledge(
+        &self,
+        project_id: &str,
+        objects: &[dunlin_knowledge::KnowledgeObject],
+        edges: &[dunlin_knowledge::KnowledgeEdge],
+    ) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "DELETE FROM knowledge_objects WHERE project_id = ?1",
+            [project_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM knowledge_edges WHERE project_id = ?1",
+            [project_id],
+        )?;
+        for object in objects {
+            transaction.execute(
+                "INSERT INTO knowledge_objects
+                 (project_id, id, kind, title, status, revision, path, payload, updated_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    project_id,
+                    object.id,
+                    object.kind,
+                    object.title,
+                    object.status,
+                    object.revision,
+                    object.path,
+                    serde_json::to_string(object)?,
+                    object.updated_ms,
+                ],
+            )?;
+        }
+        for edge in edges {
+            transaction.execute(
+                "INSERT INTO knowledge_edges (project_id, from_id, to_id, relation, metadata)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    project_id,
+                    edge.from_id,
+                    edge.to_id,
+                    edge.relation,
+                    serde_json::to_string(&edge.metadata)?,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn knowledge_objects(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<dunlin_knowledge::KnowledgeObject>> {
+        let mut statement = self.connection.prepare(
+            "SELECT payload FROM knowledge_objects WHERE project_id = ?1 ORDER BY kind, id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let payload: String = row.get(0)?;
+            Ok(serde_json::from_str(&payload))
+        })?;
+        let mut objects = Vec::new();
+        for row in rows {
+            if let Ok(object) = row? {
+                objects.push(object);
+            }
+        }
+        Ok(objects)
+    }
+
+    pub fn knowledge_edges(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<dunlin_knowledge::KnowledgeEdge>> {
+        let mut statement = self.connection.prepare(
+            "SELECT from_id, to_id, relation, metadata FROM knowledge_edges
+             WHERE project_id = ?1 ORDER BY from_id, relation, to_id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let metadata: String = row.get(3)?;
+            Ok(dunlin_knowledge::KnowledgeEdge {
+                from_id: row.get(0)?,
+                to_id: row.get(1)?,
+                relation: row.get(2)?,
+                metadata: serde_json::from_str(&metadata).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_run(&self, run: &RunRecord) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO runs (
+                id, project_id, session_id, intent_id, task_id, handoff_id,
+                harness, model, permission_mode, worktree, budget_id,
+                envelope_hash, status, started_ms, ended_ms, result, payload
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                ended_ms = excluded.ended_ms,
+                result = excluded.result,
+                payload = excluded.payload
+            "#,
+            params![
+                run.id,
+                run.project_id,
+                run.session_id,
+                run.intent_id,
+                run.task_id,
+                run.handoff_id,
+                run.harness,
+                run.model,
+                run.permission_mode,
+                run.worktree,
+                run.budget_id,
+                run.envelope_hash,
+                run.status,
+                run.started_ms,
+                run.ended_ms,
+                run.result,
+                serde_json::to_string(&run.payload)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn runs(&self, project_id: &str) -> Result<Vec<RunRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, session_id, intent_id, task_id, handoff_id, harness, model,
+                    permission_mode, worktree, budget_id, envelope_hash, status, started_ms,
+                    ended_ms, result, payload
+             FROM runs WHERE project_id = ?1 ORDER BY started_ms DESC, id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let payload: String = row.get(16)?;
+            Ok(RunRecord {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                session_id: row.get(2)?,
+                intent_id: row.get(3)?,
+                task_id: row.get(4)?,
+                handoff_id: row.get(5)?,
+                harness: row.get(6)?,
+                model: row.get(7)?,
+                permission_mode: row.get(8)?,
+                worktree: row.get(9)?,
+                budget_id: row.get(10)?,
+                envelope_hash: row.get(11)?,
+                status: row.get(12)?,
+                started_ms: row.get(13)?,
+                ended_ms: row.get(14)?,
+                result: row.get(15)?,
+                payload: serde_json::from_str(&payload).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_artifact(&self, artifact: &ArtifactRecord) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO artifacts (
+                id, project_id, run_id, session_id, intent_id, task_id, kind, title,
+                mime, bytes, sha256, blob_path, created_ms, visibility, expires_ms,
+                revoked_ms, payload
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            ON CONFLICT(id) DO UPDATE SET
+                revoked_ms = excluded.revoked_ms,
+                visibility = excluded.visibility,
+                payload = excluded.payload
+            "#,
+            params![
+                artifact.id,
+                artifact.project_id,
+                artifact.run_id,
+                artifact.session_id,
+                artifact.intent_id,
+                artifact.task_id,
+                artifact.kind,
+                artifact.title,
+                artifact.mime,
+                artifact.bytes,
+                artifact.sha256,
+                artifact.blob_path,
+                artifact.created_ms,
+                artifact.visibility,
+                artifact.expires_ms,
+                artifact.revoked_ms,
+                serde_json::to_string(&artifact.payload)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_artifact(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM artifacts WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn artifacts(&self, project_id: &str) -> Result<Vec<ArtifactRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, run_id, session_id, intent_id, task_id, kind, title, mime,
+                    bytes, sha256, blob_path, created_ms, visibility, expires_ms, revoked_ms, payload
+             FROM artifacts WHERE project_id = ?1 ORDER BY created_ms DESC, id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let payload: String = row.get(16)?;
+            Ok(ArtifactRecord {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                run_id: row.get(2)?,
+                session_id: row.get(3)?,
+                intent_id: row.get(4)?,
+                task_id: row.get(5)?,
+                kind: row.get(6)?,
+                title: row.get(7)?,
+                mime: row.get(8)?,
+                bytes: row.get(9)?,
+                sha256: row.get(10)?,
+                blob_path: row.get(11)?,
+                created_ms: row.get(12)?,
+                visibility: row.get(13)?,
+                expires_ms: row.get(14)?,
+                revoked_ms: row.get(15)?,
+                payload: serde_json::from_str(&payload).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_claim(&self, claim: &ClaimRecord) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO claims (
+                id, project_id, intent_id, task_id, statement, status, confidence,
+                scope, last_verified_ms, stale_reason, payload
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(id) DO UPDATE SET
+                statement = excluded.statement,
+                status = excluded.status,
+                confidence = excluded.confidence,
+                scope = excluded.scope,
+                last_verified_ms = excluded.last_verified_ms,
+                stale_reason = excluded.stale_reason,
+                payload = excluded.payload
+            "#,
+            params![
+                claim.id,
+                claim.project_id,
+                claim.intent_id,
+                claim.task_id,
+                claim.statement,
+                claim.status,
+                claim.confidence,
+                claim.scope,
+                claim.last_verified_ms,
+                claim.stale_reason,
+                serde_json::to_string(&claim.payload)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn claims(&self, project_id: &str) -> Result<Vec<ClaimRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, intent_id, task_id, statement, status, confidence, scope,
+                    last_verified_ms, stale_reason, payload
+             FROM claims WHERE project_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let payload: String = row.get(10)?;
+            Ok(ClaimRecord {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                intent_id: row.get(2)?,
+                task_id: row.get(3)?,
+                statement: row.get(4)?,
+                status: row.get(5)?,
+                confidence: row.get(6)?,
+                scope: row.get(7)?,
+                last_verified_ms: row.get(8)?,
+                stale_reason: row.get(9)?,
+                payload: serde_json::from_str(&payload).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_evidence(&self, evidence: &EvidenceRecord) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO evidence (
+                id, project_id, kind, artifact_id, run_id, source, revision, hash,
+                observed_ms, freshness, summary, payload
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT(id) DO UPDATE SET
+                freshness = excluded.freshness,
+                summary = excluded.summary,
+                payload = excluded.payload
+            "#,
+            params![
+                evidence.id,
+                evidence.project_id,
+                evidence.kind,
+                evidence.artifact_id,
+                evidence.run_id,
+                evidence.source,
+                evidence.revision,
+                evidence.hash,
+                evidence.observed_ms,
+                evidence.freshness,
+                evidence.summary,
+                serde_json::to_string(&evidence.payload)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn evidence(&self, project_id: &str) -> Result<Vec<EvidenceRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, project_id, kind, artifact_id, run_id, source, revision, hash,
+                    observed_ms, freshness, summary, payload
+             FROM evidence WHERE project_id = ?1 ORDER BY observed_ms DESC, id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let payload: String = row.get(11)?;
+            Ok(EvidenceRecord {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                kind: row.get(2)?,
+                artifact_id: row.get(3)?,
+                run_id: row.get(4)?,
+                source: row.get(5)?,
+                revision: row.get(6)?,
+                hash: row.get(7)?,
+                observed_ms: row.get(8)?,
+                freshness: row.get(9)?,
+                summary: row.get(10)?,
+                payload: serde_json::from_str(&payload).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn link_evidence(&self, evidence_id: &str, claim_id: &str, relation: &str) -> Result<()> {
+        self.connection.execute(
+            "INSERT OR REPLACE INTO evidence_claims (evidence_id, claim_id, relation)
+             VALUES (?1, ?2, ?3)",
+            params![evidence_id, claim_id, relation],
+        )?;
+        Ok(())
+    }
+
+    pub fn evidence_links(&self, claim_id: &str) -> Result<Vec<(String, String)>> {
+        let mut statement = self.connection.prepare(
+            "SELECT evidence_id, relation FROM evidence_claims WHERE claim_id = ?1
+             ORDER BY evidence_id, relation",
+        )?;
+        let rows = statement.query_map([claim_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_plugin(&self, plugin: &PluginRecord) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO plugin_registry (
+                id, version, manifest_hash, wasm_hash, directory, enabled, installed_ms, payload
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(id) DO UPDATE SET
+                version = excluded.version,
+                manifest_hash = excluded.manifest_hash,
+                wasm_hash = excluded.wasm_hash,
+                directory = excluded.directory,
+                enabled = excluded.enabled,
+                payload = excluded.payload
+            "#,
+            params![
+                plugin.id,
+                plugin.version,
+                plugin.manifest_hash,
+                plugin.wasm_hash,
+                plugin.directory,
+                plugin.enabled as i64,
+                plugin.installed_ms,
+                serde_json::to_string(&plugin.payload)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn plugins(&self) -> Result<Vec<PluginRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, version, manifest_hash, wasm_hash, directory, enabled, installed_ms, payload
+             FROM plugin_registry ORDER BY id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let payload: String = row.get(7)?;
+            Ok(PluginRecord {
+                id: row.get(0)?,
+                version: row.get(1)?,
+                manifest_hash: row.get(2)?,
+                wasm_hash: row.get(3)?,
+                directory: row.get(4)?,
+                enabled: row.get::<_, i64>(5)? != 0,
+                installed_ms: row.get(6)?,
+                payload: serde_json::from_str(&payload).unwrap_or_default(),
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn upsert_ssh_host(&self, host: &dunlin_domain::SshHost) -> Result<()> {
+        self.connection.execute(
+            r#"
+            INSERT INTO ssh_hosts
+                (id, name, target, user, port, identity, relay_port, local_port, host_key, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                target = excluded.target,
+                user = excluded.user,
+                port = excluded.port,
+                identity = excluded.identity,
+                relay_port = excluded.relay_port,
+                local_port = excluded.local_port,
+                host_key = excluded.host_key
+            "#,
+            params![
+                host.id,
+                host.name,
+                host.target,
+                host.user,
+                host.port as i64,
+                host.identity,
+                host.relay_port as i64,
+                host.local_port as i64,
+                host.host_key,
+                host.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn ssh_hosts(&self) -> Result<Vec<dunlin_domain::SshHost>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, target, user, port, identity, relay_port, local_port, host_key, created_at
+             FROM ssh_hosts ORDER BY name, id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(dunlin_domain::SshHost {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                target: row.get(2)?,
+                user: row.get(3)?,
+                port: row.get::<_, i64>(4)? as u16,
+                identity: row.get(5)?,
+                relay_port: row.get::<_, i64>(6)? as u16,
+                local_port: row.get::<_, i64>(7)? as u16,
+                host_key: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn delete_ssh_host(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM ssh_hosts WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    pub fn set_plugin_enabled(&self, id: &str, enabled: bool) -> Result<()> {
+        self.connection.execute(
+            "UPDATE plugin_registry SET enabled = ?2 WHERE id = ?1",
+            params![id, enabled as i64],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1676,7 +2428,25 @@ mod tests {
              INSERT INTO artifact_approvals (project_id, path, revision, status, actor)
                 VALUES ('dunlin', 'spec.md', 'hash', 'approved', 'user');
              INSERT INTO task_evidence (project_id, task_id, kind, reference)
-                VALUES ('dunlin', 'T001', 'commit', 'hash');"
+                VALUES ('dunlin', 'T001', 'commit', 'hash');
+             INSERT INTO knowledge_objects (project_id, id, kind, title, status, revision, payload, updated_ms)
+                 VALUES ('dunlin', 'INT-1', 'intent', 'Intent', 'accepted', 'hash', '{}', 1);
+             INSERT INTO knowledge_edges (project_id, from_id, to_id, relation)
+                 VALUES ('dunlin', 'INT-1', 'CON-1', 'has_concept');
+             INSERT INTO runs (id, project_id, harness, model, permission_mode, status)
+                 VALUES ('run-1', 'dunlin', 'OpenCode', 'model', 'ask', 'done');
+             INSERT INTO artifacts (id, project_id, kind, title, mime, bytes, sha256, blob_path, created_ms)
+                 VALUES ('art-1', 'dunlin', 'diff', 'Diff', 'text/plain', 1, 'hash', 'blob', 1);
+             INSERT INTO claims (id, project_id, statement, status, confidence)
+                 VALUES ('claim-1', 'dunlin', 'Claim', 'unverified', 'low');
+             INSERT INTO evidence (id, project_id, kind, source, revision, hash, observed_ms, freshness)
+                 VALUES ('ev-1', 'dunlin', 'check', 'check', 'hash', 'hash', 1, 'fresh');
+             INSERT INTO evidence_claims (evidence_id, claim_id, relation)
+                 VALUES ('ev-1', 'claim-1', 'supports');
+             INSERT INTO plugin_registry (id, version, manifest_hash, directory)
+                 VALUES ('plugin-1', '1.0.0', 'hash', '/tmp/plugin');
+             INSERT INTO ssh_hosts (id, name, target, user, port)
+                 VALUES ('ssh-1', 'Host', 'host', 'user', 22);"
         ).unwrap();
     }
 
@@ -1701,7 +2471,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             tables.len(),
-            12,
+            21,
             "include new app tables in reset and this fixture"
         );
         for table in &tables {
@@ -2293,7 +3063,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            14
+            18
         );
     }
 
@@ -2840,7 +3610,7 @@ mod tests {
     #[test]
     fn reports_schema_version_and_quick_check_for_release_qa() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), 14);
+        assert_eq!(store.schema_version().unwrap(), 18);
         assert_eq!(store.quick_check().unwrap(), "ok");
     }
 
@@ -2950,5 +3720,159 @@ mod tests {
         assert!(store.secret_grants(&secret.id).unwrap().is_empty());
         // Audit history is intentionally retained after secret deletion.
         assert_eq!(store.secret_audit(None, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn ssh_hosts_round_trip_and_delete() {
+        let store = Store::open_in_memory().unwrap();
+        let host = dunlin_domain::SshHost {
+            id: "ssh:host".into(),
+            name: "Host".into(),
+            target: "host".into(),
+            user: "user".into(),
+            port: 2222,
+            identity: Some("~/.ssh/id_ed25519".into()),
+            relay_port: 8787,
+            local_port: 0,
+            host_key: String::new(),
+            created_at: 1,
+        };
+        store.upsert_ssh_host(&host).unwrap();
+        assert_eq!(store.ssh_hosts().unwrap(), vec![host]);
+        store.delete_ssh_host("ssh:host").unwrap();
+        assert!(store.ssh_hosts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn knowledge_runs_artifacts_claims_evidence_and_plugins_round_trip() {
+        let store = Store::open_in_memory().unwrap();
+        store.upsert_project(&project()).unwrap();
+
+        let object = dunlin_knowledge::KnowledgeObject {
+            id: "INT-001".into(),
+            project_id: "dunlin".into(),
+            kind: "intent".into(),
+            title: "Intent".into(),
+            status: "accepted".into(),
+            path: Some("intent/INT-001.md".into()),
+            revision: "rev".into(),
+            updated_ms: 1,
+            fields: std::collections::BTreeMap::new(),
+            body: "Why".into(),
+            plugin_id: Some("dunlin-governance".into()),
+            schema_version: 1,
+        };
+        let edge = dunlin_knowledge::KnowledgeEdge {
+            from_id: "INT-001".into(),
+            to_id: "CON-001".into(),
+            relation: "has_concept".into(),
+            metadata: std::collections::BTreeMap::new(),
+        };
+        store
+            .replace_knowledge(
+                "dunlin",
+                std::slice::from_ref(&object),
+                std::slice::from_ref(&edge),
+            )
+            .unwrap();
+        assert_eq!(store.knowledge_objects("dunlin").unwrap(), vec![object]);
+        assert_eq!(store.knowledge_edges("dunlin").unwrap(), vec![edge]);
+
+        let run = RunRecord {
+            id: "run-1".into(),
+            project_id: "dunlin".into(),
+            session_id: Some("ses-1".into()),
+            intent_id: Some("INT-001".into()),
+            task_id: None,
+            handoff_id: None,
+            harness: "OpenCode".into(),
+            model: "model".into(),
+            permission_mode: "ask".into(),
+            worktree: None,
+            budget_id: None,
+            envelope_hash: Some("hash".into()),
+            status: "done".into(),
+            started_ms: Some(1),
+            ended_ms: Some(2),
+            result: "ok".into(),
+            payload: serde_json::json!({"k": "v"}),
+        };
+        store.upsert_run(&run).unwrap();
+        assert_eq!(store.runs("dunlin").unwrap(), vec![run]);
+
+        let artifact = ArtifactRecord {
+            id: "art-1".into(),
+            project_id: "dunlin".into(),
+            run_id: Some("run-1".into()),
+            session_id: Some("ses-1".into()),
+            intent_id: Some("INT-001".into()),
+            task_id: None,
+            kind: "diff".into(),
+            title: "Diff".into(),
+            mime: "text/plain".into(),
+            bytes: 1,
+            sha256: "hash".into(),
+            blob_path: "blob".into(),
+            created_ms: 1,
+            visibility: "local".into(),
+            expires_ms: None,
+            revoked_ms: None,
+            payload: serde_json::json!({}),
+        };
+        store.upsert_artifact(&artifact).unwrap();
+        assert_eq!(store.artifacts("dunlin").unwrap(), vec![artifact]);
+
+        let claim = ClaimRecord {
+            id: "claim-1".into(),
+            project_id: "dunlin".into(),
+            intent_id: Some("INT-001".into()),
+            task_id: None,
+            statement: "It works".into(),
+            status: "unverified".into(),
+            confidence: "low".into(),
+            scope: "commit".into(),
+            last_verified_ms: None,
+            stale_reason: None,
+            payload: serde_json::json!({}),
+        };
+        store.upsert_claim(&claim).unwrap();
+        assert_eq!(store.claims("dunlin").unwrap(), vec![claim]);
+
+        let evidence = EvidenceRecord {
+            id: "ev-1".into(),
+            project_id: "dunlin".into(),
+            kind: "check".into(),
+            artifact_id: Some("art-1".into()),
+            run_id: Some("run-1".into()),
+            source: "check".into(),
+            revision: "rev".into(),
+            hash: "hash".into(),
+            observed_ms: 1,
+            freshness: "fresh".into(),
+            summary: "exit 0".into(),
+            payload: serde_json::json!({}),
+        };
+        store.upsert_evidence(&evidence).unwrap();
+        assert_eq!(store.evidence("dunlin").unwrap(), vec![evidence]);
+        store.link_evidence("ev-1", "claim-1", "supports").unwrap();
+        assert_eq!(
+            store.evidence_links("claim-1").unwrap(),
+            vec![("ev-1".into(), "supports".into())]
+        );
+
+        let plugin = PluginRecord {
+            id: "dunlin-governance".into(),
+            version: "1.0.0".into(),
+            manifest_hash: "manifest".into(),
+            wasm_hash: Some("wasm".into()),
+            directory: "/tmp/governance".into(),
+            enabled: false,
+            installed_ms: 1,
+            payload: serde_json::json!({}),
+        };
+        store.upsert_plugin(&plugin).unwrap();
+        assert_eq!(store.plugins().unwrap(), vec![plugin]);
+        store.set_plugin_enabled("dunlin-governance", true).unwrap();
+        assert!(store.plugins().unwrap()[0].enabled);
     }
 }

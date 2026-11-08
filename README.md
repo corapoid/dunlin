@@ -14,10 +14,12 @@
   <img alt="Platform: macOS 15+ Apple Silicon" src="https://img.shields.io/badge/macOS%2015%2B-Apple%20Silicon-111111" />
   <img alt="Status: public beta" src="https://img.shields.io/badge/status-public%20beta-f0a020" />
   <a href="https://github.com/corapoid/dunlin/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corapoid/dunlin/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/corapoid/dunlin/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/corapoid/dunlin?include_prereleases&label=release" /></a>
+  <a href="https://github.com/corapoid/dunlin/releases"><img alt="Last release date" src="https://img.shields.io/github/release-date/corapoid/dunlin?include_prereleases&label=released" /></a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/chat.png" alt="Dunlin conversation with native tool and permission cards" width="100%" />
+  <img src="docs/screenshots/chat.png" alt="Dunlin conversation with native reasoning, tool and file cards" width="100%" />
 </p>
 
 Dunlin is a calm, keyboard-driven workspace for coding with agents. It speaks
@@ -25,12 +27,12 @@ the **Agent Client Protocol** directly, so tool calls, plans, diffs and permissi
 requests are native UI — not terminal text to parse. Projects, sessions and
 history stay on your Mac or your explicitly selected self-hosted server.
 
-**0.1.0-beta.10** · macOS 15+ · Apple Silicon desktop
+**Public beta** · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
-The latest published release is [0.1.0-beta.10](https://github.com/corapoid/dunlin/releases/tag/v0.1.0-beta.10).
-Published downloads have passed independent checksum, bundle and architecture checks.
-Beta.9 was tagged but its Linux test gate blocked publication; the tag is retained.
+Download the latest verified beta from the
+[releases page](https://github.com/corapoid/dunlin/releases). Every published
+download passes independent checksum, bundle and architecture checks.
 
 ## What you won't find combined anywhere else
 
@@ -51,6 +53,13 @@ Beta.9 was tagged but its Linux test gate blocked publication; the tag is retain
   fixed CLI recipe without receiving the value. Auto-approved only within the
   key's host/method/grant scope, with optional per-use approval and a separate
   relay-side vault.
+- **Intent, concepts and decisions as files.** A generic knowledge spine
+  indexes Markdown frontmatter, validates relations and builds a bounded intent
+  envelope for agents. The optional sandboxed WASM governance pack adds the
+  schema; agent writes stay pending proposals until a human accepts them.
+- **Evidence you can inspect.** Capture the clipboard or current file as a
+  content-addressed artifact, preview text and images locally or over a relay,
+  link it as evidence and share it through revocable, expiring capability links.
 - **A native Git workbench.** Graph/history, stash, worktrees, merge/rebase/
   cherry-pick, inline blame, read-only GitHub/GitLab repository links and
   AI-assisted Conventional Commits. PR/Actions integration has been removed.
@@ -60,7 +69,9 @@ Beta.9 was tagged but its Linux test gate blocked publication; the tag is retain
   a local agent, install and authorize OpenCode/Codex/Claude Code remotely,
   clone repositories or copy a reviewed project snapshot with optional Git history.
   Pair with a one-use, 15-minute code; harnesses use macOS seatbelt or Linux
-  bubblewrap, with server-side credential storage.
+  bubblewrap, with server-side credential storage. SSH hosts reuse system
+  OpenSSH with ControlMaster, Keychain passphrases, relay bootstrap and
+  loopback tunnels instead of a second crypto stack.
 - **Portable project organization.** Local collections and GitHub/GitLab imports,
   plus settings/project-structure backup to JSON or an existing repository.
   Imported catalog entries download only when explicitly requested.
@@ -81,7 +92,7 @@ Rust/GPUI app is the unusual part.
 Measured on an Apple M1 / 16 GB / macOS 27.0.1 with the release build, no agent
 connected, median of three warm launches:
 
-| | |
+| Metric | Measured |
 | --- | ---: |
 | First window, empty onboarding | **0.31 s** |
 | First window, local project | **0.30 s** |
@@ -137,10 +148,14 @@ is unsigned. macOS may ask you to approve the app in
 
 The interactive terminal installer collects the server name,
 optional Tailscale, autostart, Git tools and harness choices before installation.
-Beta.10 includes the bootstrap scripts, macOS/Linux relay archives and checksums.
+The latest release includes the bootstrap script, macOS/Linux relay archives and
+checksums.
+
+Download `install-relay.sh` from the
+[releases page](https://github.com/corapoid/dunlin/releases), then run:
 
 ```sh
-bash <(curl -fsSL https://github.com/corapoid/dunlin/releases/download/v0.1.0-beta.10/install-relay.sh)
+bash install-relay.sh
 ```
 
 Review the script before running it as your regular service user, not root.
@@ -184,10 +199,13 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
   </tr>
 </table>
 
+<p align="center"><sub><a href="docs/screenshots.md">Open the screenshot gallery — light and dark, plus feature close-ups →</a></sub></p>
+
 ## Learn more
 
 - [Full guide](docs/guide.md) — the detailed feature and operations reference.
-- [Roadmap](docs/ROADMAP.md) and [remaining work](docs/REMAINING-WORK.md).
+- [Roadmap](docs/ROADMAP.md) — the single remaining-work backlog.
+- [Documentation index](docs/README.md) — guides, references and acceptance notes grouped by task.
 - [Changelog](CHANGELOG.md) · [Performance methodology](docs/performance.md).
 - [Project import](docs/project-import.md) · [Session import](docs/session-import.md) · [Markdown editor](docs/markdown-editor.md) · [Server setup](docs/relay-setup.md).
 - [Settings and project backup](docs/settings-project-backup.md) — JSON or GitHub/GitLab, with deferred repository downloads.
@@ -195,9 +213,9 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 
 ## Status
 
-Dunlin is an early public beta. The iOS client is a scaffold, not part of this
-release. Intel Macs are not supported in 0.1. See the
-[roadmap](docs/ROADMAP.md) for what is built and what is still open.
+Dunlin is an early public beta. Intel Macs are not supported in the current beta. See the
+[roadmap](docs/ROADMAP.md) for what is still open and the
+[documentation index](docs/README.md) for the detailed references.
 
 ## License
 

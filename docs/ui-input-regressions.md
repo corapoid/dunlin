@@ -102,7 +102,7 @@
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 | --- | --- | --- | --- | --- | --- |
-| Local logs own historical usage; live allowances are separate | `crates/usage/src/billing.rs`: `scan_all`, `summarize_range`; `apps/desktop/src/usage.rs`: `Scope`, `Cache`, `refresh_billing` | workspace beta.8 | High | None in local aggregation path | Billing boundary/pagination tests |
+| Local logs own historical usage; live allowances are separate | `crates/usage/src/billing.rs`: `scan_all`, `summarize_range`; `apps/desktop/src/usage.rs`: `Scope`, `Cache`, `refresh_billing` | current source | High | None in local aggregation path | Billing boundary/pagination tests |
 | Sonnet/Haiku 5.5 rates include caching and Haiku's 100k prompt tier | Official `platform.claude.com/docs/en/models/{sonnet,haiku}-5-5/overview`; `billing.rs`: `price` | verified 2026-11-06 | High | No actual invoice reconciliation | Price/cache tier tests |
 | A Codex backend alias does not identify a historical billable API model | `openai/codex` PR #18169 delegates the alias to backend/catalog mapping; OpenAI rate-card documentation describes auto-review without a versioned per-record mapping | checked 2026-11-06 | Partial | `codex-auto-review` → exact model/rate for that event | Inspect authoritative provider metadata if made available; keep unpriced meanwhile |
 
@@ -148,9 +148,9 @@ advanced mode. No schema field or wildcard destination was introduced.
 
 | Claim | Evidence and exact location | Revision/version | Confidence | Missing link | Next automated lookup |
 | --- | --- | --- | --- | --- | --- |
-| Values and policies belong to the desktop Keychain; SQLite is metadata only | `crates/vault/src/store.rs`: `KeychainStore`, `ServiceKeychainStore::desktop`, separate value/policy service names; `apps/desktop/src/vault/mod.rs`: `create_vault_secret`, `update_vault_secret` | workspace beta.8; security-framework 3.7 API | High | Real Keychain prompt/write not exercised | Optional isolated macOS integration/manual check |
-| A name/key pair may be stored but cannot grant broker access | `crates/domain/src/vault.rs`: `SecretPolicy::is_storage_only`, `validate`; `crates/vault/src/broker.rs`: `authorize`, `stored_only_keys_are_valid_but_unlisted_and_unusable_without_reading_the_value` | policy v1, workspace beta.8 | High | None in local authorization path | Existing broker regression test |
-| All creation UIs use the same write authority and shared labeled fields | `apps/desktop/src/vault/settings.rs`: `Draft::read`, `secret_field`; `apps/desktop/src/vault/panel.rs`: create callback; both call `create_vault_secret` | workspace beta.8 | High | Real provider usage intentionally not tested | Native form smoke plus broker tests |
+| Values and policies belong to the desktop Keychain; SQLite is metadata only | `crates/vault/src/store.rs`: `KeychainStore`, `ServiceKeychainStore::desktop`, separate value/policy service names; `apps/desktop/src/vault/mod.rs`: `create_vault_secret`, `update_vault_secret` | current source; security-framework 3.7 API | High | Real Keychain prompt/write not exercised | Optional isolated macOS integration/manual check |
+| A name/key pair may be stored but cannot grant broker access | `crates/domain/src/vault.rs`: `SecretPolicy::is_storage_only`, `validate`; `crates/vault/src/broker.rs`: `authorize`, `stored_only_keys_are_valid_but_unlisted_and_unusable_without_reading_the_value` | policy v1, current source | High | None in local authorization path | Existing broker regression test |
+| All creation UIs use the same write authority and shared labeled fields | `apps/desktop/src/vault/settings.rs`: `Draft::read`, `secret_field`; `apps/desktop/src/vault/panel.rs`: create callback; both call `create_vault_secret` | current source | High | Real provider usage intentionally not tested | Native form smoke plus broker tests |
 
 Proven resource path: form inputs → `NewSecret` → validated `Secret`/`SecretPolicy`
 → Keychain value/policy under an internal ID; SQLite stores display metadata under

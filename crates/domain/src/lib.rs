@@ -49,10 +49,11 @@ pub enum SidebarSection {
     SourceControl,
     Security,
     Sessions,
+    Knowledge,
 }
 
 impl SidebarSection {
-    pub const ALL: [SidebarSection; 7] = [
+    pub const ALL: [SidebarSection; 8] = [
         SidebarSection::Dashboard,
         SidebarSection::Projects,
         SidebarSection::Files,
@@ -60,6 +61,7 @@ impl SidebarSection {
         SidebarSection::SourceControl,
         SidebarSection::Security,
         SidebarSection::Sessions,
+        SidebarSection::Knowledge,
     ];
 
     pub fn label(self) -> &'static str {
@@ -71,6 +73,7 @@ impl SidebarSection {
             SidebarSection::SourceControl => "Source Control",
             SidebarSection::Security => "Security",
             SidebarSection::Sessions => "Sessions",
+            SidebarSection::Knowledge => "Knowledge",
         }
     }
 }
@@ -90,6 +93,26 @@ pub struct RemoteProject {
     pub host_id: Id,
     pub project_id: Id,
     pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SshHost {
+    pub id: Id,
+    pub name: String,
+    /// OpenSSH alias, `user@host` or bare host.
+    pub target: String,
+    pub user: String,
+    pub port: u16,
+    #[serde(default)]
+    pub identity: Option<String>,
+    #[serde(default)]
+    pub relay_port: u16,
+    #[serde(default)]
+    pub local_port: u16,
+    #[serde(default)]
+    pub host_key: String,
+    #[serde(default)]
+    pub created_at: i64,
 }
 
 /// A project is normally a repository/folder. A chat space is a standalone

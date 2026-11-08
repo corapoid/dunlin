@@ -1,0 +1,17 @@
+[package]
+publish = false
+name = "dunlin-knowledge-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dunlin-knowledge-mcp"
+path = "src/main.rs"
+
+[dependencies]
+dunlin-knowledge.workspace = true
+dunlin-plugin-host.workspace = true
+serde.workspace = true
+serde_json.workspace = true

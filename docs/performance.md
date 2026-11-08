@@ -8,7 +8,7 @@ falsifiable instead of comparing marketing numbers.
 
 | | |
 | --- | --- |
-| Build | `0.1.0-beta.6`, release profile |
+| Build | Release profile, measured 2026-11-04 |
 | Machine | Apple M1, 16 GB RAM |
 | OS | macOS 27.0.1 |
 | App | `dist/Dunlin.app/Contents/MacOS/Dunlin` |
@@ -52,7 +52,7 @@ Packaging:
   there is no busy render loop or Electron/Chromium runtime in the background.
 - Memory includes the native UI, GPU-backed rendering and local SQLite state.
   A connected agent, large chat history or graph/trace view will use more.
-- These figures were collected from the packaged `0.1.0-beta.6` release build.
+- These figures were collected from a packaged release build.
   Re-run them on the target Mac if you need release-specific hardware evidence.
 
 ## Reproduce

@@ -68,8 +68,9 @@ pub(super) fn render(
     let cancel = state.clone();
     let lens = state.clone();
     let width = SEGMENT * 3. + INSET * 2.;
-    let opaque = crate::platform::reduce_transparency() || !cfg!(target_os = "macos");
-    let glass = !opaque && p.bg.l < 0.5;
+    // The view switcher is secondary while working; keep it flat and close to
+    // the title bar instead of carrying a bright glass slab.
+    let glass = false;
     let mut control = div()
         .id("toolbar-view-selector")
         .relative()
@@ -77,8 +78,7 @@ pub(super) fn render(
         .h(px(HEIGHT))
         .flex_shrink_0()
         .rounded_full()
-        .bg(p.subtle.opacity(if glass { 0.35 } else { 1. }))
-        .when(glass, |control| control.shadow_sm())
+        .bg(p.fg.opacity(if glass { 0.03 } else { 0.05 }))
         .track_focus(&focus)
         .capture_any_mouse_down(cx.listener(move |_, event: &MouseDownEvent, window, cx| {
             if event.button != MouseButton::Left {
@@ -185,16 +185,9 @@ pub(super) fn render(
                 .w(px(SEGMENT * zoom))
                 .h(px((HEIGHT - INSET * 2.) * zoom))
                 .rounded_full()
-                .bg(p.card.opacity(if !glass {
-                    1.
-                } else if dragging {
-                    0.12
-                } else {
-                    0.35
-                }))
+                .bg(p.fg.opacity(if dragging { 0.12 } else { 0.07 }))
                 .border_1()
-                .border_color(p.fg.opacity(if dragging { 0.2 } else { 0.08 }))
-                .when(glass, |pill| pill.shadow_sm())
+                .border_color(p.fg.opacity(if dragging { 0.16 } else { 0.05 }))
                 .child(
                     canvas(
                         |bounds, _, _| bounds,

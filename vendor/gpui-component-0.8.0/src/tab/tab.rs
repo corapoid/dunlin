@@ -1017,21 +1017,6 @@ impl RenderOnce for Tab {
                     cx.theme().tokens.tab_active.opacity(background_opacity).into(),
                 ))
             })
-            .when(
-                folder && self.hovered && !self.selected && !self.disabled,
-                |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom(metrics.top_padding)
-                            .rounded(metrics.radius)
-                            .bg(cx.theme().tokens.secondary),
-                    )
-                },
-            )
             // In the gap after the tab, on a whole pixel, level with the content.
             .when(folder && self.separator, |this| {
                 this.child(

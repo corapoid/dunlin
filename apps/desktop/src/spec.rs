@@ -108,6 +108,8 @@ fn selected_path(snapshot: &Snapshot) -> Option<String> {
     }
     for kind in [
         Kind::Intent,
+        Kind::Concept,
+        Kind::Decision,
         Kind::AgentContract,
         Kind::Spec,
         Kind::Plan,
@@ -149,7 +151,11 @@ fn index_snapshot(store: Option<&dunlin_storage::Store>, project: &Project, snap
 
 fn remote_candidate(relative: &str) -> bool {
     let lower = relative.to_ascii_lowercase();
-    if lower.starts_with("intent/") && lower.ends_with(".md") {
+    if (lower.starts_with("intent/")
+        || lower.starts_with("concepts/")
+        || lower.starts_with("decisions/"))
+        && lower.ends_with(".md")
+    {
         return true;
     }
     if matches!(
@@ -308,6 +314,17 @@ fn load_remote_view(
     }
 }
 
+pub(crate) fn remote_snapshot(project: &Project, backend: &WorkspaceBackend) -> Snapshot {
+    load_remote_view(
+        project,
+        backend,
+        Vec::new(),
+        Vec::new(),
+        SpecPersistence::default(),
+    )
+    .snapshot
+}
+
 fn load_view(project: &Project, store: Option<&dunlin_storage::Store>) -> View {
     let snapshot = artifacts::discover(Path::new(&project.path));
     let approvals = store
@@ -351,6 +368,33 @@ fn load_view(project: &Project, store: Option<&dunlin_storage::Store>) -> View {
             error: Some(error),
         },
     }
+}
+
+pub(crate) fn governance_enabled(plugins: &crate::plugins::State, project_id: &str) -> bool {
+    plugins
+        .packs
+        .iter()
+        .find(|pack| pack.manifest.id == "dunlin-governance")
+        .is_some_and(|pack| plugins.is_enabled_for(Some(project_id), pack))
+}
+
+fn apply_governance_filter(
+    view: &mut View,
+    include_governance: bool,
+    store: Option<&dunlin_storage::Store>,
+) {
+    if include_governance {
+        return;
+    }
+    view.snapshot
+        .artifacts
+        .retain(|artifact| !matches!(artifact.kind, Kind::Concept | Kind::Decision));
+    view.selected = view
+        .selected
+        .clone()
+        .filter(|path| view.snapshot.get(path).is_some())
+        .or_else(|| selected_path(&view.snapshot));
+    index_snapshot(store, &view.project, &view.snapshot);
 }
 
 fn refresh_view(view: &mut View, store: Option<&dunlin_storage::Store>) {
@@ -484,6 +528,12 @@ impl DunlinApp {
                     if let Some(store) = this.store.as_ref() {
                         index_snapshot(Some(store), &project, &result.snapshot);
                     }
+                    let mut result = result;
+                    apply_governance_filter(
+                        &mut result,
+                        governance_enabled(&this.plugins, &project.id),
+                        this.store.as_ref(),
+                    );
                     this.spec.view = Some(result);
                     this.spec.active = true;
                     cx.notify();
@@ -493,7 +543,12 @@ impl DunlinApp {
             cx.notify();
             return;
         }
-        let view = load_view(&project, self.store.as_ref());
+        let mut view = load_view(&project, self.store.as_ref());
+        apply_governance_filter(
+            &mut view,
+            governance_enabled(&self.plugins, &project.id),
+            self.store.as_ref(),
+        );
         self.spec.view = Some(view);
         self.spec.active = true;
         self.remember_workspace_tab();
@@ -524,6 +579,11 @@ impl DunlinApp {
         if !view.project.is_remote() {
             let view = self.spec.view.as_mut().unwrap();
             refresh_view(view, self.store.as_ref());
+            apply_governance_filter(
+                view,
+                governance_enabled(&self.plugins, &view.project.id.clone()),
+                self.store.as_ref(),
+            );
             cx.notify();
             return;
         }
@@ -571,6 +631,12 @@ impl DunlinApp {
                 if let Some(store) = this.store.as_ref() {
                     index_snapshot(Some(store), &project, &result.snapshot);
                 }
+                let mut result = result;
+                apply_governance_filter(
+                    &mut result,
+                    governance_enabled(&this.plugins, &project.id),
+                    this.store.as_ref(),
+                );
                 this.spec.view = Some(result);
                 this.spec.active = true;
                 cx.notify();
@@ -1253,7 +1319,8 @@ fn status_color(status: Status, p: &Palette) -> Hsla {
         Status::Accepted => p.green,
         Status::Rejected => p.red,
         Status::InReview => p.amber,
-        Status::Draft | Status::Superseded | Status::Unknown => p.muted_fg,
+        Status::Proposed => p.blue,
+        Status::Draft | Status::Deprecated | Status::Superseded | Status::Unknown => p.muted_fg,
     }
 }
 
@@ -2015,6 +2082,8 @@ fn artifact_list(view: &View, p: &Palette, cx: &mut Context<DunlinApp>) -> State
     } else {
         &[
             Kind::Intent,
+            Kind::Concept,
+            Kind::Decision,
             Kind::AgentContract,
             Kind::Constitution,
             Kind::Spec,
