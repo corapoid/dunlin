@@ -71,15 +71,14 @@ Developer ID certificate.
 
 ## Dependency updates
 
-Dependabot is enabled for Cargo and GitHub Actions and runs weekly on Monday at
-06:00 Europe/Warsaw. Patch updates are grouped by area; minor and major updates
-stay as separate pull requests because many Rust dependencies are still on
-`0.x`, where a minor bump can be breaking.
+Dependency updates are maintained manually; Dependabot version/security update
+pull requests and bot auto-merge are disabled. Review updates carefully because
+many Rust dependencies are still on `0.x`, where a minor bump can be breaking.
 
-`test`, `dependency-review` and `web` are configured required checks on `main`. Dependabot
-auto-merges GitHub Actions minor/patch updates and Cargo patch updates once
-those checks pass. Security updates are enabled independently; treat them as
-urgent and review them even when CI is green.
+Security alerts, dependency review and the CI/security gates remain enabled.
+Weekly and manually dispatched Security runs check the shipped dependency graph
+for newly disclosed vulnerabilities. Treat security fixes as urgent and submit
+them through the same protected pull-request process as other changes.
 
 ## Commits and pull requests
 
