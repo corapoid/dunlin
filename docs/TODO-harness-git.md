@@ -1,26 +1,26 @@
-# Import sesji, historia Git i integracja macOS
+# Session import, Git history and macOS integration
 
-> Historyczny zapis zakończonego zakresu, nie aktualny backlog. Liczby i informacja
-> o braku commit/push poniżej dotyczą tamtej walidacji. Źródła opublikowano do
-> beta.3; obecnie 592 testów OK / 0 pominiętych. Ręczny odbiór nadal
-> oddzielny od natywnych smoke. Aktualny stan: [ROADMAP.md](ROADMAP.md).
+> Historical record of a completed scope, not a current backlog. The numbers and
+> the note about no commit/push below refer to that validation. Sources were published as
+> beta.3; currently 592 tests OK / 0 skipped. Manual acceptance is still
+> separate from native smoke. Current state: [ROADMAP.md](ROADMAP.md).
 
-- [x] Import plików sesji w ustawieniach harnessa: adaptery, podgląd, dopasowanie projektów, deduplikacja i atomowy zapis.
-- [x] Graficzna historia repozytorium i tworzenie brancha z zaznaczonego commita bez checkoutu.
-- [x] Własna ikona w Project settings, z możliwością powrotu do wykrywania automatycznego.
-- [x] Powitanie na podstawie lokalnego czasu systemowego.
-- [x] Natywne menu macOS: Settings, pliki, nawigacja i Git.
-- [x] Testy, Clippy, formatowanie, nowa paczka macOS i weryfikacja podpisu.
-- [x] Przegląd ROADMAP/PLAN i aktualna lista niezrealizowanych elementów.
+- [x] Session file import in harness settings: adapters, preview, project matching, deduplication and atomic save.
+- [x] Graphical repository history and branch creation from the selected commit without checkout.
+- [x] Custom icon in Project settings, with the ability to return to automatic detection.
+- [x] Greeting based on local system time.
+- [x] Native macOS menu: Settings, files, navigation and Git.
+- [x] Tests, Clippy, formatting, a new macOS package and signature verification.
+- [x] Review of ROADMAP/PLAN and the current list of unimplemented items.
 
-Import nie uruchamia agentów ani nie modyfikuje źródeł. Niejednoznaczne lub
-niedopasowane ścieżki wymagają jawnego wyboru projektu. Istniejące rozmowy nie
-są nadpisywane. Historia Git jest lokalna, ograniczona i nie wykonuje fetch.
+Import does not start agents or modify sources. Ambiguous or
+unmatched paths require explicit project selection. Existing conversations are not
+overwritten. Git history is local, bounded and does not fetch.
 
-Walidacja: 301 testów zakończonych powodzeniem, 4 opcjonalne integracyjne
-pominięte; Clippy `-D warnings`, fmt i diff check poprawne. Zbudowano
-`dist/Dunlin.app`; `codesign --verify --deep --strict` poprawny (podpis ad-hoc).
-Brak wizualnego testu GUI z powodu niedostępnego sterowania oknem. Nie używano
-płatnych promptów ani nie modyfikowano roboczego repozytorium testowymi komendami
-Git; operacje mutujące były testowane wyłącznie na izolowanych fixture'ach.
-Zmiany pozostają bez commit/push. Pozostały backlog: `REMAINING-WORK.md`.
+Validation: 301 tests passed, 4 optional integration tests
+skipped; Clippy `-D warnings`, fmt and diff check correct. `dist/Dunlin.app` was built;
+`codesign --verify --deep --strict` correct (ad-hoc signature).
+No visual GUI test because window control was unavailable. No paid prompts
+were used and the working repository was not modified with test Git commands;
+mutating operations were tested only on isolated fixtures.
+Changes remain without commit/push. Remaining backlog: `REMAINING-WORK.md`.

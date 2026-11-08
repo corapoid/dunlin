@@ -47,8 +47,8 @@ and the Permissions settings surface. It does not approve TCC prompts.
 | --- | --- | --- | --- |
 | R11.1 | Fresh account / empty data | Move or start with no `~/Library/Application Support/Dunlin`; launch the bundle. | Onboarding is shown; no demo project or session appears; no crash or hidden history. |
 | R11.2 | No harness | On step 1 remove every ACP adapter from `PATH` (or use a clean account). | Harness list can be empty; Continue still works; step 2 explains install-later; no command is executed. |
-| R11.3 | Notifications not determined | On step 2 click **Enable** in the Notifications card. | macOS asks for permission once; allow and deny both return to the app without a dead UI. |
-| R11.4 | Notifications denied | Choose Deny, then open **Settings → General → Notification permission** and **Permissions**. | State reads Denied; **Open Settings** opens the notification pane; no permission is granted by Dunlin. |
+| R11.3 | Notifications not determined | Open **Settings → Permissions** and click **Allow…** for Notifications. | macOS asks for permission once; allow and deny both return to the app without a dead UI. |
+| R11.4 | Notifications denied | Choose Deny, then review **Settings → Permissions**. | State reads Denied; **Open Settings** opens the notification pane; no permission is granted by Dunlin. |
 | R11.5 | Notification recovery | Enable notifications in System Settings, return and click **Recheck**. | State becomes Granted; enabling the Dunlin toggle produces a test notification when the app is inactive. |
 | R11.6 | TCC center | Review Notifications, Accessibility, Screen Recording, Automation and Full Disk Access. | States and explanations are present; links open the matching panes; no prompt is triggered just by Recheck; Automation stays Unknown until a real prompt. |
 | R11.7 | Project trust | Create a local project, then use the project menu to **Untrust project**. | Chat shows the trust banner; harness/runtimes stop; Trust project restores the normal state without losing history. |

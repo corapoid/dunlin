@@ -1,186 +1,186 @@
-# Standalone chat, worktree per subtask i billing evidence — plan i odbiór v1
+# Standalone chat, worktree per subtask and billing evidence — v1 plan and acceptance
 
-Data: 2026-11-04. Zakres: cztery pionowe wycinki z roadmapy:
+Date: 2026-11-04. Scope: four vertical slices from the roadmap:
 
 1. standalone chat / scratch workspace,
 2. worktree per subtask,
-3. attribution pracy wewnętrznej/subagentów w Usage,
-4. ręczna QA logów i sync billing evidence przez relay.
+3. attribution of internal/subagent work in Usage,
+4. manual log QA and billing evidence sync through relay.
 
-Ten dokument jest planem implementacji i jednocześnie macierzą odbioru
-dostarczonego zakresu v1. Nie oznacza ukończenia całego M6 ani pełnego
-rozliczenia providera.
+This document is both an implementation plan and the acceptance matrix for the
+delivered v1 scope. It does not mean full M6 or full provider
+accounting is finished.
 
-## Zasady wspólne
+## Shared principles
 
-- Najpierw model domenowy i migracja, potem backend, UI i testy regresji.
-- Żadna operacja nie uruchamia agenta, nie wysyła promptu, nie robi merge,
-  push, fetch ani resetu bez osobnego, jawnego potwierdzenia.
-- Nieznane dane (model, cena, attribution, koszt dziecka) nigdy nie są zerem.
-- Każdy nowy storage/sync ma limit rozmiaru i jawny błąd zamiast cichego
-  fallbacku.
-- Stare projekty, sesje i transkrypty pozostają czytelne.
+- Domain model and migration first, then backend, UI and regression tests.
+- No operation starts an agent, sends a prompt, performs a merge,
+  push, fetch or reset without separate, explicit confirmation.
+- Unknown data (model, price, attribution, child cost) is never zero.
+- Every new storage/sync path has a size limit and an explicit error instead of a silent
+  fallback.
+- Old projects, sessions and transcripts remain readable.
 
 ## 1. Standalone chat / scratch workspace
 
 ### Model
 
-- `ProjectKind::{Repo, ChatSpace}` z `#[serde(default)] = Repo`.
-- Migracja SQLite v8 dodaje `projects.kind` z domyślnym `repo`; istniejące
-  projekty pozostają repozytoriami.
-- Chat space ma własne `project.id`, własne sesje i transkrypty. Nie jest
-  sztucznym projektem w drzewie Projects.
-- Scratch workspace: `DUNLIN_DATA_DIR/chat-spaces/<chat-id>` (albo domyślny
-  katalog danych aplikacji). Pliki nie są usuwane przy usuwaniu rozmowy.
-- Opcjonalny kontekst repo: osobny chat space z jawną zgodą użytkownika i
-  `path` wybranego folderu. To nowa przestrzeń z izolowaną historią; istniejące
-  sesje projektowe nigdy nie zmieniają po cichu `cwd`.
+- `ProjectKind::{Repo, ChatSpace}` with `#[serde(default)] = Repo`.
+- SQLite migration v8 adds `projects.kind` with the default `repo`; existing
+  projects remain repositories.
+- A chat space has its own `project.id`, its own sessions and transcripts. It is not an
+  artificial project in the Projects tree.
+- Scratch workspace: `DUNLIN_DATA_DIR/chat-spaces/<chat-id>` (or the default
+  app data directory). Files are not deleted when the conversation is deleted.
+- Optional repo context: a separate chat space with explicit user consent and
+  the `path` of the selected folder. This is a new space with isolated history; existing
+  project sessions never silently change `cwd`.
 
-### UI i zachowanie
+### UI and behavior
 
-- Command palette: **New Standalone Chat**, **New Chat in Repository…** oraz
-  **New Chat in &lt;repo&gt;** dla każdego skonfigurowanego lokalnego projektu
-  (wyszukiwanie po nazwie/ścieżce w palecie).
-- Sidebar: sekcja `CHATS · SCRATCH WORKSPACES` nad projektami; chat space nie
-  jest liczony jako projekt i nie pojawia się w `Switch to <project>`.
-- Wybór chat space korzysta z tego samego composera, harnessa, modelu i trybu
-  uprawnień co zwykły czat.
-- Scratch chat bez `.git` nie otwiera Git history; pokazuje jawny komunikat i
-  prowadzi do `New Chat in Repository…`.
-- Historia pozostaje rozdzielona przez `project_id` sesji; sesje projektowe nie
-  są przepinane. Draft composera pozostaje zachowaniem sesji, nie wspólnym
-  buforem projektu.
+- Command palette: **New Standalone Chat**, **New Chat in Repository…** and
+  **New Chat in &lt;repo&gt;** for each configured local project
+  (search by name/path in the palette).
+- Sidebar: a `CHATS · SCRATCH WORKSPACES` section above projects; a chat space is not
+  counted as a project and does not appear in `Switch to <project>`.
+- Selecting a chat space uses the same composer, harness, model and permission mode
+  as a regular chat.
+- A scratch chat without `.git` does not open Git history; it shows an explicit message and
+  points to `New Chat in Repository…`.
+- History remains separated by the session's `project_id`; project sessions are not
+  re-pinned. The composer draft remains session behavior, not a shared project
+  buffer.
 
-### Granice v1
+### v1 boundaries
 
-- Jeden chat space = jeden kontekst (scratch albo wskazany folder). Zmiana
-  kontekstu tworzy nową przestrzeń zamiast mutować istniejące sesje.
-- Brak automatycznego discovery repozytoriów i skanowania dysku.
-- Chat space nie jest sandboxem; obowiązuje normalny permission mode.
+- One chat space = one context (scratch or the indicated folder). Changing
+  the context creates a new space instead of mutating existing sessions.
+- No automatic repository discovery or disk scanning.
+- A chat space is not a sandbox; the normal permission mode applies.
 
-### Odbiór
+### Acceptance
 
-- Migracja v8 na bazie z v5/v6/v7 zachowuje projekty, sesje i transkrypty.
-- Scratch chat tworzy katalog i osobną sesję; projekt repo nie dostaje tej
-  sesji.
-- `New Chat in Repository…` wymaga potwierdzenia i nie zmienia `cwd` żadnej
-  istniejącej sesji projektowej.
-- Restart aplikacji zachowuje wybór chat space i jego historię.
-- Ręczna QA: klawiatura/focus, pusty stan, brak data dir, usunięcie folderu
-  kontekstu, długi transkrypt.
+- Migration v8 on a v5/v6/v7 database preserves projects, sessions and transcripts.
+- A scratch chat creates a directory and a separate session; the repo project does not get
+  this session.
+- `New Chat in Repository…` requires confirmation and does not change the `cwd` of any
+  existing project session.
+- Restarting the app preserves the chat space selection and its history.
+- Manual QA: keyboard/focus, empty state, missing data dir, deletion of the context
+  folder, long transcript.
 
 ## 2. Worktree per subtask
 
-### Model i Git
+### Model and Git
 
-- Nowa akcja `Action::SubtaskAdd { name, revision }`.
-- Preflight: walidacja nazwy, rozwiązanie commita, bezpieczny katalog
-  `dunlin-worktrees/subtask-<name>`, brak kolizji brancha
-  `dunlin/subtask/<name>` i katalogu.
+- New action `Action::SubtaskAdd { name, revision }`.
+- Preflight: name validation, commit resolution, safe directory
+  `dunlin-worktrees/subtask-<name>`, no collision of the branch
+  `dunlin/subtask/<name>` or the directory.
 - Execute: `git worktree add -b dunlin/subtask/<name> -- <path> <commit>`.
-  Żadnego agenta, merge, push ani usuwania.
-- `dunlin_workspace::subtask::Registry` przechowuje task, branch, path, base i
-  project id; waliduje duplikaty i limit 256 wpisów.
-- Rejestr jest zapisywany w ustawieniach SQLite (`subtask-worktrees-v1`) i
-  przeżywa restart.
+  No agent, merge, push or deletion.
+- `dunlin_workspace::subtask::Registry` stores task, branch, path, base and
+  project id; it validates duplicates and the 256-entry limit.
+- The registry is saved in SQLite settings (`subtask-worktrees-v1`) and
+  survives restart.
 
 ### UI
 
 - Command palette: **Subtask Worktrees**.
-- Formularz: etykieta zadania, nazwa worktree, commit/branch/tag.
-- Potwierdzenie pokazuje branch, ścieżkę, bazowy commit i jawne granice.
-- Lista wpisów: obecność katalogu, branch, base, **Open as project** i
+- Form: task label, worktree name, commit/branch/tag.
+- Confirmation shows the branch, path, base commit and explicit boundaries.
+- Entry list: directory presence, branch, base, **Open as project** and
   **Remove worktree…**.
-- Usunięcie worktree wymaga clean state i osobnego potwierdzenia; branch
-  pozostaje. Zdalne usuwanie w tym v1 jest jawnie odrzucane.
+- Removing a worktree requires a clean state and separate confirmation; the branch
+  remains. Remote removal in this v1 is explicitly rejected.
 
-### Odbiór
+### Acceptance
 
-- Test repozytorium: powstaje dokładnie jeden branch i jeden worktree z HEAD.
-- Duplikat nazwy/brancha i niebezpieczna nazwa są odrzucane w preflight.
-- Stary plan po zmianie repozytorium nie wykonuje mutacji.
-- Ręczna QA: hook failure, dirty worktree, locked worktree, brak `git`,
-  otwarcie jako projekt i ponowne uruchomienie aplikacji.
+- Repository test: exactly one branch and one worktree from HEAD are created.
+- Duplicate name/branch and unsafe name are rejected in preflight.
+- An old plan after changing the repository does not perform mutations.
+- Manual QA: hook failure, dirty worktree, locked worktree, missing `git`,
+  opening as a project and restarting the app.
 
-## 3. Usage: attribution pracy wewnętrznej/subagentów
+## 3. Usage: attribution of internal/subagent work
 
 ### Model
 
-- `WorkKind::{Main, Subagent, Internal, Unknown}` i `Attribution` z
+- `WorkKind::{Main, Subagent, Internal, Unknown}` and `Attribution` with
   `session`, `parent`, `agent`, `task`.
-- `BillingEvent.attribution` jest serializowane; stare evidence bez pola
-  dostaje `Unknown`, nie `Main`.
-- Heurystyki:
+- `BillingEvent.attribution` is serialized; old evidence without the field
+  gets `Unknown`, not `Main`.
+- Heuristics:
   - Claude Code: `isSidechain`, `agentId` → subagent; `<synthetic>`,
-    `isCompactSummary`, `isApiErrorMessage` → internal; reszta z `sessionId`
+    `isCompactSummary`, `isApiErrorMessage` → internal; the rest with `sessionId`
     → main.
   - Codex: `session_meta.parent_thread_id`/`parent_id`/`source.subagent` →
-    subagent; `source`/`originator` internal → internal; brak sesji → unknown.
-  - OpenCode: `session.parentID` → subagent; brak `sessionID` → unknown.
-- `Totals` liczy eventy i znany koszt per kategoria. `Summary` ma
-  `by_attribution`, a alerty jawnie ostrzegają o unknown.
+    subagent; `source`/`originator` internal → internal; no session → unknown.
+  - OpenCode: `session.parentID` → subagent; no `sessionID` → unknown.
+- `Totals` counts events and known cost per category. `Summary` has
+  `by_attribution`, and alerts explicitly warn about unknown.
 
 ### UI
 
-- Usage pokazuje metryki **Subagents** i **Unknown attribution**.
-- Przekrój **By work attribution**.
-- Unknown nie jest wliczane do main work ani do znanego kosztu jako zero.
+- Usage shows **Subagents** and **Unknown attribution** metrics.
+- **By work attribution** breakdown.
+- Unknown is not counted as main work or as zero known cost.
 
-### Granice
+### Boundaries
 
-- To nie jest pełne rozliczenie providera. Provider może nie ujawniać
-  child/retry usage; wtedy pozostaje `Unknown`.
-- Heurystyki opierają się wyłącznie na udokumentowanych polach logów; nowy
-  format nie jest zgadywany.
+- This is not full provider accounting. A provider may not disclose
+  child/retry usage; then it remains `Unknown`.
+- Heuristics rely only on documented log fields; a new
+  format is not guessed.
 
-### Odbiór
+### Acceptance
 
-- Fixture Claude sidechain/synthetic, Codex subagent `session_meta` i OpenCode
-  `parentID` dają oczekiwane kategorie.
-- Dedupe i checkpointy nie zmieniają attribution.
-- Ręczna QA: prawdziwe logi Claude/Codex/OpenCode, mieszane sesje, log bez
-  session id, model `unpriced`.
+- Claude sidechain/synthetic, Codex subagent `session_meta` and OpenCode
+  `parentID` fixtures produce the expected categories.
+- Dedupe and checkpoints do not change attribution.
+- Manual QA: real Claude/Codex/OpenCode logs, mixed sessions, a log without
+  session id, an `unpriced` model.
 
-## 4. Ręczna QA logów i sync billing evidence przez relay
+## 4. Manual log QA and billing evidence sync through relay
 
-### Lokalna QA
+### Local QA
 
-- `ScanReport.sources` zawiera provider, ścieżkę, rozmiar, mtime, offset,
-  liczbę eventów i stan (`scanned`, `cached`, `skipped`, `error`).
-- `Summary.qa_report()` tworzy kopiowalny raport: totals, attribution, źródła,
-  unpriced modele i warningi. Nie zawiera promptów, odpowiedzi, env ani sekretów.
-- Settings → Usage: **Copy QA report** oraz lista **Log evidence · manual QA**.
+- `ScanReport.sources` contains provider, path, size, mtime, offset,
+  event count and state (`scanned`, `cached`, `skipped`, `error`).
+- `Summary.qa_report()` creates a copyable report: totals, attribution, sources,
+  unpriced models and warnings. It contains no prompts, responses, env or secrets.
+- Settings → Usage: **Copy QA report** and the **Log evidence · manual QA** list.
 
 ### Relay sync
 
-- `POST /v1/billing/evidence` (member): waliduje `Evidence` v1, limit 2 MiB,
-  zapis per `(user_id, device_id)`. Przyjmuje wyłącznie agregaty.
-- `GET /v1/billing/evidence` (admin): zwraca per-user/device evidence.
-  Member dostaje jawne `403`.
-- Klient: **Sync evidence** wysyła agregat do każdego sparowanego relay;
-  **Relay evidence** (admin) pobiera agregaty. Błędy są pokazywane per host.
-- Brak automatycznego uploadu: sync jest zawsze jawną akcją użytkownika.
+- `POST /v1/billing/evidence` (member): validates `Evidence` v1, 2 MiB limit,
+  save per `(user_id, device_id)`. Accepts aggregates only.
+- `GET /v1/billing/evidence` (admin): returns per-user/device evidence.
+  A member gets an explicit `403`.
+- Client: **Sync evidence** sends the aggregate to every paired relay;
+  **Relay evidence** (admin) fetches aggregates. Errors are shown per host.
+- No automatic upload: sync is always an explicit user action.
 
-### Odbiór
+### Acceptance
 
-- Relay test: member zapisuje, member nie czyta agregatu, admin czyta,
-  niepoprawne evidence jest odrzucane.
-- Ręczna QA: prawdziwy relay, dwa urządzenia, ponowny sync, brak sieci,
-  member vs admin, duży raport > 2 MiB.
+- Relay test: member writes, member cannot read the aggregate, admin reads,
+  invalid evidence is rejected.
+- Manual QA: real relay, two devices, repeated sync, no network,
+  member vs admin, large report > 2 MiB.
 
-## Kolejność implementacji (wykonana)
+## Implementation order (completed)
 
-1. `dunlin-usage`: attribution, źródła QA, `Evidence`, testy fixture.
-2. `dunlin-relay`: tabela i endpointy evidence + testy auth/limitu.
-3. `dunlin-workspace`: `SubtaskAdd`, rejestr subtask, testy Git.
-4. `dunlin-storage`/`dunlin-domain`: `ProjectKind`, migracja v8, testy.
-5. Desktop: chat space, subtask UI, Usage UI/sync, filtry sidebaru.
-6. Dokumentacja, changelog i pełna walidacja.
+1. `dunlin-usage`: attribution, QA sources, `Evidence`, fixture tests.
+2. `dunlin-relay`: evidence table and endpoints + auth/limit tests.
+3. `dunlin-workspace`: `SubtaskAdd`, subtask registry, Git tests.
+4. `dunlin-storage`/`dunlin-domain`: `ProjectKind`, migration v8, tests.
+5. Desktop: chat space, subtask UI, Usage UI/sync, sidebar filters.
+6. Documentation, changelog and full validation.
 
-## Czego ten zakres nie zamyka
+## What this scope does not close
 
-- pełnego koordynatora/DAG/handoffów M6,
-- automatycznego uruchamiania agenta per subtask i auto-merge,
-- gwarantowanego limitu rachunku providera,
-- automatycznego discovery i sync billing evidence w tle,
-- zdalnego usuwania subtask worktree i pełnego sync grup/usage na iOS.
+- the full M6 coordinator/DAG/handoffs,
+- automatic agent start per subtask and auto-merge,
+- a guaranteed provider bill cap,
+- automatic discovery and background billing evidence sync,
+- remote removal of subtask worktrees and full group/usage sync on iOS.

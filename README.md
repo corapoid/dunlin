@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/chat.png" alt="Dunlin conversation with native tool and permission cards" width="100%" />
+  <img src="docs/screenshots/chat.png" alt="Dunlin conversation with native reasoning, tool and file cards" width="100%" />
 </p>
 
 Dunlin is a calm, keyboard-driven workspace for coding with agents. It speaks
@@ -51,6 +51,13 @@ Beta.9 was tagged but its Linux test gate blocked publication; the tag is retain
   fixed CLI recipe without receiving the value. Auto-approved only within the
   key's host/method/grant scope, with optional per-use approval and a separate
   relay-side vault.
+- **Intent, concepts and decisions as files.** A generic knowledge spine
+  indexes Markdown frontmatter, validates relations and builds a bounded intent
+  envelope for agents. The optional sandboxed WASM governance pack adds the
+  schema; agent writes stay pending proposals until a human accepts them.
+- **Evidence you can inspect.** Capture the clipboard or current file as a
+  content-addressed artifact, preview text and images locally or over a relay,
+  link it as evidence and share it through revocable, expiring capability links.
 - **A native Git workbench.** Graph/history, stash, worktrees, merge/rebase/
   cherry-pick, inline blame, read-only GitHub/GitLab repository links and
   AI-assisted Conventional Commits. PR/Actions integration has been removed.
@@ -60,7 +67,9 @@ Beta.9 was tagged but its Linux test gate blocked publication; the tag is retain
   a local agent, install and authorize OpenCode/Codex/Claude Code remotely,
   clone repositories or copy a reviewed project snapshot with optional Git history.
   Pair with a one-use, 15-minute code; harnesses use macOS seatbelt or Linux
-  bubblewrap, with server-side credential storage.
+  bubblewrap, with server-side credential storage. SSH hosts reuse system
+  OpenSSH with ControlMaster, Keychain passphrases, relay bootstrap and
+  loopback tunnels instead of a second crypto stack.
 - **Portable project organization.** Local collections and GitHub/GitLab imports,
   plus settings/project-structure backup to JSON or an existing repository.
   Imported catalog entries download only when explicitly requested.
@@ -183,6 +192,8 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
     </td>
   </tr>
 </table>
+
+<p align="center"><sub><a href="docs/screenshots.md">Open the screenshot gallery — light and dark, plus feature close-ups →</a></sub></p>
 
 ## Learn more
 
