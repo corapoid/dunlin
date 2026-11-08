@@ -493,6 +493,17 @@ impl RenderOnce for TabBar {
             Option<TabClickHandler>,
         )> = Vec::new();
         let selected_index = self.selected_index;
+        let auto_reveal =
+            window.use_keyed_state(format!("{}-auto-reveal", self.id), cx, |_, _| 0usize);
+        let previous_tab_count = *auto_reveal.read(cx);
+        if num_tabs > previous_tab_count
+            && let Some(ix) = selected_index
+            && ix < num_tabs
+        {
+            let reveal = reveal.clone();
+            window.on_next_frame(move |_, cx| reveal.reveal(ix, cx));
+        }
+        auto_reveal.update(cx, |count, _| *count = num_tabs);
         let tabs = self.base;
         let mut rendered_tabs = Vec::with_capacity(self.children.len());
         let max_width = self.max_width;

@@ -589,7 +589,7 @@ fn agent_group(
         speaker,
     } = options;
     let mut body = div()
-        .pl(px(if logo { 33. } else { 0. }))
+        .pl(px(if logo { 27. } else { 0. }))
         .flex()
         .flex_col()
         .gap(px(14.));
@@ -853,16 +853,7 @@ fn user_message(
 }
 
 fn agent_avatar(harness: &str, p: &Palette) -> AnyElement {
-    div()
-        .size(px(24.))
-        .flex_shrink_0()
-        .rounded(px(7.))
-        .bg(p.fg)
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(crate::harness_brand::logo(harness, 16., p.bg))
-        .into_any_element()
+    crate::harness_brand::logo(harness, 20., p.fg)
 }
 
 fn agent_header(

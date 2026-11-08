@@ -433,7 +433,7 @@ fn branch_badge(
         .text_size(px(11.))
         .text_color(p.muted_fg)
         .when(presentation == Presentation::StatusBar, |badge| {
-            badge.text_color(p.fg)
+            badge.text_sm().text_color(p.fg)
         })
         .cursor_pointer()
         .hover(move |style| style.bg(p.hover).text_color(p.fg))

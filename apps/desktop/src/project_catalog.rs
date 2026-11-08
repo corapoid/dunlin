@@ -1,7 +1,9 @@
 //! Cached, read-only repository metadata and project-list filters.
 use crate::{app::DunlinApp, remote::WorkspaceBackend};
 use dunlin_domain::Project;
-use dunlin_ui::{component::tooltip::Tooltip, prelude::FluentBuilder as _, *};
+use dunlin_ui::{
+    component::text::TextView, component::tooltip::Tooltip, prelude::FluentBuilder as _, *,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -26,10 +28,23 @@ impl Default for Preferences {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReadmeFormat {
+    Markdown,
+    Html,
+    Plain,
+}
+
+#[derive(Clone, Debug)]
+struct Readme {
+    source: String,
+    format: ReadmeFormat,
+}
+
 #[derive(Default)]
 struct Details {
     github: Option<dunlin_workspace::github::Metadata>,
-    readme: Option<String>,
+    readme: Option<Readme>,
     github_error: Option<String>,
     size: Option<u64>,
 }
@@ -126,23 +141,115 @@ pub(crate) fn languages(app: &DunlinApp) -> Vec<String> {
         .collect()
 }
 
-fn readme(backend: &WorkspaceBackend) -> Option<String> {
-    for name in [
-        "README.md",
-        "README",
-        "readme.md",
-        "Readme.md",
-        "README.rst",
-        "README.txt",
-        ".github/README.md",
-        "docs/README.md",
+fn readme(backend: &WorkspaceBackend) -> Option<Readme> {
+    for (name, format) in [
+        ("README.md", ReadmeFormat::Markdown),
+        ("README", ReadmeFormat::Markdown),
+        ("readme.md", ReadmeFormat::Markdown),
+        ("Readme.md", ReadmeFormat::Markdown),
+        ("README.rst", ReadmeFormat::Plain),
+        ("README.txt", ReadmeFormat::Plain),
+        ("README.html", ReadmeFormat::Html),
+        ("README.htm", ReadmeFormat::Html),
+        ("readme.html", ReadmeFormat::Html),
+        ("readme.htm", ReadmeFormat::Html),
+        (".github/README.md", ReadmeFormat::Markdown),
+        ("docs/README.md", ReadmeFormat::Markdown),
     ] {
         if let Ok(file) = backend.read_file(name) {
-            // Plain text only: repo markdown must not load remote images or HTML.
-            return Some(file.contents.chars().take(32_768).collect());
+            let source: String = file.contents.chars().take(32_768).collect();
+            let format = if format == ReadmeFormat::Markdown
+                && source
+                    .trim_start()
+                    .get(..5)
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<!doc"))
+            {
+                ReadmeFormat::Html
+            } else {
+                format
+            };
+            return Some(Readme { source, format });
         }
     }
     None
+}
+
+/// Render a cached README into the same safe HTML subset as the in-app text
+/// view. Markdown supports inline Raw HTML, while a README.html is parsed as
+/// HTML directly. Images are stripped so hovering a repository can never fetch
+/// a local or remote asset.
+fn readme_html(readme: &Readme) -> String {
+    let html = match readme.format {
+        ReadmeFormat::Html => readme.source.clone(),
+        ReadmeFormat::Markdown => {
+            let mut options = markdown::Options::gfm();
+            options.compile.allow_dangerous_html = true;
+            markdown::to_html_with_options(&readme.source, &options)
+                .unwrap_or_else(|_| escape_readme_fallback(&readme.source))
+        }
+        ReadmeFormat::Plain => {
+            format!("<pre>{}</pre>", escape_readme_fallback(&readme.source))
+        }
+    };
+    strip_html_images(&html)
+}
+
+fn escape_readme_fallback(source: &str) -> String {
+    let mut escaped = String::with_capacity(source.len());
+    for character in source.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
+}
+
+fn readme_link(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| matches!(url.scheme(), "http" | "https" | "mailto"))
+}
+
+fn strip_html_images(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let mut rendered = String::with_capacity(html.len());
+    let mut cursor = 0;
+    while let Some(relative) = lower[cursor..].find("<img") {
+        let start = cursor + relative;
+        let after = &lower[start + 4..];
+        if !after.starts_with(|character: char| {
+            character.is_ascii_whitespace() || character == '/' || character == '>'
+        }) {
+            rendered.push_str(&html[cursor..start + 4]);
+            cursor = start + 4;
+            continue;
+        }
+        rendered.push_str(&html[cursor..start]);
+        let mut quote = None;
+        let mut end = None;
+        for (offset, character) in html[start..].char_indices() {
+            match quote {
+                Some(open) if character == open => quote = None,
+                Some(_) => {}
+                None if character == '"' || character == '\'' => quote = Some(character),
+                None if character == '>' => {
+                    end = Some(start + offset + character.len_utf8());
+                    break;
+                }
+                None => {}
+            }
+        }
+        match end {
+            Some(end) => cursor = end,
+            None => {
+                cursor = html.len();
+                break;
+            }
+        }
+    }
+    rendered.push_str(&html[cursor..]);
+    rendered
 }
 fn load(backend: WorkspaceBackend, topics: bool, preview: bool) -> Details {
     let mut details = Details::default();
@@ -338,13 +445,29 @@ pub(crate) fn preview(app: &DunlinApp, project: &Project, cx: &App) -> AnyElemen
                 .max_h(px(320.))
                 .overflow_y_scroll()
                 .overflow_x_hidden()
-                .child(info.and_then(|d| d.readme.clone()).unwrap_or_else(|| {
-                    if project.trusted {
-                        "README unavailable or metadata still loading.".into()
-                    } else {
-                        "Trust this project to load its README and metadata.".into()
-                    }
-                })),
+                .child(match info.and_then(|d| d.readme.as_ref()) {
+                    Some(readme) => TextView::html(
+                        format!("project-readme-html:{}", project.id),
+                        readme_html(readme),
+                    )
+                    .scrollable(false)
+                    .selectable(true)
+                    .text_size(px(12.))
+                    .line_height(relative(1.5))
+                    .on_link_click(|url, _, _, cx| {
+                        if readme_link(url) {
+                            cx.open_url(url);
+                        }
+                    })
+                    .into_any_element(),
+                    None => div()
+                        .child(if project.trusted {
+                            "README unavailable or metadata still loading."
+                        } else {
+                            "Trust this project to load its README and metadata."
+                        })
+                        .into_any_element(),
+                }),
         );
     #[cfg(debug_assertions)]
     let panel = panel
@@ -475,7 +598,9 @@ mod tests {
             root: root.path().to_string_lossy().into_owned(),
         };
         std::fs::write(root.path().join("README.md"), "é".repeat(40_000)).unwrap();
-        assert_eq!(super::readme(&backend).unwrap().chars().count(), 32_768);
+        let readme = super::readme(&backend).unwrap();
+        assert_eq!(readme.source.chars().count(), 32_768);
+        assert_eq!(readme.format, super::ReadmeFormat::Markdown);
         #[cfg(unix)]
         {
             std::fs::remove_file(root.path().join("README.md")).unwrap();
@@ -488,5 +613,45 @@ mod tests {
             .unwrap();
             assert!(super::readme(&backend).is_none());
         }
+    }
+    #[test]
+    fn markdown_readme_renders_inline_html_and_strips_images() {
+        let markdown = r#"<h1 align="center">Dunlin</h1>
+<img src="https://example.com/badge.svg" alt="badge">
+
+**bold** and [link](https://example.com)
+"#;
+        let html = super::readme_html(&super::Readme {
+            source: markdown.into(),
+            format: super::ReadmeFormat::Markdown,
+        });
+        assert!(html.contains("<h1"));
+        assert!(html.contains("<strong>bold</strong>"));
+        assert!(html.contains("href=\"https://example.com\""));
+        assert!(!html.contains("<img"), "images must not be rendered");
+    }
+    #[test]
+    fn html_readme_is_parsed_as_html_and_detects_extensionless_documents() {
+        let html = super::readme_html(&super::Readme {
+            source: "<h2>HTML README</h2><p>formatted</p>".into(),
+            format: super::ReadmeFormat::Html,
+        });
+        assert!(html.contains("<h2>HTML README</h2>"));
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("README"),
+            "<!doctype html><p>extensionless</p>",
+        )
+        .unwrap();
+        let backend = crate::remote::WorkspaceBackend::Local {
+            root: root.path().to_string_lossy().into_owned(),
+        };
+        let readme = super::readme(&backend).unwrap();
+        assert_eq!(readme.format, super::ReadmeFormat::Html);
+    }
+    #[test]
+    fn image_stripping_respects_quoted_attributes_and_case() {
+        let html = r#"<p>a</p><IMG alt="x > y" src="a.png"><p>b</p>"#;
+        assert_eq!(super::strip_html_images(html), "<p>a</p><p>b</p>");
     }
 }
