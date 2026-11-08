@@ -3,9 +3,10 @@
 The README shows the dark set. This page keeps both appearances side by side and
 adds close-ups of features that are unusual in a native, agent-first workspace.
 
-All captures come from the same source build of **0.1.0-beta.10** at 1800×1138,
-with a fresh application reset and a local `vsc_fork` project. The agent session
-uses the OpenCode ACP harness with the free **Iceman Free** model.
+All captures come from the current source build over a desktop background so the
+translucent chrome is visible. They use a fresh application reset and a local
+`Dunlin project` fixture. The agent session uses the OpenCode ACP harness with the
+free **Iceman Free** model. Images are 1800×1076.
 
 ## Main views
 
