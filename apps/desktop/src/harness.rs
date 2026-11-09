@@ -331,6 +331,18 @@ impl Default for HarnessState {
 }
 
 impl HarnessState {
+    fn accepts_update(&self, session_id: &str, remote: bool) -> bool {
+        self.session_id.as_deref() == Some(session_id)
+            // Remote session/load clears the view and pins its session ID
+            // before sending the request. ACP replays history *before* the
+            // load response, so that replay must populate the empty view.
+            // Local loads retain their saved transcript: keep suppressing
+            // their replay to avoid duplicating already restored messages.
+            && (remote || !self.local_session_loading)
+    }
+}
+
+impl HarnessState {
     pub(crate) fn pause_for_budget(&mut self, reason: &str) {
         if let Some(session) = &self.coordination_session {
             session.set_allowed(false);
@@ -1067,6 +1079,13 @@ impl DunlinApp {
                 .map(String::as_str),
             Some("mock-remote-created")
         );
+        // session/load replay precedes SessionLoaded, including while this
+        // runtime is parked behind another tab. Only its pinned ID may enter.
+        self.parked_runtimes
+            .get_mut("mock-remote-created")
+            .unwrap()
+            .state
+            .local_session_loading = true;
         for id in ["unrelated-session", "mock-remote-created"] {
             self.route_harness_event(
                 generation,
@@ -1082,6 +1101,17 @@ impl DunlinApp {
             |item| matches!(item, ChatItem::AgentText { text, .. } if text == "mock-remote-created")
         ));
         assert!(!runtime.transcript.iter().any(|item| matches!(item, ChatItem::AgentText { text, .. } if text.contains("unrelated-session"))));
+        self.route_harness_event(
+            generation,
+            HarnessEvent::SessionLoaded {
+                session_id: "mock-remote-created".into(),
+            },
+            cx,
+        );
+        let resumed = &self.parked_runtimes["mock-remote-created"].state;
+        assert!(!resumed.local_session_loading);
+        assert!(resumed.transcript.iter().any(|item|
+            matches!(item, ChatItem::AgentText { text, streaming: false, .. } if text == "mock-remote-created")));
         assert_eq!(self.session().id, foreground);
         assert_eq!(self.harness.generation, foreground_generation);
         assert_eq!(self.harness.transcript.len(), foreground_items);
@@ -1124,9 +1154,14 @@ impl DunlinApp {
                 self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
                 self.harness.token_baseline = None;
+                if self.project().is_remote() {
+                    self.finish_streaming();
+                }
             }
             HarnessEvent::Update { session_id, update }
-                if self.is_current_session(&session_id) && !self.harness.local_session_loading =>
+                if self
+                    .harness
+                    .accepts_update(&session_id, self.project().is_remote()) =>
             {
                 self.apply_update(update)
             }
@@ -1851,6 +1886,9 @@ impl DunlinApp {
                 self.harness.local_session_loading = false;
                 self.harness.bind_vault_session(&session_id);
                 self.harness.session_id = Some(session_id);
+                if self.project().is_remote() {
+                    self.finish_streaming();
+                }
                 self.refresh_mcp(cx);
                 if self.provider_catalog.providers.is_empty()
                     || self.provider_catalog.error.is_some()
@@ -1872,7 +1910,10 @@ impl DunlinApp {
             HarnessEvent::Update {
                 session_id, update, ..
             } => {
-                if self.is_current_session(&session_id) && !self.harness.local_session_loading {
+                if self
+                    .harness
+                    .accepts_update(&session_id, self.project().is_remote())
+                {
                     self.apply_update(update);
                 }
             }
@@ -2906,6 +2947,25 @@ mod tests {
         ChatItem, HarnessState, HarnessStatus, command_available, configured_harness_names,
         custom_harness_configured, harness_command, session_summary, session_title, should_restart,
     };
+
+    #[test]
+    fn remote_load_accepts_early_replay_only_for_its_pinned_session() {
+        let mut state = HarnessState {
+            session_id: Some("resumed-session".into()),
+            local_session_loading: true,
+            ..Default::default()
+        };
+        assert!(state.accepts_update("resumed-session", true));
+        assert!(!state.accepts_update("another-session", true));
+        assert!(!state.accepts_update("resumed-session", false));
+        state.session_id = None;
+        assert!(!state.accepts_update("resumed-session", true));
+        state.session_id = Some("resumed-session".into());
+        state.local_session_loading = false;
+        assert!(state.accepts_update("resumed-session", true));
+        assert!(state.accepts_update("resumed-session", false));
+        assert!(!state.accepts_update("another-session", false));
+    }
 
     #[test]
     fn runtime_generations_are_unique_across_rapid_switches_and_restarts() {
