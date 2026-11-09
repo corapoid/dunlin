@@ -4,6 +4,7 @@
 # Usage:
 #   ./scripts/bundle-macos.sh              # use target/release, then target/debug
 #   ./scripts/bundle-macos.sh --build      # cargo build --release first
+#   ./scripts/bundle-macos.sh --dev        # incremental dev build and bundle
 #   DUNLIN_CODESIGN_IDENTITY="Developer ID Application: ..." \
 #     ./scripts/bundle-macos.sh --build
 set -euo pipefail
@@ -12,9 +13,20 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 BUILD=0
-if [[ "${1:-}" == "--build" ]]; then
-  BUILD=1
-fi
+PROFILE=release
+for arg in "$@"; do
+  case "$arg" in
+    --build) BUILD=1 ;;
+    --dev) BUILD=1; PROFILE=debug ;;
+    --help|-h)
+      echo "Usage: $0 [--build] [--dev]"
+      echo "  --build  Build release binaries before packaging (for distribution)."
+      echo "  --dev    Build and package debug binaries (for local development)."
+      exit 0
+      ;;
+    *) echo "Unknown argument: $arg. Use --help for usage." >&2; exit 1 ;;
+  esac
+done
 
 if [[ "$BUILD" == "1" ]]; then
   # Non-login shells may not include rustup's shims (especially Homebrew's
@@ -36,12 +48,19 @@ if [[ "$BUILD" == "1" ]]; then
     echo "Cargo was not found. Install Rust from https://rustup.rs or add its bin directory to PATH." >&2
     exit 1
   fi
-  cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
+  build_args=(build)
+  if [[ "$PROFILE" == "release" ]]; then
+    build_args+=(--release)
+  fi
+  cargo "${build_args[@]}" -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
 fi
 
 BIN="${DUNLIN_BIN:-}"
 if [[ -z "$BIN" ]]; then
-  if [[ -x "target/release/dunlin" ]]; then
+  if [[ "$PROFILE" == "debug" ]]; then
+    # Never silently package an older release binary after a dev build.
+    BIN="target/debug/dunlin"
+  elif [[ -x "target/release/dunlin" ]]; then
     BIN="target/release/dunlin"
   elif [[ -x "target/debug/dunlin" ]]; then
     BIN="target/debug/dunlin"
@@ -50,6 +69,7 @@ if [[ -z "$BIN" ]]; then
     exit 1
   fi
 fi
+BIN_DIR="$(dirname "$BIN")"
 
 APP_NAME="${DUNLIN_APP_NAME:-Dunlin}"
 BUNDLE_ID="${DUNLIN_BUNDLE_ID:-dev.dunlin.ide}"
@@ -81,8 +101,8 @@ mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "$DIST"
 cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
 for helper in dunlin-knowledge-mcp dunlin-ssh-askpass dunlin-relay; do
-  if [[ -x "target/release/$helper" ]]; then
-    cp "target/release/$helper" "$MACOS/$helper"
+  if [[ -x "$BIN_DIR/$helper" ]]; then
+    cp "$BIN_DIR/$helper" "$MACOS/$helper"
     chmod +x "$MACOS/$helper"
   fi
 done

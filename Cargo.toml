@@ -58,7 +58,9 @@ uuid = { version = "1.29.2", features = ["v7", "serde"] }
 # own crates so the artifact footprint stays reasonable on small disks.
 [profile.dev]
 debug = 0
-incremental = false
+# Reuse unchanged compiler work between local edits. Release builds remain
+# non-incremental; the extra dev cache is a deliberate iteration-speed tradeoff.
+incremental = true
 # `debug = 0` makes Cargo strip debug info with the toolchain's rust-objcopy.
 # Some macOS rustup layouts ship an objcopy that cannot load libLLVM, which
 # prints a warning for every crate. There is nothing to strip beyond the

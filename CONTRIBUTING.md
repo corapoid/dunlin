@@ -26,6 +26,14 @@ Build and run:
 cargo run -p dunlin
 ```
 
+Use the default dev profile for the edit/build/run loop. It enables incremental
+compilation for repeated edits while keeping GPUI and text/layout dependencies
+optimized for usable runtime performance. The first build (also after a profile
+or toolchain change) still needs to populate the cache; later builds reuse it.
+The cache uses extra space in `target/debug/incremental`, so avoid `cargo clean`
+between normal edits. For compiler feedback without linking the app, run
+`cargo check -p dunlin --locked`.
+
 The first launch opens an onboarding screen. Use **Open folder…** to add a
 project. Test data can be redirected with `DUNLIN_DATA_DIR`:
 
@@ -84,6 +92,16 @@ See the [GUI scenario ledger](docs/quality/gui-scenarios.md) for input paths, ba
 storage assertions, named-step failure evidence, and explicit acceptance gaps.
 
 To build a local app bundle:
+
+```sh
+./scripts/bundle-macos.sh --dev
+open dist/Dunlin.app
+```
+
+This builds the app and its helpers with the dev profile and packages binaries
+from `target/debug`, even if an older release build exists. It uses the same
+bundle path as a release build; rebuilding replaces `dist/Dunlin.app`.
+For release-performance testing or distribution, use the slower optimized build:
 
 ```sh
 ./scripts/bundle-macos.sh --build
