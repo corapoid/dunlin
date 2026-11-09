@@ -1169,23 +1169,27 @@ impl DunlinApp {
                             }
                             cx.notify();
                         }))
+                        .into_any_element()
                     } else {
-                        icon_button(
-                            format!("close-tab:{close}"),
-                            IconName::X,
-                            format!("Close {name}"),
+                        crate::gui_probe::target(
+                            "close-file-tab",
+                            icon_button(
+                                format!("close-tab:{close}"),
+                                IconName::X,
+                                format!("Close {name}"),
+                            )
+                            .relative()
+                            .when(active, |button| {
+                                button.children(tab_probe("close-file-tab"))
+                            })
+                            .size(px(24.))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.request_close_tab(&close, window, cx);
+                                },
+                            )),
                         )
-                        .relative()
-                        .when(active, |button| {
-                            button.children(tab_probe("close-file-tab"))
-                        })
-                        .size(px(24.))
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.request_close_tab(&close, window, cx);
-                            },
-                        ))
                     }),
             );
         }

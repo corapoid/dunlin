@@ -1013,12 +1013,16 @@ impl DunlinApp {
                             .items_center()
                             .justify_end()
                             .gap(px(7.))
-                            .child(dunlin_ui::button("editor-cancel").label("Cancel").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.cancel_pending_editor(cx);
-                                }),
+                            .child(crate::gui_probe::target(
+                                "editor-cancel",
+                                dunlin_ui::button("editor-cancel").label("Cancel").on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.cancel_pending_editor(cx);
+                                    }),
+                                ),
                             ))
-                            .child(
+                            .child(crate::gui_probe::target(
+                                "editor-discard",
                                 dunlin_ui::button("editor-discard")
                                     .danger()
                                     .outline()
@@ -1026,15 +1030,16 @@ impl DunlinApp {
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.discard_pending_editor(window, cx);
                                     })),
-                            )
-                            .child(
+                            ))
+                            .child(crate::gui_probe::target(
+                                "editor-save",
                                 dunlin_ui::button("editor-save")
                                     .primary()
                                     .label("Save")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_pending_editor(window, cx);
                                     })),
-                            ),
+                            )),
                     ),
             )
             .into_any_element()

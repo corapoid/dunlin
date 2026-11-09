@@ -7,6 +7,7 @@ explicitly opt-in because hosted runners may not have an interactive desktop.
 """
 import argparse
 import datetime
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -88,7 +89,55 @@ def run_native(command, log, env, timeout):
         with log.open("a") as output:
             output.write("\nFAIL: native scenario exited without its completion marker\n")
         return 1
+    if code == 0:
+        try:
+            steps = native_steps(log)
+            if any(step["status"] != "passed" for step in steps):
+                raise ValueError("Native scenario has unfinished or failed GUI steps")
+            if len(command) > 1 and command[1].startswith("--gui-"):
+                if not steps or any(step["scenario"] != command[1] for step in steps):
+                    raise ValueError("GUI scenario is missing its own named-step evidence")
+        except ValueError as error:
+            with log.open("a") as output:
+                output.write(f"\nFAIL: {error}\n")
+            return 1
     return code
+
+
+def native_steps(log):
+    """Retain named steps even when a process crashes or times out mid-step."""
+    steps, active = [], None
+    for line in log.read_text(errors="replace").splitlines():
+        if not line.startswith("GUI_STEP: "):
+            continue
+        try:
+            event = json.loads(line[len("GUI_STEP: "):])
+            if (not isinstance(event, dict) or not isinstance(event.get("step"), str)
+                    or not isinstance(event.get("scenario"), str)
+                    or event.get("status") not in {"started", "passed", "failed"}):
+                raise ValueError("Invalid GUI step event")
+            if event["status"] == "started":
+                if active is not None:
+                    raise ValueError("GUI step started before the previous step finished")
+                active = dict(event, status="incomplete")
+                steps.append(active)
+            else:
+                if active is None or any(active[key] != event[key] for key in ["step", "scenario"]):
+                    raise ValueError("GUI step completed without a matching start")
+                active.update(event)
+                active = None
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("Malformed GUI step event") from error
+    return steps
+
+
+def select_native(checks, patterns):
+    if not patterns:
+        return checks
+    for pattern in patterns:
+        if not any(fnmatch.fnmatchcase(name, pattern) for name, _, _ in checks):
+            raise ValueError(f"Native filter matched no scenarios: {pattern}")
+    return [check for check in checks if any(fnmatch.fnmatchcase(check[0], pattern) for pattern in patterns)]
 
 
 def verify_native_cli(binary, output, env):
@@ -130,11 +179,15 @@ def main():
     parser.add_argument("--tmp-root", type=Path)
     parser.add_argument("--native", action="store_true")
     parser.add_argument("--native-only", action="store_true", help="Run every native UI scenario using an already built debug binary")
+    parser.add_argument("--native-filter", action="append", default=[], metavar="GLOB",
+                        help="Run matching discovered native check names (repeatable); an unmatched filter fails")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/debug/dunlin")
     parser.add_argument("--audit", action="store_true", help="Also run installed cargo-deny with a fresh advisory database")
     args = parser.parse_args()
     if args.native_only and args.audit:
         parser.error("--audit cannot be combined with --native-only")
+    if args.native_filter and not (args.native or args.native_only):
+        parser.error("--native-filter requires --native or --native-only")
     output = Path(tempfile.mkdtemp(prefix="dunlin-release-qa-", dir=args.tmp_root)).resolve()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("DUNLIN_", "GIT_"))}
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
@@ -162,7 +215,8 @@ def main():
     report = {"scope": "automatic-only", "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                "source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),
-               "native_requested": native, "native_only": args.native_only,
+                "native_requested": native, "native_only": args.native_only,
+                "native_filters": args.native_filter,
                "dependency_audit_requested": args.audit and not args.native_only, "checks": [],
               "not_accepted_by_this_runner": ["fresh macOS account/TCC denial", "manual visual/keyboard/IME/bidi/a11y acceptance",
                                                "real GitHub write/merge lifecycle", "deployed-host relay", "Apple Developer ID/notarization"]}
@@ -176,7 +230,15 @@ def main():
             except OSError as error:
                 (output / f"{name}.log").write_text(str(error))
                 code = 127
-            report["checks"].append({"name": name, "exit_code": code, "log": f"{name}.log"})
+            check = {"name": name, "exit_code": code, "log": f"{name}.log"}
+            if native:
+                try:
+                    check["steps"] = native_steps(output / f"{name}.log")
+                except ValueError as error:
+                    check["step_error"] = str(error)
+                if len(command) > 2:
+                    check["fixture"] = str(Path(command[2]).relative_to(output))
+            report["checks"].append(check)
             print(f"{name}: {'PASS' if code == 0 else 'FAIL'} ({code})", flush=True)
             destination.write_text(json.dumps(report, indent=2))
 
@@ -190,6 +252,8 @@ def main():
                     raise ValueError("Cannot run native tests after a failed build")
                 discovery_env = native_environment(output / "native-discovery", env)
                 scenarios = native_checks(args.binary.resolve(), output, discovery_env)
+                scenarios = select_native(scenarios, args.native_filter)
+                report["selected_native_checks"] = [name for name, _, _ in scenarios]
                 verify_native_cli(args.binary.resolve(), output, discovery_env)
             except (OSError, ValueError, subprocess.SubprocessError) as error:
                 (output / "native-discovery.log").write_text(str(error))

@@ -608,6 +608,7 @@ fn agent_group(
                 let mut text_block = div()
                     .id(("agent-text", index))
                     .relative()
+                    .children(crate::gui_probe::marker("agent-reply"))
                     .children({
                         #[cfg(debug_assertions)]
                         {
@@ -853,12 +854,13 @@ fn user_message(
                                     this.edit_prompt(edit_text.clone(), window, cx);
                                 })),
                         )
-                        .child(
+                        .child(crate::gui_probe::target(
+                            format!("user-retry-{index}"),
                             icon_button(("user-retry", index), IconName::RotateCcw, "Retry prompt")
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.retry_prompt(retry_text.clone(), window, cx);
                                 })),
-                        ),
+                        )),
                 ),
         )
         .into_any_element()
@@ -1451,7 +1453,8 @@ fn permission_card(
                 option.label
             );
             let primary = option.kind == PermissionKind::AllowOnce;
-            buttons = buttons.child(
+            buttons = buttons.child(crate::gui_probe::target(
+                format!("permission-{}", option.id),
                 dunlin_ui::button(format!("permission:{request_id}:{}", option.id))
                     .label(option.label.clone())
                     .when(primary, |button| button.primary())
@@ -1463,7 +1466,7 @@ fn permission_card(
                             cx,
                         );
                     })),
-            );
+            ));
         }
 
         buttons = buttons.child(div().flex_1()).child(
@@ -1647,7 +1650,8 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .children(chat_controls::provider_controls(this, cx))
                 .child(div().flex_1())
                 .when(!queued.is_empty(), |bar| {
-                    bar.child(
+                    bar.child(crate::gui_probe::target(
+                        "composer-queue",
                         dunlin_ui::button("composer-queue")
                             .warning()
                             .outline()
@@ -1669,7 +1673,7 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                                 this.queue_open = !this.queue_open;
                                 cx.notify();
                             })),
-                    )
+                    ))
                 }),
         )
         .child(div().px(px(10.)).pt(px(4.)).child(input))
@@ -1698,7 +1702,8 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                         .items_center()
                         .gap(px(5.))
                         .child(model)
-                        .child(
+                        .child(crate::gui_probe::target(
+                            "composer-send",
                             icon_button(
                                 "composer-send",
                                 if running {
@@ -1724,7 +1729,7 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                                     }
                                 },
                             )),
-                        ),
+                        )),
                 ),
         );
 
@@ -1887,7 +1892,8 @@ fn queue_panel(
                         ),
                 )
                 .child(div().flex_1())
-                .child(
+                .child(crate::gui_probe::target(
+                    "queue-clear",
                     dunlin_ui::button("queue-clear")
                         .danger()
                         .outline()
@@ -1895,7 +1901,7 @@ fn queue_panel(
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.clear_queued_prompts(cx);
                         })),
-                )
+                ))
                 .child(
                     icon_button("queue-close", IconName::X, "Close prompt queue").on_click(
                         cx.listener(|this, _, _, cx| {

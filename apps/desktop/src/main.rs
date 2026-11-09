@@ -27,6 +27,11 @@ mod glass_smoke;
 mod governance_smoke;
 mod group_cleanup;
 mod group_settings;
+mod gui_probe;
+#[cfg(debug_assertions)]
+mod gui_scenarios;
+#[cfg(debug_assertions)]
+mod gui_test;
 mod harness;
 mod harness_brand;
 mod harness_discovery;
@@ -120,7 +125,16 @@ fn main() {
         .first()
         .is_some_and(|arg| arg == "--list-native-smokes")
     {
-        println!("{}", serde_json::to_string(cli::NATIVE_SMOKES).unwrap());
+        println!("{}", serde_json::to_string(&cli::native_smokes()).unwrap());
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if let Some(scenario) = args
+        .first()
+        .and_then(|arg| arg.to_str())
+        .and_then(gui_scenarios::find)
+    {
+        gui_scenarios::run(scenario);
         return;
     }
     #[cfg(debug_assertions)]

@@ -1,7 +1,7 @@
 //! Validate before initializing GPUI, storage, logging or any worker thread.
 use std::{ffi::OsString, path::Path};
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub(crate) struct NativeSmoke {
     pub flag: &'static str,
     pub fixture: Option<&'static str>,
@@ -92,6 +92,23 @@ pub(crate) const NATIVE_SMOKES: &[NativeSmoke] = &[
     },
 ];
 
+pub(crate) fn native_smokes() -> Vec<NativeSmoke> {
+    #[allow(unused_mut)]
+    let mut smokes = NATIVE_SMOKES.to_vec();
+    #[cfg(debug_assertions)]
+    smokes.extend(
+        crate::gui_scenarios::SCENARIOS
+            .iter()
+            .map(|scenario| NativeSmoke {
+                flag: scenario.flag,
+                fixture: Some("gui"),
+                light_narrow: false,
+                timeout_secs: 90,
+            }),
+    );
+    smokes
+}
+
 pub(crate) fn validate(args: &[OsString], debug: bool) -> Result<(), &'static str> {
     let Some(first) = args.first() else {
         return Ok(());
@@ -140,7 +157,7 @@ pub(crate) fn validate(args: &[OsString], debug: bool) -> Result<(), &'static st
             Err("Expected an optional plugin directory")
         };
     }
-    if debug && let Some(smoke) = NATIVE_SMOKES.iter().find(|s| s.flag == flag) {
+    if debug && let Some(smoke) = native_smokes().iter().find(|s| s.flag == flag) {
         let Some(fixture) = smoke.fixture else {
             return if args.len() == 1 {
                 Ok(())
@@ -201,7 +218,7 @@ mod tests {
     #[test]
     fn every_registered_smoke_accepts_only_its_own_fixture_and_options() {
         let mut flags = std::collections::HashSet::new();
-        for smoke in NATIVE_SMOKES {
+        for smoke in native_smokes() {
             assert!(flags.insert(smoke.flag));
             let mut values = vec![OsString::from(smoke.flag)];
             if let Some(fixture) = smoke.fixture {

@@ -15,6 +15,8 @@ class TestQualityWorkflowTests(unittest.TestCase):
         self.assertNotIn("continue-on-error", checks)
         self.assertIn("name: native-ui-qa", checks)
         self.assertIn("dunlin-release-qa-*/report.json", checks)
+        self.assertIn("dunlin-gui-smoke-*/failure.json", checks)
+        self.assertIn("dunlin-gui-smoke-*/project/requests.jsonl", checks)
 
     def test_coverage_reports_the_desktop_not_just_the_backend(self):
         coverage = job("coverage.yml", "workspace")

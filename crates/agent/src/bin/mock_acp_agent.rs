@@ -8,10 +8,10 @@
 //! `mock_acp_agent`.
 
 use agent_client_protocol::v1::schema::{
-    AgentCapabilities, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, InitializeRequest,
-    InitializeResponse, LoadSessionRequest, LoadSessionResponse, McpServer, NewSessionRequest,
-    NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority,
-    PlanEntryStatus, PromptRequest, PromptResponse, RequestPermissionOutcome,
+    AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, CurrentModeUpdate, Diff,
+    InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse, McpServer,
+    NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry,
+    PlanEntryPriority, PlanEntryStatus, PromptRequest, PromptResponse, RequestPermissionOutcome,
     RequestPermissionRequest, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigSelectOption, SessionMode, SessionModeState, SessionNotification, SessionUpdate,
     SetSessionConfigOptionRequest, SetSessionConfigOptionResponse, SetSessionModeRequest,
@@ -22,6 +22,33 @@ use agent_client_protocol::{Agent, Result, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+static CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+// Opt-in GUI instrumentation; never write into an ordinary project directory.
+fn gui_root() -> Option<std::path::PathBuf> {
+    let path = std::path::PathBuf::from(std::env::var_os("DUNLIN_MOCK_GUI_ROOT")?);
+    assert!(
+        path.is_absolute()
+            && path.file_name().is_some_and(|name| name == "project")
+            && path
+                .parent()
+                .and_then(|p| p.file_name())
+                .is_some_and(|name| name.to_string_lossy().starts_with("dunlin-gui-smoke-"))
+    );
+    Some(path)
+}
+fn gui_event(value: serde_json::Value) {
+    use std::io::Write;
+    if let Some(root) = gui_root() {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(root.join("requests.jsonl"))
+            .unwrap();
+        writeln!(file, "{value}").unwrap();
+    }
+}
 
 fn assert_vault_mcp(servers: &[McpServer]) {
     if std::env::var_os("DUNLIN_MOCK_REQUIRE_MCP").is_none() {
@@ -190,6 +217,24 @@ fn main() -> Result<()> {
                        connection: agent_client_protocol::v1::ConnectionTo<
                     agent_client_protocol::Client,
                  >| {
+                    // Long turns must not hold the ordered message dispatcher:
+                    // it must still receive session/cancel while the gate waits.
+                    let task_connection = connection.clone();
+                    connection.spawn(async move {
+                    let connection = task_connection;
+                    CANCELLED.store(false, Ordering::SeqCst);
+                    gui_event(serde_json::json!({"event":"prompt","request":request}));
+                    if let Some(root) = gui_root() {
+                        let started = std::time::Instant::now();
+                        while !root.join("release").exists() && !CANCELLED.load(Ordering::SeqCst) {
+                            assert!(started.elapsed() < std::time::Duration::from_secs(20), "GUI fixture did not release the mock");
+                            async_io::Timer::after(std::time::Duration::from_millis(10)).await;
+                        }
+                        if CANCELLED.load(Ordering::SeqCst) {
+                            gui_event(serde_json::json!({"event":"finished","reason":"cancelled"}));
+                            return responder.respond(PromptResponse::new(StopReason::Cancelled));
+                        }
+                    }
                     if let Ok(expected)=std::env::var("DUNLIN_MOCK_EXPECT_CONTINUATION"){
                         assert_eq!(request.meta.as_ref().and_then(|m|m.get("dunlin/continuation")).and_then(serde_json::Value::as_str),Some(expected.as_str()));
                     }
@@ -213,6 +258,7 @@ fn main() -> Result<()> {
                         if std::env::var_os("DUNLIN_MOCK_TOKEN_USAGE").is_some() {
                             response = response.usage(agent_client_protocol::v1::schema::Usage::new(1200, 1000, 200));
                         }
+                        gui_event(serde_json::json!({"event":"finished","reason":"end_turn"}));
                         return responder.respond(response);
                     }
                     if let Ok(value) = std::env::var("DUNLIN_MOCK_DELAY_MS")
@@ -325,6 +371,12 @@ fn main() -> Result<()> {
                         ))
                         .on_receiving_result(async move |result| {
                             let outcome = result?.outcome;
+                            gui_event(serde_json::json!({"event":"permission","outcome":outcome}));
+                            if let Some(root) = gui_root()
+                                && matches!(&outcome, RequestPermissionOutcome::Selected(selected) if matches!(selected.option_id.0.as_ref(), "allow-once" | "allow-always"))
+                            {
+                                std::fs::write(root.join("hello.txt"), "GUI permission granted\n").unwrap();
+                            }
                             let (text, stop_reason) = match outcome {
                                 RequestPermissionOutcome::Selected(selected) => {
                                     if selected.option_id.0.as_ref() == "reject-once" {
@@ -399,9 +451,15 @@ fn main() -> Result<()> {
                             ))?;
                             responder.respond(PromptResponse::new(stop_reason))
                         })
+                    })
                 },
                 agent_client_protocol::on_receive_request!(),
             )
+            .on_receive_notification(async |_: CancelNotification, _| {
+                CANCELLED.store(true, Ordering::SeqCst);
+                gui_event(serde_json::json!({"event":"cancel"}));
+                Ok(())
+            }, agent_client_protocol::on_receive_notification!())
             .connect_to(Stdio::new()),
     )
 }

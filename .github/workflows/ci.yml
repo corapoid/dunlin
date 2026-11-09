@@ -90,6 +90,9 @@ jobs:
           path: |
             ${{ runner.temp }}/dunlin-release-qa-*/report.json
             ${{ runner.temp }}/dunlin-release-qa-*/*.log
+            ${{ runner.temp }}/dunlin-release-qa-*/dunlin-gui-smoke-*/failure.json
+            ${{ runner.temp }}/dunlin-release-qa-*/dunlin-gui-smoke-*/dunlin.log
+            ${{ runner.temp }}/dunlin-release-qa-*/dunlin-gui-smoke-*/project/requests.jsonl
           if-no-files-found: warn
 
   macos-build:
