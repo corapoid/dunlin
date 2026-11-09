@@ -13,6 +13,34 @@ use dunlin_ui::{
 use crate::app::DunlinApp;
 use crate::remote;
 
+/// Refresh only relay-owned runtime defaults. A delayed read must not replace
+/// local appearance/approval choices, a retargeted project or a newer save.
+pub(crate) fn refresh_remote_defaults(
+    current: &mut dunlin_domain::Project,
+    expected: &dunlin_domain::Project,
+    incoming: ProjectSettings,
+) -> bool {
+    let same_remote = current
+        .remote
+        .as_ref()
+        .zip(expected.remote.as_ref())
+        .is_some_and(|(current, expected)| {
+            current.host_id == expected.host_id
+                && current.project_id == expected.project_id
+                && current.path == expected.path
+        });
+    if current.id != expected.id
+        || !same_remote
+        || current.settings.default_models != expected.settings.default_models
+        || current.settings.environment != expected.settings.environment
+    {
+        return false;
+    }
+    current.settings.default_models = incoming.default_models;
+    current.settings.environment = incoming.environment;
+    true
+}
+
 pub(crate) struct Draft {
     project_id: String,
     harness: String,
@@ -23,6 +51,10 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
+    pub(crate) fn belongs_to(&self, project_id: &str) -> bool {
+        self.project_id == project_id
+    }
+
     pub(crate) fn is_saving(&self) -> bool {
         self.saving
     }
@@ -291,7 +323,10 @@ impl DunlinApp {
                             if let Some(project) =
                                 this.projects.iter_mut().find(|p| p.id == project.id)
                             {
-                                project.settings = settings;
+                                // Appearance/approval may have changed during the
+                                // HTTP save. The form owns only model/env fields.
+                                project.settings.default_models = settings.default_models;
+                                project.settings.environment = settings.environment;
                                 if let Some(store) = &this.store {
                                     let _ = store.upsert_project(project);
                                 }
@@ -412,8 +447,119 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
 
 #[cfg(test)]
 mod tests {
-    use super::{live_model_target, updated_settings};
+    use super::{live_model_target, refresh_remote_defaults, updated_settings};
     use dunlin_domain::ProjectSettings;
+
+    fn remote_project() -> dunlin_domain::Project {
+        dunlin_domain::Project {
+            id: "local-id".into(),
+            name: "Remote project".into(),
+            path: "/remote/project".into(),
+            branch: None,
+            tone: dunlin_domain::ProjectTone::Blue,
+            pinned: false,
+            trusted: true,
+            running_sessions: 0,
+            kind: Default::default(),
+            remote: Some(dunlin_domain::RemoteProject {
+                host_id: "host".into(),
+                project_id: "remote-id".into(),
+                path: "/remote/project".into(),
+            }),
+            group_id: Some("local-group".into()),
+            settings: updated_settings(&ProjectSettings::default(), "OpenCode", "old", "LANG=old")
+                .unwrap(),
+        }
+    }
+
+    #[test]
+    fn remote_refresh_updates_runtime_defaults_without_replacing_local_choices() {
+        let baseline = remote_project();
+        let mut current = baseline.clone();
+        current.settings.custom_icon = Some("local-icon".into());
+        current.settings.custom_color = Some(0x123456ff);
+        current.settings.permission_mode = Some(dunlin_domain::PermissionMode::ReadOnly);
+        current.settings.harness = Some("Local choice".into());
+        let mut incoming = updated_settings(
+            &ProjectSettings::default(),
+            "OpenCode",
+            "new",
+            "LANG=pl_PL.UTF-8",
+        )
+        .unwrap();
+        incoming.custom_icon = Some("server-icon".into());
+        incoming.permission_mode = Some(dunlin_domain::PermissionMode::AutoApprove);
+        assert!(refresh_remote_defaults(&mut current, &baseline, incoming));
+        assert_eq!(current.settings.default_model("OpenCode"), Some("new"));
+        assert_eq!(current.settings.environment["LANG"], "pl_PL.UTF-8");
+        assert_eq!(current.settings.custom_icon.as_deref(), Some("local-icon"));
+        assert_eq!(current.settings.custom_color, Some(0x123456ff));
+        assert_eq!(
+            current.settings.permission_mode,
+            Some(dunlin_domain::PermissionMode::ReadOnly)
+        );
+        assert_eq!(current.settings.harness.as_deref(), Some("Local choice"));
+        assert_eq!(current.group_id, baseline.group_id);
+    }
+
+    #[test]
+    fn delayed_remote_refresh_does_not_overwrite_newer_runtime_edits_or_retargeted_projects() {
+        let baseline = remote_project();
+        let incoming = updated_settings(
+            &ProjectSettings::default(),
+            "OpenCode",
+            "server",
+            "LANG=server",
+        )
+        .unwrap();
+        for mutation in 0..6 {
+            let mut current = baseline.clone();
+            match mutation {
+                0 => current
+                    .settings
+                    .set_default_model("OpenCode", "newer-save")
+                    .unwrap(),
+                1 => {
+                    current
+                        .settings
+                        .environment
+                        .insert("LANG".into(), "newer-save".into());
+                }
+                2 => current.remote.as_mut().unwrap().host_id = "other-host".into(),
+                3 => current.remote.as_mut().unwrap().project_id = "other-project".into(),
+                4 => current.remote = None,
+                _ => current.id = "replacement".into(),
+            }
+            let before = serde_json::to_value(&current).unwrap();
+            assert!(!refresh_remote_defaults(
+                &mut current,
+                &baseline,
+                incoming.clone()
+            ));
+            assert_eq!(serde_json::to_value(&current).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn remote_refresh_can_clear_runtime_overrides_and_is_not_a_local_fallback() {
+        let baseline = remote_project();
+        let mut current = baseline.clone();
+        assert!(refresh_remote_defaults(
+            &mut current,
+            &baseline,
+            ProjectSettings::default()
+        ));
+        assert!(current.settings.default_models.is_empty());
+        assert!(current.settings.environment.is_empty());
+        let mut local = baseline;
+        local.remote = None;
+        let expected = local.clone();
+        assert!(!refresh_remote_defaults(
+            &mut local,
+            &expected,
+            ProjectSettings::default()
+        ));
+    }
 
     #[test]
     fn editing_runtime_preserves_other_settings_and_other_harness_models() {

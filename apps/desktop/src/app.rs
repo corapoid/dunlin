@@ -3072,6 +3072,11 @@ impl DunlinApp {
         self.context_menu = None;
         self.project_menu_open = false;
         self.project_settings_target = Some(index);
+        if let Some(project) = self.projects.get(index).cloned()
+            && let Some(remote) = project.remote
+        {
+            self.sync_remote_project_settings(&remote.host_id, &remote.project_id, &project.id, cx);
+        }
         cx.notify();
     }
 
@@ -3401,11 +3406,9 @@ impl DunlinApp {
         }
         self.projects.push(project);
         let index = self.projects.len() - 1;
-        let local_id = self.projects[index].id.clone();
         self.remote_picker = None;
         self.settings_open = false;
         self.select_project(index, cx);
-        self.sync_remote_project_settings(host_id, &info.id, &local_id, cx);
         self.notice = Some(format!("Added remote project {}", info.name));
         cx.notify();
     }
@@ -3417,6 +3420,9 @@ impl DunlinApp {
         local_id: &str,
         cx: &mut Context<Self>,
     ) {
+        let Some(expected) = self.projects.iter().find(|p| p.id == local_id).cloned() else {
+            return;
+        };
         let Some(host) = self.remote_host(host_id) else {
             return;
         };
@@ -3429,7 +3435,6 @@ impl DunlinApp {
         };
         let url = host.url;
         let remote_id = remote_id.to_string();
-        let local_id = local_id.to_string();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
@@ -3437,20 +3442,36 @@ impl DunlinApp {
                 .await;
             let _ = this.update(cx, |this, cx| match result {
                 Ok(settings) => {
-                    if let Some(project) = this.projects.iter_mut().find(|p| p.id == local_id)
-                        && project.is_remote()
-                    {
-                        project.settings = settings;
-                        if let Some(store) = &this.store {
-                            let _ = store.upsert_project(project);
-                        }
-                        cx.notify();
-                    }
+                    this.apply_remote_project_settings(&expected, settings, cx);
                 }
                 Err(error) => logging::warn(&format!("remote settings: {error}")),
             });
         })
         .detach();
+    }
+
+    fn apply_remote_project_settings(
+        &mut self,
+        expected: &Project,
+        settings: ProjectSettings,
+        cx: &mut Context<Self>,
+    ) {
+        // Never replace the baseline underneath an open or saving form.
+        if self
+            .project_runtime_draft
+            .as_ref()
+            .is_some_and(|draft| draft.belongs_to(&expected.id))
+        {
+            return;
+        }
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == expected.id)
+            && crate::project_runtime_settings::refresh_remote_defaults(project, expected, settings)
+        {
+            if let Some(store) = &self.store {
+                let _ = store.upsert_project(project);
+            }
+            cx.notify();
+        }
     }
 
     /// Create a standalone scratch chat. It has its own project/history id and
@@ -5121,17 +5142,28 @@ impl DunlinApp {
             let url = host.url.clone();
             let remote_id = remote_project.project_id.clone();
             let expected_project = project.id.clone();
+            let settings_baseline = project.clone();
             let navigation_generation = self.navigation_generation;
             cx.spawn(async move |this, cx| {
-                let result = cx
+                let (settings, result) = cx
                     .background_executor()
-                    .spawn(async move { remote::sessions(&url, &token, &remote_id) })
+                    .spawn(async move {
+                        let settings = remote::project_settings(&url, &token, &remote_id);
+                        let sessions = remote::sessions(&url, &token, &remote_id);
+                        (settings, sessions)
+                    })
                     .await;
                 this.update(cx, |this, cx| {
                     if this.project().id != expected_project
                         || this.navigation_generation != navigation_generation
                     {
                         return;
+                    }
+                    match settings {
+                        Ok(settings) => {
+                            this.apply_remote_project_settings(&settings_baseline, settings, cx)
+                        }
+                        Err(error) => logging::warn(&format!("remote settings: {error}")),
                     }
                     match result {
                         Ok(rows) => this.import_remote_sessions(rows, cx),
