@@ -17,6 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use chrono::DateTime;
 
 use dunlin_domain::{ProjectTone, ProviderUsage, UsageSource, UsageWindow};
+use dunlin_http as ureq;
 use serde_json::{Value, json};
 
 /// Probe every provider that can be read locally.

@@ -5,7 +5,7 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::Rng;
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 
 const CODE_ALPHABET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -25,7 +25,7 @@ pub fn random_pairing_code() -> String {
 
 pub fn hash_token(token: &str) -> String {
     let digest = Sha256::digest(token.as_bytes());
-    format!("{digest:x}")
+    hex::encode(digest)
 }
 
 #[cfg(test)]

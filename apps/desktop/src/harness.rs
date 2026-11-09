@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
 
+mod readiness;
+
 /// One rendered entry in the conversation.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct TurnTiming {
@@ -104,6 +106,14 @@ pub(crate) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn session_status_from_stop(reason: &str) -> SessionStatus {
+    match reason {
+        "end_turn" => SessionStatus::Done,
+        "cancelled" => SessionStatus::Interrupted,
+        _ => SessionStatus::Failed,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,6 +214,24 @@ pub(crate) fn status_label(
 #[cfg(test)]
 mod status_tests {
     #[test]
+    fn refusal_and_limits_are_not_successful_turns() {
+        use dunlin_domain::SessionStatus;
+        assert_eq!(
+            super::session_status_from_stop("end_turn"),
+            SessionStatus::Done
+        );
+        assert_eq!(
+            super::session_status_from_stop("cancelled"),
+            SessionStatus::Interrupted
+        );
+        for reason in ["refusal", "max_tokens", "max_turn_requests", "unknown"] {
+            assert_eq!(
+                super::session_status_from_stop(reason),
+                SessionStatus::Failed
+            );
+        }
+    }
+    #[test]
     fn status_follows_actual_runtime_connection_and_permission_waits() {
         let mut state = super::HarnessState::default();
         assert_eq!(super::status_label(&state, false).0, "Offline");
@@ -253,10 +281,14 @@ pub(crate) struct HarnessState {
     active_turn: Option<(usize, Instant)>,
     token_baseline: Option<dunlin_agent::TokenUsage>,
     generation: u64,
+    selection_key: Option<u64>,
     pub(crate) started_tools: HashMap<String, Instant>,
     restarts: u8,
     /// Per-harness use-only credential session. It stays alive while parked.
     pub vault_session: Option<crate::vault::SessionHandle>,
+    pub(crate) coordination_session: Option<dunlin_coordination::service::SessionHandle>,
+    pub(crate) coordination_run: Option<String>,
+    pub(crate) coordination_pending: Option<String>,
 }
 
 impl Default for HarnessState {
@@ -287,15 +319,22 @@ impl Default for HarnessState {
             active_turn: None,
             token_baseline: None,
             generation: 0,
+            selection_key: None,
             started_tools: HashMap::new(),
             restarts: 0,
             vault_session: None,
+            coordination_session: None,
+            coordination_run: None,
+            coordination_pending: None,
         }
     }
 }
 
 impl HarnessState {
     pub(crate) fn pause_for_budget(&mut self, reason: &str) {
+        if let Some(session) = &self.coordination_session {
+            session.set_allowed(false);
+        }
         if let Some(session) = &self.vault_session {
             session.set_allowed(false);
         }
@@ -387,7 +426,7 @@ impl HarnessState {
         true
     }
 
-    fn enqueue_prompt(&mut self, text: String) -> QueuedPrompt {
+    pub(crate) fn enqueue_prompt(&mut self, text: String) -> QueuedPrompt {
         self.next_prompt_id = self.next_prompt_id.wrapping_add(1);
         let prompt = QueuedPrompt {
             id: self.next_prompt_id,
@@ -406,6 +445,42 @@ impl HarnessState {
 }
 
 impl DunlinApp {
+    pub(crate) fn coordination_execution(&self) -> Result<dunlin_coordination::Execution, String> {
+        if self.project().is_remote() {
+            return self.remote_coordination_execution();
+        }
+        use sha2::{Digest, Sha256};
+        let config = self.local_harness_config(&self.session_harness())?;
+        let environment: std::collections::BTreeMap<_, _> = config.process_env.iter().collect();
+        let digest = Sha256::digest(
+            serde_json::to_vec(&(
+                config.description(),
+                &config.cwd,
+                &config.additional_directories,
+                &config.default_model,
+                environment,
+            ))
+            .map_err(|e| e.to_string())?,
+        );
+        Ok(dunlin_coordination::Execution {
+            root: self.project().path.clone(),
+            harness: self.session_harness(),
+            model: self
+                .harness
+                .models
+                .as_ref()
+                .map(|m| m.current.clone())
+                .unwrap_or_else(|| "unknown".into()),
+            mode: self
+                .harness
+                .modes
+                .as_ref()
+                .map(|m| m.current.clone())
+                .unwrap_or_else(|| "unknown".into()),
+            permission: format!("{:?}", self.effective_permission_mode()),
+            configuration: hex::encode(digest),
+        })
+    }
     fn clear_unbudgeted_queue_after_error(&mut self) {
         if self.task_budgets.error.is_none()
             && self
@@ -457,6 +532,7 @@ impl DunlinApp {
                 project.path
             );
             self.harness.status = HarnessStatus::Failed(reason.clone());
+            logging::error(&reason);
             self.notice = Some(reason);
             cx.notify();
             return;
@@ -466,6 +542,7 @@ impl DunlinApp {
             let Some(host) = self.remote_host(&remote_project.host_id) else {
                 let reason = "Remote server is not configured".to_string();
                 self.harness.status = HarnessStatus::Failed(reason.clone());
+                logging::error(&reason);
                 self.notice = Some(reason);
                 cx.notify();
                 return;
@@ -474,6 +551,7 @@ impl DunlinApp {
                 Ok(token) => token,
                 Err(error) => {
                     self.harness.status = HarnessStatus::Failed(error.clone());
+                    logging::error(&error);
                     self.notice = Some(error);
                     cx.notify();
                     return;
@@ -506,75 +584,20 @@ impl DunlinApp {
             return;
         }
 
-        let cwd = PathBuf::from(&project.path);
-        if !cwd.is_dir() {
-            let reason = format!("Folder is not available: {}", project.path);
-            self.harness.status = HarnessStatus::Failed(reason.clone());
-            self.notice = Some(reason);
-            cx.notify();
-            return;
-        }
-
-        let command = std::env::var("DUNLIN_HARNESS_COMMAND")
-            .ok()
-            .filter(|command| !command.trim().is_empty())
-            .unwrap_or_else(|| {
-                harness_command(&self.session_harness(), &self.custom_harness_command)
-            });
-        if !command_available(&command) {
-            let reason = format!(
-                "{} needs an installed ACP adapter: {command}. Install it or choose an available harness.",
-                self.session_harness()
-            );
-            // Configuration problems are not conversation messages and cannot
-            // be fixed by repeatedly spawning the same missing executable.
-            self.disconnect_harness(cx);
-            self.harness.missing_command = Some(command);
-            self.harness.pending_prompts.clear();
-            logging::warn(&reason);
-            self.notice = Some(reason);
-            cx.notify();
-            return;
-        }
-        let command = crate::harness_discovery::resolved_command(&command).unwrap_or(command);
-        let mut config = HarnessConfig::new(command, cwd)
-            .with_additional_directories(self.session_additional_directories());
-        if let Some(path) = crate::harness_discovery::child_path() {
-            config.process_env.insert("PATH".into(), path);
-        }
-        let settings = match self.resolved_project_settings(&project) {
-            Ok(settings) => settings,
+        let name = self.session_harness();
+        let mut config = match self.local_harness_config(&name) {
+            Ok(config) => config,
             Err(error) => {
+                self.disconnect_harness(cx);
+                let command = harness_command(&name, &self.custom_harness_command);
+                self.harness.missing_command = (!command_available(&command)).then_some(command);
+                self.harness.pending_prompts.clear();
                 self.harness.status = HarnessStatus::Failed(error.clone());
+                logging::error(&format!("{name} · {error}"));
                 self.set_notice(error, cx);
                 return;
             }
         };
-        let environment = match settings.process_environment() {
-            Ok(environment) => environment,
-            Err(error) => {
-                self.harness.status = HarnessStatus::Failed(error.clone());
-                self.set_notice(error, cx);
-                return;
-            }
-        };
-        // User overrides win over the discovered child PATH. They never mutate
-        // this process and never enter the relay transport.
-        config.process_env.extend(environment);
-        // App-only secrets and control variables must not be inherited by a
-        // harness that can run arbitrary project code or call a model.
-        for key in [
-            "DUNLIN_REMOTE_TOKEN",
-            "DUNLIN_AUTOPROMPT",
-            "DUNLIN_HARNESS_COMMAND",
-            "DUNLIN_DATA_DIR",
-            "DUNLIN_LOG_FILE",
-        ] {
-            config.process_env.insert(key.into(), String::new());
-        }
-        config.default_model = settings
-            .default_model(&self.session_harness())
-            .map(str::to_owned);
         config.resume_session_id = self.session().acp_session_id.clone();
         let vault_session = self.attach_vault(&mut config, &project, self.vault_read_only());
         self.plugins.attach_governance_mcp(&mut config, &project);
@@ -583,12 +606,14 @@ impl DunlinApp {
 
     fn start_harness(
         &mut self,
-        config: HarnessConfig,
+        mut config: HarnessConfig,
         remote_name: Option<String>,
         vault_session: Option<crate::vault::SessionHandle>,
         cx: &mut Context<Self>,
     ) {
         self.harness.generation = next_generation();
+        self.harness.selection_key =
+            (!config.is_remote()).then(|| readiness::config_key(&self.session_harness(), &config));
         let generation = self.harness.generation;
         self.harness.missing_command = None;
         if let Some(previous) = self.harness.harness.take() {
@@ -598,6 +623,23 @@ impl DunlinApp {
             previous.revoke();
         }
         self.harness.vault_session = vault_session;
+        self.attach_coordination(&mut config);
+
+        logging::register_secrets(config.process_env.clone());
+        logging::register_secrets(
+            config
+                .mcp_servers
+                .iter()
+                .flat_map(|server| server.env.clone()),
+        );
+        config.diagnostics = Some(logging::diagnostic_sink(format!(
+            "{} · project {} · runtime {generation}",
+            self.session_harness(),
+            self.project().id
+        )));
+        if let dunlin_agent::HarnessTransport::Remote { token, .. } = &config.transport {
+            logging::register_secrets([("RELAY_TOKEN".into(), token.clone())]);
+        }
 
         let description = config.description();
         logging::info(&format!(
@@ -616,6 +658,9 @@ impl DunlinApp {
         let events = harness.events().clone();
         self.harness.harness = Some(harness);
         self.harness.status = HarnessStatus::Starting;
+        if let Some(key) = self.harness.selection_key {
+            self.harness_checks.insert(key, HarnessStatus::Starting);
+        }
         self.harness.running = false;
         self.harness.commands.clear();
         self.notice = Some(match remote_name {
@@ -639,6 +684,11 @@ impl DunlinApp {
     }
 
     pub(crate) fn disconnect_harness(&mut self, cx: &mut Context<Self>) {
+        self.finish_coordination_run(
+            dunlin_coordination::RunStatus::Cancelled,
+            "harness_disconnected",
+        );
+        self.harness.coordination_session = None;
         self.cancel_ai_commit_preparation();
         self.interrupt_live_turn(cx);
         logging::info("disconnecting harness");
@@ -760,6 +810,22 @@ impl DunlinApp {
 
     pub(crate) fn stop_parked_runtime(&mut self, id: &str) {
         if let Some(mut runtime) = self.parked_runtimes.remove(id) {
+            if let Some(run) = runtime.state.coordination_run.take() {
+                let result = self.coordination.store().and_then(|s| {
+                    s.lock()
+                        .map_err(|_| "Coordination lock unavailable".to_string())?
+                        .finish_run(
+                            &run,
+                            dunlin_coordination::RunStatus::Cancelled,
+                            "background_runtime_stopped",
+                            Some(runtime.state.queued_prompts().len()),
+                            None,
+                        )
+                });
+                if let Err(e) = result {
+                    self.coordination.error = Some(e);
+                }
+            }
             runtime.state.finish_turn_timing(now_ms());
             if let Some(session) = runtime.state.vault_session.take() {
                 session.revoke();
@@ -872,9 +938,12 @@ impl DunlinApp {
         event: HarnessEvent,
         cx: &mut Context<Self>,
     ) -> bool {
+        // Log before routing: background and stale workers matter for debugging too.
+        logging::harness_event(&format!("runtime {generation}"), &event);
         if self.harness.generation == generation {
             self.handle_harness_event(event, cx);
             self.poll_task_budgets(cx);
+            self.poll_coordination(cx);
             return true;
         }
         let Some(id) = self
@@ -928,6 +997,7 @@ impl DunlinApp {
         self.notice = notice;
         self.parked_runtimes.insert(id, runtime);
         self.poll_task_budgets(cx);
+        self.poll_coordination(cx);
         cx.notify();
         true
     }
@@ -1026,6 +1096,7 @@ impl DunlinApp {
     }
 
     fn handle_background_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
+        self.record_harness_connection(&event);
         match event {
             HarnessEvent::Ready { agent, version } => {
                 self.harness.status = HarnessStatus::Ready { agent, version };
@@ -1091,6 +1162,10 @@ impl DunlinApp {
                 stop_reason,
                 usage,
             } if self.is_current_session(&session_id) => {
+                self.finish_coordination_run(
+                    dunlin_coordination::RunStatus::from_stop(&stop_reason),
+                    &stop_reason,
+                );
                 if let Some((index, _)) = self.harness.active_turn
                     && let Some(ChatItem::User {
                         timing: Some(t), ..
@@ -1102,19 +1177,16 @@ impl DunlinApp {
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
                 self.finish_streaming();
-                self.update_active_session(|s| {
-                    s.status = if stop_reason == "cancelled" {
-                        SessionStatus::Interrupted
-                    } else {
-                        SessionStatus::Done
-                    }
-                });
+                self.update_active_session(|s| s.status = session_status_from_stop(&stop_reason));
                 self.save_current_transcript();
                 self.notify_if_background("Agent finished", &self.session().title, cx);
             }
             HarnessEvent::SessionLoadFailed { message, .. } | HarnessEvent::Error { message } => {
-                self.harness.local_session_loading = false;
-                self.harness.session_metadata_pending = false;
+                self.finish_coordination_run(
+                    dunlin_coordination::RunStatus::Failed,
+                    "harness_error",
+                );
+                self.harness.clear_connection_operations();
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
                 self.clear_unbudgeted_queue_after_error();
@@ -1125,8 +1197,12 @@ impl DunlinApp {
                 self.save_current_transcript();
             }
             HarnessEvent::Exited { reason } => {
-                self.harness.local_session_loading = false;
-                self.harness.session_metadata_pending = false;
+                self.finish_coordination_run(
+                    dunlin_coordination::RunStatus::Unknown,
+                    "harness_exited",
+                );
+                self.harness.coordination_session = None;
+                self.harness.clear_connection_operations();
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
                 self.clear_unbudgeted_queue_after_error();
@@ -1424,6 +1500,7 @@ impl DunlinApp {
             }
         }
         self.harness.running = true;
+        self.coordination_permission_resolved();
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
         });
@@ -1584,7 +1661,7 @@ impl DunlinApp {
         self.editor_stale = self.inspector.is_some() && !self.editor_dirty;
     }
 
-    fn dispatch_pending_prompt(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn dispatch_pending_prompt(&mut self, cx: &mut Context<Self>) {
         if self.harness.prompt_sent
             || self.harness.harness.is_none()
             || self.harness.session_id.is_none()
@@ -1615,6 +1692,12 @@ impl DunlinApp {
         let Some(prompt) = self.harness.pending_prompts.pop_front() else {
             return;
         };
+        if let Err(error) = self.prepare_coordination_run(&prompt.text) {
+            self.harness.pending_prompts.push_front(prompt);
+            self.harness.running = false;
+            self.file_notice(format!("Coordination paused sending: {error}"), cx);
+            return;
+        }
         let text = prompt.text;
         let wire_text = self.client_prompt_text(&text);
         let title = session_title(&text);
@@ -1627,8 +1710,14 @@ impl DunlinApp {
             .harness
             .harness
             .as_ref()
-            .map(|harness| harness.prompt(wire_text))
+            .map(|harness| match &self.harness.coordination_pending {
+                Some(id) if self.project().is_remote() => {
+                    harness.prompt_continuation(wire_text, id.clone())
+                }
+                _ => harness.prompt(wire_text),
+            })
             .unwrap_or(false);
+        self.confirm_coordination_send(sent);
         if sent {
             let speaker = Speaker {
                 harness: self.session_harness(),
@@ -1694,17 +1783,20 @@ impl DunlinApp {
     /// Shared by dispatch and the inspector; harness-owned system/history context
     /// is intentionally not invented by the client.
     pub(crate) fn client_prompt_text(&self, text: &str) -> String {
-        self.group_contexts
+        let mut text = self
+            .group_contexts
             .get(&self.session().id)
             .map(|context| context.prompt(text))
-            .unwrap_or_else(|| text.to_owned())
+            .unwrap_or_else(|| text.to_owned());
+        text.push_str(&self.coordination_prompt_context());
+        text
     }
 
     fn handle_harness_event(&mut self, event: HarnessEvent, cx: &mut Context<Self>) {
         if std::env::var_os("DUNLIN_TRACE_HARNESS").is_some() {
             eprintln!("[harness] {event:?}");
         }
-        logging::harness_event(&event);
+        self.record_harness_connection(&event);
         match event {
             HarnessEvent::Ready { agent, version } => {
                 self.harness.status = HarnessStatus::Ready {
@@ -1871,6 +1963,10 @@ impl DunlinApp {
                 usage,
             } => {
                 if self.is_current_session(&session_id) {
+                    self.finish_coordination_run(
+                        dunlin_coordination::RunStatus::from_stop(&stop_reason),
+                        &stop_reason,
+                    );
                     if let Some((index, _)) = self.harness.active_turn
                         && let Some(ChatItem::User {
                             timing: Some(timing),
@@ -1886,11 +1982,7 @@ impl DunlinApp {
                     let cancelled = stop_reason == "cancelled";
                     let session_title = self.session().title.clone();
                     self.update_active_session(|session| {
-                        session.status = if cancelled {
-                            SessionStatus::Interrupted
-                        } else {
-                            SessionStatus::Done
-                        };
+                        session.status = session_status_from_stop(&stop_reason);
                     });
                     self.notice = Some(if cancelled {
                         "Turn cancelled".into()
@@ -1915,7 +2007,16 @@ impl DunlinApp {
                 }
             }
             HarnessEvent::Error { message } => {
+                self.finish_coordination_run(
+                    dunlin_coordination::RunStatus::Failed,
+                    "harness_error",
+                );
                 self.harness.session_metadata_pending = false;
+                let connecting =
+                    self.harness.status.is_busy() || self.harness.local_session_loading;
+                if connecting {
+                    self.harness.clear_connection_operations();
+                }
                 let was_running = self.harness.running;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
@@ -1935,7 +2036,7 @@ impl DunlinApp {
                 }
                 self.harness.push_error(message.clone());
                 self.notify_if_background("Dunlin needs attention", &message, cx);
-                if matches!(self.harness.status, HarnessStatus::Starting) {
+                if connecting {
                     self.harness.status = HarnessStatus::Failed(message.clone());
                     self.update_active_session(|session| {
                         session.status = SessionStatus::Failed;
@@ -1955,7 +2056,12 @@ impl DunlinApp {
                 self.refresh_git_status(cx);
             }
             HarnessEvent::Exited { reason } => {
-                self.harness.session_metadata_pending = false;
+                self.finish_coordination_run(
+                    dunlin_coordination::RunStatus::Unknown,
+                    "harness_exited",
+                );
+                self.harness.coordination_session = None;
+                self.harness.clear_connection_operations();
                 let retry = should_restart(
                     &self.harness.status,
                     self.restart_harness,
@@ -2229,6 +2335,10 @@ impl DunlinApp {
         {
             return;
         }
+        if let Some(reason) = self.harness_unavailable_reason(name) {
+            self.set_notice(format!("{name} · {reason}"), cx);
+            return;
+        }
         // Agent session ids cannot be moved between different harnesses.
         // Keep the current conversation intact and explicitly start a new one.
         self.disconnect_harness(cx);
@@ -2394,6 +2504,7 @@ impl DunlinApp {
             resolved: None,
             at_ms: now_ms(),
         });
+        self.coordination_permission_wait();
         self.update_active_session(|session| {
             session.status = SessionStatus::Waiting;
         });
@@ -2497,13 +2608,11 @@ impl DunlinApp {
             .acp_session_id
             .clone()
             .unwrap_or_else(|| session.id.clone());
-        std::thread::spawn(move || {
-            if let Err(error) =
-                crate::remote::save_transcript(&host.url, &token, &session_id, &payload)
-            {
-                crate::logging::warn(&format!("remote transcript: {error}"));
-            }
-        });
+        if let Err(error) =
+            crate::remote::transcripts::enqueue(host.url, token, session_id, payload)
+        {
+            crate::logging::warn(&format!("remote transcript: {error}"));
+        }
     }
 
     pub(crate) fn save_stashed_transcripts(&self) {

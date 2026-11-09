@@ -48,66 +48,12 @@ pub(crate) fn measured(name: &str) -> Bounds<Pixels> {
 
 // Inspect paint, not just layout: a square child fill can hide a rounded parent.
 pub(crate) fn assert_painted_corners(window: &Window, name: &str, rounded_left: bool) {
-    let bounds = measured(name);
-    let scale = window.scale_factor();
-    let target = bounds.scale(scale);
-    let quads = window.painted_quads();
-    let surface = quads
-        .iter()
-        .find(|quad| {
-            quad.bounds == target
-                && quad.corner_radii.top_right > Default::default()
-                && !quad.background.is_transparent()
-        })
-        .unwrap_or_else(|| panic!("{name}: missing rounded painted surface"));
-    assert_eq!(
-        surface.corner_radii.top_left > Default::default(),
-        rounded_left,
-        "{name}: preserve the selected first-tab join"
-    );
-    for (left, top) in [(true, true), (false, true), (true, false), (false, false)] {
-        if left && top && !rounded_left {
-            continue;
-        }
-        let x = if left {
-            bounds.left() + px(1.)
-        } else {
-            bounds.right() - px(1.)
-        };
-        let y = if top {
-            bounds.top() + px(1.)
-        } else {
-            bounds.bottom() - px(1.)
-        };
-        let sample = point(x, y).scale(scale);
-        for quad in quads
-            .iter()
-            .filter(|quad| quad.order >= surface.order && !quad.background.is_transparent())
-        {
-            if !quad.bounds.contains(&sample) || !quad.content_mask.bounds.contains(&sample) {
-                continue;
-            }
-            let b = quad.bounds;
-            let radii = quad.corner_radii;
-            let in_curve = [
-                (b.left(), b.top(), radii.top_left, 1., 1.),
-                (b.right(), b.top(), radii.top_right, -1., 1.),
-                (b.left(), b.bottom(), radii.bottom_left, 1., -1.),
-                (b.right(), b.bottom(), radii.bottom_right, -1., -1.),
-            ]
-            .into_iter()
-            .any(|(x, y, radius, dx, dy)| {
-                let r = radius.0;
-                let x = (sample.x - x).0 * dx;
-                let y = (sample.y - y).0 * dy;
-                x < r && y < r && (x - r).powi(2) + (y - r).powi(2) > r * r
-            });
-            assert!(
-                in_curve,
-                "{name}: square paint covers corner ({left}, {top}): {quad:?}"
-            );
-        }
-    }
+    let bounds = if name == "settings-panel" {
+        SurfaceGeometry::SETTINGS.outer_bounds(measured(name))
+    } else {
+        measured(name)
+    };
+    dunlin_ui::surface_test::assert_painted_corners(window, bounds, rounded_left, name);
 }
 
 fn assert_compact_session_row() {
@@ -269,7 +215,8 @@ pub(crate) fn run() {
             let mut settings_before: Option<Bounds<Pixels>> = None;
             let mut usage_before: Option<Bounds<Pixels>> = None;
             let mut dashboard_recent = None;
-            let mut dashboard_summary = None;
+             let mut dashboard_summary = None;
+             let mut activity_transcript = None;
             loop {
                 cx.background_executor().timer(Duration::from_millis(150)).await;
                 let done = cx.update(|cx| {
@@ -285,7 +232,8 @@ pub(crate) fn run() {
                     }
                     let target = match stage {
                          7900 => Some("ctx-project-group"), 7902 => Some("project-group-none"),
-                         7903 => Some("ctx-project-trust"), 7910 => Some("claude-harness-visible"),
+                          7903 => Some("ctx-project-trust"), 7910 => Some("claude-harness-visible"),
+                         10000 => Some("delete-cancel"), 10001 => Some("delete-confirm"),
                         100 => Some("group-settings-button"), 101 => Some("group-icon-kubernetes"),
                         102 => Some("group-color-teal"), 103 | 107 => Some("group-settings-save"),
                         104 => Some("group-settings-button"),
@@ -314,8 +262,9 @@ pub(crate) fn run() {
                         settings_before = Some(measured("settings-panel"));
                         let position = measured("settings-drag-handle").center();
                         let child = owner.read(cx).overlay_window.debug_window().unwrap();
-                        child.update(cx, |_, window, cx| {
-                            assert_painted_corners(window, "settings-content", true);
+                         child.update(cx, |_, window, cx| {
+                             assert_painted_corners(window, "settings-panel", true);
+                             assert_painted_corners(window, "settings-content", true);
                             let content = measured("settings-content");
                             let page = measured("settings-page");
                             assert!((page.left() - content.left() - px(8.)).abs() <= px(1.));
@@ -548,7 +497,16 @@ pub(crate) fn run() {
                         stage = 7000;
                         return false;
                     }
-                    assert!(started.elapsed() < Duration::from_secs(90), "workspace smoke stalled at {stage}: {:?}", owner.read(cx).notice);
+                     assert!(started.elapsed() < Duration::from_secs(90), "workspace smoke stalled at {stage}: {:?}", owner.read(cx).notice);
+                     if let Some(key) = match stage {
+                         20001 | 20008 => Some("home"),
+                         20002 | 20006 => Some("end"),
+                         20004 => Some("down"),
+                         20009 => Some("escape"),
+                         _ => None,
+                     } {
+                         parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, key)).unwrap();
+                     }
                     parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
                         match stage {
                               7200 => {
@@ -855,11 +813,74 @@ pub(crate) fn run() {
                                  stage = 1;
                              }
                              1 => { measured("project-sessions"); app.view = MainView::Graph; stage = 2; }
-                             2 => {
-                                let background = measured("graph-background"); let viewport = app.activity.graph_scroll.bounds();
+                              2 => {
+                                 let background = measured("graph-background"); let viewport = app.activity.graph_scroll.bounds();
+                                 dunlin_ui::surface_test::assert_region_corners(window, background, "graph surfaces");
                                 assert!((background.size.width - viewport.size.width).abs() < px(2.));
-                                assert!((background.size.height - viewport.size.height).abs() < px(2.));
-                                 dashboard_recent = Some(std::mem::take(&mut app.dashboard_settings.recent_projects));
+                                 assert!((background.size.height - viewport.size.height).abs() < px(2.));
+                                 activity_transcript = Some(app.harness.transcript.clone());
+                                 for index in 0..30 {
+                                     app.harness.transcript.push(ChatItem::Child {
+                                         id: format!("keyboard-child-{index}"),
+                                         parent_id: if index == 0 { "root".into() } else { format!("keyboard-child-{}", index - 1) },
+                                         title: Some(format!("Keyboard child {index}")), items: vec![], at_ms: 10 + index,
+                                     });
+                                     app.harness.transcript.push(ChatItem::User { text: format!("Keyboard request {index}"), timing: None, at_ms: 100 + index * 2 });
+                                     app.harness.transcript.push(ChatItem::AgentText { text: "Fixture response".into(), streaming: false, message_id: None, at_ms: 101 + index * 2 });
+                                 }
+                                 stage = 20000;
+                              }
+                              20000 => { app.activity_focus.focus(window, cx); stage = 20001; }
+                              20001 => {
+                                  assert_eq!(app.selected_node.as_deref(), app.activity_visible_ids().first().map(String::as_str), "Graph Home must use the installed key handler");
+                                  stage = 20002;
+                              }
+                              20002 => {
+                                  let ids = app.activity_visible_ids();
+                                  assert!(ids.len() > 20);
+                                  assert_eq!(app.selected_node.as_deref(), ids.last().map(String::as_str));
+                                  stage = 20003;
+                              }
+                              20003 => {
+                                  assert!(app.activity.graph_scroll.offset().y < px(0.), "Graph End must reveal offscreen selection");
+                                  app.activity_search.update(cx, |input, cx| input.replace_all("Keyboard child 0", window, cx));
+                                  app.activity_search.read(cx).focus_handle(cx).focus(window, cx);
+                                  stage = 20004;
+                              }
+                              20004 => {
+                                  assert!(app.activity_search.read(cx).focus_handle(cx).is_focused(window), "Graph arrows must not steal search focus");
+                                  let ids = app.activity_visible_ids();
+                                  assert!(!ids.is_empty() && ids.len() < 10);
+                                  assert!(app.selected_node.as_ref().is_none_or(|id| ids.contains(id)), "search must not retain a hidden graph selection");
+                                  app.activity_search.update(cx, |input, cx| input.replace_all("", window, cx));
+                                  app.view = MainView::Trace;
+                                  app.selected_span = None;
+                                  stage = 20005;
+                              }
+                              20005 => { app.activity_focus.focus(window, cx); stage = 20006; }
+                              20006 => {
+                                  let ids = app.activity_visible_ids();
+                                  assert!(ids.len() > 20);
+                                  assert_eq!(app.selected_span.as_deref(), ids.last().map(String::as_str), "Trace End must use the installed key handler");
+                                  stage = 20007;
+                              }
+                              20007 => {
+                                  assert!(app.activity.trace_scroll.0.borrow().base_handle.offset().y < px(0.), "Trace End must reveal its last virtual row");
+                                  stage = 20008;
+                              }
+                              20008 => {
+                                  assert_eq!(app.selected_span.as_deref(), app.activity_visible_ids().first().map(String::as_str));
+                                  stage = 20009;
+                              }
+                              20009 => {
+                                  assert!(app.selected_span.is_none() && app.activity_focus.is_focused(window), "Trace Escape must clear selection without losing tree focus");
+                                  app.harness.transcript = activity_transcript.take().unwrap();
+                                  app.selected_node = None;
+                                  app.view = MainView::Graph;
+                                  stage = 20010;
+                              }
+                              20010 => {
+                                  dashboard_recent = Some(std::mem::take(&mut app.dashboard_settings.recent_projects));
                                  let project = app.project().id.clone();
                                  dashboard_summary = app.repo_summaries.values.get(&project).cloned();
                                  if let Some(summary) = app.repo_summaries.values.get_mut(&project) {
@@ -954,9 +975,19 @@ pub(crate) fn run() {
                                  assert!(measured("active-project-row").left() >= measured("sidebar").left() + px(40.));
                                 assert!(app.has_modal_overlay()); app.cancel_git_action(window, cx);
                                 assert_eq!(git(&root, &["branch", "--show-current"]).trim(), "main");
-                                app.request_git_action(Action::Switch { branch: "feature".into(), discard: false }, window, cx); stage = 5;
-                            }
-                            5 if app.pending_git_action.is_some() => { app.smoke_confirm_git_action(true, window, cx); stage = 6; }
+                                 stage = 45;
+                             }
+                             45 if !app.git_loading && !app.git_history.running => {
+                                 // Completing preflight also refreshes Git status.
+                                 // A new preparation must wait for that read, just
+                                 // like a user re-opening the action after Cancel.
+                                 app.request_git_action(Action::Switch { branch: "feature".into(), discard: false }, window, cx);
+                                 stage = 5;
+                             }
+                             5 if app.pending_git_action.is_some() && !app.git_loading && !app.git_history.running => { app.smoke_confirm_git_action(true, window, cx); stage = 6; }
+                             5 if !app.git_loading && !app.git_history.running => {
+                                 panic!("branch confirmation preparation failed: {:?}", app.toast.as_ref().map(|toast| &toast.message));
+                             }
                             6 if !app.git_history.running && !app.git_loading => {
                                 assert_eq!(git(&root, &["branch", "--show-current"]).trim(), "feature");
                                 assert_eq!(std::fs::read_to_string(root.join("file.rs")).unwrap(), "original\n");
@@ -973,7 +1004,7 @@ pub(crate) fn run() {
                                   }
                                   panic!("discard preparation failed: {:?}", app.toast.as_ref().map(|toast| &toast.message));
                              }
-                            7 if app.pending_git_action.is_some() => {
+                             7 if app.pending_git_action.is_some() && !app.git_loading && !app.git_history.running => {
                                 std::fs::write(root.join("file.rs"), "after approval\n").unwrap();
                                 app.smoke_confirm_git_action(false, window, cx); stage = 8;
                             }
@@ -1076,9 +1107,13 @@ pub(crate) fn run() {
                                 assert_eq!(app.session().id, "group-conversation");
                                 assert_eq!(app.visible_session_count(), 3);
                                  app.request_delete_session_id("general-conversation", cx);
-                                assert!(app.pending_delete.is_some());
-                                app.cancel_delete(cx);
-                                assert!(app.all_sessions.iter().any(|s| s.id == "general-conversation"));
+                                 assert!(app.pending_delete.is_some());
+                                 stage = 10000;
+                             }
+                             10000 => {
+                                 assert!(app.pending_delete.is_none(), "Cancel control must dismiss deletion");
+                                 assert!(app.all_sessions.iter().any(|s| s.id == "general-conversation"));
+                                 assert!(app.store.as_ref().unwrap().sessions(None).unwrap().iter().any(|s| s.id == "general-conversation"), "Cancel must preserve persisted history");
                                  app.request_delete_session_id("general-conversation", cx);
                                  stage = 10001;
                              }
@@ -1087,7 +1122,7 @@ pub(crate) fn run() {
                                  let message = measured("delete-message");
                                  assert!(message.left() >= dialog.left() && message.right() <= dialog.right(), "destructive-action copy must wrap inside the dialog");
                                  assert!(message.size.height > px(20.), "the full warning should wrap instead of escaping its panel");
-                                 app.confirm_delete(cx);
+                                  assert!(app.pending_delete.is_none(), "Delete control must complete deletion");
                                  assert!(!app.all_sessions.iter().any(|s| s.id == "general-conversation"));
                                  assert_eq!(app.session().id, "group-conversation");
                                 assert_eq!(app.project().id, "other-repo");
@@ -1290,7 +1325,8 @@ pub(crate) fn run() {
                               7732 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("Allowed API hosts")) => {
                                   app.vault.ui.draft = None;
                                   app.settings_open = false;
-                                  app.set_vault_enabled(true, cx);
+                                   app.set_vault_enabled(true, cx);
+                                   assert!(app.vault.enabled, "credential broker must start in the isolated fixture: {:?}", app.vault.error);
                                   app.toggle_bottom_panel(crate::app::BottomPanel::Secrets, window, cx);
                                   stage = 7733;
                               }

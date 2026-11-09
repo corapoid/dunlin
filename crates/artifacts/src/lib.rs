@@ -842,7 +842,7 @@ fn build_artifact(
     modified_ms: i64,
     absolute: Option<String>,
 ) -> Artifact {
-    let revision = format!("{:x}", Sha256::digest(source.as_bytes()));
+    let revision = hex::encode(Sha256::digest(source.as_bytes()));
     let document = parse_document(source);
     let kind = kind_for(relative);
     let title = document

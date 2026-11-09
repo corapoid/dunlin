@@ -2,7 +2,6 @@
 use crate::app::DunlinApp;
 use chrono::{Local, TimeZone};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{Context, *};
 use dunlin_workspace::git::{BranchActivity, RemoteState, RemoteStatus};
@@ -227,7 +226,6 @@ pub(crate) fn info(
     size: Option<u64>,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
-    let p = palette(cx);
     let detail = details(this, project);
     let mut lines = Vec::new();
     if let Some(size) = size {
@@ -245,18 +243,7 @@ pub(crate) fn info(
         .items_center()
         .gap(px(2.))
         .child(
-            div()
-                .id(format!("project-info:{id}"))
-                .aria_label("Show project details")
-                .size(px(18.))
-                .rounded_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.muted))
-                .on_click(|_, _, cx| cx.stop_propagation())
-                .tooltip(move |window, cx| {
+            tooltip_icon_button(format!("project-info:{id}"), IconName::Info, "Show project details", move |window, cx| {
                     let lines = lines.clone();
                     dunlin_ui::component::tooltip::Tooltip::element(move |_window, cx| {
                         let p = palette(cx);
@@ -276,25 +263,15 @@ pub(crate) fn info(
                         body
                     })
                     .build(window, cx)
-                })
-                .child(Icon::new(IconName::Info).size(px(13.)).text_color(p.muted_fg)),
+                }).on_click(|_, _, cx| cx.stop_propagation()),
         )
         .when(detail.can_check, |row| {
             row.child(
-                div()
-                    .id(format!("check-remote:{id}"))
-                    .aria_label("Refresh read-only remote status (no fetch or pull)")
-                    .px(px(5.))
-                    .py(px(3.))
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(p.muted))
-                    .tooltip(|window, cx| dunlin_ui::component::tooltip::Tooltip::new("Check the advertised upstream commit without fetching or pulling. Cached tracking counts may be stale; unknown remote commits require an explicit fetch to compare.").build(window, cx))
+                icon_button(format!("check-remote:{id}"), IconName::RefreshCw, "Check the advertised upstream commit without fetching or pulling. Cached tracking counts may be stale; unknown remote commits require an explicit fetch to compare.")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.check_project_remote(&id, true, cx);
-                    }))
-                    .child(Icon::new(IconName::RefreshCw).size(px(12.))),
+                    })),
             )
         })
         .into_any_element()

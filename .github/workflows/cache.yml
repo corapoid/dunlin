@@ -1,0 +1,62 @@
+name: Warm Rust caches
+
+# PR caches are scoped to a single PR; tag caches cannot seed future releases.
+# Build on main to provide reusable dependencies without repeating test runs.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".cargo/**"
+      - "rust-toolchain*"
+      - "vendor/**"
+      - ".github/workflows/cache.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
+      - "scripts/bundle-macos.sh"
+      - "scripts/bundle-relay.sh"
+      - "scripts/relay-smoke.sh"
+  # Refresh after stable toolchain updates and before dependency caches age out.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-cache-main
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    # Never run a writable cache warmer on an arbitrary dispatched branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [checks, release]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: macos-${{ matrix.profile }}-v1
+      - name: Compile check, test and smoke dependencies (do not run tests)
+        if: matrix.profile == 'checks'
+        run: |
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --no-run --locked
+          cargo build -p dunlin-relay --locked
+          cargo build -p dunlin-agent --bins --locked
+      - name: Compile release dependencies
+        if: matrix.profile == 'release'
+        run: cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked

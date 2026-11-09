@@ -1,5 +1,6 @@
 //! Explicit operation and blame transport; no automatic retry or local fallback.
 use super::{RemoteWorkspace, WorkspaceBackend, encode, entry_relative};
+use dunlin_http as ureq;
 use dunlin_workspace::git::{
     blame::{self, Blame},
     history::{self, HistoryResponse},

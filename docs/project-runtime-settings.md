@@ -5,6 +5,14 @@ Local projects expose **Project settings → Model & environment…**. Groups ex
 defaults never sends a prompt, changes a running session's model, or restarts an
 agent. Projects and existing conversations are not reassigned to another harness.
 
+The project dialog explicitly separates appearance/agent/approval choices, which
+save immediately, from the model/environment form, which requires **Save model &
+environment**. **Cancel edit** discards only that form. Closing the dialog with
+the form open asks before discarding; a pending relay save cannot be dismissed.
+Group settings keeps all choices in one draft until **Save group settings**;
+**Cancel** discards them. Project reset requires confirmation and clears all
+project overrides, not repository files or inherited group values.
+
 ## Inheritance and sources
 
 Effective defaults resolve in order: global harness/client permissions → root group

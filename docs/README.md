@@ -39,13 +39,17 @@ implementation notes.
 | [Spec workspace](spec-workspace.md) | Intent, spec, tasks, evidence and remaining governance phases. |
 | [Governance WASM plugin](governance-wasm-plugin.md) | Knowledge model, manifest v2, WASM ABI, MCP tools, artifacts and SSH fabric. |
 | [Session list](session-list.md) | Session scopes, filters, recent activity and workspace binding. |
+| [Agent coordination](agent-coordination.md) | Project peers, durable deferred turns, task reports, inboxes, scope grants and relay/device boundaries. |
 | [Session tabs and UI preferences](session-tabs-and-ui-preferences.md) | Tabs, panes, zoom, density and persisted UI settings. |
 | [Workspace polish and usage](workspace-polish-and-usage.md) | Dashboard, usage presentation and workspace polish decisions. |
+| [Native text motion](text-motion.md) | In-place metadata transitions, accessibility, reduced motion and isolated native regression checks. |
+| [Shared UI surfaces](ui-surfaces.md) | Central corner geometry, painted child edges, native backdrop alignment and regression checks. |
 
 ## Quality and acceptance
 
 | Document | What it covers |
 | --- | --- |
+| [Test quality and coverage](test-quality.md) | Native UI gate, measured coverage baseline, mutation checks and remaining UI acceptance gaps. |
 | [Agent workbench and GitHub](agent-workbench-and-github.md) | Review, checkpoints, checks, budgets, A/B comparison, impact map and GitHub scope. |
 | [Graph and trace virtualization](graph-trace-virtualization.md) | Large-graph/trace limits, keyboard behaviour and acceptance notes. |
 | [R11 manual QA](r11-qa.md) | The manual release matrix that automated checks do not replace. |

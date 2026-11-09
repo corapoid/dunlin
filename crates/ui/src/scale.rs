@@ -66,11 +66,11 @@ pub const SPACE_3: f32 = 8.0;
 pub const SPACE_4: f32 = 12.0;
 pub const SPACE_5: f32 = 16.0;
 
-pub const RADIUS_SM: f32 = 5.0;
-pub const RADIUS_MD: f32 = 7.0;
-pub const RADIUS_LG: f32 = 12.0;
+pub const RADIUS_SM: f32 = crate::radii::ICON;
+pub const RADIUS_MD: f32 = crate::radii::CONTROL;
+pub const RADIUS_LG: f32 = crate::radii::CARD;
 
-pub const WORKSPACE_RADIUS: f32 = 16.;
+pub const WORKSPACE_RADIUS: f32 = crate::radii::WORKSPACE;
 pub const WORKSPACE_INSET: f32 = 10.;
 pub const TITLEBAR_HEIGHT: f32 = 38.;
 pub const HEADER_HEIGHT: f32 = 36.;

@@ -248,7 +248,7 @@ impl WasmPlugin {
         if bytes.len() as u64 > MAX_WASM_BYTES {
             return Err(PluginError::WasmTooLarge);
         }
-        let hash = format!("{:x}", Sha256::digest(bytes));
+        let hash = hex::encode(Sha256::digest(bytes));
         if !hash.eq_ignore_ascii_case(&wasm.sha256) {
             return Err(PluginError::HashMismatch);
         }
@@ -457,7 +457,7 @@ mod tests {
     use serde_json::json;
 
     fn wat_manifest(wasm: &str) -> Manifest {
-        let hash = format!("{:x}", Sha256::digest(wasm.as_bytes()));
+        let hash = hex::encode(Sha256::digest(wasm.as_bytes()));
         dunlin_plugin::parse(&format!(
             r#"{{
                 "id":"test","name":"Test","version":"1.0.0","api":2,
@@ -513,7 +513,7 @@ mod tests {
         let directory = root.path().join("governance");
         std::fs::create_dir_all(&directory).unwrap();
         let wasm = echo_wat();
-        let hash = format!("{:x}", Sha256::digest(wasm.as_bytes()));
+        let hash = hex::encode(Sha256::digest(wasm.as_bytes()));
         std::fs::write(
             directory.join("plugin.json"),
             format!(

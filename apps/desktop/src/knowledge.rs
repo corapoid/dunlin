@@ -9,7 +9,6 @@ use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
 use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::{Icon, Selectable, Sizable};
-use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::preview::PreviewKind;
 use serde_json::Value;
@@ -274,7 +273,7 @@ fn error_view(error: &str, cx: &mut Context<DunlinApp>) -> AnyElement {
         .child(
             div()
                 .p(px(12.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .bg(p.red_soft)
                 .text_color(p.red)
                 .text_size(px(11.))
@@ -315,47 +314,48 @@ fn list_view(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         let active = selected.as_deref() == Some(object.id.as_str());
         let id = object.id.clone();
         list = list.child(
-            div()
-                .id(("knowledge-row", index))
+            action_row(("knowledge-row", index), format!("Select {}", object.title))
                 .px(px(9.))
                 .py(px(7.))
-                .rounded(px(6.))
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .cursor_pointer()
-                .when(active, |row| row.bg(p.hover))
-                .hover(move |style| style.bg(p.hover))
+                .selected(active)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.knowledge.selected = Some(id.clone());
                     cx.notify();
                 }))
                 .child(
                     div()
+                        .w_full()
+                        .min_w(px(0.))
                         .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .child(kind_badge(&object.kind, &p))
-                        .child(status_badge(&object.status, &p)),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .truncate()
-                        .child(object.title.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(9.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .truncate()
-                        .child(object.path.clone().unwrap_or_default()),
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(5.))
+                                .child(kind_badge(&object.kind, &p))
+                                .child(status_badge(&object.status, &p)),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .font_weight(if active {
+                                    FontWeight::MEDIUM
+                                } else {
+                                    FontWeight::NORMAL
+                                })
+                                .truncate()
+                                .child(object.title.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(9.5))
+                                .font_family(dunlin_ui::theme::code_font())
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(object.path.clone().unwrap_or_default()),
+                        ),
                 ),
         );
     }
@@ -452,7 +452,7 @@ fn object_detail(object: &KnowledgeObject, graph: &KnowledgeGraph, p: &Palette) 
             .flex_col()
             .gap(px(5.))
             .p(px(10.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .bg(p.panel)
             .border_1()
             .border_color(p.border);
@@ -484,7 +484,7 @@ fn object_detail(object: &KnowledgeObject, graph: &KnowledgeGraph, p: &Palette) 
         detail = detail.child(
             div()
                 .p(px(10.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .bg(p.panel)
                 .text_size(px(11.5))
                 .line_height(relative(1.5))
@@ -503,7 +503,7 @@ fn object_detail(object: &KnowledgeObject, graph: &KnowledgeGraph, p: &Palette) 
             .flex_col()
             .gap(px(4.))
             .p(px(10.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .bg(p.panel)
             .border_1()
             .border_color(p.border)
@@ -629,7 +629,7 @@ fn graph_view(
                 .top(px(node.y))
                 .w(px(node.w))
                 .h(px(node.h))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .border_1()
                 .border_color(if active { p.blue } else { p.border })
                 .bg(if active { p.hover } else { p.panel })
@@ -853,60 +853,64 @@ fn artifacts_view(
         let active = selected.as_deref() == Some(artifact.id.as_str());
         let id = artifact.id.clone();
         left = left.child(
-            div()
-                .id(("artifact-row", index))
-                .px(px(9.))
-                .py(px(7.))
-                .rounded(px(6.))
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .cursor_pointer()
-                .when(active, |row| row.bg(p.hover))
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.knowledge.artifact_selected = Some(id.clone());
-                    this.knowledge.artifact_error = None;
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .child(
-                            div()
-                                .text_size(px(8.5))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.violet)
-                                .child(artifact.kind.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(8.5))
-                                .text_color(p.muted_fg)
-                                .child(format!("{} B", artifact.bytes)),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .truncate()
-                        .child(artifact.title.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(9.))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .truncate()
-                        .child(artifact.mime.clone()),
-                ),
+            action_row(
+                ("artifact-row", index),
+                format!("Select artifact {}", artifact.title),
+            )
+            .px(px(9.))
+            .py(px(7.))
+            .selected(active)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.knowledge.artifact_selected = Some(id.clone());
+                this.knowledge.artifact_error = None;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .w_full()
+                    .min_w(px(0.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .child(
+                                div()
+                                    .text_size(px(8.5))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.violet)
+                                    .child(artifact.kind.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(8.5))
+                                    .text_color(p.muted_fg)
+                                    .child(format!("{} B", artifact.bytes)),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .font_weight(if active {
+                                FontWeight::MEDIUM
+                            } else {
+                                FontWeight::NORMAL
+                            })
+                            .truncate()
+                            .child(artifact.title.clone()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(9.))
+                            .font_family(dunlin_ui::theme::code_font())
+                            .text_color(p.muted_fg)
+                            .truncate()
+                            .child(artifact.mime.clone()),
+                    ),
+            ),
         );
     }
     let detail = selected
@@ -965,7 +969,7 @@ fn artifact_detail(
                     div()
                         .h(px(16.))
                         .px(px(5.))
-                        .rounded(px(3.))
+                        .rounded(px(dunlin_ui::radii::BADGE))
                         .bg(p.violet.opacity(0.12))
                         .text_size(px(9.))
                         .text_color(p.violet)
@@ -1000,7 +1004,7 @@ fn artifact_detail(
         detail = detail.child(
             div()
                 .p(px(9.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.red_soft)
                 .text_color(p.red)
                 .text_size(px(10.5))
@@ -1019,7 +1023,7 @@ fn artifact_detail(
         detail = detail.child(
             div()
                 .p(px(9.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.green_soft)
                 .text_color(p.green)
                 .text_size(px(10.))
@@ -1120,7 +1124,7 @@ fn artifact_preview(
             Err(error) => {
                 return div()
                     .p(px(10.))
-                    .rounded(px(8.))
+                    .rounded(px(dunlin_ui::radii::PANEL))
                     .bg(p.red_soft)
                     .text_color(p.red)
                     .text_size(px(10.5))
@@ -1131,7 +1135,7 @@ fn artifact_preview(
     } else {
         return div()
             .p(px(10.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .bg(p.panel)
             .text_size(px(10.5))
             .text_color(p.muted_fg)
@@ -1152,7 +1156,7 @@ fn artifact_preview(
         return div()
             .flex_1()
             .min_h(px(260.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .bg(p.panel)
             .overflow_hidden()
             .child(canvas(
@@ -1212,7 +1216,7 @@ fn artifact_preview(
         .flex_1()
         .min_h(px(200.))
         .p(px(10.))
-        .rounded(px(8.))
+        .rounded(px(dunlin_ui::radii::PANEL))
         .bg(p.panel)
         .border_1()
         .border_color(p.border)
@@ -1286,7 +1290,7 @@ impl DunlinApp {
             cx.notify();
             return;
         };
-        let sha256 = format!("{:x}", Sha256::digest(bytes));
+        let sha256 = hex::encode(Sha256::digest(bytes));
         let Some(data_dir) = crate::app::data_dir() else {
             self.knowledge.artifact_error =
                 Some("Application data directory is unavailable".into());
@@ -1565,7 +1569,7 @@ fn proposals_view(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
         panel = panel.child(
             div()
                 .p(px(11.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.panel)
@@ -1922,7 +1926,7 @@ fn kind_badge(kind: &str, p: &Palette) -> AnyElement {
     div()
         .h(px(15.))
         .px(px(5.))
-        .rounded(px(3.))
+        .rounded(px(dunlin_ui::radii::BADGE))
         .bg(color.opacity(0.12))
         .text_size(px(8.5))
         .font_weight(FontWeight::MEDIUM)
@@ -1941,7 +1945,7 @@ fn status_badge(status: &str, p: &Palette) -> AnyElement {
     div()
         .h(px(15.))
         .px(px(5.))
-        .rounded(px(3.))
+        .rounded(px(dunlin_ui::radii::BADGE))
         .bg(color.opacity(0.10))
         .text_size(px(8.5))
         .text_color(color)

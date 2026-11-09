@@ -610,7 +610,7 @@ pub(crate) fn render(
     if remote {
         body = body.child(
             div()
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .border_1()
                 .border_color(p.amber.opacity(0.4))
                 .bg(p.amber_soft)
@@ -643,7 +643,7 @@ pub(crate) fn render(
         } else if this.run.candidates.is_empty() {
             body = body.child(
                 div()
-                    .rounded(px(8.))
+                    .rounded(px(dunlin_ui::radii::PANEL))
                     .border_1()
                     .border_color(p.border)
                     .bg(p.card)
@@ -678,11 +678,11 @@ pub(crate) fn render(
                 )
                 .child(
                     div()
-                        .rounded(px(8.))
+                        .rounded(px(dunlin_ui::radii::PANEL))
                         .border_1()
                         .border_color(p.border)
                         .bg(p.card)
-                        .children(candidates.into_iter().map(|candidate| {
+                        .children(candidates.into_iter().enumerate().map(|(index, candidate)| {
                             let run_candidate = candidate.clone();
                             let copy_candidate = candidate.clone();
                             let command = candidate.command_line();
@@ -692,8 +692,7 @@ pub(crate) fn render(
                                 .flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .border_b_1()
-                                .border_color(p.border.opacity(0.55))
+                                .when(index > 0, |row| row.border_t_1().border_color(p.border.opacity(0.55)))
                                 .child(
                                     div()
                                         .flex_1()
@@ -781,7 +780,7 @@ pub(crate) fn render(
         };
         body = body.child(
             div()
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.card)

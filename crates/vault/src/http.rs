@@ -2,14 +2,15 @@
 
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::Utc;
 use dunlin_domain::vault::{HttpMethod, Injection, Operation, SecretPolicy};
-use hmac::{Hmac, Mac};
+use dunlin_http as ureq;
+use hmac::{Hmac, KeyInit, Mac};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -82,22 +83,23 @@ pub trait HttpExecutor: Send + Sync {
 
 /// Reject loopback, private, link-local and metadata addresses before connect.
 /// The resolver is used by ureq, so the checked addresses are the ones dialed.
+#[derive(Debug)]
 pub struct PublicResolver;
 
 impl ureq::Resolver for PublicResolver {
-    fn resolve(&self, netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
-        let addresses = netloc.to_socket_addrs()?.collect::<Vec<_>>();
-        if addresses.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "host did not resolve",
-            ));
-        }
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        config: &ureq::config::Config,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::ResolverError> {
+        let addresses = ureq::unversioned::resolver::DefaultResolver::default()
+            .resolve(uri, config, timeout)?;
         if let Some(address) = addresses.iter().find(|address| !public_ip(address.ip())) {
-            return Err(std::io::Error::new(
+            return Err(ureq::ResolverError::Io(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!("refusing to connect to non-public address {}", address.ip()),
-            ));
+            )));
         }
         Ok(addresses)
     }
@@ -666,7 +668,7 @@ impl HttpExecutor for UreqExecutor {
                             .into(),
                     );
                 }
-                response
+                *response
             }
             Err(ureq::Error::Transport(error)) => {
                 let reason = match error.kind() {
@@ -1049,5 +1051,51 @@ mod tests {
         for ip in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
             assert!(public_ip(ip.parse().unwrap()), "{ip}");
         }
+    }
+
+    #[test]
+    fn ureq3_resolver_checks_the_actual_dial_addresses() {
+        use ureq::Resolver;
+        for host in ["127.0.0.1", "169.254.169.254", "[::1]"] {
+            let uri = format!("http://{host}/").parse().unwrap();
+            assert!(
+                PublicResolver
+                    .resolve(
+                        &uri,
+                        &ureq::config::Config::default(),
+                        ureq::unversioned::transport::NextTimeout::default(),
+                    )
+                    .is_err()
+            );
+        }
+        let addresses = PublicResolver
+            .resolve(
+                &"https://1.1.1.1/".parse().unwrap(),
+                &ureq::config::Config::default(),
+                ureq::unversioned::transport::NextTimeout::default(),
+            )
+            .unwrap();
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].ip().to_string(), "1.1.1.1");
+        assert_eq!(addresses[0].port(), 443);
+    }
+
+    #[test]
+    fn ureq3_executor_blocks_local_connections_without_echoing_credentials() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let plan = HttpPlan {
+            method: "GET",
+            url: format!(
+                "http://{}/?token=fixture-secret",
+                listener.local_addr().unwrap()
+            ),
+            headers: vec![("Authorization".into(), "Bearer fixture-secret".into())],
+            body: None,
+        };
+        let error = UreqExecutor::new().execute(&plan).unwrap_err();
+        assert!(!error.contains("fixture-secret"));
+        assert!(!error.contains("127.0.0.1"));
+        assert!(matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
     }
 }

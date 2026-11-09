@@ -146,8 +146,10 @@ pub(super) fn smoke_finish(app: &DunlinApp, _cx: &App) -> bool {
 }
 fn key(p: &Project) -> String {
     format!(
-        "task-checkpoints:{:x}",
-        Sha256::digest(format!("{}\0{}\0{:?}", p.id, p.path, p.remote).as_bytes())
+        "task-checkpoints:{}",
+        hex::encode(Sha256::digest(
+            format!("{}\0{}\0{:?}", p.id, p.path, p.remote).as_bytes()
+        ))
     )
 }
 fn diff(c: &Change) -> String {
@@ -673,7 +675,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let busy = s.loading || this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Capture BEFORE a task. Review is an observed diff, not agent authorship. Unsaved buffers, ignored files and Git index/refs are NOT backed up. Baseline HEAD objects must remain available. Local snapshots may contain secrets; never published automatically.")
-        .child(Input::new(&s.label).small()).child(dunlin_ui::button("capture-task-checkpoint").label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
+        .child(compact_input(&s.label).aria_label("Checkpoint label")).child(dunlin_ui::button("capture-task-checkpoint").label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
     for point in &s.checkpoints {
         let id = point.id.clone();
         let delete = id.clone();
@@ -754,8 +756,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .text_size(px(11.))
                     .child(patch.clone()),
             )
-            .child(Input::new(&s.line).small())
-            .child(Input::new(&s.comment).small())
+            .child(compact_input(&s.line).aria_label("Review line number"))
+            .child(compact_input(&s.comment).aria_label("Review comment"))
             .child(
                 dunlin_ui::button("task-review-comment")
                     .ghost()

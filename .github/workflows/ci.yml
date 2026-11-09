@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  macos-checks:
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -30,9 +30,20 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: macos-checks-v1
+          # Only the main-branch cache warmer writes this cache. PR caches cannot
+          # be reused by other PRs or releases and consume storage needlessly.
+          save-if: "false"
 
       - name: Format
         run: cargo fmt --all --check
+
+      - name: Install dependency linter
+        run: cargo install cargo-machete --version 0.9.2 --locked
+
+      - name: Unused Rust dependencies
+        run: cargo machete --skip-target-dir apps crates
 
       - name: Reject panic placeholders
         run: |
@@ -40,12 +51,6 @@ jobs:
             echo "::error::Use an explicit error path instead of todo!()/unimplemented!()."
             exit 1
           fi
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Tests
-        run: cargo test --workspace --locked
 
       - name: Release tooling regression tests
         run: python3 -m unittest discover -s scripts/tests -v
@@ -56,36 +61,83 @@ jobs:
       - name: Release metadata
         run: python3 scripts/release_gate.py metadata --version "$(python3 scripts/release_gate.py version)"
 
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace --locked
+
       - name: Relay smoke
         run: ./scripts/relay-smoke.sh
 
       - name: Paired Git HTTP smoke
         run: python3 scripts/git-operations-smoke.py --tmp-root "$RUNNER_TEMP"
 
-      - name: Build app and relay
-        env:
-          DUNLIN_VERSION: 0.0.0-ci
-          DUNLIN_BUILD: ${{ github.run_number }}
-        run: |
-          ./scripts/bundle-macos.sh --build
-          ./scripts/bundle-relay.sh
-          ./scripts/bundle-pkg.sh
+      - name: Build native UI fixtures
+        run: cargo build -p dunlin -p dunlin-agent --bin dunlin --bin mock_acp_agent --locked
 
-      - name: Upload app
+      # No silent headless skip: a missing WindowServer or a failed scenario
+      # fails macos-checks, and therefore the existing required test gate.
+      - name: Native UI behavior and layout
+        run: python3 scripts/release_qa.py --native-only --tmp-root "$RUNNER_TEMP"
+
+      - name: Upload native QA evidence
+        if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: dunlin-app
+          name: native-ui-qa
+          retention-days: 7
           path: |
-            dist/*.app
-            dist/*.pkg
-          if-no-files-found: error
+            ${{ runner.temp }}/dunlin-release-qa-*/report.json
+            ${{ runner.temp }}/dunlin-release-qa-*/*.log
+          if-no-files-found: warn
+
+  macos-build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: macos-release-v1
+          save-if: "false"
+
+      - name: Compile app and relay without distributing the app
+        run: |
+          cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
+          ./scripts/bundle-relay.sh --no-build
 
       - name: Upload relay
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dunlin-relay
+          retention-days: 3
           path: dist/dunlin-relay
           if-no-files-found: error
+
+  # Preserve the required status used by branch protection and release_source.py.
+  # always() is essential: a failed/cancelled prerequisite must fail this gate,
+  # not leave a skipped check that GitHub could consider mergeable.
+  test:
+    needs: [macos-checks, macos-build]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require tests and compilation to succeed
+        env:
+          CHECKS_RESULT: ${{ needs.macos-checks.result }}
+          BUILD_RESULT: ${{ needs.macos-build.result }}
+        run: |
+          if [[ "$CHECKS_RESULT" != "success" || "$BUILD_RESULT" != "success" ]]; then
+            echo "::error::macOS checks: $CHECKS_RESULT; macOS build: $BUILD_RESULT"
+            exit 1
+          fi
 
   relay-linux:
     strategy:

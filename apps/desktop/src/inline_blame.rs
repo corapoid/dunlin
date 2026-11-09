@@ -310,7 +310,7 @@ pub(crate) fn toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Button {
     dunlin_ui::button("editor-inline-blame-toggle")
         .ghost()
         .small()
-        .rounded(px(4.))
+        .rounded(px(dunlin_ui::radii::CODE))
         .icon(assets::IconName::GitCommitHorizontal)
         .accessibility_label(if enabled {
             "Disable inline blame"
@@ -359,7 +359,7 @@ pub(crate) fn overlay(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 .ghost()
                 .small()
                 .h(line_height)
-                .rounded(px(2.))
+                .rounded(px(dunlin_ui::radii::INLINE_ACTION))
                 .text_size(px(10.5))
                 .text_color(palette(cx).muted_fg.opacity(0.6))
                 .label(label(line))

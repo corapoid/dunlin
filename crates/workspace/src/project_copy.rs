@@ -59,7 +59,7 @@ pub fn digest_file(mut file: fs::File) -> Result<String, String> {
         }
         hasher.update(&buf[..count]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Resolve every component relative to held directory descriptors, not a racy path.

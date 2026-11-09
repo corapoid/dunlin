@@ -248,7 +248,7 @@ sys.exit(1)
                                  assert!(app.projects[3..].iter().all(|p| p.group_id.as_deref() == Some(&app.project_groups[0].id)));
                                  assert!(app.store.as_ref().unwrap().projects().unwrap().iter().filter(|p| p.path.contains("custom downloads")).all(|p| p.group_id == app.projects[3].group_id));
                                 assert_eq!(app.store.as_ref().unwrap().projects().unwrap().len(), 5);
-                                app.settings_open = true; app.settings_tab = SettingsTab::General; stage = 12;
+                                 app.settings_open = true; app.settings_tab = SettingsTab::Sidebar; stage = 12;
                             },
                              12 if !app.project_import.checking_cli => {
                                  assert!(app.project_import.cli.as_ref().is_some_and(|s| s.installed && s.authenticated));
@@ -296,7 +296,7 @@ sys.exit(1)
                              },
                              22 if app.project_import.open && app.project_import.inputs.is_some() => {
                                   assert!(app.project_import.mode == Mode::GitHub, "remote import should start with provider input, not a local folder sheet");
-                                   println!("project import smoke passed: source menu, remote form, local folder handling, live search Cancel/retry, GitHub/GitLab safe clones and profiles");
+                                   println!("PASS: project import source menu, remote form, local folder handling, live search Cancel/retry, GitHub/GitLab safe clones and profiles");
                                  cx.quit(); return true;
                             },
                             _ => {},

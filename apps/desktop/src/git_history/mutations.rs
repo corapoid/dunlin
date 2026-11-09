@@ -12,6 +12,29 @@ pub(super) struct Form {
     pub(super) error: Option<String>,
 }
 impl Form {
+    pub(super) fn initialize_target(
+        &mut self,
+        oid: &str,
+        window: &mut Window,
+        cx: &mut Context<DunlinApp>,
+    ) {
+        if self.pending.is_none() && self.revision.read(cx).value().is_empty() {
+            self.set_target(oid, window, cx);
+        }
+    }
+    pub(super) fn set_target(
+        &mut self,
+        oid: &str,
+        window: &mut Window,
+        cx: &mut Context<DunlinApp>,
+    ) {
+        self.revision
+            .update(cx, |state, cx| state.set_value(oid.to_owned(), window, cx));
+        self.mainline
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.pending = None;
+        self.error = None;
+    }
     pub fn new(window: &mut Window, cx: &mut Context<DunlinApp>) -> Self {
         Self {
             revision: cx
@@ -80,6 +103,9 @@ impl DunlinApp {
         if let Err(error) = self.git_operation_guard(&project, &action) {
             self.file_notice(error, cx);
             return;
+        }
+        if let Some(view) = &mut self.git_history.view {
+            view.inspector.tab = details::Tab::Operations;
         }
         self.git_history.running = true;
         self.git_history.mutation_global = true;
@@ -401,7 +427,12 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .flex()
                 .gap(px(6.))
                 .flex_wrap()
-                .child(Input::new(&form.message).small().min_w(px(140.)).flex_1())
+                .child(
+                    compact_input(&form.message)
+                        .aria_label("Stash message")
+                        .min_w(px(140.))
+                        .flex_1(),
+                )
                 .child(action_button(
                     "stash-tracked",
                     "Stash tracked…",
@@ -428,8 +459,18 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .flex()
                 .gap(px(6.))
                 .flex_wrap()
-                .child(Input::new(&form.revision).small().min_w(px(150.)).flex_1())
-                .child(Input::new(&form.mainline).small().min_w(px(150.)).flex_1()),
+                .child(
+                    compact_input(&form.revision)
+                        .aria_label("Target revision")
+                        .min_w(px(150.))
+                        .flex_1(),
+                )
+                .child(
+                    compact_input(&form.mainline)
+                        .aria_label("Merge parent number")
+                        .min_w(px(150.))
+                        .flex_1(),
+                ),
         )
         .child(
             div()
@@ -470,7 +511,12 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .flex()
                 .gap(px(6.))
                 .flex_wrap()
-                .child(Input::new(&form.name).small().min_w(px(140.)).flex_1())
+                .child(
+                    compact_input(&form.name)
+                        .aria_label("Worktree name")
+                        .min_w(px(140.))
+                        .flex_1(),
+                )
                 .child(action_button(
                     "git-worktree-add",
                     "Add worktree…",

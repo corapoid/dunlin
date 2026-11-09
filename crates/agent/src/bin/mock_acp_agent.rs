@@ -7,7 +7,7 @@
 //! Run it over stdio; Dunlin spawns it like any other ACP harness:
 //! `mock_acp_agent`.
 
-use agent_client_protocol::schema::v1::{
+use agent_client_protocol::v1::schema::{
     AgentCapabilities, ContentBlock, ContentChunk, CurrentModeUpdate, Diff, InitializeRequest,
     InitializeResponse, LoadSessionRequest, LoadSessionResponse, McpServer, NewSessionRequest,
     NewSessionResponse, PermissionOption, PermissionOptionKind, Plan, PlanEntry, PlanEntryPriority,
@@ -89,19 +89,26 @@ fn mode_state() -> SessionModeState {
 fn main() -> Result<()> {
     async_io::block_on(
         Agent
-            .builder()
+            .v1()
             .name("dunlin-mock-agent")
             .on_receive_request(
                 async |request: InitializeRequest,
                        responder,
-                       _connection: agent_client_protocol::ConnectionTo<
+                       _connection: agent_client_protocol::v1::ConnectionTo<
                     agent_client_protocol::Client,
-                >| {
+                 >| {
+                    if std::env::var_os("DUNLIN_MOCK_MISSING_AUTH").is_some() {
+                        eprintln!("mock harness: API key is missing or not configured");
+                        return Err(agent_client_protocol::Error::new(-32000, "API key is missing or not configured"));
+                    }
+                    if std::env::var_os("DUNLIN_MOCK_HANG_INITIALIZE").is_some() {
+                        std::future::pending::<()>().await;
+                    }
                     responder.respond(
                         InitializeResponse::new(request.protocol_version)
                             .agent_capabilities(AgentCapabilities::new().load_session(std::env::var_os("DUNLIN_MOCK_NO_LOAD").is_none()))
                             .agent_info(
-                                agent_client_protocol::schema::v1::Implementation::new(
+                                agent_client_protocol::v1::schema::Implementation::new(
                                     "Dunlin Mock",
                                     "0.1.0",
                                 )
@@ -114,7 +121,7 @@ fn main() -> Result<()> {
             .on_receive_request(
                 async |request: NewSessionRequest,
                        responder,
-                       _connection: agent_client_protocol::ConnectionTo<
+                       _connection: agent_client_protocol::v1::ConnectionTo<
                     agent_client_protocol::Client,
                 >| {
                     assert_vault_mcp(&request.mcp_servers);
@@ -130,12 +137,12 @@ fn main() -> Result<()> {
             .on_receive_request(
                 async |request: LoadSessionRequest,
                        responder,
-                       connection: agent_client_protocol::ConnectionTo<
+                       connection: agent_client_protocol::v1::ConnectionTo<
                     agent_client_protocol::Client,
                 >| {
                     assert_vault_mcp(&request.mcp_servers);
                     if request.session_id.to_string() == "missing-session" {
-                        return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Session not found"));
+                        return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Session not found"));
                     }
                     connection.send_notification(SessionNotification::new(
                         request.session_id.clone(),
@@ -148,28 +155,28 @@ fn main() -> Result<()> {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async |request: SetSessionConfigOptionRequest, responder, _connection: agent_client_protocol::ConnectionTo<agent_client_protocol::Client>| {
+                async |request: SetSessionConfigOptionRequest, responder, _connection: agent_client_protocol::v1::ConnectionTo<agent_client_protocol::Client>| {
                     let selected = request.value.as_value_id().map(ToString::to_string).unwrap_or_default();
                     if request.config_id.to_string() == "agent-mode" {
                         if !matches!(selected.as_str(), "build" | "plan") {
-                            return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Unknown mock mode"));
+                            return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Unknown mock mode"));
                         }
                         return responder.respond(SetSessionConfigOptionResponse::new(config_options("mock-a", &selected)));
                     }
                      if request.config_id.to_string() != "model" || !matches!(selected.as_str(), "mock-a" | "mock-b") {
-                         return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Unknown mock model"));
+                         return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Unknown mock model"));
                      }
                      if std::env::var_os("DUNLIN_MOCK_REJECT_MODEL").is_some() {
-                         return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Mock model selection denied"));
+                         return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Mock model selection denied"));
                      }
                     responder.respond(SetSessionConfigOptionResponse::new(config_options(&selected, "build")))
                 },
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
-                async |request: SetSessionModeRequest, responder, connection: agent_client_protocol::ConnectionTo<agent_client_protocol::Client>| {
+                async |request: SetSessionModeRequest, responder, connection: agent_client_protocol::v1::ConnectionTo<agent_client_protocol::Client>| {
                     if !matches!(request.mode_id.to_string().as_str(), "build" | "plan") {
-                        return responder.respond_with_error(agent_client_protocol::schema::v1::Error::new(-32602, "Unknown mock mode"));
+                        return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Unknown mock mode"));
                     }
                     connection.send_notification(SessionNotification::new(request.session_id,
                         SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(request.mode_id))))?;
@@ -180,9 +187,12 @@ fn main() -> Result<()> {
             .on_receive_request(
                 async |request: PromptRequest,
                        responder,
-                       connection: agent_client_protocol::ConnectionTo<
+                       connection: agent_client_protocol::v1::ConnectionTo<
                     agent_client_protocol::Client,
-                >| {
+                 >| {
+                    if let Ok(expected)=std::env::var("DUNLIN_MOCK_EXPECT_CONTINUATION"){
+                        assert_eq!(request.meta.as_ref().and_then(|m|m.get("dunlin/continuation")).and_then(serde_json::Value::as_str),Some(expected.as_str()));
+                    }
                     let session_id = request.session_id;
                     if std::env::var_os("DUNLIN_MOCK_RICH_CHAT").is_some() {
                         use serde_json::json;
@@ -201,7 +211,7 @@ fn main() -> Result<()> {
                         }
                         let mut response = PromptResponse::new(StopReason::EndTurn);
                         if std::env::var_os("DUNLIN_MOCK_TOKEN_USAGE").is_some() {
-                            response = response.usage(agent_client_protocol::schema::v1::Usage::new(1200, 1000, 200));
+                            response = response.usage(agent_client_protocol::v1::schema::Usage::new(1200, 1000, 200));
                         }
                         return responder.respond(response);
                     }
@@ -232,7 +242,7 @@ fn main() -> Result<()> {
                         ))?;
                         let mut response = PromptResponse::new(StopReason::EndTurn);
                         if std::env::var_os("DUNLIN_MOCK_TOKEN_USAGE").is_some() {
-                            response = response.usage(agent_client_protocol::schema::v1::Usage::new(1200, 1000, 200));
+                            response = response.usage(agent_client_protocol::v1::schema::Usage::new(1200, 1000, 200));
                         }
                         return responder.respond(response);
                     }
@@ -272,7 +282,7 @@ fn main() -> Result<()> {
                         session_id.clone(),
                         SessionUpdate::ToolCall(
                             ToolCall::new("mock-write-1", "Write hello.txt")
-                                .kind(agent_client_protocol::schema::v1::ToolKind::Edit)
+                                .kind(agent_client_protocol::v1::schema::ToolKind::Edit)
                                 .status(ToolCallStatus::InProgress)
                                 .content(vec![ToolCallContent::Diff(
                                     Diff::new("/tmp/dunlin-smoke/hello.txt", "Hello from Dunlin\n")
@@ -286,7 +296,7 @@ fn main() -> Result<()> {
                         "mock-write-1",
                         ToolCallUpdateFields::new()
                             .title("Write hello.txt")
-                            .kind(agent_client_protocol::schema::v1::ToolKind::Edit)
+                            .kind(agent_client_protocol::v1::schema::ToolKind::Edit)
                             .status(ToolCallStatus::Pending),
                     );
                     let options = vec![

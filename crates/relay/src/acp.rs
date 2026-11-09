@@ -20,6 +20,9 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc};
 use crate::api::{AppState, Lease};
 use crate::store::{Device, Project, SessionOwner, User};
 use dunlin_domain::{PermissionMode, ProjectSettings, validate_project_environment};
+mod coordination;
+#[cfg(test)]
+mod coordination_tests;
 
 const SESSION_NOT_FOUND: i64 = -32001;
 const SESSION_BUSY: i64 = -32002;
@@ -91,7 +94,19 @@ pub async fn bridge(
         .and_then(|store| store.project_settings(&project.id).ok().flatten())
         .and_then(|payload| serde_json::from_str::<ProjectSettings>(&payload).ok())
         .unwrap_or_default();
-    let mut harness = harness_command(
+    let mut broker_paths = Vec::new();
+    if let Some(service) = &state.coordination {
+        broker_paths.push(service.socket().to_path_buf());
+    }
+    if let Some(vault) = &state.vault {
+        broker_paths.push(vault.socket_path().to_path_buf());
+    }
+    if !broker_paths.is_empty()
+        && let Ok(executable) = std::env::current_exe()
+    {
+        broker_paths.push(executable);
+    }
+    let mut harness = harness_command_with_brokers(
         &state.config,
         &program,
         &args,
@@ -100,6 +115,7 @@ pub async fn bridge(
         &other_projects,
         &project_settings,
         &user.id,
+        &broker_paths,
     );
     harness.env("PATH", crate::management::path(&state.config));
     let stderr = if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
@@ -154,6 +170,7 @@ pub async fn bridge(
             .collect(),
         vault_read_only: project_settings.permission_mode == Some(PermissionMode::ReadOnly),
         vault_sessions: Vec::new(),
+        ..Default::default()
     };
     let mut ticker = tokio::time::interval(Duration::from_secs(30));
     let mut last_activity = Instant::now();
@@ -227,10 +244,11 @@ pub async fn bridge(
                                     eprintln!("[relay] harness stdin failed · {error}");
                                     break;
                                 }
-                                if let Err(error) = stdin.flush().await {
+                                 if let Err(error) = stdin.flush().await {
                                     eprintln!("[relay] harness stdin failed · {error}");
-                                    break;
-                                }
+                                     break;
+                                 }
+                                 tracker.confirm_coordination(&state, &value);
                             }
                             Ok(None) => {}
                             Err(error) => {
@@ -340,6 +358,7 @@ pub async fn bridge(
     for session in &tracker.vault_sessions {
         session.revoke();
     }
+    tracker.stop_coordination(&state);
     let _ = child.kill().await;
     eprintln!("[relay] acp disconnected · {connection_id}");
     if let Ok(mut leases) = state.leases.lock() {
@@ -431,6 +450,7 @@ async fn linger_turn(
     for session in &tracker.vault_sessions {
         session.revoke();
     }
+    tracker.stop_coordination(&state);
     let _ = child.kill().await;
     if let Ok(mut leases) = state.leases.lock() {
         leases.retain(|_, lease| lease.connection_id != connection_id);
@@ -447,6 +467,11 @@ struct Tracker {
     allowed_project_ids: Vec<String>,
     vault_read_only: bool,
     vault_sessions: Vec<crate::vault::VaultSession>,
+    coordination_sessions: HashMap<String, dunlin_coordination::service::SessionHandle>,
+    coordination_bindings: HashMap<String, dunlin_coordination::service::SessionHandle>,
+    coordination_runs: HashMap<String, String>,
+    coordination_models: HashMap<String, (String, String)>,
+    coordination_outputs: HashMap<String, String>,
 }
 
 enum Pending {
@@ -530,6 +555,7 @@ impl Tracker {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
                 self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending.insert(id_key(&id), Pending::New);
                 }
@@ -548,6 +574,7 @@ impl Tracker {
                 check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
                 self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending
                         .insert(id_key(&id), Pending::Load { session_id });
@@ -566,6 +593,7 @@ impl Tracker {
                 })?;
                 let owner = check_owner(state, user, project, &source_id, &id)?;
                 self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending.insert(
                         id_key(&id),
@@ -594,6 +622,16 @@ impl Tracker {
                 })?;
                 check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
+                self.start_coordination(
+                    &mut forwarded,
+                    state,
+                    user,
+                    device,
+                    project,
+                    &id,
+                    &session_id,
+                    connection_id,
+                )?;
                 if let Some(title) = prompt_title(value)
                     && let Ok(store) = state.store.lock()
                 {
@@ -684,6 +722,7 @@ impl Tracker {
         close_tx: &mpsc::Sender<()>,
         value: &Value,
     ) {
+        self.observe_coordination(state, user, project, value);
         // Agent-initiated requests also carry an `id`; only responses have no
         // method. Keeping the two directions apart avoids id collisions.
         if value.get("method").is_some() {
@@ -996,6 +1035,31 @@ pub(crate) fn harness_command(
     settings: &ProjectSettings,
     user_id: &str,
 ) -> Command {
+    harness_command_with_brokers(
+        config,
+        program,
+        args,
+        project_path,
+        allowed_roots,
+        other_projects,
+        settings,
+        user_id,
+        &[],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn harness_command_with_brokers(
+    config: &crate::config::Config,
+    program: &str,
+    args: &[String],
+    project_path: &str,
+    allowed_roots: &[String],
+    other_projects: &[String],
+    settings: &ProjectSettings,
+    user_id: &str,
+    broker_paths: &[PathBuf],
+) -> Command {
     let isolated = crate::management::isolated_agents(config);
     let home = crate::management::agent_home(config, user_id);
     if isolated && crate::management::private_dir(&home).is_err() {
@@ -1008,6 +1072,11 @@ pub(crate) fn harness_command(
         let mut command = Command::new("/usr/bin/sandbox-exec");
         let mut runtime_roots = allowed_roots.to_vec();
         runtime_roots.push(project_path.to_owned());
+        runtime_roots.extend(
+            broker_paths
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned()),
+        );
         let tools = crate::management::tools(config);
         let tools = tools.canonicalize().unwrap_or(tools);
         let node = crate::management::root(config).join("node");
@@ -1054,7 +1123,15 @@ pub(crate) fn harness_command(
     } else if cfg!(target_os = "macos") && config.sandbox {
         Command::new("/nonexistent/dunlin-sandbox-unavailable")
     } else if cfg!(target_os = "linux") && config.sandbox {
-        linux_harness_command(config, program, args, project_path, allowed_roots, &home)
+        linux_harness_command(
+            config,
+            program,
+            args,
+            project_path,
+            allowed_roots,
+            &home,
+            broker_paths,
+        )
     } else {
         let mut command = Command::new(program);
         command.args(args);
@@ -1094,6 +1171,7 @@ fn linux_harness_command(
     project: &str,
     roots: &[String],
     home: &Path,
+    broker_paths: &[PathBuf],
 ) -> Command {
     // Missing bubblewrap fails at spawn, never by silently running unsandboxed.
     let mut command = Command::new(
@@ -1154,6 +1232,11 @@ fn linux_harness_command(
     command.args(["--bind", project, project]);
     for root in roots {
         command.args(["--bind", root, root]);
+    }
+    // /tmp is private inside bubblewrap. Bind only exact broker socket inodes
+    // and the proxy executable, never the host temp directory or ledger.
+    for path in broker_paths {
+        command.arg("--ro-bind").arg(path).arg(path);
     }
     command
         .args(["--chdir", project, "--"])
@@ -1342,6 +1425,13 @@ fn sandbox_profile(
             Path::new(&home).join(db_path)
         };
         deny_path(home_path, &project, &allowed, &db_path, &mut denied);
+        deny_path(
+            home_path,
+            &project,
+            &allowed,
+            &db_path.with_extension("coordination"),
+            &mut denied,
+        );
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut sidecar = db_path.as_os_str().to_os_string();
             sidecar.push(suffix);
@@ -1464,6 +1554,7 @@ mod tests {
             allowed_project_ids: Vec::new(),
             vault_read_only: false,
             vault_sessions: Vec::new(),
+            ..Default::default()
         };
         let mut value = json!({
             "jsonrpc": "2.0",

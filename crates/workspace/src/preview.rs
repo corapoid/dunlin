@@ -26,43 +26,23 @@ pub fn kind(path: &str) -> PreviewKind {
         "png" => PreviewKind::Png,
         "jpg" | "jpeg" => PreviewKind::Jpeg,
         "pdf" => PreviewKind::Pdf,
-        "rs" | "md" | "markdown" | "txt" | "toml" | "json" | "jsonc" | "yaml" | "yml" | "js"
-        | "mjs" | "cjs" | "ts" | "mts" | "cts" | "tsx" | "jsx" | "py" | "go" | "c" | "h" | "cc"
-        | "cpp" | "hpp" | "css" | "scss" | "sass" | "html" | "htm" | "xml" | "sh" | "bash"
-        | "zsh" | "sql" | "swift" | "java" | "kt" | "kts" | "rb" | "php" | "ini" | "cfg"
-        | "conf" | "env" | "gitignore" | "gitattributes" | "editorconfig" | "lock" | "csv"
-        | "tsv" | "log" | "svelte" | "vue" | "dockerfile" | "r" | "ex" | "exs" | "lua" | "pl"
-        | "ps1" | "bat" | "cmd" | "diff" | "patch" => PreviewKind::Text,
+        _ if crate::syntax::language(path).is_some() => PreviewKind::Text,
+        "txt" | "env" | "gitignore" | "gitattributes" | "editorconfig" | "lock" | "csv" | "tsv"
+        | "log" => PreviewKind::Text,
         _ if matches!(
             name.as_str(),
-            "dockerfile"
-                | "makefile"
-                | "license"
+            "license"
                 | "licence"
                 | "readme"
-                | ".env"
                 | ".gitignore"
                 | ".gitattributes"
                 | ".editorconfig"
                 | ".npmrc"
                 | ".yarnrc"
                 | ".nvmrc"
-                | ".bashrc"
-                | ".zshrc"
                 | ".prettierrc"
                 | ".eslintrc"
-        ) || (name.starts_with(".env.")
-            && matches!(
-                ext,
-                "local"
-                    | "production"
-                    | "development"
-                    | "testing"
-                    | "test"
-                    | "example"
-                    | "sample"
-                    | "staging"
-            )) =>
+        ) =>
         {
             PreviewKind::Text
         }

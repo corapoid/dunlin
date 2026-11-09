@@ -17,6 +17,7 @@ use dunlin_workspace::preview::{self, PreviewKind};
 use std::sync::Arc;
 
 mod new_tabs;
+mod saving;
 
 const FILE_NOTICE_DURATION: std::time::Duration = std::time::Duration::from_millis(2500);
 
@@ -458,7 +459,7 @@ impl DunlinApp {
                 .workbench
                 .tabs
                 .iter()
-                .any(|t| t.dirty && Some(&t.id) != self.workbench.active.as_ref())
+                .any(|t| t.saving || (t.dirty && Some(&t.id) != self.workbench.active.as_ref()))
     }
     pub(crate) fn dirty_tab_paths(&self) -> Vec<String> {
         let mut paths: Vec<_> = self
@@ -467,7 +468,7 @@ impl DunlinApp {
             .iter()
             .filter(|t| {
                 t.project == self.project().id
-                    && (t.loading || t.dirty)
+                    && (t.loading || t.dirty || t.saving)
                     && Some(&t.id) != self.workbench.active.as_ref()
             })
             .map(|t| t.inspector.path.clone())
@@ -477,7 +478,7 @@ impl DunlinApp {
         {
             paths.push(i.path.clone());
         }
-        if let Some(tab) = self.active_file_tab().filter(|t| t.loading) {
+        if let Some(tab) = self.active_file_tab().filter(|t| t.loading || t.saving) {
             paths.push(tab.inspector.path.clone());
         }
         paths
@@ -833,6 +834,10 @@ impl DunlinApp {
         else {
             return;
         };
+        if tab.saving {
+            self.file_notice("Wait for the file to finish saving before closing it", cx);
+            return;
+        }
         if self.current_workspace_tab() != Some(crate::workspace_panes::TabKey::File(id.into()))
             && !tab.dirty
         {
@@ -856,78 +861,17 @@ impl DunlinApp {
         self.workbench.show_file = false;
         self.close_inspector();
     }
-    pub(crate) fn save_all_tabs(&mut self, cx: &mut Context<Self>) -> bool {
-        self.save_tabs_for_project(None, cx)
-    }
-
-    pub(crate) fn save_tabs_for_project(
-        &mut self,
-        project: Option<&str>,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        self.stash_editor_tab();
-        for index in 0..self.workbench.tabs.len() {
-            let tab = &self.workbench.tabs[index];
-            if !tab.dirty || project.is_some_and(|project| tab.project != project) {
-                continue;
-            }
-            if tab.untitled {
-                // shortcut: Save All pauses for naming; resume automatically when batch Save As gains a continuation.
-                let id = tab.id.clone();
-                self.save_untitled_file(&id, cx);
-                return false;
-            }
-            if tab.git_changed {
-                self.file_notice("Resolve the Git-changed file's reload/overwrite conflict before saving all buffers.",cx);
-                return false;
-            }
-            if self.ai_commit_locks_project_id(&tab.project) {
-                self.file_notice(
-                    "Cancel or finish the AI commit before saving files in its repository",
-                    cx,
-                );
-                return false;
-            }
-            if !self
-                .projects
-                .iter()
-                .any(|p| p.id == tab.project && p.path == tab.root)
-            {
-                self.file_notice(
-                    "A dirty tab's project was relocated. Restore the project path before saving.",
-                    cx,
-                );
-                return false;
-            }
-            let text = tab.editor.read(cx).value().to_string();
-            match tab
-                .backend
-                .write_file(&tab.inspector.path, &text, tab.mtime)
-            {
-                Ok(stat) => {
-                    let tab = &mut self.workbench.tabs[index];
-                    tab.dirty = false;
-                    tab.saved_text = Some(text);
-                    tab.minimap.invalidate();
-                    tab.mtime = Some(stat.mtime_ms);
-                    tab.conflict = None;
-                    if Some(&tab.id) == self.workbench.active.as_ref() {
-                        self.editor_dirty = false;
-                        self.editor_mtime = tab.mtime;
-                        self.editor_conflict = None;
-                    }
-                }
-                Err(e) => {
-                    self.file_notice(format!("Could not save {}: {e}", tab.inspector.path), cx);
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
     pub(crate) fn request_close_all_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.stash_editor_tab();
+        if self
+            .workbench
+            .tabs
+            .iter()
+            .any(|tab| tab.project == self.project().id && tab.saving)
+        {
+            self.file_notice("Wait for pending saves before closing all tabs", cx);
+            return;
+        }
         let project = self.project().id.clone();
         let locked: std::collections::HashSet<String> = self
             .workbench
@@ -979,7 +923,13 @@ impl DunlinApp {
                 if this.project().id != project || this.project().path != root {
                     return;
                 }
-                if choice == 0 && !this.save_tabs_for_project(Some(&project), cx) {
+                if choice == 0 {
+                    let expected_project = project.clone();
+                    this.save_tabs_then(Some(&project), cx, move |this, cx| {
+                        if this.project().id == expected_project && this.project().path == root {
+                            this.finish_close_all_tabs(&keys, cx);
+                        }
+                    });
                     return;
                 }
                 this.finish_close_all_tabs(&keys, cx);
@@ -1531,7 +1481,7 @@ impl DunlinApp {
                 document_tabs(format!("document-tabs:{pane}"))
                     .children(tabs)
                     // The kit reserves one radius before its first tab for the foot.
-                    .ml(-px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
+                    .ml(-px(dunlin_ui::radii::FOLDER_TAB))
                     .when_some(selected, |tabs, selected| tabs.selected_index(selected))
                     .last_empty_space(new_tab)
                     .suffix(menu)

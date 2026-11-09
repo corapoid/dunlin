@@ -430,7 +430,7 @@ fn snapshot(root: &str, inventory: &Overview) -> Result<(String, String), String
         hash.update(path);
         digest_path(&mut hash, &full, &mut budget)?;
     }
-    Ok((format!("{:x}", hash.finalize()), status))
+    Ok((hex::encode(hash.finalize()), status))
 }
 fn clean(root: &str) -> Result<(), String> {
     if !read(

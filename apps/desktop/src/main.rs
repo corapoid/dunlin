@@ -8,9 +8,11 @@ mod branch_picker;
 mod chat_presentation;
 mod chat_scroll;
 mod chat_timing;
+mod cli;
 mod comparisons;
 #[cfg(debug_assertions)]
 mod controls_smoke;
+mod coordination;
 mod dashboard;
 mod effects;
 mod explorer;
@@ -55,6 +57,8 @@ mod qa;
 mod remote;
 mod remote_connection;
 mod run;
+#[cfg(debug_assertions)]
+mod save_smoke;
 mod security;
 mod server_panel;
 mod session_import;
@@ -64,6 +68,8 @@ mod skills;
 mod spec;
 mod ssh;
 mod subtask_worktrees;
+#[cfg(debug_assertions)]
+mod surfaces_smoke;
 mod task_budgets;
 mod terminal;
 #[cfg(test)]
@@ -84,6 +90,59 @@ use app::DunlinApp;
 use dunlin_ui::*;
 
 fn main() {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if let Err(error) = cli::validate(&args, cfg!(debug_assertions)) {
+        eprintln!("{error}");
+        std::process::exit(2);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--help" || arg == "-h")
+    {
+        println!(
+            "Usage: dunlin [--help | --version | --syntax-notices | --mcp-vault | --mcp-coordination]"
+        );
+        #[cfg(debug_assertions)]
+        println!(
+            "Debug native tests: --list-native-smokes (JSON registry for scripts/release_qa.py)"
+        );
+        return;
+    }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--version" || arg == "-V")
+    {
+        println!("Dunlin {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--list-native-smokes")
+    {
+        println!("{}", serde_json::to_string(cli::NATIVE_SMOKES).unwrap());
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--surfaces-smoke") {
+        surfaces_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--settings-smoke") {
+        views::settings::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--save-smoke") {
+        save_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--coordination-smoke") {
+        coordination::smoke::run();
+        return;
+    }
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--controls-smoke") {
         controls_smoke::run();
@@ -114,6 +173,9 @@ fn main() {
     }
     if std::env::args().nth(1).as_deref() == Some("--mcp-vault") {
         std::process::exit(dunlin_vault::mcp::run_stdio());
+    }
+    if std::env::args().nth(1).as_deref() == Some("--mcp-coordination") {
+        std::process::exit(dunlin_coordination::mcp::run_stdio());
     }
     if std::env::args().nth(1).as_deref() == Some("--vault-keychain-smoke") {
         use dunlin_vault::store::{KeychainStore, SecretStore};
@@ -164,7 +226,6 @@ fn main() {
         git_history::smoke::run();
         return;
     }
-    #[cfg(debug_assertions)]
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--glass-smoke") {
         glass_smoke::run();

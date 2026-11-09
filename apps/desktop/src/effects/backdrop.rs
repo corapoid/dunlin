@@ -287,26 +287,17 @@ impl Drop for NativeLease {
 }
 
 /// Attach inside the actual foreground panel, not the full-screen dismiss layer.
-pub(crate) fn rounded_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
-    surface_probe(backdrop, false, radius, 1.)
-}
-pub(crate) fn borderless_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
-    surface_probe(backdrop, false, radius, 0.)
-}
 /// A scroll container translates all its children, including an absolute
 /// measuring canvas. Its content mask, unlike child coordinates, stays fixed
 /// to the visible panel; do not move the sharp cutout when its contents scroll.
-pub(crate) fn rounded_scroll_probe(backdrop: &OverlayBackdrop, radius: f32) -> AnyElement {
-    surface_probe(backdrop, true, radius, 1.)
-}
-fn surface_probe(backdrop: &OverlayBackdrop, scroll: bool, radius: f32, border: f32) -> AnyElement {
+pub(crate) fn panel_probe(backdrop: &OverlayBackdrop, geometry: SurfaceGeometry, scroll: bool) -> AnyElement {
     let frame = backdrop.shared.frame.clone();
     canvas(
         move |bounds, window, _| {
-            let bounds = surface_bounds(bounds, window.content_mask().bounds, scroll, border);
+            let bounds = surface_bounds(bounds, window.content_mask().bounds, scroll, geometry.border);
             if nonempty(bounds) {
                 frame.borrow_mut().surface = Some(bounds);
-                frame.borrow_mut().radius = radius;
+                frame.borrow_mut().radius = geometry.radius;
             }
         },
         |_, _, _, _| {},

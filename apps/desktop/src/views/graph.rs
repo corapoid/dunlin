@@ -7,7 +7,6 @@ use dunlin_domain::{AgentKind, AgentNode, AgentStatus, MainView, SessionStatus, 
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::Input;
 use dunlin_ui::component::{ActiveTheme, Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -137,9 +136,29 @@ pub(crate) fn render(
                 .text_size(px(11.5))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child(format!(
-                    "{subagents} subagents · {tools} tools · {running} running"
-                )),
+                .flex()
+                .items_center()
+                .child(
+                    MorphText::new("graph-subagents", subagents.to_string())
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" subagents · ")
+                .child(
+                    MorphText::new("graph-tools", tools.to_string())
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" tools · ")
+                .child(
+                    MorphText::new("graph-running", running.to_string())
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" running"),
         )
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
@@ -147,15 +166,18 @@ pub(crate) fn render(
                 .text_size(px(11.5))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child(format!("${total_cost:.2}")),
+                .child(
+                    MorphText::new("graph-total-cost", format!("${total_cost:.2}"))
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                ),
         )
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
-            div().w(px(150.)).child(
-                Input::new(&this.activity_search)
-                    .small()
-                    .aria_label("Search agent graph"),
-            ),
+            div()
+                .w(px(150.))
+                .child(search_input(&this.activity_search, "Search agent graph")),
         )
         .child(
             dunlin_ui::button("graph-zoom-out")
@@ -226,7 +248,7 @@ pub(crate) fn render(
         .bottom(px(10.))
         .h(px(26.))
         .px(px(8.))
-        .rounded(px(7.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .border_1()
         .border_color(p.border)
         .bg(p.card.opacity(0.94))
@@ -320,7 +342,7 @@ fn graph_minimap(nodes: &[AgentNode], scroll: &ScrollHandle, p: &Palette) -> Any
         .bottom(px(44.))
         .w(px(map_width + 8.))
         .h(px(map_height + 8.))
-        .rounded(px(5.))
+        .rounded(px(dunlin_ui::radii::ICON))
         .border_1()
         .border_color(p.border)
         .bg(p.card.opacity(0.88))
@@ -533,7 +555,7 @@ fn graph_canvas(
         .track_focus(focus)
         .tab_stop(true)
         .track_scroll(scroll)
-        .on_scroll_wheel(cx.listener(|this, _, _, cx| {
+        .on_scroll(cx.listener(|this, _, _, cx| {
             // A scroll changes which slice is visible. Re-render only the new
             // viewport instead of laying out the whole graph.
             cx.notify();
@@ -671,8 +693,8 @@ fn node_card(
         .top(px(node.y))
         .w(px(node.width))
         .h(px(node.height))
-        .rounded(px(11.))
-        .border_1()
+        .rounded(px(SurfaceGeometry::GRAPH_NODE.radius))
+        .border(px(SurfaceGeometry::GRAPH_NODE.border))
         .border_color(if selected {
             accent
         } else if active {
@@ -708,7 +730,7 @@ fn node_card(
     }
     let mut card = card
         .child(
-            div()
+            SurfaceGeometry::GRAPH_NODE.round_child(div(), SurfaceEdges::Top)
                 .h(crate::workspace_text::size(30., cx))
                 .px(px(9.))
                 .flex()
@@ -740,7 +762,7 @@ fn node_card(
                     div()
                         .h(px(15.))
                         .px(px(4.))
-                        .rounded(px(3.))
+                        .rounded(px(dunlin_ui::radii::BADGE))
                         .bg(status_soft)
                         .flex()
                         .items_center()
@@ -830,11 +852,7 @@ fn node_card(
 
     if node.status == AgentStatus::Running {
         card = card.child(
-            div()
-                .absolute()
-                .bottom_0()
-                .left_0()
-                .right_0()
+            SurfaceGeometry::GRAPH_NODE.bottom_indicator(div())
                 .h(px(2.))
                 .bg(p.muted)
                 .child(
@@ -877,7 +895,7 @@ fn tool_chip(kind: ToolKind, p: &Palette) -> AnyElement {
     div()
         .h(px(16.))
         .px(px(4.))
-        .rounded(px(3.))
+        .rounded(px(dunlin_ui::radii::BADGE))
         .bg(p.muted)
         .flex()
         .items_center()
@@ -926,7 +944,7 @@ fn node_detail(
         .bottom(px(10.))
         .w(px(338.))
         .p(px(10.))
-        .rounded(px(10.))
+        .rounded(px(dunlin_ui::radii::DRAG_PREVIEW))
         .border_1()
         .border_color(p.border_strong)
         .bg(p.card.opacity(0.97))
@@ -950,7 +968,7 @@ fn node_detail(
                     div()
                         .h(px(15.))
                         .px(px(4.))
-                        .rounded(px(3.))
+                        .rounded(px(dunlin_ui::radii::BADGE))
                         .bg(status_soft)
                         .flex()
                         .items_center()
@@ -1039,7 +1057,7 @@ fn meta_chip(text: &str, p: &Palette) -> AnyElement {
     div()
         .h(px(16.))
         .px(px(4.))
-        .rounded(px(3.))
+        .rounded(px(dunlin_ui::radii::BADGE))
         .bg(p.muted)
         .flex()
         .items_center()

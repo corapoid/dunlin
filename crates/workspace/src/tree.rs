@@ -40,12 +40,13 @@ impl FileTree {
         }
 
         let mut count = 0;
-        let entries = scan_dir(path, 0, &mut count);
+        let mut incomplete = false;
+        let entries = scan_dir(path, 0, &mut count, &mut incomplete);
         let total_size = entries.iter().map(|entry| entry.size).sum();
         Self {
             root,
             entries,
-            error: None,
+            error: incomplete.then(|| "Explorer scan is incomplete: a size/depth limit or unreadable folder was reached. Open a smaller project folder to see the remaining files.".into()),
             total_size,
         }
     }
@@ -170,18 +171,36 @@ fn is_skipped(name: &str) -> bool {
     ) || (name.starts_with('.') && name != ".gitignore" && name != ".github")
 }
 
-fn scan_dir(dir: &Path, depth: u32, count: &mut usize) -> Vec<FileEntry> {
-    if depth > 4 || *count >= MAX_ENTRIES {
+fn scan_dir(dir: &Path, depth: u32, count: &mut usize, incomplete: &mut bool) -> Vec<FileEntry> {
+    if depth > 64 || *count >= MAX_ENTRIES {
+        *incomplete = true;
         return Vec::new();
     }
 
     let Ok(read) = fs::read_dir(dir) else {
+        *incomplete = true;
         return Vec::new();
     };
 
     let mut paths: Vec<PathBuf> = read
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(entry.path()),
+            Err(_) => {
+                *incomplete = true;
+                None
+            }
+        })
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_none_or(|name| !is_skipped(name))
+        })
+        .take(MAX_ENTRIES + 1)
         .collect();
+    if paths.len() > MAX_ENTRIES {
+        *incomplete = true;
+        paths.truncate(MAX_ENTRIES);
+    }
     paths.sort_by(|a, b| {
         let a_dir = a.is_dir();
         let b_dir = b.is_dir();
@@ -191,8 +210,9 @@ fn scan_dir(dir: &Path, depth: u32, count: &mut usize) -> Vec<FileEntry> {
     });
 
     let mut entries = Vec::new();
-    for path in paths.into_iter().take(80) {
+    for path in paths {
         if *count >= MAX_ENTRIES {
+            *incomplete = true;
             break;
         }
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -207,7 +227,7 @@ fn scan_dir(dir: &Path, depth: u32, count: &mut usize) -> Vec<FileEntry> {
         let expanded = depth == 0 && matches!(name, "apps" | "crates" | "assets");
         *count += 1;
         let children = if is_dir {
-            scan_dir(&path, depth + 1, count)
+            scan_dir(&path, depth + 1, count, incomplete)
         } else {
             Vec::new()
         };
@@ -280,6 +300,40 @@ fn size_dir(dir: &Path, depth: u32, total: &mut u64, count: &mut usize) {
 mod tests {
     use super::FileTree;
     use std::fs;
+
+    #[test]
+    fn wide_and_deep_directories_are_not_silently_hidden() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..120 {
+            fs::write(root.path().join(format!("file-{index:03}.rs")), "").unwrap();
+        }
+        let deep = root.path().join("a/b/c/d/e/f");
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("visible.rs"), "").unwrap();
+        let tree = FileTree::load(root.path().to_string_lossy());
+        assert!(tree.error.is_none());
+        assert_eq!(
+            tree.entries.iter().filter(|entry| !entry.is_dir).count(),
+            120
+        );
+        let mut entry = tree.entries.iter().find(|entry| entry.name == "a").unwrap();
+        for name in ["b", "c", "d", "e", "f", "visible.rs"] {
+            entry = entry
+                .children
+                .iter()
+                .find(|entry| entry.name == name)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn scan_limits_are_reported_explicitly() {
+        let root = tempfile::tempdir().unwrap();
+        let mut count = super::MAX_ENTRIES;
+        let mut incomplete = false;
+        assert!(super::scan_dir(root.path(), 0, &mut count, &mut incomplete).is_empty());
+        assert!(incomplete);
+    }
 
     #[cfg(unix)]
     #[test]

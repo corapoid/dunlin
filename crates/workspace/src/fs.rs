@@ -9,6 +9,7 @@ use std::fs::OpenOptions;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
@@ -105,7 +106,13 @@ fn open_relative(
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::io::{AsRawFd, FromRawFd};
 
-    resolve(root, relative)?;
+    let resolved = resolve(root, relative)?;
+    if let Ok(metadata) = fs::symlink_metadata(&resolved)
+        && !metadata.is_file()
+        && !metadata.is_dir()
+    {
+        return Err("Only regular files and directories are available through the file API".into());
+    }
     let root_path = fs::canonicalize(root)
         .map_err(|error| format!("Project folder is not available: {error}"))?;
     let root_name = CString::new(root_path.as_os_str().as_bytes())
@@ -158,7 +165,9 @@ fn open_relative(
     } else {
         libc::O_RDONLY
     } | libc::O_NOFOLLOW
-        | libc::O_CLOEXEC;
+        | libc::O_CLOEXEC
+        | libc::O_NONBLOCK
+        | libc::O_NOCTTY;
     if create_new {
         flags |= libc::O_CREAT | libc::O_EXCL;
     } else if write {
@@ -177,7 +186,12 @@ fn open_relative(
             std::io::Error::last_os_error()
         ));
     }
-    Ok(unsafe { File::from_raw_fd(fd) })
+    let file = unsafe { File::from_raw_fd(fd) };
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Err("Only regular files and directories are available through the file API".into());
+    }
+    Ok(file)
 }
 
 #[cfg(not(unix))]
@@ -263,13 +277,36 @@ pub fn read_file(root: &str, relative: &str) -> Result<FileContents, String> {
 }
 
 pub fn write_file(root: &str, relative: &str, contents: &str) -> Result<FileStat, String> {
+    write_file_checked(root, relative, contents, None)
+}
+
+/// Serialize application writers, including local editors and relay requests.
+/// The expected version is checked under the same lock as the atomic replacement.
+pub fn write_file_checked(
+    root: &str,
+    relative: &str,
+    contents: &str,
+    expected_mtime_ms: Option<u64>,
+) -> Result<FileStat, String> {
+    use std::hash::{Hash, Hasher};
+    static WRITERS: [Mutex<()>; 64] = [const { Mutex::new(()) }; 64];
     if contents.len() as u64 > MAX_EDITOR_BYTES {
         return Err("This file is too large to save".into());
     }
     let path = resolve(root, relative)?;
-    let metadata = fs::metadata(&path).map_err(|error| format!("Could not write file: {error}"))?;
-    if metadata.is_dir() {
-        return Err("This path is a folder".into());
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hash);
+    let _writer = WRITERS[hash.finish() as usize % WRITERS.len()]
+        .lock()
+        .map_err(|_| "File writer lock is unavailable")?;
+    let metadata = open_read(root, relative)?
+        .metadata()
+        .map_err(|error| format!("Could not write file: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Saving requires a regular file".into());
+    }
+    if expected_mtime_ms.is_some_and(|expected| expected != mtime_ms(&metadata)) {
+        return Err("conflict: file changed on disk since it was opened".into());
     }
     if metadata.permissions().readonly() {
         return Err("This file is read-only".into());
@@ -288,16 +325,35 @@ pub fn write_file(root: &str, relative: &str, contents: &str) -> Result<FileStat
             .map_err(|error| format!("Could not save file: {error}"))?;
         file.set_permissions(metadata.permissions())
             .map_err(|error| format!("Could not preserve file permissions: {error}"))?;
+        // Millisecond versions must advance even for two saves in the same tick.
+        let modified = std::time::SystemTime::now().max(
+            UNIX_EPOCH + std::time::Duration::from_millis(mtime_ms(&metadata).saturating_add(1)),
+        );
+        file.set_times(std::fs::FileTimes::new().set_modified(modified))
+            .map_err(|error| format!("Could not set file version: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("Could not save file: {error}"))?;
+        // Return the version we wrote, not a later external edit observed by
+        // reopening the destination after rename.
+        let saved = file.metadata().map_err(|error| error.to_string())?;
+        let current = open_read(root, relative)?
+            .metadata()
+            .map_err(|error| error.to_string())?;
+        if current.modified().ok() != metadata.modified().ok() || current.len() != metadata.len() {
+            return Err("conflict: file changed while it was being saved".into());
+        }
         fs::rename(&temporary, &path)
-            .map_err(|error| format!("Could not replace file atomically: {error}"))
+            .map_err(|error| format!("Could not replace file atomically: {error}"))?;
+        Ok(FileStat {
+            bytes: saved.len(),
+            mtime_ms: mtime_ms(&saved),
+            is_dir: false,
+        })
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
     }
-    result?;
-    stat_file(root, relative)
+    result
 }
 
 pub fn create_file(root: &str, relative: &str) -> Result<FileStat, String> {
@@ -415,5 +471,64 @@ mod tests {
         create_file(&root_text, "new.txt").unwrap();
         assert!(create_file(&root_text, "new.txt").is_err());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn concurrent_writers_cannot_both_save_the_same_version() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("file.txt"), "original").unwrap();
+        let root = root.path().to_string_lossy().into_owned();
+        let expected = stat_file(&root, "file.txt").unwrap().mtime_ms;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        std::thread::scope(|scope| {
+            let writes: Vec<_> = ["first", "second"]
+                .into_iter()
+                .map(|text| {
+                    let barrier = barrier.clone();
+                    let root = &root;
+                    scope.spawn(move || {
+                        barrier.wait();
+                        super::write_file_checked(root, "file.txt", text, Some(expected))
+                    })
+                })
+                .collect();
+            let results: Vec<_> = writes
+                .into_iter()
+                .map(|thread| thread.join().unwrap())
+                .collect();
+            assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+            assert!(
+                results
+                    .iter()
+                    .any(|result| matches!(result, Err(error) if error.starts_with("conflict:")))
+            );
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fifo_reads_stats_and_previews_fail_without_a_writer() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = tempfile::tempdir().unwrap();
+        for name in ["pipe.txt", "pipe.png"] {
+            let path =
+                std::ffi::CString::new(root.path().join(name).as_os_str().as_bytes()).unwrap();
+            assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        }
+        let path = root.path().to_string_lossy().into_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            tx.send((
+                read_file(&path, "pipe.txt").is_err(),
+                stat_file(&path, "pipe.txt").is_err(),
+                crate::preview::read(&path, "pipe.png").is_err(),
+            ))
+            .unwrap();
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap(),
+            (true, true, true)
+        );
+        worker.join().unwrap();
     }
 }

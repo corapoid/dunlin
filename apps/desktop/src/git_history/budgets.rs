@@ -259,7 +259,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let p = palette(cx);
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Durable client-request/time budgets. Reported USD is optional and can be unknown; it is not a guaranteed provider billing cap. Queued/retried client sends share the ledger; opaque harness child work is not falsely priced at zero.")
-        .child(Input::new(&s.label).small()).child(Input::new(&s.requests).small()).child(Input::new(&s.seconds).small()).child(Input::new(&s.usd).small())
+        .child(compact_input(&s.label).aria_label("Budget label")).child(compact_input(&s.requests).aria_label("Request limit")).child(compact_input(&s.seconds).aria_label("Time limit in seconds")).child(compact_input(&s.usd).aria_label("Reported USD limit"))
         .child(dunlin_ui::button("budget-arm").label("Review and approve session limits…").on_click(cx.listener(|this,_,w,cx|this.arm_session_budget(w,cx))));
     if let Some(e) = &this.task_budgets.error {
         body = body.child(div().text_color(p.red).child(e.clone()));

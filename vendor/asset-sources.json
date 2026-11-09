@@ -3,10 +3,10 @@
   "syntect-5.3.0/assets/default_metadata.packdump": "b1df0402dfdb84b9826b206bffafb35553c46530afcbb3c929147760056766f3",
   "syntect-5.3.0/assets/default_newlines.packdump": "d740b20c12e40b678b9f1012401e1969aaa5cd55f1ab329ffeb94d746b06a5c0",
   "syntect-5.3.0/assets/default_nonewlines.packdump": "b61623ff9b5c36e60666d637076697ad8234116b2d53ad2ee9e3908df1c2461d",
-  "two-face-0.4.5/generated/acknowledgements_full.bin": "105d547e77f3019f361fb99a7fb3486755455a04de2167355aaf2ffe8a74b4e2",
-  "two-face-0.4.5/generated/syntaxes-fancy-newlines.bin": "ea0da56d0446cefc5df95e277ce25d1d1b2ada6d143946d12493bcfe93134fe5",
-  "two-face-0.4.5/generated/syntaxes-fancy-no-newlines.bin": "b8a5120c20678a290d16ac86e5223a68352e13828e4d52a4741c6f96fde571fc",
-  "two-face-0.4.5/generated/syntaxes-onig-newlines.bin": "9ad5dd570c605d1df3bf4e98f8f7f2368578facf4c1df1d180dd6e716b04f6ef",
-  "two-face-0.4.5/generated/syntaxes-onig-no-newlines.bin": "6f0679139b708de51db33f665bb1d4bbd8dab60958144a3534489d82c849224e",
-  "two-face-0.4.5/generated/themes.bin": "9544eb93d5e397205cca3e87f4baf174e2f777fc3097ebcb2f601b5326fa6c99"
+  "two-face-0.5.2+bat-0.26.1/generated/acknowledgements_full.bin": "e4bf45ad159b67de6a7152874904728adb6421996eb15da01ca75406e6cd51fb",
+  "two-face-0.5.2+bat-0.26.1/generated/syntaxes-fancy-newlines.bin": "758bf07782d9d81479db7a0c4651aebf844ef20510ceb5bee08c61158368b0f3",
+  "two-face-0.5.2+bat-0.26.1/generated/syntaxes-fancy-no-newlines.bin": "14907b8da6438cba2af4dc5650b76a571db583aa1a981e8f1d8e4b9233c34c53",
+  "two-face-0.5.2+bat-0.26.1/generated/syntaxes-onig-newlines.bin": "7b567f54cf1b4b33abb7b64258647c256f99043c4bee6804b38f9ef612d0110a",
+  "two-face-0.5.2+bat-0.26.1/generated/syntaxes-onig-no-newlines.bin": "45e130ac157619bd2af7a4d50cf180ceda9ebe9058611fea5303b1a28f391fbb",
+  "two-face-0.5.2+bat-0.26.1/generated/themes.bin": "be28f0c1a167469c5bd1e5311d4d3503e6503b378791f2afb9e3e5f2f7f4642e"
 }

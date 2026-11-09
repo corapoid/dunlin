@@ -1,10 +1,10 @@
-//! Settings → Secrets. Values are accepted once and moved to the Keychain.
+//! Settings → Credentials. Values are accepted once and moved to the Keychain.
 
 use dunlin_domain::vault::now_secs;
 use dunlin_domain::vault::{HttpMethod, Injection, Operation, Recipe, RecipeParameter, Secret};
 use dunlin_ui::component::Sizable;
 use dunlin_ui::component::button::{Button, ButtonVariants};
-use dunlin_ui::component::input::{Editor, EditorState, Input, InputState};
+use dunlin_ui::component::input::{Editor, EditorState, InputState};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -373,11 +373,7 @@ fn chip(id: String, label: impl Into<SharedString>, active: bool, _p: Palette) -
 }
 
 fn section_label(text: &'static str, p: Palette) -> Div {
-    div()
-        .text_size(px(10.5))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(p.muted_fg)
-        .child(text)
+    dunlin_ui::settings::section(text, p)
 }
 
 pub(super) fn secret_field(label: &'static str, state: &Entity<InputState>, p: Palette) -> Div {
@@ -416,7 +412,7 @@ pub(super) fn secret_field(label: &'static str, state: &Entity<InputState>, p: P
                         None::<AnyElement>
                     }
                 })
-                .child(Input::new(state).aria_label(label).w_full()),
+                .child(dunlin_ui::input(state).aria_label(label).w_full()),
         )
 }
 
@@ -441,11 +437,13 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let mut body = div()
-        .px(px(24.)).py(px(20.))
-        .flex()
-        .flex_col()
-        .gap(px(12.))
+    let mut body = dunlin_ui::settings::page()
+        .child(dunlin_ui::settings::section("Credential broker · this Mac", p))
+        .child(dunlin_ui::settings::card(p).child(dunlin_ui::settings::row("Agent credential access",
+            "Allow scoped use of configured keys without exposing their values to agents. Stored-only keys remain inaccessible to agents.",
+            dunlin_ui::switch("vault-toggle", "Agent credential access", this.vault.enabled)
+                .on_click(cx.listener(|this, enabled: &bool, _, cx| this.set_vault_enabled(*enabled, cx)))
+                .into_any_element(), p)))
         .child(
             div()
                 .text_size(px(11.5))
@@ -458,13 +456,6 @@ pub(crate) fn render(
                 .flex_wrap()
                 .items_center()
                 .gap(px(8.))
-                .child(dunlin_ui::button("vault-toggle").label(if this.vault.enabled {
-                    "Disable credential broker"
-                } else {
-                    "Enable credential broker"
-                }).on_click(cx.listener(|this, _, _, cx| {
-                    this.set_vault_enabled(!this.vault.enabled, cx);
-                })))
                 .child(
                     div()
                         .text_size(px(11.))
@@ -488,13 +479,13 @@ pub(crate) fn render(
                 )
                 .child(
                     dunlin_ui::button("vault-revoke-all")
-                        .ghost()
+                        .danger().outline()
                         .small()
                         .label("Revoke all")
                         .on_click(cx.listener(|this, _, window, cx| {
                             let answer = window.prompt(
                                 PromptLevel::Warning,
-                                "Revoke all quick keys?",
+                                "Delete all stored credentials?",
                                 Some("Deletes every credential value and policy from the macOS Keychain. Active and parked harnesses lose vault access until restarted. Audit history is retained."),
                                 &["Cancel", "Revoke all"],
                                 cx,
@@ -538,7 +529,7 @@ pub(crate) fn render(
     if let Some(error) = &this.vault.error {
         body = body.child(
             div()
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .p(px(10.))
                 .bg(p.red_soft)
                 .text_color(p.red)
@@ -560,10 +551,11 @@ pub(crate) fn render(
                 "New HTTP operation for {}",
                 operation_draft.secret_label
             )))
-            .child(div().flex().gap(px(6.)).child(Input::new(&operation_draft.name)).child(Input::new(&operation_draft.description)))
-            .child(Input::new(&operation_draft.host))
-            .child(Input::new(&operation_draft.path))
-            .child(Input::new(&operation_draft.parameters))
+            .child(secret_field("Operation name", &operation_draft.name, p))
+            .child(secret_field("Operation description", &operation_draft.description, p))
+            .child(secret_field("Allowed host", &operation_draft.host, p))
+            .child(secret_field("Path template", &operation_draft.path, p))
+            .child(secret_field("Parameters", &operation_draft.parameters, p))
             .child(
                 div()
                     .flex()
@@ -619,13 +611,15 @@ pub(crate) fn render(
                 "New CLI recipe for {}",
                 recipe_draft.secret_label
             )))
-            .child(div().flex().gap(px(6.)).child(Input::new(&recipe_draft.name)).child(Input::new(&recipe_draft.description)))
-            .child(Input::new(&recipe_draft.program))
+            .child(secret_field("Recipe name", &recipe_draft.name, p))
+            .child(secret_field("Recipe description", &recipe_draft.description, p))
+            .child(secret_field("Executable path", &recipe_draft.program, p))
             .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Arguments (one per line; {name} placeholders)"))
-            .child(div().h(px(110.)).overflow_hidden().child(Editor::new(&recipe_draft.args).h_full()))
-            .child(div().flex().gap(px(6.)).child(Input::new(&recipe_draft.env_var)).child(Input::new(&recipe_draft.timeout)))
+            .child(div().h(px(110.)).overflow_hidden().child(Editor::new(&recipe_draft.args).aria_label("Recipe arguments, one per line").h_full()))
+            .child(secret_field("Credential environment variable", &recipe_draft.env_var, p))
+            .child(secret_field("Timeout in seconds", &recipe_draft.timeout, p))
             .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Parameters (one per line: name or name:max_length)"))
-            .child(div().h(px(90.)).overflow_hidden().child(Editor::new(&recipe_draft.parameters).h_full()))
+            .child(div().h(px(90.)).overflow_hidden().child(Editor::new(&recipe_draft.parameters).aria_label("Recipe parameter definitions").h_full()))
             .child(
                 div()
                     .text_size(px(10.5))
@@ -654,7 +648,7 @@ pub(crate) fn render(
     }
     if let Some(draft) = &this.vault.ui.draft {
         let editing = draft.secret_id.is_some();
-        let form = div().flex().flex_col().gap(px(14.)).p(px(16.)).rounded(px(16.)).bg(p.card)
+        let form = dunlin_ui::settings::card(p).flex().flex_col().gap(px(14.)).p(px(14.))
             .relative().children({
                 #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("vault-secret-form") }
                 #[cfg(not(debug_assertions))] { None::<AnyElement> }
@@ -755,6 +749,13 @@ pub(crate) fn render(
             })
             .child(secret_field("Allowed path prefix", &draft.path_prefix, p))
             .child(secret_field("Allowed request headers", &draft.headers, p))
+            .child(dunlin_ui::settings::row("Require approval for each use",
+                "Ask before each allowed credential operation. Host, method, path and project restrictions still apply when this is off.",
+                dunlin_ui::switch("vault-require-approval", "Require approval for each credential use", draft.require_approval)
+                    .on_click(cx.listener(|this, enabled: &bool, _, cx| {
+                        if let Some(draft) = &mut this.vault.ui.draft { draft.require_approval = *enabled; }
+                        cx.notify();
+                    })).into_any_element(), p))
             .child(
                 div()
                     .flex()
@@ -823,12 +824,11 @@ pub(crate) fn render(
                             .map(|project| {
                                 let id = project.id.clone();
                                 let active = draft.project_ids.contains(&id);
-                                chip(
+                                dunlin_ui::checkbox(
                                     format!("vault-project-{id}"),
                                     project.name.clone(),
                                     active,
-                                    p,
-                                )
+                                ).label(project.name.clone())
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     if let Some(draft) = &mut this.vault.ui.draft {
                                         if let Some(index) = draft
@@ -873,13 +873,15 @@ pub(crate) fn render(
         return body.child(form).into_any_element();
     }
 
-    body = body.child(
-        dunlin_ui::button("add-vault-secret")
-            .primary()
-            .small()
-            .label("Add credential")
-            .on_click(cx.listener(|this, _, window, cx| this.new_vault_draft(window, cx))),
-    );
+    body = body
+        .child(dunlin_ui::settings::section("Stored credentials", p))
+        .child(
+            dunlin_ui::button("add-vault-secret")
+                .primary()
+                .small()
+                .label("Add credential")
+                .on_click(cx.listener(|this, _, window, cx| this.new_vault_draft(window, cx))),
+        );
     if this.vault.secrets.is_empty() {
         body = body.child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
             "No credentials yet. Add a quick key in the bottom Secrets panel or create one here.",
@@ -916,12 +918,10 @@ pub(crate) fn render(
             .unwrap_or_default();
         let audit = this.vault_audit_for(&secret.id);
         let expired = secret.is_expired(now_secs());
-        let mut card = div()
-            .p(px(12.))
-            .rounded(px(8.))
-            .bg(p.card)
-            .border_1()
-            .border_color(p.border)
+        let details = this.settings_ui.credential_details.as_deref() == Some(&id);
+        let details_id = id.clone();
+        let mut card = dunlin_ui::settings::card(p)
+            .p(px(14.))
             .flex()
             .flex_col()
             .gap(px(6.))
@@ -930,10 +930,11 @@ pub(crate) fn render(
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .child(div().flex_1().font_weight(FontWeight::MEDIUM).child(secret.label.clone()))
+                    .child(div().flex_1().min_w(px(0.)).truncate().font_weight(FontWeight::MEDIUM).child(secret.label.clone()))
                     .child(
                         div()
                             .font_family(dunlin_ui::theme::code_font())
+                            .max_w(px(140.)).truncate()
                             .text_size(px(10.5))
                             .text_color(p.muted_fg)
                             .child(secret.alias.clone()),
@@ -946,7 +947,7 @@ pub(crate) fn render(
                         this.vault.ui.draft = Some(Draft::new(window, cx, Some(&edit), projects));
                         cx.notify();
                     })))
-                    .child(dunlin_ui::button(format!("delete-vault-{id}")).ghost().label("Delete").on_click(cx.listener(move |this, _, window, cx| {
+                    .child(dunlin_ui::button(format!("delete-vault-{id}")).danger().outline().label("Delete").on_click(cx.listener(move |this, _, window, cx| {
                         let answer = window.prompt(PromptLevel::Warning, "Delete credential?", Some("The value is removed from the macOS Keychain. This cannot be undone; rotate the key at the provider if needed."), &["Cancel", "Delete"], cx);
                         let answer = this.overlay_backdrop.track_native(answer, cx);
                         let id = delete.id.clone();
@@ -1005,7 +1006,18 @@ pub(crate) fn render(
                             projects.join(", ")
                         }
                     )),
-            );
+            )
+            .child(dunlin_ui::button(format!("vault-details-{id}"))
+                .label(if details { "Hide policies and history" } else { "Access policies & history…" })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.settings_ui.credential_details = if details { None } else { Some(details_id.clone()) };
+                    cx.notify();
+                })));
+        if !details {
+            body = body.child(card);
+            continue;
+        }
+        card = card.child(dunlin_ui::settings::section("CLI recipes", p));
         let mut recipe_row = div().flex().flex_col().gap(px(4.));
         for recipe in &recipes {
             let recipe_id = recipe.id.clone();
@@ -1113,7 +1125,9 @@ pub(crate) fn render(
                     cx.notify();
                 })),
         );
-        card = card.child(operation_row);
+        card = card
+            .child(dunlin_ui::settings::section("HTTP operations", p))
+            .child(operation_row);
         if !audit.is_empty() {
             let text = audit
                 .iter()
@@ -1131,7 +1145,7 @@ pub(crate) fn render(
                 .join("\n");
             card = card.child(
                 div()
-                    .text_size(px(9.5))
+                    .text_size(px(12.))
                     .text_color(p.muted_fg)
                     .child(format!("Recent activity:\n{text}")),
             );

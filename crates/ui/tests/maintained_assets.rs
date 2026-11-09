@@ -17,7 +17,7 @@ fn migrated_default_and_extra_syntaxes_decode_all_lazy_contexts() {
     .into_iter()
     .enumerate()
     {
-        assert_eq!(set.syntaxes().len(), if index < 2 { 75 } else { 199 });
+        assert_eq!(set.syntaxes().len(), if index < 2 { 75 } else { 220 });
         // Traverses every lazy context, not just the outer dump envelope.
         let _ = set.find_unlinked_contexts();
         for extension in ["rs", "js", "md", "py"] {
@@ -47,8 +47,8 @@ fn all_migrated_lazy_themes_and_license_records_decode() {
     }
     let acknowledgements = two_face::acknowledgement::listing().to_md();
     assert_eq!(
-        format!("{:x}", Sha256::digest(acknowledgements.as_bytes())),
-        "693d56ce18824f0c8db2218677c2cda58cee2c2b604c83c4c3ebea5705a4e450",
+        hex::encode(Sha256::digest(acknowledgements.as_bytes())),
+        "9bccc030238fc6c60c3a256eb5c15b2d5eef1f888f62d71088432fb980917fcd",
         "Migration must preserve the exact upstream license text"
     );
     assert!(acknowledgements.len() > 10000);

@@ -7,20 +7,21 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+hex.workspace = true
 dunlin-domain.workspace = true
 dunlin-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 url = "2"
-ureq = { version = "2.12", features = ["json", "tls"] }
+dunlin-http.workspace = true
 zeroize = "1"
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11.1"
+hmac = "0.13.0"
 chrono = "0.4"
-base64 = "0.22"
+base64 = "0.23.1"
 percent-encoding = "2"
-rand = "0.9"
+rand = "0.10.3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

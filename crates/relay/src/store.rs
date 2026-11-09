@@ -260,6 +260,11 @@ impl Store {
                 "#,
             )?;
         }
+        if version < 6 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch("ALTER TABLE transcripts ADD COLUMN revision INTEGER NOT NULL DEFAULT 0; PRAGMA user_version = 6;")?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -737,18 +742,54 @@ impl Store {
         Ok(())
     }
 
-    pub fn save_transcript(&self, session_id: &str, payload: &str) -> Result<()> {
-        self.connection.execute(
+    /// Legacy clients may update only legacy snapshots. They cannot roll back a
+    /// versioned snapshot after a newer client has adopted optimistic concurrency.
+    pub fn save_transcript(&self, session_id: &str, payload: &str) -> Result<bool> {
+        let changed = self.connection.execute(
             r#"
             INSERT INTO transcripts (session_id, payload, updated_at)
             VALUES (?1, ?2, ?3)
             ON CONFLICT(session_id) DO UPDATE SET
                 payload = excluded.payload,
                 updated_at = excluded.updated_at
+            WHERE transcripts.revision = 0
             "#,
             params![session_id, payload, now_secs()],
         )?;
-        Ok(())
+        Ok(changed == 1)
+    }
+
+    pub fn transcript_revision(&self, session_id: &str) -> Result<i64> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT revision FROM transcripts WHERE session_id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0))
+    }
+
+    pub fn save_transcript_if_revision(
+        &self,
+        session_id: &str,
+        payload: &str,
+        expected: i64,
+    ) -> Result<bool> {
+        if expected < 0 || expected == i64::MAX {
+            return Err(StoreError::Limit("Invalid transcript revision".into()));
+        }
+        let changed = self.connection.execute(
+            "INSERT INTO transcripts (session_id, payload, updated_at, revision)
+             SELECT ?1, ?2, ?3, ?4 + 1
+             WHERE ?4 = 0 OR EXISTS (SELECT 1 FROM transcripts WHERE session_id = ?1 AND revision = ?4)
+             ON CONFLICT(session_id) DO UPDATE SET payload = excluded.payload,
+                 updated_at = excluded.updated_at, revision = excluded.revision
+             WHERE transcripts.revision = ?4",
+            params![session_id, payload, now_secs(), expected],
+        )?;
+        Ok(changed == 1)
     }
 
     pub fn load_transcript(&self, session_id: &str) -> Result<Option<String>> {
@@ -1036,5 +1077,51 @@ mod tests {
         );
         store.delete_session("ses-1").unwrap();
         assert!(store.load_transcript("ses-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn transcript_revision_migration_preserves_legacy_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("relay.db");
+        let store = Store::open(&database).unwrap();
+        let user = store.create_user("migration", "member").unwrap();
+        let project = store
+            .create_project("project", directory.path().to_str().unwrap())
+            .unwrap();
+        let (device, _) = store.create_device(&user.id, "test").unwrap();
+        store
+            .create_session("session", &user.id, &project.id, "History", &device.id)
+            .unwrap();
+        assert!(store.save_transcript("session", "legacy history").unwrap());
+        store
+            .connection
+            .execute_batch("ALTER TABLE transcripts DROP COLUMN revision; PRAGMA user_version = 5;")
+            .unwrap();
+        drop(store);
+        let store = Store::open(&database).unwrap();
+        assert_eq!(store.transcript_revision("session").unwrap(), 0);
+        assert_eq!(
+            store.load_transcript("session").unwrap().as_deref(),
+            Some("legacy history")
+        );
+        assert!(
+            store
+                .save_transcript_if_revision("session", "versioned history", 0)
+                .unwrap()
+        );
+        assert!(
+            !store
+                .save_transcript("session", "late legacy history")
+                .unwrap()
+        );
+        assert!(
+            !store
+                .save_transcript_if_revision("session", "stale history", 0)
+                .unwrap()
+        );
+        assert_eq!(
+            store.load_transcript("session").unwrap().as_deref(),
+            Some("versioned history")
+        );
     }
 }

@@ -8,6 +8,7 @@ use std::{
 };
 
 pub(crate) fn run() {
+    let settings_close_only = std::env::args().any(|arg| arg == "--settings-close-only");
     crate::workspace_ui_smoke::enable_probes();
     let dir = PathBuf::from(
         std::env::args_os()
@@ -69,7 +70,8 @@ pub(crate) fn run() {
         let (parent, owner) = open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..dunlin_ui::window_options() }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         cx.activate(true);
         cx.spawn(async move |cx| {
-            let started = Instant::now(); let mut stage = 0;
+            let started = Instant::now(); let mut stage = 9000;
+            let mut settings_closes = 0;
             loop {
                 cx.background_executor().timer(Duration::from_millis(200)).await;
                 let done = cx.update(|cx| {
@@ -83,6 +85,38 @@ pub(crate) fn run() {
                     let (open, panel) = { let app = owner.read(cx); (app.overlay_window.is_open(), app.overlay_window.diagnostic(cx)) };
                     assert!(started.elapsed() < Duration::from_secs(20), "glass smoke stalled at stage {stage}; panel={panel:?}");
                     match stage {
+                        9000 => {
+                            owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); });
+                            stage = 9001;
+                        }
+                        9001 if open && panel.is_some() => {
+                            let child = owner.read(cx).overlay_window.debug_window().unwrap();
+                            child.update(cx, |_, window, cx| {
+                                assert_native_input_responder(window);
+                                click(window, crate::workspace_ui_smoke::measured("settings-close").center(), cx);
+                            }).unwrap();
+                            assert!(!owner.read(cx).settings_open, "X must dismiss Settings");
+                            assert!(owner.read(cx).settings_drag.is_none());
+                            stage = 9002;
+                        }
+                        9002 if !open => {
+                            // Leave the native display/Touch Bar update a full
+                            // run-loop turn after destroying the active panel.
+                            stage = 9003;
+                        }
+                        9003 => {
+                            assert!(!owner.read(cx).has_modal_overlay());
+                            assert!(!owner.read(cx).overlay_backdrop.has_dimming());
+                            parent.update(cx, |_, window, _| assert_native_input_responder(window)).unwrap();
+                            settings_closes += 1;
+                            if settings_close_only && settings_closes == 5 {
+                                std::fs::write(dir.join("PASS"), "Settings X dismissal and native focus restoration passed five times\n").unwrap();
+                                println!("PASS: Settings X dismissal and native focus restoration passed five times");
+                                cx.dispatch_action(&crate::app::Quit);
+                                return true;
+                            }
+                            stage = if settings_closes < 5 { 9000 } else { 0 };
+                        }
                         0 => {
                             let rail = crate::workspace_ui_smoke::measured("navigation-rail");
                             let settings = crate::workspace_ui_smoke::measured("rail-settings");
@@ -94,7 +128,8 @@ pub(crate) fn run() {
                         }
                         90 if panel.is_some() => {
                             assert!(owner.read(cx).settings_open);
-                            assert_eq!(panel.unwrap().size, size(px(1120.), px(760.)));
+                            // Native material and GPUI share the complete outer geometry.
+                            assert_eq!(panel.unwrap(), SurfaceGeometry::SETTINGS.outer_bounds(crate::workspace_ui_smoke::measured("settings-panel")));
                             assert!(open);
                             parent.update(cx, |_, window, _| window.resize(size(px(1200.), px(800.)))).unwrap(); stage = 1;
                         }
@@ -241,9 +276,10 @@ pub(crate) fn run() {
                         }
                         9 if open && panel.is_some() => {
                             let child = owner.read(cx).overlay_window.debug_window().unwrap();
-                            // Fixed 1200x800 fixture: click Claude's radio, not its Install button.
-                            child.update(cx, |_, window, cx| click(window, point(px(287.), px(290.)), cx)).unwrap();
-                            assert_eq!(owner.read(cx).default_harness, "Claude Code", "missing adapters must remain selectable as the default");
+                             // Follow the actual default control after layout changes,
+                             // not a coordinate that used to point at a radio.
+                             child.update(cx, |_, window, cx| click(window, crate::workspace_ui_smoke::measured("claude-harness-default").center(), cx)).unwrap();
+                             assert_eq!(owner.read(cx).default_harness, "Custom ACP", "an unavailable/unverified adapter must not change the default");
                             assert_eq!(owner.read(cx).session_harness(), "Custom ACP", "selection must not replace an existing conversation's harness");
                             child.update(cx, |_, window, cx| click(window, crate::workspace_ui_smoke::measured("claude-harness-action").center(), cx)).unwrap();
                             assert_eq!(owner.read(cx).harness_setup.as_deref(), Some("Claude Code"), "Set up must show in-app instructions without launching a browser");
@@ -319,8 +355,8 @@ pub(crate) fn run() {
                             owner.update(cx, |app, cx| { app.settings_open = true; cx.notify(); }); stage = 24;
                         }
                         24 if open && panel.is_some() => {
-                            std::fs::write(dir.join("PASS"), "Neutral lists/no dimming, Escape/focus, AppKit group typing/Enter, in-app setup and async scan passed\n").unwrap();
-                            println!("PASS: neutral lists, native glass/resize/input, group Enter submits once, keyboard Cancel preserves project, outside dismissal, harness setup/rescan and guarded Quit");
+                            std::fs::write(dir.join("PASS"), "Repeated Settings X dismissal, neutral lists/no dimming, Escape/focus, AppKit group typing/Enter, in-app setup and async scan passed\n").unwrap();
+                            println!("PASS: repeated Settings X dismissal, neutral lists, native glass/resize/input, group Enter submits once, keyboard Cancel preserves project, outside dismissal, harness setup/rescan and guarded Quit");
                             // Exercise the normal guarded Quit action in this
                             // isolated process, never the user's running app.
                             cx.dispatch_action(&crate::app::Quit); return true;

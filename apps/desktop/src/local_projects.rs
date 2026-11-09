@@ -254,7 +254,7 @@ pub(crate) fn monorepo_badge(
         .filter(|s| s.path == project.path)?
         .monorepo
         .clone()?;
-    Some(div().flex().flex_shrink_0().child(div().id(format!("monorepo:{}", project.id)).px(px(4.)).py(px(1.)).rounded(px(4.)).border_1().border_color(p.border_strong).bg(p.muted).text_size(px(9.)).text_color(p.muted_fg).child("Monorepo")
+    Some(div().flex().flex_shrink_0().child(div().id(format!("monorepo:{}", project.id)).px(px(4.)).py(px(1.)).rounded(px(dunlin_ui::radii::CODE)).border_1().border_color(p.border_strong).bg(p.muted).text_size(px(9.)).text_color(p.muted_fg).child("Monorepo")
         .tooltip(move |window, cx| component::tooltip::Tooltip::new(format!("Detected: {kind}. Packages stay inside this project; no scripts are executed.")).build(window, cx))).into_any_element())
 }
 
@@ -295,22 +295,13 @@ pub(crate) fn language_badge(
             .tooltip(move |window, cx| {
                 let languages = tooltip_languages.clone();
                 component::tooltip::Tooltip::element(move |_window, _cx| {
-                    let mut strip = div()
-                        .h(px(4.))
-                        .w_full()
-                        .rounded_full()
-                        .overflow_hidden()
-                        .flex();
+                    let strip = segmented_bar(languages.iter().map(|stat| {
+                        (stat.bytes as f32, Hsla::from(rgb(stat.color)))
+                    }));
                     let mut rows = div().flex().flex_col().gap(px(4.));
                     for stat in &languages {
                         let fraction = stat.bytes as f32 / total as f32;
                         let stat_color: Hsla = rgb(stat.color).into();
-                        strip = strip.child(
-                            div()
-                                .h_full()
-                                .w(relative(fraction.clamp(0.0, 1.0)))
-                                .bg(stat_color),
-                        );
                         rows = rows.child(
                             div()
                                 .flex()

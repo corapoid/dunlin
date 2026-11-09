@@ -48,7 +48,13 @@ pub fn resolve(target: &str) -> Result<ResolvedHost, String> {
     if !output.status.success() {
         return Err(command_error("ssh -G", &output.stderr));
     }
-    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_ssh_config(
+        &String::from_utf8_lossy(&output.stdout),
+        target,
+    ))
+}
+
+fn parse_ssh_config(text: &str, target: &str) -> ResolvedHost {
     let mut hostname = target.to_string();
     let mut user = String::new();
     let mut port = 22u16;
@@ -70,13 +76,13 @@ pub fn resolve(target: &str) -> Result<ResolvedHost, String> {
             _ => {}
         }
     }
-    Ok(ResolvedHost {
+    ResolvedHost {
         hostname,
         user,
         port,
         identity,
         proxy_jump,
-    })
+    }
 }
 
 pub fn import_aliases() -> Result<Vec<String>, String> {
@@ -115,7 +121,7 @@ pub fn import_aliases() -> Result<Vec<String>, String> {
 
 pub fn control_path(host: &SshHost) -> Result<PathBuf, String> {
     let directory = control_dir()?;
-    let digest = format!("{:x}", Sha256::digest(host.id.as_bytes()));
+    let digest = hex::encode(Sha256::digest(host.id.as_bytes()));
     Ok(directory.join(format!("dunlin-{}.sock", &digest[..16])))
 }
 
@@ -235,10 +241,9 @@ pub fn bootstrap(
             command_error("scp", &upload.stderr)
         ));
     }
-    let local_hash = format!(
-        "{:x}",
-        Sha256::digest(std::fs::read(relay_binary).map_err(|e| e.to_string())?)
-    );
+    let local_hash = hex::encode(Sha256::digest(
+        std::fs::read(relay_binary).map_err(|e| e.to_string())?,
+    ));
     let script = bootstrap_script(host, &local_hash);
     let result = run_remote_script(host, &control, &script, askpass)?;
     if !result.status.success() {
@@ -551,8 +556,9 @@ mod tests {
 
     #[test]
     fn resolves_openssh_config_output() {
-        let parsed = parse_ssh_g_for_test(
+        let parsed = parse_ssh_config(
             "hostname example.test\nuser alice\nport 2222\nidentityfile ~/.ssh/id_ed25519\nproxyjump none\n",
+            "alias",
         );
         assert_eq!(parsed.hostname, "example.test");
         assert_eq!(parsed.user, "alice");
@@ -598,31 +604,29 @@ mod tests {
         assert!(script.contains("checksum mismatch"));
     }
 
-    fn parse_ssh_g_for_test(text: &str) -> ResolvedHost {
-        let mut hostname = String::new();
-        let mut user = String::new();
-        let mut port = 22u16;
-        let mut identity = None;
-        let mut proxy_jump = None;
-        for line in text.lines() {
-            let Some((key, value)) = line.split_once(' ') else {
-                continue;
-            };
-            match key {
-                "hostname" => hostname = value.into(),
-                "user" => user = value.into(),
-                "port" => port = value.parse().unwrap_or(22),
-                "identityfile" => identity = Some(value.into()),
-                "proxyjump" => proxy_jump = (value != "none").then(|| value.to_string()),
-                _ => {}
-            }
-        }
-        ResolvedHost {
-            hostname,
-            user,
-            port,
-            identity,
-            proxy_jump,
+    #[test]
+    fn config_parser_preserves_defaults_and_trims_openssh_values() {
+        let empty = parse_ssh_config("unknown value\nmalformed\n", "saved-alias");
+        assert_eq!(empty.hostname, "saved-alias");
+        assert_eq!(empty.user, "");
+        assert_eq!(empty.port, 22);
+        assert_eq!(empty.identity, None);
+        assert_eq!(empty.proxy_jump, None);
+
+        let parsed = parse_ssh_config(
+            "hostname   actual.test  \nuser   bob \nport invalid\nidentityfile   /keys/my key \nproxyjump   gateway \n",
+            "alias",
+        );
+        assert_eq!(parsed.hostname, "actual.test");
+        assert_eq!(parsed.user, "bob");
+        assert_eq!(parsed.port, 22);
+        assert_eq!(parsed.identity.as_deref(), Some("/keys/my key"));
+        assert_eq!(parsed.proxy_jump.as_deref(), Some("gateway"));
+        for value in ["", "none", "   ", " none "] {
+            assert_eq!(
+                parse_ssh_config(&format!("proxyjump {value}\n"), "alias").proxy_jump,
+                None
+            );
         }
     }
 }

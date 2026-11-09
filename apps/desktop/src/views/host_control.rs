@@ -172,7 +172,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .ghost()
         .size(px(32.))
         .p(px(0.))
-        .rounded(px(16.))
+        .rounded_full()
         .child(
             div()
                 .relative()

@@ -18,7 +18,7 @@ impl Render for ProjectDrag {
         div()
             .w(px(246.))
             .p(px(12.))
-            .rounded(px(9.))
+            .rounded(px(dunlin_ui::radii::MESSAGE))
             .bg(p.card)
             .border_2()
             .border_color(p.blue)
@@ -62,7 +62,7 @@ impl Render for GroupDrag {
         let p = palette(cx);
         div()
             .p(px(12.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .bg(p.card)
             .border_1()
             .border_color(p.border_strong)

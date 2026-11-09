@@ -97,7 +97,7 @@ unavailable, and the rest of the relay keeps running.
 
 ## UI
 
-- **Settings → Secrets** manages credentials, project grants, TTL, named HTTP
+- **Settings → Credentials** manages credentials, project grants, TTL, named HTTP
   operations, OAuth/AWS injection and CLI recipes, and shows recent audit
   metadata. The create/edit form can require approval for every use instead of
   auto-approving a managed key. Policy and audit reads run on the background

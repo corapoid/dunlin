@@ -21,6 +21,7 @@ pub mod run;
 pub mod search;
 pub mod server;
 pub mod subtask;
+pub mod syntax;
 pub mod task_review;
 pub mod transfer;
 pub mod tree;

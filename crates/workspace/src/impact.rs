@@ -111,7 +111,7 @@ fn source(root: &str, file: &str) -> Result<String, String> {
     Ok(text)
 }
 fn hash(text: &str) -> String {
-    format!("{:x}", Sha256::digest(text.as_bytes()))
+    hex::encode(Sha256::digest(text.as_bytes()))
 }
 fn key(module: &[String], name: &str) -> String {
     format!("{}::{name}", module.join("::"))
@@ -472,7 +472,7 @@ pub fn build(root: &str, previous: Option<&Index>) -> Result<Index, String> {
             }
         };
         index.files.insert(manifest.clone(), hash(&text));
-        let Ok(value) = text.parse::<toml::Value>() else {
+        let Ok(value) = toml::from_str::<toml::Value>(&text) else {
             index.warnings.push(format!("Invalid manifest: {manifest}"));
             continue;
         };

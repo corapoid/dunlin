@@ -3,6 +3,8 @@
 
 Never executes an app/relay, mounts a DMG, installs anything or mutates GitHub.
 Checksum verification is integrity evidence, not Apple signing/notarization.
+The desktop `verify` command is retained for historical archives only; current
+relay-only releases use verify-relay-release.py instead.
 """
 import argparse
 import hashlib
@@ -232,10 +234,14 @@ def main():
             if args.command == "metadata":
                 print(f"PASS: workspace, lockfile and changelog match {args.version}")
             else:
-                signing = {"ad-hoc": "Ad-hoc signed beta; NOT Apple-notarized. The .pkg installer is unsigned. Gatekeeper approval may be required.",
-                           "developer-id": "Developer ID signed app/relay; NOT Apple-notarized. The .pkg installer is unsigned unless an Installer identity is configured.",
-                           "notarized": "Developer ID signed and Apple-notarized app/relay; stapled app/DMG. The .pkg installer is signed only when an Installer identity is configured."}[args.signing]
-                print(f"Dunlin {args.version}\n\nmacOS 15+, Apple Silicon.\n\n{signing}\n\n{body}\n")
+                signing = {"ad-hoc": "The macOS relay is ad-hoc signed; NOT Apple-notarized.",
+                           "developer-id": "The macOS relay is Developer ID signed; NOT Apple-notarized.",
+                           "notarized": "The macOS relay is Developer ID signed and Apple-notarized."}[args.signing]
+                notice = ("Dunlin is in beta. Clone the repository and build the desktop app from source; "
+                          "prebuilt app downloads, Homebrew installation and GitHub Packages publication "
+                          "are paused until Apple Developer ID signing and notarization are available. "
+                          "Only relay server archives and bootstrap scripts are distributed here.")
+                print(f"Dunlin {args.version}\n\nmacOS 15+, Apple Silicon desktop.\n\n{notice}\n\n{signing}\n\n{body}\n")
         elif args.command == "acceptance":
             print(acceptance_policy(ROOT, args.version))
         elif args.command == "signing-config":

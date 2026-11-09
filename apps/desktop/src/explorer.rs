@@ -7,8 +7,13 @@ use dunlin_workspace::{
 };
 use std::path::{Path, PathBuf};
 
+pub(crate) mod search;
+
 #[derive(Default)]
 pub(crate) struct State {
+    pub search: search::Search,
+    pub focus: Option<FocusHandle>,
+    pub scroll: ScrollHandle,
     pub selected: Option<(String, String, bool)>,
     pub creation: Option<Creation>,
     pub busy: bool,
@@ -40,7 +45,7 @@ impl Render for EntryDrag {
         let p = palette(cx);
         div()
             .p(px(8.))
-            .rounded(px(6.))
+            .rounded(px(dunlin_ui::radii::ROW))
             .bg(p.card)
             .border_1()
             .border_color(p.border)
@@ -95,6 +100,104 @@ fn remap(path: &Path, report: &TransferReport) -> Option<PathBuf> {
 }
 
 impl DunlinApp {
+    pub(crate) fn focus_explorer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.explorer
+            .focus
+            .get_or_insert_with(|| cx.focus_handle())
+            .focus(window, cx);
+    }
+
+    pub(crate) fn explorer_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let key = &event.keystroke;
+        if self.section != dunlin_domain::SidebarSection::Files
+            || self.sidebar_collapsed
+            || self.projects.is_empty()
+            || self.has_overlay()
+            || !self
+                .explorer
+                .focus
+                .as_ref()
+                .is_some_and(|focus| focus.is_focused(window))
+            || key.modifiers.platform
+            || key.modifiers.control
+        {
+            return false;
+        }
+        match key.key.as_str() {
+            "escape" => {
+                self.explorer.search.clear(&mut self.file_tree);
+            }
+            "backspace" if !self.explorer.search.query.is_empty() => {
+                self.explorer.search.backspace(&mut self.file_tree);
+                self.select_explorer_search_match();
+            }
+            "up" | "down" if !self.explorer.search.query.is_empty() => {
+                self.explorer
+                    .search
+                    .move_selection(if key.key == "up" { -1 } else { 1 });
+                self.select_explorer_search_match();
+            }
+            "enter" => {
+                let entry = if self.explorer.search.query.is_empty() {
+                    self.explorer
+                        .selected
+                        .as_ref()
+                        .and_then(|(project, path, directory)| {
+                            (project == &self.project().id).then(|| search::Match {
+                                path: path.clone(),
+                                directory: *directory,
+                            })
+                        })
+                } else {
+                    self.explorer.search.current().cloned()
+                };
+                if let Some(entry) = entry {
+                    self.select_explorer_entry(&entry.path, entry.directory);
+                    if entry.directory {
+                        self.toggle_folder(&entry.path, cx);
+                    } else {
+                        self.open_file(&entry.path, window, cx);
+                    }
+                }
+            }
+            _ => {
+                let text = key.key_char.as_deref().or_else(|| {
+                    if key.modifiers.alt {
+                        None
+                    } else if key.key == "space" {
+                        Some(" ")
+                    } else {
+                        (key.key.chars().count() == 1).then_some(key.key.as_str())
+                    }
+                });
+                let Some(text) =
+                    text.filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
+                else {
+                    return false;
+                };
+                let query = format!("{}{text}", self.explorer.search.query);
+                self.explorer.search.set_query(query, &mut self.file_tree);
+                self.select_explorer_search_match();
+            }
+        }
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn select_explorer_search_match(&mut self) {
+        if let Some(entry) = self.explorer.search.current().cloned() {
+            self.select_explorer_entry(&entry.path, entry.directory);
+            if let Some(index) = self.explorer.search.reveal_current(&mut self.file_tree) {
+                self.explorer.scroll.scroll_to_item(index);
+            }
+        }
+    }
+
     pub(crate) fn select_explorer_entry(&mut self, path: &str, directory: bool) {
         self.explorer.selected = Some((self.project().id.clone(), path.into(), directory));
     }

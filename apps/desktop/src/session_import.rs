@@ -1081,7 +1081,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         div()
                             .h(px(56.))
                             .p(px(7.))
-                            .rounded(px(6.))
+                            .rounded(px(dunlin_ui::radii::ROW))
                             .border_1()
                             .border_color(p.border)
                             .flex()

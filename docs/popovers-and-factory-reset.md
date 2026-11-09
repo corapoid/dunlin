@@ -23,7 +23,7 @@ backdrop intact; it does not add another dimming pass.
 
 ## Reset contract
 
-**Settings → Advanced → About → Reset…** opens a native warning with **No**
+**Settings → Data & Backup → Recovery → Reset…** opens a native warning with **No**
 first/default and **Yes, reset Dunlin** second. Dismissal, failure to receive an
 answer and every answer other than the explicit Yes leave data untouched.
 

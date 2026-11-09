@@ -15,12 +15,7 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
         .flex_col()
         .gap(px(8.))
         .child(
-            div()
-                .text_size(px(11.0))
-                .font_family(dunlin_ui::theme::code_font())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.muted_fg)
-                .child("SSH HOSTS"),
+            dunlin_ui::settings::section("SSH hosts · this Mac", p),
         )
         .child(
             div()
@@ -49,13 +44,7 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
         );
     if this.ssh_hosts.is_empty() {
         body = body.child(
-            div()
-                .p(px(10.))
-                .rounded(px(7.))
-                .bg(p.panel)
-                .text_size(px(10.5))
-                .text_color(p.muted_fg)
-                .child("No SSH hosts imported yet."),
+            dunlin_ui::settings::notice("No SSH hosts imported yet. Import aliases from your OpenSSH configuration to get started.", p),
         );
     }
     for host in this.ssh_hosts.clone() {
@@ -66,12 +55,8 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
         let remove_id = id.clone();
         let status = this.ssh_status.get(&id).cloned().unwrap_or_default();
         body = body.child(
-            div()
-                .p(px(10.))
-                .rounded(px(8.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.panel)
+            dunlin_ui::settings::card(p)
+                .p(px(14.))
                 .flex()
                 .flex_col()
                 .gap(px(5.))

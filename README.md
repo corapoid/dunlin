@@ -30,9 +30,9 @@ history stay on your Mac or your explicitly selected self-hosted server.
 **Public beta** · macOS 15+ · Apple Silicon desktop
 · macOS ARM64 / Linux x86_64 and ARM64 relay
 
-Download the latest verified beta from the
-[releases page](https://github.com/corapoid/dunlin/releases). Every published
-download passes independent checksum, bundle and architecture checks.
+**Dunlin is in beta. We recommend cloning this repository and building from
+source.** Prebuilt app downloads and Homebrew installation are paused until
+Apple Developer ID signing and notarization are available.
 
 ## What you won't find combined anywhere else
 
@@ -42,6 +42,10 @@ download passes independent checksum, bundle and architecture checks.
 - **A real agent workspace, not a chat box.** Queue prompts while a turn runs,
   edit or retry messages, resume history, and keep per-project/group harness,
   model and environment defaults.
+- **Agents that know their project peers.** Built-in MCP tools expose observed
+  runs, bounded result reports and inbox messages. Human-approved deferred turns
+  wait for fixed run/task dependencies without model polling, locally or on a
+  paired relay, preserving mode, permissions and budgets.
 - **Live Graph and Trace.** Every request, model call, tool and permission is
   projected from the actual transcript — not a mock, estimate or demo view.
 - **Your history comes with you.** Import Claude Code, Codex and OpenCode
@@ -111,22 +115,7 @@ The exact method and caveats are in [`docs/performance.md`](docs/performance.md)
 
 ## Start
 
-Install the current beta with Homebrew:
-
-```sh
-brew trust corapoid/tap
-brew install --cask corapoid/tap/dunlin@beta
-```
-
-The macOS packages are also published as an OCI artifact in
-[GitHub Packages](https://github.com/corapoid/dunlin/pkgs/container/dunlin):
-
-```sh
-oras pull ghcr.io/corapoid/dunlin:beta -o dunlin-beta
-```
-
-Or download the DMG, `.pkg` installer or ZIP from the
-[releases page](https://github.com/corapoid/dunlin/releases), or build it:
+Clone the repository and build the beta locally:
 
 ```sh
 git clone https://github.com/corapoid/dunlin.git
@@ -140,9 +129,8 @@ Local agent work needs an ACP harness such as `opencode acp`; a remote workspace
 uses the harness installed on its server instead. Development runs with
 `cargo run -p dunlin`.
 
-The current beta is ad-hoc signed and not Apple-notarized; the `.pkg` installer
-is unsigned. macOS may ask you to approve the app in
-**System Settings → Privacy & Security**.
+Local app bundles are ad-hoc signed, not Apple-notarized. An Apple Developer ID
+certificate is not required to build from source.
 
 ## Set up a remote server
 
@@ -161,7 +149,7 @@ bash install-relay.sh
 Review the script before running it as your regular service user, not root.
 For source builds, see the [full guide](docs/guide.md#remote-relay).
 
-Pair in **Settings → Remote**, then choose **Manage** or use the title-bar host
+Pair in **Settings → Remote & SSH**, then choose **Manage** or use the title-bar host
 switcher. Server tool settings and authorization stay remote; appearance stays
 local. Copying is a one-time, non-overwriting snapshot, not synchronization.
 Review files and history for secrets before uploading.

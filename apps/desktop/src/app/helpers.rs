@@ -8,65 +8,7 @@ use dunlin_ui::*;
 use crate::{harness, logging, remote};
 
 pub(crate) fn editor_language(path: &str) -> &'static str {
-    let name = Path::new(path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if name == "dockerfile" {
-        return "dockerfile";
-    }
-    if name == "makefile" {
-        return "make";
-    }
-    if name == "cargo.lock" {
-        return "toml";
-    }
-    if name == ".env" || name.starts_with(".env.") {
-        return "bash";
-    }
-    let extension = Path::new(path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "rs" => "rust",
-        "toml" => "toml",
-        "json" | "jsonc" => "json",
-        "md" | "markdown" => "markdown",
-        "js" | "mjs" | "cjs" => "javascript",
-        "ts" | "mts" | "cts" => "typescript",
-        "tsx" => "tsx",
-        "jsx" => "jsx",
-        "py" => "python",
-        "go" => "go",
-        "c" | "h" => "c",
-        "cc" | "cpp" | "hpp" => "cpp",
-        "css" => "css",
-        "scss" => "scss",
-        "sass" => "sass",
-        "html" | "htm" => "html",
-        "sh" | "bash" | "zsh" => "bash",
-        "yml" | "yaml" => "yaml",
-        "sql" => "sql",
-        "swift" => "swift",
-        "java" => "java",
-        "kt" | "kts" => "kotlin",
-        "rb" => "ruby",
-        "php" => "php",
-        "xml" => "xml",
-        "ini" | "cfg" | "conf" => "ini",
-        "svelte" => "svelte",
-        "vue" => "vue",
-        "lua" => "lua",
-        "ex" | "exs" => "elixir",
-        "r" => "r",
-        "pl" => "perl",
-        "ps1" => "powershell",
-        "diff" | "patch" => "diff",
-        _ => "plaintext",
-    }
+    dunlin_workspace::syntax::language(path).unwrap_or("plaintext")
 }
 
 pub(crate) fn data_dir() -> Option<PathBuf> {

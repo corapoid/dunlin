@@ -167,7 +167,7 @@ pub(crate) fn render(
             .flex_shrink_0()
             .h(px(28.))
             .px(px(10.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .border_1()
             .border_color(p.border)
             .bg(p.muted)

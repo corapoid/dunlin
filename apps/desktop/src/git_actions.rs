@@ -222,8 +222,8 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     );
     div().id("git-action-overlay").absolute().inset_0().size_full().occlude().flex().items_center().justify_center()
         .on_click(cx.listener(|this, _, window, cx| this.cancel_git_action(window, cx)))
-        .child(div().id("git-action-dialog").role(Role::Dialog).tab_group().aria_label("Confirm Git operation")
-            .w(px(560.)).max_w_full().rounded(px(12.)).border_1().border_color(p.border_strong).bg(p.card)
+        .child(SurfaceGeometry::DIALOG.paint(p.card, p.border_strong).id("git-action-dialog").role(Role::Dialog).tab_group().aria_label("Confirm Git operation")
+            .w(px(560.)).max_w_full()
             .p(px(18.)).flex().flex_col().gap(px(12.)).on_click(|_, _, cx| cx.stop_propagation())
             .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("{} · {}", plan.action.label(), pending.project.name)))
             .child(div().text_size(px(12.)).child(description))

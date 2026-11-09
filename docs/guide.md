@@ -89,6 +89,38 @@ See [release acceptance](release-acceptance.md) for the publication boundary.
 
 ## Features
 
+### Code syntax highlighting
+
+The native editor automatically selects syntax from the filename for both local
+and relay projects. It uses Syntect with Oniguruma and the bundled two-face
+grammars; source files are never executed to determine their language.
+
+In addition to Rust, Python, JavaScript/JSX, TypeScript/TSX, Go, C/C++, Java,
+Kotlin, Swift, Ruby, PHP, Lua and the existing web/data formats, it supports:
+
+| Language/tool | Recognized files |
+| --- | --- |
+| Zig | `.zig`, `.zon` (including `build.zig.zon`) |
+| Dart | `.dart` |
+| C# | `.cs`, `.csx` |
+| PowerShell | `.ps1`, `.psm1`, `.psd1` |
+| Terraform / OpenTofu | `.tf`, `.tfvars`, `.hcl`; `.tf.json` / `.tfvars.json` use JSON |
+| Ansible | YAML playbooks, roles and inventory; INI inventory named `inventory` / `hosts` or ending in `.ini`; `ansible.cfg`, `.ansible-lint` |
+| Jinja | `.j2`, `.jinja`, `.jinja2`; `.yaml.j2` / `.yml.j2` combine YAML and Jinja; `.html.j2` / `.xml.j2` combine markup and Jinja |
+| GraphQL | `.graphql`, `.graphqls`, `.gql` |
+| Protobuf | `.proto` |
+| Nix | `.nix` |
+| CMake | `CMakeLists.txt`, `CMakeCache.txt`, `.cmake` |
+| Containers / CI | `Dockerfile`, `Dockerfile.*`, `.dockerfile`; Compose, Kubernetes, GitHub Actions and GitLab CI use YAML |
+| Other configuration | `nginx.conf`, Makefile / GNUmakefile, Bash/Zsh startup files, `.env.*`, Windows Batch `.bat` / `.cmd` |
+
+Jinja expressions, statements and comments are highlighted inside YAML strings
+and block scalars as well as in standalone templates. This is syntax coloring,
+not Ansible module validation, Terraform provider completion or language-server
+support. Inventories and templates with arbitrary extensionless names are not
+content-sniffed. Unknown file types retain the existing preview safety boundary.
+Update the relay too when using newly admitted file extensions remotely.
+
 ### Back and forward
 
 Use the title-bar arrows, **View → Back / Forward**, or **⌘[ / ⌘]** to revisit
@@ -98,10 +130,20 @@ sessions and closed file tabs are skipped. History keeps the last 100 destinatio
 for the current app run; it does not undo edits or discard unsaved buffers.
 Save or close the current file before navigating to another project.
 
+### Settings organization
+
+Settings is grouped into Application, Agents, Security & Privacy, and System &
+Data. Search by setting name or aliases with **⌘F**. General focuses on startup
+and notifications; Workspace owns project discovery and list presentation;
+Data & Backup owns export/import and recovery. Agents always configures this Mac;
+Remote & SSH names the server being managed. Security Audits separates configuration
+from audit work, and Usage & Limits separates preferences from reports.
+See [settings, scope and saving](settings.md) for the complete map.
+
 ### Settings reset and floating lists
 
 Floating lists share the host menu's neutral popover style, without dimming the
-workspace. **Settings → Advanced → About → Reset…** restores defaults and removes
+workspace. **Settings → Data & Backup → Recovery → Reset…** restores defaults and removes
 local project/group/history/harness records and Dunlin-owned credentials after an
 explicit warning with **No / Yes, reset Dunlin**. Close other Dunlin instances first.
 Repository files and installed agents are never deleted. The app closes after
@@ -131,7 +173,18 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   Qwen Code, GitHub Copilot, Cursor, Auggie CLI, Kiro CLI, OpenClaw, Hermes Agent
   and Qoder CLI, plus custom ACP commands. Each project can override the harness
   and permission mode. Missing agents show **Install…**, which opens the official
-  setup page; detected agents show **Import sessions…**.
+   setup page; detected agents show **Import sessions…**.
+- **Settings → Agents → Test connection** verifies the adapter by opening an
+  empty ACP session without sending a prompt or signing in. Only successfully
+  verified harnesses can be selected in the composer or as the global default.
+  Verification is local to this app run and project configuration; changing the
+  command, model or environment requires another test. Failed connections leave
+  the harness menu usable so you can switch to a working adapter.
+- **Settings → Diagnostics & About → Agent logs** includes diagnostics from foreground and
+  background harnesses, adapter stderr and error details. **Export ZIP…** saves
+  current and rotated logs for debugging. Protocol prompt/tool payloads are
+  omitted and known credentials are redacted. Review adapter messages for local
+  paths or personal data before sharing the archive.
 - Local **Project settings → Model & environment…** saves a default model ID per
   harness and literal `NAME=value` environment overrides. Model defaults apply to
   new conversations, not resumed ones; unavailable/rejected defaults block activation
@@ -173,7 +226,7 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   without recorded model metadata say **Model not recorded**, not today's model.
   Response logos identify the harness (bundled Claude, Codex, OpenCode, Copilot,
   Gemini and Hermes marks); other/custom harnesses use initials.
-- **Settings → Design → Application → System** follows native appearance changes.
+- **Settings → Appearance → Theme → System** follows native appearance changes.
   Light/Dark remain explicit overrides. Drag the Settings header to reposition
   the panel; it stays inside the viewport. Compact density also tightens project,
   session and Explorer rows. QA details have a **Close** action like ACP logs.
@@ -181,7 +234,7 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   palette remains available with `⌘K`; source files use their existing tabs
   instead of duplicate filename/editor headers.
 - File explorer with a debounced watcher and missing-folder recovery.
-- **Settings → Harnesses → Import sessions…** scans the standard Claude Code and
+- **Settings → Agents → Import sessions…** scans the standard Claude Code and
   Codex session folders and reads OpenCode's local `opencode.db` read-only, then
   shows a preview. Portable `dunlin.session.v1` exports remain a separate explicit
   action for other ACP agents. Preview project
@@ -270,7 +323,7 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   contains before import. Collections with multiple repositories offer optional
   root tracking: every 30 seconds while Dunlin runs, new repositories are imported
   without changing the active project or automatically granting trust. Tracking
-  survives restart; stop it in **Settings → General → Project imports**. A single
+  survives restart; stop it in **Settings → Workspace → Project discovery**. A single
   repository does not offer tracking. Select a collection directory to discover
   its repositories. A selected collection becomes a logical group named after that
   folder; discovered repositories become its projects, not a parent workspace.
@@ -292,7 +345,7 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   `~/Library/Application Support/Dunlin/repositories`; clones are stored beneath
   `<owner>/<repo>`. Existing folders are never overwritten. Failed clone files
   remain for inspection. GitHub imports require project trust before agent use.
-  **Settings → General** reports gh installation and active github.com authorization;
+  **Settings → Workspace** reports gh installation and active github.com authorization;
   install/authenticate outside Dunlin and use **Check again** to refresh. Details
   and the isolated acceptance command: [project import](project-import.md).
   Declared npm/Yarn, pnpm, Cargo and Go workspaces, or multi-package Nx/Turbo/Lerna
@@ -428,7 +481,7 @@ success; restart for a fresh setup. [Exact reset scope and QA](popovers-and-fact
   current conversation when deleting history from another workspace.
   Metrics use recorded requests, reported token deltas and tool-reported diffs
   only, not context occupancy or inferred Git history. Missing data stays unknown.
-  Settings → General chooses visible widgets and Dashboard/last-project startup.
+  Settings → Workspace chooses visible widgets; General chooses Dashboard/last-project startup.
 - Collapsible Account usage and an animated sidebar. Settings and branch panels
   use localized native **Liquid Glass** on macOS 26+, or AppKit's translucent
   Popover material on macOS 15+. A transparent, owner-attached render plane puts
@@ -521,7 +574,7 @@ pending AI commit requests are not resumed after restarting Dunlin.
 
 ### Secrets
 
-**Settings → Secrets** and the bottom **Secrets** panel save **Name + Key** pairs
+**Settings → Credentials** and the bottom **Secrets** panel save **Name + Key** pairs
 in the macOS Keychain, without expiry or agent access. **Configure agent access…**
 adds host, TTL, injection and optional write methods so an agent can use a key
 without receiving its value. Configured quick keys are short-lived (default
@@ -678,49 +731,19 @@ the plugin requires a Codex/OpenAI harness.
 
 ## Install
 
-### Download the beta
+### Beta: source installation recommended
 
-The current beta is ad-hoc signed because there is no Apple Developer ID yet.
-macOS Gatekeeper may ask you to approve the app in
-**System Settings → Privacy & Security**.
-
-The quickest install is the Homebrew beta channel:
-
-```sh
-brew trust corapoid/tap
-brew install --cask corapoid/tap/dunlin@beta
-```
-
-Release artifacts are published on the
-[releases page](https://github.com/corapoid/dunlin/releases):
-
-- `Dunlin-<version>-macos-arm64.dmg`
-- `Dunlin-<version>-macos-arm64.pkg` (unsigned installer for `/Applications`)
-- `Dunlin-<version>-macos-arm64.zip`
-- `dunlin-relay-<version>-macos-arm64.tar.gz`
-- `SHA256SUMS`
-
-Published releases also include
-`dunlin-relay-<version>-linux-x86_64.tar.gz` and
-`dunlin-relay-<version>-linux-arm64.tar.gz`, plus `install-relay.sh`,
-`install-harness.sh` and `RELAY-SHA256SUMS`. `RELAY-SHA256SUMS` covers all three
-relay archives and the bootstrap scripts; `SHA256SUMS` remains the macOS package manifest.
+Dunlin is in beta. We recommend cloning the repository and building from source.
+Prebuilt app downloads, Homebrew installation and GitHub Packages publication
+are paused until Apple Developer ID signing and notarization are available.
 
 The app requires macOS 15 or newer on Apple Silicon. Intel Macs are not
 supported in the current beta.
 
-### GitHub Packages (OCI)
-
-The macOS release packages are also published as an OCI artifact:
-
-```sh
-oras pull ghcr.io/corapoid/dunlin:beta -o dunlin-beta
-```
-
-Open the DMG or `.pkg` inside `dunlin-beta`, then verify the files against
-`SHA256SUMS`. The package page is
-[github.com/corapoid/dunlin/pkgs/container/dunlin](https://github.com/corapoid/dunlin/pkgs/container/dunlin).
-`oras` is available from [oras.land](https://oras.land) or Homebrew.
+Relay server archives and bootstrap scripts remain available on the
+[releases page](https://github.com/corapoid/dunlin/releases).
+`RELAY-SHA256SUMS` covers the macOS ARM64 and Linux x86_64/ARM64 relay archives
+and bootstrap scripts in current releases. See [server setup](relay-setup.md).
 
 ### Build from source
 
@@ -761,7 +784,7 @@ DUNLIN_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 
 ## Harnesses
 
-Open **Settings → Harnesses** (`⌘,`) to choose the default harness and edit the
+Open **Settings → Agents** (`⌘,`) to choose the default harness and edit the
 custom ACP command. Dunlin checks whether each command is installed and
 connects when a project opens.
 
@@ -822,7 +845,7 @@ a new line (`⌘Enter` also sends). Agent modes (for example Plan or Build) come
 from the harness, not from hard-coded prompts; unsupported modes are not offered.
 Changing the local harness starts a new conversation and preserves the old one.
 The harness picker shows names only for installed adapters and a configured Custom
-ACP command. **Settings → Harnesses → Shown / Hidden** controls visibility in
+ACP command. **Settings → Agents → visibility switches** control visibility in
 selection lists, including project/group defaults. This preference is saved and
 included in settings backups; it does not uninstall adapters or alter existing
 conversations/defaults. Settings retains the full catalog. A repository-context picker for
@@ -853,7 +876,7 @@ allowlist. An empty or failed catalog never substitutes a paid model. Free model
 availability, limits and privacy policies remain controlled by OpenCode.
 
 Use **Connect provider account…** in the provider menu, or
-**Settings → Harnesses → OpenCode provider accounts**. This opens the official
+**Settings → Agents → OpenCode provider accounts**. This opens the official
 provider sign-in dialog inside Dunlin, with the methods advertised by OpenCode.
 The dialog resolves the provider's current `integrationID` even if discovery has
 not finished. When OpenCode maps Go to its Console integration, browser account
@@ -890,6 +913,16 @@ repeating the current global model/harness for every historical response. Model
 labels omit the selected provider's prefix without changing model IDs. Reasoning
 can be toggled from the conversation header; starter suggestions only appear for
 an empty chat. Detailed diagnostics remain in settings, Graph and Trace.
+
+**Open Agent Coordination** in the command palette opens the **Agents** bottom
+panel. Agents can discover project peers, exchange bounded inbox messages and
+propose “run this after the current peers finish” through built-in MCP tools.
+The chat shows a deferred-turn card: review the exact prompt/dependencies and
+approve one later request, or edit/cancel the proposal. Dunlin owns the durable
+wait, without model polling, and retains the session's mode/permissions/budget.
+Turn completion is not verified task success; failed/cancelled/unknown work
+blocks execution. See [Agent coordination](agent-coordination.md) for tools,
+explicit worktree sharing, recovery and relay/device limits.
 
 The sidebar's **Account usage** panel follows the active environment, harness
 and (for OpenCode) provider filter. It never mixes Claude Code, Codex and OpenCode
@@ -1086,7 +1119,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 ```
 
 Then enter `https://<machine>.<tailnet>.ts.net` and the one-time pairing code in
-**Settings → Remote** on macOS. A paired device receives its
+**Settings → Remote & SSH** on macOS. A paired device receives its
 own token; revoke it with `dunlin-relay revoke <device-id>`. Provider usage is
 admin-only because it describes the host account, not a per-project grant.
 Non-admin members see an explicit **Admin-only** state without a relay request
@@ -1202,7 +1235,7 @@ later UI slice.
 
 ## SSH execution fabric
 
-Settings → Remote → **SSH hosts** imports aliases from `~/.ssh/config`. Dunlin
+Settings → Remote & SSH → **SSH hosts** imports aliases from `~/.ssh/config`. Dunlin
 uses the system OpenSSH binary; it never implements SSH cryptography and never
 disables `StrictHostKeyChecking`. The first host key must be verified in an SSH
 terminal.
@@ -1282,7 +1315,7 @@ cargo build -p dunlin-agent --bins
 ./scripts/relay-smoke.sh
 ```
 
-**Settings → Advanced → Release QA** produces a copyable environment report
+**Settings → Diagnostics & About → Troubleshooting** produces a copyable environment report
 (data directory, database schema/`quick_check`, project/session counts, harness
 discovery, macOS permissions and remote hosts). It is evidence for the manual
 R11 matrix, not a replacement for fresh-account/TCC/real-host acceptance.

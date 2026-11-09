@@ -138,7 +138,7 @@ pub(crate) fn render(
                 div()
                     .text_size(px(11.))
                     .text_color(p.muted_fg)
-                    .child("The credential broker is disabled in Settings → Secrets."),
+                    .child("The credential broker is disabled in Settings → Credentials."),
             )
             .into_any_element();
     }
@@ -382,7 +382,7 @@ pub(crate) fn render(
         div()
             .text_size(px(9.5))
             .text_color(p.muted_fg)
-            .child("Quick keys use Authorization: Bearer by default. Use Settings → Secrets for x-api-key, Basic auth, path prefixes or custom headers."),
+            .child("Quick keys use Authorization: Bearer by default. Use Settings → Credentials for x-api-key, Basic auth, path prefixes or custom headers."),
     );
     if let Some(message) = &this.vault.ui.panel.message {
         body = body.child(
@@ -415,7 +415,7 @@ pub(crate) fn render(
                 .items_center()
                 .gap(px(8.))
                 .p(px(6.))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .bg(p.card)
                 .border_1()
                 .border_color(p.border)

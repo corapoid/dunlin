@@ -23,15 +23,17 @@ pub use models::{ModelChoice, SessionModels, SessionModes};
 use models::{session_models, session_modes};
 
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::schema::v1::{
-    AvailableCommandsUpdate, CancelNotification, ContentBlock, EnvVariable, Error as AcpError,
-    InitializeRequest, LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest,
-    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
-    RequestPermissionResponse, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
-    ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate, UsageUpdate,
+use agent_client_protocol::v1::ConnectionTo;
+use agent_client_protocol::v1::schema::{
+    AvailableCommandsUpdate, CancelNotification, ContentBlock, EnvVariable, InitializeRequest,
+    LoadSessionRequest, McpServer, McpServerStdio, NewSessionRequest, PermissionOptionKind,
+    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionNotification, SessionUpdate, ToolCall, ToolCallContent,
+    ToolCallStatus, ToolCallUpdate, UsageUpdate,
 };
 use agent_client_protocol::{
-    AcpAgent, Agent, Client, ConnectTo, ConnectionTo, Lines, Result as AcpResult, UntypedMessage,
+    AcpAgent, Agent, Client, ConnectTo, Error as AcpError, Lines, Result as AcpResult,
+    UntypedMessage,
 };
 use async_channel::{Receiver, Sender};
 use dunlin_domain::{ToolKind, ToolStatus};
@@ -105,7 +107,11 @@ pub struct HarnessConfig {
     pub additional_directories: Vec<PathBuf>,
     /// Per-session MCP servers. The vault proxy is attached here.
     pub mcp_servers: Vec<McpServerConfig>,
+    /// Optional local diagnostics. Protocol payloads must be filtered by the sink.
+    pub diagnostics: Option<DiagnosticSink>,
 }
+
+pub type DiagnosticSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 impl HarnessConfig {
     pub fn new(command: impl Into<String>, cwd: impl Into<PathBuf>) -> Self {
@@ -120,6 +126,7 @@ impl HarnessConfig {
             default_model: None,
             additional_directories: Vec::new(),
             mcp_servers: Vec::new(),
+            diagnostics: None,
         }
     }
 
@@ -153,6 +160,7 @@ impl HarnessConfig {
             default_model: None,
             additional_directories: Vec::new(),
             mcp_servers: Vec::new(),
+            diagnostics: None,
         }
     }
 
@@ -341,6 +349,7 @@ pub enum HarnessEvent {
 pub enum HarnessCommand {
     Prompt {
         text: String,
+        continuation: Option<String>,
     },
     Cancel,
     NewSession {
@@ -375,6 +384,7 @@ type PendingPermissions = Arc<Mutex<HashMap<String, Sender<Option<String>>>>>;
 /// A handle to one ACP agent process and its session.
 pub struct AcpHarness {
     commands: Sender<HarnessCommand>,
+    stop: Sender<()>,
     events: Receiver<HarnessEvent>,
     join: Option<JoinHandle<()>>,
     next_request: Arc<AtomicU64>,
@@ -385,6 +395,7 @@ impl AcpHarness {
     pub fn spawn(config: HarnessConfig) -> Self {
         let (command_tx, command_rx) = async_channel::unbounded();
         let (event_tx, event_rx) = async_channel::unbounded();
+        let (stop_tx, stop_rx) = async_channel::bounded(1);
         let next_request = Arc::new(AtomicU64::new(1));
 
         let join = {
@@ -398,9 +409,21 @@ impl AcpHarness {
                             .enable_all()
                             .build()
                             .expect("failed to build the remote ACP runtime");
-                        runtime.block_on(worker(config, command_rx, event_tx, next_request));
+                        runtime.block_on(worker(
+                            config,
+                            command_rx,
+                            event_tx,
+                            next_request,
+                            stop_rx,
+                        ));
                     } else {
-                        async_io::block_on(worker(config, command_rx, event_tx, next_request));
+                        async_io::block_on(worker(
+                            config,
+                            command_rx,
+                            event_tx,
+                            next_request,
+                            stop_rx,
+                        ));
                     }
                 })
                 .expect("failed to spawn ACP worker thread")
@@ -408,6 +431,7 @@ impl AcpHarness {
 
         Self {
             commands: command_tx,
+            stop: stop_tx,
             events: event_rx,
             join: Some(join),
             next_request,
@@ -420,7 +444,17 @@ impl AcpHarness {
 
     /// Queue a prompt for the active session. Returns false if the worker is gone.
     pub fn prompt(&self, text: impl Into<String>) -> bool {
-        self.send(HarnessCommand::Prompt { text: text.into() })
+        self.send(HarnessCommand::Prompt {
+            text: text.into(),
+            continuation: None,
+        })
+    }
+    /// Relay verifies this approved continuation id atomically before forwarding.
+    pub fn prompt_continuation(&self, text: impl Into<String>, id: String) -> bool {
+        self.send(HarnessCommand::Prompt {
+            text: text.into(),
+            continuation: Some(id),
+        })
     }
 
     /// Ask the agent to cancel the current turn.
@@ -511,6 +545,8 @@ impl AcpHarness {
     }
 
     pub fn shutdown(&self) {
+        // Also interrupt initialize/session creation if the agent never replies.
+        let _ = self.stop.try_send(());
         let _ = self.commands.try_send(HarnessCommand::Shutdown);
     }
 
@@ -544,9 +580,19 @@ async fn worker(
     commands: Receiver<HarnessCommand>,
     events: Sender<HarnessEvent>,
     next_request: Arc<AtomicU64>,
+    stop: Receiver<()>,
 ) {
-    let result = run(config, commands, events.clone(), next_request).await;
+    let diagnostics = config.diagnostics.clone();
+    let run = std::pin::pin!(run(config, commands, events.clone(), next_request));
+    let stop = std::pin::pin!(stop.recv());
+    let result = match futures_util::future::select(run, stop).await {
+        futures_util::future::Either::Left((result, _)) => result,
+        futures_util::future::Either::Right(_) => return,
+    };
     if let Err(error) = result {
+        if let Some(sink) = diagnostics {
+            sink("Error", &error.to_string());
+        }
         let _ = events
             .send(HarnessEvent::Error {
                 message: error.to_string(),
@@ -574,9 +620,13 @@ async fn run(
                     format!("could not parse harness command: {error}"),
                 )
             })?;
-            Transport::Local(AcpAgent::new(
-                agent.into_config().envs(config.process_env.clone()),
-            ))
+            let mut agent = AcpAgent::new(agent.into_config().envs(config.process_env.clone()));
+            if let Some(sink) = config.diagnostics.clone() {
+                agent = agent.with_debug(move |line, direction| {
+                    sink(&format!("{direction:?}"), line);
+                });
+            }
+            Transport::Local(agent)
         }
         HarnessTransport::Remote {
             url,
@@ -594,7 +644,7 @@ async fn run(
     let permission_next = next_request.clone();
 
     Client
-        .builder()
+        .v1()
         .name(config.client_name.clone())
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {
@@ -668,17 +718,17 @@ async fn run(
         .connect_with(
             transport,
             move |connection: ConnectionTo<Agent>| async move {
-                let init = connection
+                let init = connection_timeout(connection
                     .send_request(
                         InitializeRequest::new(ProtocolVersion::V1).client_info(
-                            agent_client_protocol::schema::v1::Implementation::new(
+                            agent_client_protocol::v1::schema::Implementation::new(
                                 "Dunlin",
                                 env!("CARGO_PKG_VERSION"),
                             )
                             .title("Dunlin"),
                         ),
                     )
-                    .block_task()
+                    .block_task())
                     .await?;
 
                 let (agent_name, agent_version) = init
@@ -699,7 +749,7 @@ async fn run(
                     })
                     .await;
 
-                let mut active_session: Option<agent_client_protocol::schema::v1::SessionId> = None;
+                let mut active_session: Option<agent_client_protocol::v1::schema::SessionId> = None;
                 if !config.is_remote() {
                     if let Some(session_id) = config.resume_session_id.as_ref() {
                         if init.agent_capabilities.load_session {
@@ -723,7 +773,7 @@ async fn run(
                 let mut shutting_down = false;
                 while let Ok(command) = commands.recv().await {
                     match command {
-                        HarnessCommand::Prompt { text } => {
+                        HarnessCommand::Prompt { text, continuation } => {
                             let Some(session_id) = active_session.clone() else {
                                 let _ = foreground_events
                                     .send(HarnessEvent::Error {
@@ -735,15 +785,19 @@ async fn run(
                             let prompt_connection = connection.clone();
                             let prompt_events = foreground_events.clone();
                             connection.spawn(async move {
-                                let response = prompt_connection
-                                    .send_request(PromptRequest::new(
+                                let mut request = PromptRequest::new(
                                         session_id.clone(),
                                         vec![ContentBlock::Text(
-                                            agent_client_protocol::schema::v1::TextContent::new(
+                                            agent_client_protocol::v1::schema::TextContent::new(
                                                 text,
                                             ),
                                         )],
-                                    ))
+                                    );
+                                if let Some(id) = continuation {
+                                    request.meta = Some(serde_json::Map::from_iter([("dunlin/continuation".into(), serde_json::Value::String(id))]));
+                                }
+                                let response = prompt_connection
+                                    .send_request(request)
                                     .block_task()
                                     .await;
                                 match response {
@@ -910,6 +964,20 @@ async fn run(
     Ok(())
 }
 
+async fn connection_timeout<T>(
+    future: impl std::future::Future<Output = AcpResult<T>>,
+) -> AcpResult<T> {
+    let future = std::pin::pin!(future);
+    let timeout = std::pin::pin!(async_io::Timer::after(std::time::Duration::from_secs(30)));
+    match futures_util::future::select(future, timeout).await {
+        futures_util::future::Either::Left((result, _)) => result,
+        futures_util::future::Either::Right(_) => Err(AcpError::new(
+            -32000,
+            "Harness connection timed out after 30 seconds. Check its configuration and retry.",
+        )),
+    }
+}
+
 fn mcp_server_wire(configs: &[McpServerConfig]) -> Vec<McpServer> {
     configs
         .iter()
@@ -955,7 +1023,7 @@ async fn open_session(
                 .mcp_servers(mcp_servers),
         )?
     };
-    let response = connection.send_request(request).block_task().await?;
+    let response = connection_timeout(connection.send_request(request).block_task()).await?;
     let id = existing
         .clone()
         .or_else(|| {
@@ -979,14 +1047,16 @@ async fn open_session(
             ));
         }
         if selector.current != preferred {
-            let changed = connection
-                .send_request(model_request(
-                    &id,
-                    selector.config_id.as_deref(),
-                    preferred,
-                )?)
-                .block_task()
-                .await?;
+            let changed = connection_timeout(
+                connection
+                    .send_request(model_request(
+                        &id,
+                        selector.config_id.as_deref(),
+                        preferred,
+                    )?)
+                    .block_task(),
+            )
+            .await?;
             let mut selected = session_models(&changed).unwrap_or_else(|| {
                 let mut selected = selector.clone();
                 selected.current = preferred.into();
@@ -1227,8 +1297,8 @@ fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32, Option<String
     )
 }
 
-fn map_tool_kind(kind: agent_client_protocol::schema::v1::ToolKind) -> ToolKind {
-    use agent_client_protocol::schema::v1::ToolKind as Acp;
+fn map_tool_kind(kind: agent_client_protocol::v1::schema::ToolKind) -> ToolKind {
+    use agent_client_protocol::v1::schema::ToolKind as Acp;
     match kind {
         Acp::Read => ToolKind::Read,
         Acp::Edit | Acp::Delete | Acp::Move => ToolKind::Edit,
@@ -1250,8 +1320,8 @@ fn map_tool_status(status: ToolCallStatus) -> ToolStatus {
     }
 }
 
-fn map_plan_status(status: agent_client_protocol::schema::v1::PlanEntryStatus) -> PlanStatus {
-    use agent_client_protocol::schema::v1::PlanEntryStatus as Acp;
+fn map_plan_status(status: agent_client_protocol::v1::schema::PlanEntryStatus) -> PlanStatus {
+    use agent_client_protocol::v1::schema::PlanEntryStatus as Acp;
     match status {
         Acp::Pending => PlanStatus::Pending,
         Acp::InProgress => PlanStatus::InProgress,
@@ -1296,8 +1366,8 @@ fn available_commands(update: &AvailableCommandsUpdate) -> HarnessUpdate {
     )
 }
 
-fn stop_reason_label(reason: agent_client_protocol::schema::v1::StopReason) -> String {
-    use agent_client_protocol::schema::v1::StopReason as Acp;
+fn stop_reason_label(reason: agent_client_protocol::v1::schema::StopReason) -> String {
+    use agent_client_protocol::v1::schema::StopReason as Acp;
     match reason {
         Acp::EndTurn => "end_turn",
         Acp::MaxTokens => "max_tokens",
@@ -1527,7 +1597,7 @@ mod tests {
             other => panic!("unexpected update: {other:?}"),
         }
         let update = SessionUpdate::CurrentModeUpdate(
-            agent_client_protocol::schema::v1::CurrentModeUpdate::new("build"),
+            agent_client_protocol::v1::schema::CurrentModeUpdate::new("build"),
         );
         match map_notification(&notification(update)).unwrap() {
             HarnessUpdate::Configuration {
@@ -1541,8 +1611,8 @@ mod tests {
     #[test]
     fn maps_message_and_thought_chunks() {
         let message = notification(SessionUpdate::AgentMessageChunk(
-            agent_client_protocol::schema::v1::ContentChunk::new(ContentBlock::Text(
-                agent_client_protocol::schema::v1::TextContent::new("hello"),
+            agent_client_protocol::v1::schema::ContentChunk::new(ContentBlock::Text(
+                agent_client_protocol::v1::schema::TextContent::new("hello"),
             )),
         ));
         assert_eq!(
@@ -1551,8 +1621,8 @@ mod tests {
         );
 
         let thought = notification(SessionUpdate::AgentThoughtChunk(
-            agent_client_protocol::schema::v1::ContentChunk::new(ContentBlock::Text(
-                agent_client_protocol::schema::v1::TextContent::new("thinking"),
+            agent_client_protocol::v1::schema::ContentChunk::new(ContentBlock::Text(
+                agent_client_protocol::v1::schema::TextContent::new("thinking"),
             )),
         ));
         assert_eq!(
@@ -1564,7 +1634,7 @@ mod tests {
     #[test]
     fn maps_usage_and_cost() {
         let usage = UsageUpdate::new(1_200, 200_000)
-            .cost(agent_client_protocol::schema::v1::Cost::new(0.25, "USD"));
+            .cost(agent_client_protocol::v1::schema::Cost::new(0.25, "USD"));
         assert_eq!(
             map_notification(&notification(SessionUpdate::UsageUpdate(usage))),
             Some(HarnessUpdate::Usage {
@@ -1584,7 +1654,7 @@ mod tests {
             (f64::NAN, "USD"),
         ] {
             let usage = UsageUpdate::new(10, 100).cost(
-                agent_client_protocol::schema::v1::Cost::new(amount, currency),
+                agent_client_protocol::v1::schema::Cost::new(amount, currency),
             );
             assert!(matches!(
                 usage_update(&usage),
@@ -1596,7 +1666,7 @@ mod tests {
             HarnessUpdate::Usage { cost_usd: None, .. }
         ));
         let usage =
-            UsageUpdate::new(10, 100).cost(agent_client_protocol::schema::v1::Cost::new(0., "usd"));
+            UsageUpdate::new(10, 100).cost(agent_client_protocol::v1::schema::Cost::new(0., "usd"));
         assert!(matches!(
             usage_update(&usage),
             HarnessUpdate::Usage {
@@ -1621,8 +1691,8 @@ mod tests {
     #[test]
     fn maps_available_commands() {
         let commands = AvailableCommandsUpdate::new(vec![
-            agent_client_protocol::schema::v1::AvailableCommand::new("init", "Initialize"),
-            agent_client_protocol::schema::v1::AvailableCommand::new("review", "Review"),
+            agent_client_protocol::v1::schema::AvailableCommand::new("init", "Initialize"),
+            agent_client_protocol::v1::schema::AvailableCommand::new("review", "Review"),
         ]);
         assert_eq!(
             map_notification(&notification(SessionUpdate::AvailableCommandsUpdate(
@@ -1637,7 +1707,7 @@ mod tests {
 
     #[test]
     fn maps_tool_kinds_and_statuses() {
-        use agent_client_protocol::schema::v1::{ToolCallStatus as AcpStatus, ToolKind as AcpKind};
+        use agent_client_protocol::v1::schema::{ToolCallStatus as AcpStatus, ToolKind as AcpKind};
 
         assert_eq!(map_tool_kind(AcpKind::Read), ToolKind::Read);
         assert_eq!(map_tool_kind(AcpKind::Edit), ToolKind::Edit);
@@ -1674,7 +1744,7 @@ mod tests {
 
     #[test]
     fn labels_stop_reasons() {
-        use agent_client_protocol::schema::v1::StopReason as Acp;
+        use agent_client_protocol::v1::schema::StopReason as Acp;
         assert_eq!(stop_reason_label(Acp::EndTurn), "end_turn");
         assert_eq!(stop_reason_label(Acp::Refusal), "refusal");
         assert_eq!(stop_reason_label(Acp::Cancelled), "cancelled");
@@ -1684,8 +1754,8 @@ mod tests {
     #[test]
     fn extracts_text_from_tool_content() {
         let content = vec![ToolCallContent::Content(
-            agent_client_protocol::schema::v1::Content::new(ContentBlock::Text(
-                agent_client_protocol::schema::v1::TextContent::new("first line\nsecond line"),
+            agent_client_protocol::v1::schema::Content::new(ContentBlock::Text(
+                agent_client_protocol::v1::schema::TextContent::new("first line\nsecond line"),
             )),
         )];
         let (detail, additions, deletions, diff) = tool_content(&content);
@@ -1719,7 +1789,7 @@ mod tests {
     #[test]
     fn builds_a_unified_diff_for_file_edits() {
         let content = vec![ToolCallContent::Diff(
-            agent_client_protocol::schema::v1::Diff::new("/tmp/hello.rs", "one\ntwo\n")
+            agent_client_protocol::v1::schema::Diff::new("/tmp/hello.rs", "one\ntwo\n")
                 .old_text("one\nthree\n"),
         )];
         let (detail, additions, deletions, diff) = tool_content(&content);

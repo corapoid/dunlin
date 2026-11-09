@@ -6,7 +6,6 @@ use dunlin_domain::ToolStatus;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::Textarea;
 use dunlin_ui::component::text::TextView;
 use dunlin_ui::component::tooltip::Tooltip;
 use dunlin_ui::component::{Disableable, Selectable, Sizable};
@@ -24,6 +23,7 @@ pub(crate) fn render(
 ) -> AnyElement {
     let p = palette(cx);
     let connection_problem = connection_problem(this, cx);
+    let coordination = crate::coordination::cards(this, cx);
     if this.harness.transcript.is_empty() {
         let composer = composer(this, window, cx);
         return div()
@@ -38,6 +38,7 @@ pub(crate) fn render(
             .justify_center()
             .bg(p.card)
             .children(connection_problem)
+            .children(coordination)
             .children(trust_notice(this, cx))
             .child(
                 div()
@@ -74,6 +75,7 @@ pub(crate) fn render(
         .min_h(px(0.))
         .bg(p.card)
         .children(connection_problem)
+        .children(coordination)
         .children(trust_notice(this, cx))
         .child(messages)
         .child(composer)
@@ -98,7 +100,7 @@ fn trust_notice(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElem
                     .w_full()
                     .max_w(px(824.))
                     .p(px(12.))
-                    .rounded(px(9.))
+                    .rounded(px(dunlin_ui::radii::MESSAGE))
                     .border_1()
                     .border_color(p.amber.opacity(0.35))
                     .bg(p.amber_soft)
@@ -144,10 +146,10 @@ fn trust_notice(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElem
 fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElement> {
     let command = this.harness.missing_command.as_ref()?;
     let p = palette(cx);
-    let can_use_opencode =
-        this.session_harness() != "OpenCode" && crate::harness::command_available("opencode acp");
+    let can_use_opencode = this.session_harness() != "OpenCode"
+        && this.harness_unavailable_reason("OpenCode").is_none();
     Some(div().w_full().px(px(22.)).py(px(12.)).flex().justify_center().flex_shrink_0().child(
-        div().w_full().max_w(px(824.)).p(px(12.)).rounded(px(9.))
+        div().w_full().max_w(px(824.)).p(px(12.)).rounded(px(dunlin_ui::radii::MESSAGE))
             .border_1().border_color(p.amber.opacity(0.35)).bg(p.amber_soft)
             .flex().flex_col().gap(px(8.))
             .child(div().text_size(px(13.)).text_color(p.amber).child(format!("{} needs an ACP adapter", this.session_harness())))
@@ -285,6 +287,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     reasoning_open,
                     expanded,
                     session: &session,
+                    reduce_motion: this.reduce_motion,
                     caption,
                     logo: this.chat_logo,
                     speaker,
@@ -315,41 +318,37 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .w_full()
         .overflow_y_scroll()
         .track_scroll(&this.chat_scroll.handle)
-        .on_scroll_wheel(
-            cx.listener(move |this, event: &ScrollWheelEvent, window, cx| {
-                let delta = event.delta.pixel_delta(px(16.)).y;
-                let current = this.session().id == scroll_session;
-                if delta > px(0.) {
-                    if current {
-                        this.chat_scroll.pause_following();
-                    } else if let Some(scroll) =
-                        this.workbench.chat_scrolls.get_mut(&scroll_session)
-                    {
-                        scroll.pause_following();
+        .on_scroll(cx.listener(move |this, event: &ScrollEvent, window, cx| {
+            let delta = event.delta.pixel_delta(px(16.)).y;
+            let current = this.session().id == scroll_session;
+            if delta > px(0.) {
+                if current {
+                    this.chat_scroll.pause_following();
+                } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&scroll_session) {
+                    scroll.pause_following();
+                }
+                cx.notify();
+                return;
+            }
+            if delta == px(0.) {
+                return;
+            }
+            // Read the resulting offset after GPUI's default wheel handler.
+            // Sampling during normal renders would confuse growing content
+            // with the reader deliberately scrolling away from the live edge.
+            let app = cx.entity().downgrade();
+            let session = scroll_session.clone();
+            window.defer(cx, move |_, cx| {
+                let _ = app.update(cx, |this, cx| {
+                    if this.session().id == session {
+                        this.chat_scroll.user_scrolled();
+                    } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&session) {
+                        scroll.user_scrolled();
                     }
                     cx.notify();
-                    return;
-                }
-                if delta == px(0.) {
-                    return;
-                }
-                // Read the resulting offset after GPUI's default wheel handler.
-                // Sampling during normal renders would confuse growing content
-                // with the reader deliberately scrolling away from the live edge.
-                let app = cx.entity().downgrade();
-                let session = scroll_session.clone();
-                window.defer(cx, move |_, cx| {
-                    let _ = app.update(cx, |this, cx| {
-                        if this.session().id == session {
-                            this.chat_scroll.user_scrolled();
-                        } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&session) {
-                            scroll.user_scrolled();
-                        }
-                        cx.notify();
-                    });
                 });
-            }),
-        )
+            });
+        }))
         .px(px(22.))
         .py(px(18.))
         .flex()
@@ -432,7 +431,7 @@ fn empty_state(
         .child(
             div()
                 .size(px(42.))
-                .rounded(px(12.))
+                .rounded(px(dunlin_ui::radii::CARD))
                 .bg(p.fg)
                 .text_color(p.bg)
                 .flex()
@@ -527,7 +526,7 @@ fn starter_row(
             div()
                 .size(px(28.))
                 .flex_shrink_0()
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(color.opacity(0.12))
                 .flex()
                 .items_center()
@@ -568,6 +567,7 @@ struct AgentGroupOptions<'a> {
     reasoning_open: bool,
     expanded: Option<usize>,
     session: &'a str,
+    reduce_motion: bool,
     caption: Option<String>,
     logo: bool,
     speaker: crate::harness::Speaker,
@@ -584,6 +584,7 @@ fn agent_group(
         reasoning_open,
         expanded,
         session,
+        reduce_motion,
         caption,
         logo,
         speaker,
@@ -652,7 +653,18 @@ fn agent_group(
                 }) {
                     continue;
                 }
-                body = body.child(tool_card(index, view, *duration_ms, expanded, cx, p));
+                body = body.child(tool_card(
+                    view,
+                    *duration_ms,
+                    ToolCardOptions {
+                        index,
+                        expanded,
+                        session,
+                        reduce_motion,
+                    },
+                    cx,
+                    p,
+                ));
             }
             ChatItem::Plan { items, .. } => {
                 body = body.child(plan_card(items, p));
@@ -700,7 +712,7 @@ fn agent_group(
                 let open = expanded == Some(index);
                 body = body.child(
                     div()
-                        .rounded(px(8.))
+                        .rounded(px(dunlin_ui::radii::PANEL))
                         .border_1()
                         .border_color(p.border)
                         .p(px(8.))
@@ -796,7 +808,7 @@ fn user_message(
                 .max_w(px(620.))
                 .px(px(13.))
                 .py(px(10.))
-                .rounded(px(11.))
+                .rounded(px(dunlin_ui::radii::GRAPH_NODE))
                 .bg(p.muted)
                 .border_1()
                 .border_color(p.border)
@@ -900,7 +912,7 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette
         .bg(p.subtle)
         .overflow_hidden()
         .child(
-            action_row("reasoning-card", "Toggle thought details")
+            card_action_row("reasoning-card", "Toggle thought details", open)
                 .toggled(open)
                 .icon(IconName::Brain)
                 .label("Thought")
@@ -976,14 +988,26 @@ fn thought_card(text: &str, open: bool, cx: &mut Context<DunlinApp>, p: &Palette
     card.into_any_element()
 }
 
-fn tool_card(
+struct ToolCardOptions<'a> {
     index: usize,
+    expanded: Option<usize>,
+    session: &'a str,
+    reduce_motion: bool,
+}
+
+fn tool_card(
     tool: &ToolCallView,
     duration_ms: u64,
-    expanded: Option<usize>,
+    options: ToolCardOptions<'_>,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
+    let ToolCardOptions {
+        index,
+        expanded,
+        session,
+        reduce_motion,
+    } = options;
     let is_open = expanded == Some(index);
     let (status_color, status_soft) = match tool.status {
         ToolStatus::Running => (p.blue, p.blue_soft),
@@ -1010,9 +1034,10 @@ fn tool_card(
     let diff = tool.diff.clone();
 
     let mut card = card_surface(*p).overflow_hidden().child(
-        action_row(
+        card_action_row(
             ("tool-card", index),
             format!("Toggle tool details: {title}"),
+            is_open,
         )
         .toggled(is_open)
         .on_click(cx.listener(move |this, _, _, cx| {
@@ -1027,7 +1052,7 @@ fn tool_card(
             div()
                 .size(px(22.))
                 .flex_shrink_0()
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .bg(p.muted)
                 .flex()
                 .items_center()
@@ -1088,7 +1113,14 @@ fn tool_card(
                         .text_size(px(10.5))
                         .font_family(dunlin_ui::theme::code_font())
                         .text_color(status_color)
-                        .child(status.label().to_uppercase()),
+                        .child(
+                            MorphText::new(
+                                format!("tool-status:{}", tool.id),
+                                status.label().to_uppercase(),
+                            )
+                            .scope(session.to_string())
+                            .reduce_motion(reduce_motion),
+                        ),
                 ),
         )
         .when(duration_ms > 0, |this| {
@@ -1135,7 +1167,7 @@ fn tool_card(
                 div()
                     .px(px(7.))
                     .py(px(5.))
-                    .rounded(px(5.))
+                    .rounded(px(dunlin_ui::radii::ICON))
                     .bg(p.subtle)
                     .border_1()
                     .border_color(p.border)
@@ -1474,7 +1506,7 @@ fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElem
                 .max_w(px(600.))
                 .build(window, cx)
         })
-        .rounded(px(9.))
+        .rounded(px(dunlin_ui::radii::MESSAGE))
         .border_1()
         .border_color(p.red.opacity(0.35))
         .bg(p.red_soft)
@@ -1512,7 +1544,7 @@ fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElem
 
 fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
     div()
-        .rounded(px(9.))
+        .rounded(px(dunlin_ui::radii::MESSAGE))
         .border_1()
         .border_color(p.blue.opacity(0.28))
         .bg(p.blue_soft)
@@ -1571,19 +1603,23 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
         });
     }
 
-    let input = Textarea::new(&this.composer)
+    let input = composer_input(&this.composer)
+        .aria_label("Message to agent")
         .text_size(crate::workspace_text::size(13., cx))
-        .appearance(false)
-        .bordered(false)
         .h(px(72.));
     let harness = chat_controls::harness(this, cx);
     let mode = chat_controls::mode(this, cx);
     let model = chat_controls::model(this, cx);
 
-    let card = div()
+    let card = SurfaceGeometry::COMPOSER.paint(p.subtle, p.border)
         .w_full()
-        .rounded(px(20.))
-        .bg(p.subtle)
+        .border_color(
+            if this.composer.read(cx).focus_handle(cx).is_focused(window) {
+                p.blue
+            } else {
+                p.border
+            },
+        )
         .shadow_sm()
         .overflow_hidden()
         .child(
@@ -1596,7 +1632,7 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .items_center()
                 .gap(px(5.))
                 // GPUI overflow masks are rectangular; round this painted child too.
-                .rounded_t(px(20.))
+                .rounded_t(px(SurfaceGeometry::COMPOSER.inner_radius()))
                 .when(this.git_history.cancel_check.is_some(), |bar| {
                     bar.child(
                         dunlin_ui::button("composer-stop-check")
@@ -1609,14 +1645,23 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .child(harness)
                 .children(chat_controls::provider_controls(this, cx))
                 .child(div().flex_1())
-                .when(!queued.is_empty(), |this| {
-                    this.child(
+                .when(!queued.is_empty(), |bar| {
+                    bar.child(
                         dunlin_ui::button("composer-queue")
                             .warning()
                             .outline()
                             .icon(IconName::Clock3)
-                            .label(format!("{} queued", queued.len()))
-                            .accessibility_label("Toggle prompt queue")
+                            .child(
+                                MorphText::new("composer-queue-count", queued.len().to_string())
+                                    .numeric()
+                                    .scope(this.session().id.clone())
+                                    .reduce_motion(this.reduce_motion),
+                            )
+                            .child("queued")
+                            .accessibility_label(format!(
+                                "Toggle prompt queue: {} queued",
+                                queued.len()
+                            ))
                             .selected(queue_open)
                             .toggled(queue_open)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1701,8 +1746,8 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .flex()
                 .flex_col()
                 .gap(px(5.))
-                .when(queue_open && !queued.is_empty(), |this| {
-                    this.child(queue_panel(&queued, cx, &p))
+                .when(queue_open && !queued.is_empty(), |view| {
+                    view.child(queue_panel(this, &queued, cx, &p))
                 })
                 .child(card)
                 .when(this.show_shortcut_hints, |view| {
@@ -1719,7 +1764,12 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
         .into_any_element()
 }
 
-fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+fn queue_panel(
+    this: &DunlinApp,
+    queued: &[QueuedPrompt],
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
     let mut rows = div()
         .id("prompt-queue-rows")
         .max_h(px(158.))
@@ -1739,7 +1789,7 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                 .id(("queued-prompt", index))
                 .min_h(px(30.))
                 .px(px(6.))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .flex()
                 .items_center()
                 .gap(px(5.))
@@ -1828,7 +1878,12 @@ fn queue_panel(queued: &[QueuedPrompt], cx: &mut Context<DunlinApp>, p: &Palette
                         .text_size(px(10.0))
                         .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg.opacity(0.6))
-                        .child(queued.len().to_string()),
+                        .child(
+                            MorphText::new("queue-panel-count", queued.len().to_string())
+                                .numeric()
+                                .scope(this.session().id.clone())
+                                .reduce_motion(this.reduce_motion),
+                        ),
                 )
                 .child(div().flex_1())
                 .child(

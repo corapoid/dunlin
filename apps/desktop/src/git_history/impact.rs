@@ -257,7 +257,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let stale = s.dirty || s.loading || s.error.is_some();
     let filter = s.filter.read(cx).value().to_lowercase();
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.)).child("Rust AST / lexical dependency map. No build scripts, macros or project code are executed. NOT compiler/type/cfg-complete references. Candidate tests are not proven coverage; non-Rust and unresolved externals are outside this index.")
-        .child(Input::new(&s.filter).small()).child(dunlin_ui::button("impact-refresh").ghost().label(if s.loading{"Indexing…"}else{"Refresh source index"}).disabled(s.loading).on_click(cx.listener(|this,_,_,cx|this.build_impact_map(cx))));
+        .child(search_input(&s.filter, "Filter source symbols")).child(dunlin_ui::button("impact-refresh").ghost().label(if s.loading{"Indexing…"}else{"Refresh source index"}).disabled(s.loading).on_click(cx.listener(|this,_,_,cx|this.build_impact_map(cx))));
     if let Some(index) = &s.index {
         body = body.child(format!(
             "HEAD {} · {} symbols / {} lexical edges · parsed {} / reused {} · {}",

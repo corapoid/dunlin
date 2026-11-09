@@ -1,7 +1,9 @@
 //! A local instruction library with explicit, ownership-checked global installs.
 use crate::app::DunlinApp;
+use dunlin_http as ureq;
 use dunlin_ui::{
-    component::input::{Editor, EditorState, Input, InputState},
+    component::button::{Button, ButtonVariants},
+    component::input::{Editor, EditorState, InputState},
     prelude::FluentBuilder as _,
     *,
 };
@@ -19,6 +21,9 @@ pub(crate) const COMMIT_SKILL: &str = "conventional-commits";
 pub(crate) const SECURITY_AUDIT_SKILL: &str = "cloudflare-security-audit";
 pub(crate) const SPEC_KIT_SKILL: &str = "spec-driven-development";
 pub(crate) const PLUGIN_BUILDER_SKILL: &str = "plugin-builder";
+pub(crate) const COORDINATION_SKILL: &str = "agent-coordination";
+const COORDINATION_INSTRUCTIONS: &str =
+    include_str!("../../../assets/skills/agent-coordination.md");
 const MAX_SKILL_BYTES: usize = 64 * 1024;
 const MAX_SKILL_FILE_BYTES: usize = 256 * 1024;
 const MAX_SKILL_TOTAL_BYTES: usize = 2 * 1024 * 1024;
@@ -329,7 +334,7 @@ impl Skill {
             hasher.update(contents.as_bytes());
             hasher.update([0]);
         }
-        format!("{:x}", hasher.finalize())
+        hex::encode(hasher.finalize())
     }
 }
 fn valid_relative_path(path: &str) -> bool {
@@ -348,7 +353,7 @@ fn valid_relative_path(path: &str) -> bool {
         })
 }
 fn file_hash(contents: &str) -> String {
-    format!("{:x}", Sha256::digest(contents.as_bytes()))
+    hex::encode(Sha256::digest(contents.as_bytes()))
 }
 fn installation_files(installation: &Installation) -> Vec<InstalledFile> {
     if installation.files.is_empty() {
@@ -390,6 +395,7 @@ pub(crate) fn catalog_metadata() -> Vec<CatalogEntry> {
         security_audit_cached(),
         spec_kit_cached(),
         plugin_builder_cached(),
+        coordination_cached(),
     ]
     .into_iter()
     .map(|skill| CatalogEntry {
@@ -406,6 +412,7 @@ pub(crate) fn catalog_skill(id: &str) -> Option<Skill> {
         SECURITY_AUDIT_SKILL => Some(security_audit_cached().clone()),
         SPEC_KIT_SKILL => Some(spec_kit_cached().clone()),
         PLUGIN_BUILDER_SKILL => Some(plugin_builder_cached().clone()),
+        COORDINATION_SKILL => Some(coordination_cached().clone()),
         _ => None,
     }
 }
@@ -415,6 +422,17 @@ fn spec_kit_cached() -> &'static Skill {
         let mut skill = parse_skill_contents(SPEC_KIT_INSTRUCTIONS, SPEC_KIT_SKILL)
             .expect("bundled Spec Kit skill is valid");
         skill.title = "Spec-driven development".into();
+        skill.origin = "Dunlin · bundled instruction · MIT".into();
+        skill.source_hash = skill.content_hash();
+        skill
+    })
+}
+fn coordination_cached() -> &'static Skill {
+    static CACHE: std::sync::OnceLock<Skill> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let mut skill = parse_skill_contents(COORDINATION_INSTRUCTIONS, COORDINATION_SKILL)
+            .expect("bundled coordination skill is valid");
+        skill.title = "Project agent coordination".into();
         skill.origin = "Dunlin · bundled instruction · MIT".into();
         skill.source_hash = skill.content_hash();
         skill
@@ -514,7 +532,7 @@ fn parse_skill_contents(contents: &str, fallback_id: &str) -> Result<Skill, Stri
         body: body.trim().to_string(),
         files: Vec::new(),
         origin: String::new(),
-        source_hash: format!("{:x}", Sha256::digest(contents.as_bytes())),
+        source_hash: hex::encode(Sha256::digest(contents.as_bytes())),
         installations: Vec::new(),
     })
 }
@@ -1022,6 +1040,19 @@ pub(crate) struct Ui {
     draft: Option<Draft>,
     pub(crate) busy: bool,
     pub(crate) message: Option<String>,
+}
+impl Ui {
+    pub(crate) fn has_draft(&self) -> bool {
+        self.draft.is_some()
+    }
+    pub(crate) fn discard_draft(&mut self) {
+        self.draft = None;
+    }
+    pub(crate) fn draft_focus(&self, cx: &App) -> Option<FocusHandle> {
+        self.draft
+            .as_ref()
+            .map(|draft| draft.title.read(cx).focus_handle(cx))
+    }
 }
 struct Draft {
     id: String,
@@ -1610,29 +1641,20 @@ impl DunlinApp {
     }
 }
 
-fn action(id: String, label: impl Into<SharedString>, p: Palette) -> Stateful<Div> {
-    div()
-        .id(id)
-        .h(px(28.))
-        .px(px(11.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(p.border)
-        .bg(p.card)
-        .text_color(p.fg)
-        .text_size(px(11.5))
-        .font_weight(FontWeight::MEDIUM)
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(move |s| s.bg(p.hover).border_color(p.border_strong))
-        .child(label.into())
+fn action(id: String, label: impl Into<SharedString>, _p: Palette) -> Button {
+    dunlin_ui::button(id).label(label)
+}
+
+fn visible_catalog(security_enabled: bool) -> Vec<CatalogEntry> {
+    catalog_metadata()
+        .into_iter()
+        .filter(|skill| security_enabled || skill.id != SECURITY_AUDIT_SKILL)
+        .collect()
 }
 pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let mut body = div().p(px(16.)).flex().flex_col().gap(px(12.))
-        .child(div().text_size(px(11.5)).text_color(p.muted_fg).child("One global instruction library on this Mac. Skills may be single files or multi-file bundles; every supporting file is hash-checked and installed together. Review instructions before installing: harnesses may execute tools they request. No credentials or harness settings are changed. Only unchanged Dunlin-managed files can be updated or removed."));
+    let mut body = dunlin_ui::settings::page()
+        .child(dunlin_ui::settings::notice("Library: this Mac. Installations: choose a harness globally or in the named local project. Review instructions before installing; agent tools may act on them. Only unchanged Dunlin-managed files are updated or removed.", p));
     if let Some(message) = &this.skills_ui.message {
         body = body.child(
             div()
@@ -1641,22 +1663,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .child(message.clone()),
         );
     }
-    let available = if this.security_enabled {
-        catalog_metadata()
-            .into_iter()
-            .filter(|skill| !this.skill_in_library(&skill.id))
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    if !available.is_empty() {
-        body = body.child(
-            div()
-                .text_size(px(10.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.muted_fg)
-                .child("Available skills"),
-        );
+    let available = visible_catalog(this.security_enabled)
+        .into_iter()
+        .filter(|skill| !this.skill_in_library(&skill.id))
+        .collect::<Vec<_>>();
+    if !available.is_empty() && this.skills_ui.draft.is_none() {
+        body = body.child(dunlin_ui::settings::section("Available skills", p));
         for skill in available {
             let id = skill.id.clone();
             let add_id = id.clone();
@@ -1667,12 +1679,8 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             let origin = skill.origin.clone();
             let files = skill.file_count;
             body = body.child(
-                div()
-                    .p(px(12.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(p.border)
-                    .bg(p.card)
+                dunlin_ui::settings::card(p)
+                    .p(px(14.))
                     .flex()
                     .flex_col()
                     .gap(px(8.))
@@ -1686,7 +1694,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 div()
                                     .h(px(18.))
                                     .px(px(6.))
-                                    .rounded(px(4.))
+                                    .rounded(px(dunlin_ui::radii::CODE))
                                     .bg(p.muted)
                                     .flex()
                                     .items_center()
@@ -1747,13 +1755,26 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if let Some(draft) = &this.skills_ui.draft {
         return body
-            .child(Input::new(&draft.title))
-            .child(Input::new(&draft.description))
+            .child(dunlin_ui::settings::section(
+                "Edit skill · save to update the library",
+                p,
+            ))
+            .child(dunlin_ui::settings::field(
+                "Title",
+                dunlin_ui::input(&draft.title).aria_label("Skill title"),
+                p,
+            ))
+            .child(dunlin_ui::settings::field(
+                "Description",
+                dunlin_ui::input(&draft.description).aria_label("Skill description"),
+                p,
+            ))
             .child(
-                div()
-                    .h(px(240.))
-                    .overflow_hidden()
-                    .child(Editor::new(&draft.body).h_full()),
+                div().h(px(240.)).overflow_hidden().child(
+                    Editor::new(&draft.body)
+                        .aria_label("Skill instructions")
+                        .h_full(),
+                ),
             )
             .child(
                 div()
@@ -1761,6 +1782,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .gap(px(6.))
                     .child(
                         action("save-skill".into(), "Save skill", p)
+                            .primary()
                             .on_click(cx.listener(|this, _, _, cx| this.save_skill(cx))),
                     )
                     .child(
@@ -1830,23 +1852,11 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .items_center()
                     .gap(px(6.))
                     .child(
-                        div()
-                            .h(px(28.))
-                            .flex_1()
-                            .min_w(px(0.))
-                            .px(px(9.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(p.border)
-                            .bg(p.bg)
-                            .flex()
-                            .items_center()
-                            .child(
-                                Input::new(&this.skills_import_url)
-                                    .appearance(false)
-                                    .bordered(false)
-                                    .h(px(26.)),
-                            ),
+                        div().flex_1().min_w(px(0.)).child(
+                            dunlin_ui::input(&this.skills_import_url)
+                                .aria_label("GitHub skill URL")
+                                .disabled(this.skills_ui.busy),
+                        ),
                     )
                     .child(
                         action("import-github-skill".into(), "Import from GitHub", p).on_click(
@@ -1879,14 +1889,18 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             })),
         );
     }
+    body = body.child(dunlin_ui::settings::section("Your library", p));
+    if this.skills.is_empty() {
+        body = body.child(dunlin_ui::settings::notice("No library entries yet. Add a skill, import a folder or select one from the catalog above.", p));
+    }
     for skill in &this.skills {
         let id = skill.id.clone();
         let remove = id.clone();
         let bundle_size = format!("{:.1} KiB", skill.bundle_size() as f32 / 1024.0);
-        let mut card = div().p(px(12.)).rounded(px(8.)).bg(p.card).flex().flex_col().gap(px(8.))
+        let mut card = dunlin_ui::settings::card(p).p(px(14.)).flex().flex_col().gap(px(10.))
             .child(div().flex().items_center().gap(px(6.)).child(div().flex_1().font_weight(FontWeight::MEDIUM).child(skill.title.clone()))
                 .child(action(format!("edit-skill:{id}"), "Edit", p).on_click(cx.listener(move |this, _, window, cx| this.edit_skill(Some(&id), window, cx))))
-                .child(action(format!("delete-skill:{remove}"), "Delete", p).on_click(cx.listener(move |this, _, window, cx| {
+                .child(action(format!("delete-skill:{remove}"), "Delete", p).danger().outline().on_click(cx.listener(move |this, _, window, cx| {
                     let id = remove.clone();
                     let answer = window.prompt(PromptLevel::Warning, "Delete skill?", Some("Delete the library entry and its unchanged Dunlin-managed installations? Externally modified files are preserved."), &["Cancel", "Delete"], cx);
                     let answer = this.overlay_backdrop.track_native(answer, cx);
@@ -1935,7 +1949,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             if !installed.is_empty() {
                 targets = targets.child(
                     action(format!("uninstall-skill:{uninstall_id}:{target:?}"), "×", p)
-                        .aria_label(format!("Uninstall from {}", target.label()))
+                        .accessibility_label(format!("Uninstall from {}", target.label()))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.remove_skill_installations_scoped(
                                 &uninstall_id,
@@ -2100,6 +2114,15 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn disabling_audits_does_not_hide_unrelated_catalog_skills() {
+        let visible = super::visible_catalog(false);
+        assert!(!visible.iter().any(|skill| skill.id == SECURITY_AUDIT_SKILL));
+        assert!(visible.iter().any(|skill| skill.id == SPEC_KIT_SKILL));
+        assert!(visible.iter().any(|skill| skill.id == PLUGIN_BUILDER_SKILL));
+        assert_eq!(super::visible_catalog(true).len(), catalog_metadata().len());
+    }
+
     #[test]
     fn harness_names_map_to_the_correct_skill_target() {
         assert_eq!(Target::from_harness("OpenCode"), Target::OpenCode);
@@ -2404,6 +2427,18 @@ mod tests {
         let temp = Temp::new();
         let installed = install_at(&temp.0, &skill, Target::Claude).unwrap();
         assert!(PathBuf::from(&installed.path).is_file());
+    }
+
+    #[test]
+    fn coordination_skill_is_optional_installable_and_never_grants_execution() {
+        let skill = catalog_skill(super::COORDINATION_SKILL).unwrap();
+        assert!(skill.body.contains("continuations_create"));
+        assert!(skill.body.contains("END YOUR CURRENT TURN"));
+        assert!(skill.body.contains("not an execution approval"));
+        assert!(skill.body.contains("UNTRUSTED DATA"));
+        let temp = Temp::new();
+        let installed = install_at(&temp.0, &skill, Target::Codex).unwrap();
+        assert!(PathBuf::from(installed.path).is_file());
     }
 
     #[test]

@@ -12,16 +12,13 @@ export const site = {
   github,
   releases: "https://github.com/corapoid/dunlin/releases",
   latestRelease: `${github}/releases/tag/v${version}`,
-  packages: `${github}/pkgs/container/dunlin`,
+  sourceInstall: `${github}#start`,
   roadmap: "https://github.com/corapoid/dunlin/blob/main/docs/ROADMAP.md",
   security: "https://github.com/corapoid/dunlin/security/advisories/new",
   license: "https://github.com/corapoid/dunlin/blob/main/LICENSE",
   version,
-  downloadDmg: `${releaseAssets}/Dunlin-${version}-macos-arm64.dmg`,
-  downloadPkg: `${releaseAssets}/Dunlin-${version}-macos-arm64.pkg`,
-  downloadZip: `${releaseAssets}/Dunlin-${version}-macos-arm64.zip`,
   downloadRelay: `${releaseAssets}/dunlin-relay-${version}-macos-arm64.tar.gz`,
-  checksums: `${releaseAssets}/SHA256SUMS`,
+  relayChecksums: `${releaseAssets}/RELAY-SHA256SUMS`,
 } as const;
 
 export const navLinks = [

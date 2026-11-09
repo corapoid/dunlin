@@ -1,7 +1,7 @@
 //! Inspect only context the client actually controls. Decision memory is explicit,
 //! locally persisted, versioned and opt-in at the composer boundary.
 use super::*;
-use dunlin_ui::component::input::{Textarea, TextareaState};
+use dunlin_ui::component::input::TextareaState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -109,7 +109,10 @@ fn key(project: &Project) -> String {
         hash.update([0]);
         hash.update(remote.path.as_bytes());
     }
-    format!("approved-project-decisions:{:x}", hash.finalize())
+    format!(
+        "approved-project-decisions:{}",
+        hex::encode(hash.finalize())
+    )
 }
 impl DunlinApp {
     pub(crate) fn open_context_inspector(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -434,9 +437,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             }))));
     }
     content = content
-        .child(Input::new(&s.title).small())
-        .child(Textarea::new(&s.body).h(px(100.)))
-        .child(Input::new(&s.evidence).small())
+        .child(compact_input(&s.title).aria_label("Context title"))
+        .child(textarea(&s.body).aria_label("Context details").h(px(100.)))
+        .child(compact_input(&s.evidence).aria_label("Context evidence"))
         .child(
             dunlin_ui::button("decision-approve")
                 .small()

@@ -1,5 +1,6 @@
 //! Account menu backed by authenticated gh/glab profiles; no token access.
 use crate::app::{DunlinApp, SettingsTab, UiDensity};
+use dunlin_http as ureq;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     component::{
@@ -190,7 +191,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             }
         })
         .size(px(32.))
-        .rounded(px(16.))
+        .rounded_full()
         .p(px(0.))
         .accessibility_label(label.clone())
         .tooltip(label.clone())

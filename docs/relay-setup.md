@@ -78,7 +78,7 @@ HTTPS; Funnel is not enabled by this installer. Serve may ask the tailnet
 administrator to enable HTTPS certificates. The relay itself listens only on
 `127.0.0.1:8787` by default.
 
-In the client, Settings → Remote offers Tailscale download, opening the installed
+In the client, Settings → Remote & SSH offers Tailscale download, opening the installed
 app/sign-in and a state check. The client uses the operating system's Tailscale
 connection, not a second embedded VPN.
 

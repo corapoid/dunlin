@@ -1,7 +1,10 @@
 //! Isolated native control checks. No application data, clipboard, harness or OS input.
 use dunlin_ui::{
     assets::IconName,
-    component::{Disableable, ThemeMode},
+    component::{
+        Disableable, ThemeMode,
+        input::{InputEvent, InputState},
+    },
     *,
 };
 use std::{
@@ -16,6 +19,8 @@ type Probe = Rc<Cell<Option<Bounds<Pixels>>>>;
 struct Controls {
     actions: usize,
     disabled_actions: usize,
+    loading_actions: usize,
+    choice_actions: usize,
     row_actions: usize,
     closed: usize,
     toggled: bool,
@@ -29,6 +34,28 @@ struct Controls {
     menu_marker: Probe,
     link_bounds: [Probe; 2],
     links: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    fields: Vec<Entity<InputState>>,
+    field_bounds: [Probe; 5],
+    action_bounds: Probe,
+    loading_bounds: Probe,
+    choice_bounds: Probe,
+}
+
+impl Controls {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let fields = (0..5)
+            .map(|_| cx.new(|cx| InputState::new(window, cx)))
+            .collect::<Vec<_>>();
+        // Input updates must repaint the compound form just like application fields.
+        for field in &fields {
+            cx.subscribe(field, |_, _, _: &InputEvent, cx| cx.notify())
+                .detach();
+        }
+        Self {
+            fields,
+            ..Default::default()
+        }
+    }
 }
 
 fn marker(probe: Probe) -> impl IntoElement + Styled {
@@ -55,14 +82,15 @@ impl Render for Controls {
             .flex_col()
             .items_start()
             .gap(px(12.))
-            .child(
+            .child(measured(
                 dunlin_ui::button("smoke-action")
                     .label("Action")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.actions += 1;
                         cx.notify();
                     })),
-            )
+                self.action_bounds.clone(),
+            ))
             .child(measured(
                 dunlin_ui::button("smoke-disabled")
                     .label("Disabled")
@@ -162,11 +190,53 @@ impl Render for Controls {
                     )
                 }),
             )
+            .children(
+                [
+                    dunlin_ui::input(&self.fields[0]).aria_label("Form field"),
+                    compact_input(&self.fields[1]).aria_label("Compact field"),
+                    code_input(&self.fields[2]).aria_label("Command field"),
+                    search_input(&self.fields[3], "Search fixture"),
+                    dunlin_ui::input(&self.fields[4])
+                        .aria_label("Disabled field")
+                        .disabled(true),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, field)| {
+                    measured(field.w(px(300.)), self.field_bounds[index].clone())
+                }),
+            )
+            .child(measured(
+                choice_card(
+                    "smoke-choice",
+                    "Choose permission mode",
+                    self.choice_actions > 0,
+                    p,
+                )
+                .w(px(300.))
+                .child(choice_indicator(self.choice_actions > 0, p))
+                .child("Choice card")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.choice_actions += 1;
+                    cx.notify();
+                })),
+                self.choice_bounds.clone(),
+            ))
+            .child(measured(
+                dunlin_ui::button("smoke-loading")
+                    .label("Loading")
+                    .loading(true)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.loading_actions += 1;
+                        cx.notify();
+                    })),
+                self.loading_bounds.clone(),
+            ))
     }
 }
 
 pub(crate) fn key(window: &mut Window, cx: &mut App, key: &str) {
-    let keystroke = Keystroke::parse(key).unwrap();
+    let keystroke = Keystroke::parse_with_os(key, cx.platform_info().os).unwrap();
     window.dispatch_event(
         PlatformInput::KeyDown(KeyDownEvent {
             keystroke: keystroke.clone(),
@@ -213,17 +283,17 @@ pub(crate) fn run() {
         dunlin_ui::init(cx);
         set_mode(ThemeMode::Light, None, cx);
         let (window, owner) = open_window(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.), px(80.)), size(px(640.), px(580.))))),
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.), px(40.)), size(px(640.), px(880.))))),
             ..dunlin_ui::window_options()
-        }, cx, |_, cx| cx.new(|_| Controls::default())).unwrap();
+        }, cx, |window, cx| cx.new(|cx| Controls::new(window, cx))).unwrap();
         cx.spawn(async move |cx| {
             let started = Instant::now();
             let mut stage = 0;
-            let mut dark = false;
+            let mut variant = 0;
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 let done = cx.update(|cx| {
-                    assert!(started.elapsed() < Duration::from_secs(15), "controls smoke stalled: {stage}");
+                    assert!(started.elapsed() < Duration::from_secs(30), "controls smoke stalled: {stage}");
                     window.update(cx, |_, window, cx| { window.refresh(); window.draw(cx).clear(cx); }).unwrap();
                     window.update(cx, |_, window, cx| {
                         match stage {
@@ -252,28 +322,52 @@ pub(crate) fn run() {
                                  let probe = owner.read(cx).link_bounds[1].clone();
                                  click(window, cx, &probe);
                              }
-                             10 => {
-                                 assert_eq!(*owner.read(cx).links.lock().unwrap(), ["https://example.com/plain", "https://example.com/docs"]);
-                                 if dark { return true; }
-                                set_mode(ThemeMode::Dark, Some(window), cx);
-                                owner.update(cx, |this, cx| {
-                                    this.actions = 0; this.disabled_actions = 0; this.row_actions = 0; this.closed = 0;
+                              10 => {
+                                  assert_eq!(*owner.read(cx).links.lock().unwrap(), ["https://example.com/plain", "https://example.com/docs"]);
+                                  let controls = owner.read(cx);
+                                  let heights: Vec<_> = controls.field_bounds.iter().map(|probe| probe.get().unwrap().size.height).collect();
+                                  assert_eq!(heights[0], controls.action_bounds.get().unwrap().size.height, "form fields and actions must align");
+                                  assert_eq!(heights[0], heights[2], "command and form fields must align");
+                                  assert_eq!(heights[1], heights[3], "compact and search fields must align");
+                                  assert!(heights[1] < heights[0]);
+                                  let probe = controls.field_bounds[0].clone();
+                                  click(window, cx, &probe);
+                              }
+                              11 => {
+                                  assert!(owner.read(cx).fields[0].read(cx).focus_handle(cx).is_focused(window), "form field must accept pointer focus");
+                                  let probe = owner.read(cx).field_bounds[4].clone();
+                                  click(window, cx, &probe);
+                                  assert!(!owner.read(cx).fields[4].read(cx).focus_handle(cx).is_focused(window), "disabled field must not accept focus");
+                                  let probe = owner.read(cx).loading_bounds.clone();
+                                  click(window, cx, &probe);
+                                  let probe = owner.read(cx).choice_bounds.clone();
+                                  click(window, cx, &probe);
+                              }
+                              12 => {
+                                  assert_eq!(owner.read(cx).loading_actions, 0, "loading actions must not fire");
+                                  assert_eq!(owner.read(cx).choice_actions, 1);
+                                  if variant == 3 { return true; }
+                                  variant += 1;
+                                  scale::set_density(if variant < 2 { scale::Density::Comfortable } else { scale::Density::Compact });
+                                  set_mode(if variant % 2 == 0 { ThemeMode::Light } else { ThemeMode::Dark }, Some(window), cx);
+                                 owner.update(cx, |this, cx| {
+                                     this.actions = 0; this.disabled_actions = 0; this.row_actions = 0; this.closed = 0;
+                                     this.loading_actions = 0; this.choice_actions = 0;
                                      this.toggled = false; this.checked = false; cx.notify();
                                      this.links.lock().unwrap().clear();
                                 });
-                                dark = true;
-                            }
+                             }
                             _ => unreachable!(),
                         }
                         false
                     }).unwrap()
                 });
                 if done {
-                    println!("PASS: native controls in light/dark themes: keyboard/disabled controls, isolated tab close, menu layout, bare and labeled agent links");
+                    println!("PASS: controls in both themes and densities: form/compact/search geometry, input focus, disabled fields/actions, loading actions, choice cards, keyboard, tab close, menus and links");
                     cx.update(|cx| cx.quit());
                     break;
                 }
-                stage = if stage == 10 { 0 } else { stage + 1 };
+                stage = if stage == 12 { 0 } else { stage + 1 };
             }
         }).detach();
     });

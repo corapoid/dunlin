@@ -254,7 +254,7 @@ pub fn parse_document(
         }
         fields.insert(key.clone(), value.clone());
     }
-    let revision = format!("{:x}", Sha256::digest(source.as_bytes()));
+    let revision = hex::encode(Sha256::digest(source.as_bytes()));
     KnowledgeObject {
         id,
         project_id: project_id.to_string(),
@@ -306,7 +306,7 @@ pub fn derived_id(kind: &KnowledgeKind, relative: &str) -> String {
             }
         }
     };
-    let digest = format!("{:x}", Sha256::digest(relative.as_bytes()));
+    let digest = hex::encode(Sha256::digest(relative.as_bytes()));
     format!("{prefix}-{}", &digest[..8])
 }
 

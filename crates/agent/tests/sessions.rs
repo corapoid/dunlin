@@ -11,6 +11,92 @@ fn config() -> HarnessConfig {
 }
 
 #[test]
+fn approved_continuation_identity_crosses_acp_as_metadata_without_changing_text() {
+    let mut config = config();
+    config.process_env.insert(
+        "DUNLIN_MOCK_EXPECT_CONTINUATION".into(),
+        "approved-id".into(),
+    );
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_STREAM_CHUNKS".into(), "0".into());
+    let harness = AcpHarness::spawn(config);
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } => break,
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    assert!(harness.prompt_continuation("Approved task", "approved-id".into()));
+    loop {
+        match next(&harness) {
+            HarnessEvent::PromptFinished { stop_reason, .. } => {
+                assert_eq!(stop_reason, "end_turn");
+                break;
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn missing_auth_is_reported_with_adapter_stderr_and_does_not_activate_a_session() {
+    let mut config = config();
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_MISSING_AUTH".into(), "1".into());
+    let diagnostics = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = diagnostics.clone();
+    config.diagnostics = Some(std::sync::Arc::new(move |direction, line| {
+        captured
+            .lock()
+            .unwrap()
+            .push((direction.to_owned(), line.to_owned()));
+    }));
+    let harness = AcpHarness::spawn(config);
+    loop {
+        match next(&harness) {
+            HarnessEvent::SessionCreated { .. } | HarnessEvent::Ready { .. } => {
+                panic!("unauthorized harness became ready")
+            }
+            HarnessEvent::Error { message } => assert!(message.contains("API key is missing")),
+            HarnessEvent::Exited { reason } => {
+                assert!(reason.contains("API key is missing"));
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        diagnostics
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(direction, line)| direction == "Stderr" && line.contains("API key is missing"))
+    );
+}
+
+#[test]
+fn shutdown_interrupts_an_unresponsive_initialize_without_blocking_the_caller() {
+    let mut config = config();
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_HANG_INITIALIZE".into(), "1".into());
+    let harness = AcpHarness::spawn(config);
+    harness.shutdown();
+    async_io::block_on(async {
+        let closed = std::pin::pin!(harness.events().recv());
+        let timeout = std::pin::pin!(async_io::Timer::after(Duration::from_secs(5)));
+        match select(closed, timeout).await {
+            Either::Left((result, _)) => assert!(result.is_err()),
+            Either::Right(_) => panic!("shutdown did not interrupt initialize"),
+        }
+    });
+}
+
+#[test]
 fn session_new_carries_the_vault_mcp_server() {
     let mut config = config();
     config

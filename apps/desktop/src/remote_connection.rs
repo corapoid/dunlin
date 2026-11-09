@@ -3,10 +3,7 @@ use crate::app::DunlinApp;
 use dunlin_ui::component::button::ButtonVariants as _;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
-    component::{
-        Disableable,
-        input::{Input, InputState},
-    },
+    component::{Disableable, input::InputState},
     *,
 };
 
@@ -78,11 +75,12 @@ impl DunlinApp {
         .detach();
     }
 }
-fn field(label: &'static str, input: &Entity<InputState>) -> Div {
-    div().flex().flex_col().gap(px(5.)).child(label).child(
+fn field(label: &'static str, state: &Entity<InputState>, p: Palette, busy: bool) -> Div {
+    dunlin_ui::settings::field(
+        label,
         div()
             .relative()
-            .child(Styled::h(Input::new(input), px(34.)))
+            .child(dunlin_ui::input(state).aria_label(label).disabled(busy))
             .children({
                 #[cfg(debug_assertions)]
                 {
@@ -97,6 +95,7 @@ fn field(label: &'static str, input: &Entity<InputState>) -> Div {
                     None::<AnyElement>
                 }
             }),
+        p,
     )
 }
 pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -140,12 +139,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 ),
         );
     if ssh {
-        body = body.child(field("Endpoint · user@host or SSH config alias", this.terminal.ssh_target.as_ref().unwrap()))
-            .child(field("Port (optional)", this.remote_connection.port.as_ref().unwrap()))
-            .child(field("Remote working directory (optional)", this.terminal.ssh_path.as_ref().unwrap()))
+        body = body.child(field("Endpoint · user@host or SSH config alias", this.terminal.ssh_target.as_ref().unwrap(), p, busy))
+            .child(field("Port (optional)", this.remote_connection.port.as_ref().unwrap(), p, busy))
+            .child(field("Remote working directory (optional)", this.terminal.ssh_path.as_ref().unwrap(), p, busy))
             .child(div().flex().items_end().gap(px(8.))
-                .child(field("Private key file (optional)", this.remote_connection.identity.as_ref().unwrap()).flex_1())
-                .child(button("connection-key").self_end().h(px(34.)).label("Choose key…")
+                .child(field("Private key file (optional)", this.remote_connection.identity.as_ref().unwrap(), p, busy).flex_1())
+                .child(button("connection-key").self_end().label("Choose key…").disabled(busy)
                     .relative().children({
                         #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("ssh-key-button") }
                         #[cfg(not(debug_assertions))] { None::<AnyElement> }
@@ -153,9 +152,9 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     .on_click(cx.listener(|this, _, window, cx| this.choose_ssh_identity(window, cx)))))
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Uses OpenSSH, its agent and host verification. Passphrases/passwords are entered in the terminal and are never stored. SSH opens a terminal; remote agents and projects require a Dunlin relay."));
     } else {
-        body = body.child(field("Endpoint · HTTPS relay URL", &this.remote_url_input))
-            .child(field("Login key · one-time relay pairing code", &this.remote_code_input))
-            .child(field("Local server alias (optional)", &this.remote_name_input))
+        body = body.child(field("Endpoint · HTTPS relay URL", &this.remote_url_input, p, busy))
+            .child(field("Login key · one-time relay pairing code", &this.remote_code_input, p, busy))
+            .child(field("Local server alias (optional)", &this.remote_name_input, p, busy))
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Run dunlin-relay pair <user> on the server. The issued device token is saved in the system Keychain, not in application settings."));
     }
     body = body
@@ -210,7 +209,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .w(px(560.))
                 .max_w(relative(0.95))
                 .max_h(relative(0.9))
-                .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
+                .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()

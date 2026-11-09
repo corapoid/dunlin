@@ -1,17 +1,18 @@
 //! Native provider sign-in. Secrets travel only in authenticated HTTP bodies to
 //! the registered local OpenCode service, never through argv, files or logs.
+use dunlin_http as ureq;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::{Input, InputState};
+use dunlin_ui::component::input::InputState;
 use dunlin_ui::component::{Disableable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement,
-    IntoElement, ParentElement, StatefulInteractiveElement, Styled, Window, div, palette, px,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, SurfaceGeometry, Window, div, palette, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -667,7 +668,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             content = content
                 .child(div().text_color(p.muted_fg).text_size(px(12.)).child("Paste your provider API key. It is sent directly to your local OpenCode service and is not saved in Dunlin or chat history."))
                 .child(div().text_size(px(12.)).child("API key"))
-                .child(Input::new(&dialog.input).disabled(dialog.busy))
+                .child(dunlin_ui::input(&dialog.input).aria_label("Provider API key").disabled(dialog.busy))
                 .when(dialog.provider_id == crate::providers::GO, |view| view.child(
                     dunlin_ui::button("auth-console").ghost().label("Get a Go API key ↗")
                         .on_click(|_, _, cx| cx.open_url("https://opencode.ai/console/go"))));
@@ -704,7 +705,11 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         if code {
             content = content
                 .child(div().text_size(px(12.)).child("Authorization code"))
-                .child(Input::new(&dialog.input).disabled(dialog.busy));
+                .child(
+                    dunlin_ui::input(&dialog.input)
+                        .aria_label("Authorization code")
+                        .disabled(dialog.busy),
+                );
         }
     }
     if connected {
@@ -715,7 +720,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     if let Some(error) = &dialog.error {
         content = content.child(
             div()
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .p(px(10.))
                 .bg(p.red_soft)
                 .text_size(px(12.))
@@ -745,15 +750,16 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .child(
             div()
                 .id("provider-auth-dialog")
-                .child(crate::effects::rounded_scroll_probe(
+                .child(crate::effects::panel_probe(
                     &this.overlay_backdrop,
-                    14.,
+                    SurfaceGeometry::AUTH_DIALOG,
+                    true,
                 ))
                 .w(px(460.))
                 .max_h(px(650.))
                 .overflow_y_scroll()
-                .rounded(px(14.))
-                .border_1()
+                .rounded(px(SurfaceGeometry::AUTH_DIALOG.radius))
+                .border(px(SurfaceGeometry::AUTH_DIALOG.border))
                 .border_color(p.border_strong)
                 .bg(p.card)
                 .p(px(24.))

@@ -4,6 +4,98 @@ All notable changes to Dunlin are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.2.0] — Unreleased
+
+### Changed
+
+- Updated Rust dependencies and website packages, including GPUI Kit 0.9 / GPUI
+  pre 0.3.12, ACP SDK 5, rusqlite 0.41, ureq 3, SHA-2/HMAC and ZIP 9. Preserved
+  local UI/security patches and regenerated two-face 0.5 syntax/theme assets with
+  checksum-verified upstream inputs. HTTP status bodies, redirect restrictions
+  and public-address resolution remain enforced through a shared ureq 3 adapter.
+- Website dependencies track current releases; TypeScript remains on 6.x until
+  the latest Astro checker supports TypeScript 7 without conflicting peers.
+- Native UI scenarios now run in PR checks from the debug binary's shared
+  registry, with isolated account/data directories, completion-marker checks and
+  retained failure logs. Added workspace/desktop coverage reports and measured
+  regression floors, plus real keyboard/click assertions for settings, activity
+  navigation, saving and session deletion.
+- Publish GitHub releases as regular releases marked Latest, including versions
+  with a beta suffix, so the repository's Releases panel shows the current version.
+  This publication label does not imply manual acceptance or Apple notarization.
+- Paused prebuilt desktop app distribution through Homebrew, GitHub Releases and
+  GitHub Packages until Apple Developer ID signing and notarization are available.
+  Beta installation now recommends cloning the repository and building from source;
+  CI retains app compilation and relay releases continue separately.
+- Added native in-place text transitions for session cost/context, tool status,
+  prompt queue counts, Graph/Trace summaries, Git change counts and account usage
+  percentages. Initial values and context switches stay static; both application
+  and system Reduce Motion preferences disable travel.
+- Unified form, compact/search and command fields across the desktop with shared
+  themed controls and focus borders. Action rows, choice cards and busy buttons
+  now reuse keyboard-accessible controls instead of static frames or clickable text.
+- Reorganized settings into Application, Agents, Security & Privacy, and System &
+  Data. Added searchable, keyboard-accessible navigation, Workspace and Data &
+  Backup pages, explicit local/server scope, and shared form/card styling.
+- General now focuses on startup and notifications. Agent connection defaults have
+  one home; project discovery lives in Workspace and portable backup/recovery in
+  Data & Backup. Security configuration and project audits are separate, as are
+  usage preferences and cost reports. Existing preference keys are unchanged.
+- Credential and skill forms confirm before leaving; project runtime edits also
+  require confirmation when dismissed. Project/group dialogs explain when changes
+  are saved. Credential policies/history and extension technical details expand
+  on demand; budget preferences no longer depend on a successful billing scan.
+- Disabling security audits no longer hides unrelated skills. Corrected privacy,
+  external-scan and log-redaction descriptions and updated settings links.
+
+### Added
+
+- Project agent coordination: observed ACP peer runs, durable human-approved
+  deferred turns, explicit multi-turn task reports, deduplicated inbox messages,
+  native Agents panel/chat cards and an optional bundled coordination skill.
+  Added private session-scoped MCP brokering, explicit worktree visibility grants,
+  relay user/device/connection-bound execution and conservative crash recovery.
+  A registered native ACP/MCP fixture verifies one background continuation without
+  switching plan mode or the foreground conversation.
+- Syntax highlighting and file opening for Zig/ZON, Dart, C#, Terraform/OpenTofu,
+  GraphQL, Protobuf, Nix and CMake. Ansible playbooks and YAML templates retain
+  YAML colors with embedded Jinja expressions; Jinja/HTML templates, inventories,
+  Dockerfile variants, Compose and YAML CI configuration are supported as well.
+- A shared non-mutating Rust quality runner and a pinned cargo-machete check in
+  CI, alongside the existing rustfmt and strict Clippy checks.
+
+### Fixed
+
+- ACP refusal/token-limit stop reasons no longer appear as successful completed
+  turns. Coordination distinguishes normal turn completion from task-result claims.
+- Restored JSX and PowerShell highlighting using Syntect's Oniguruma backend and
+  the complete bundled grammar set, including PowerShell modules and manifests.
+  Filename-based syntax selection and text admission are shared by desktop and relay.
+- Removed the obsolete GitHub smoke from QA execution. Unknown or unavailable
+  desktop CLI options now fail before opening application data. SSH parser tests
+  exercise the production parser rather than a separate test-only implementation.
+- Activity searches in split workspace panes now normalize selection after
+  filtering, preventing Graph/Trace from retaining a hidden active descendant.
+- The credential broker can start when both the data directory and TMPDIR exceed
+  the Unix socket path limit, using a private short-lived fallback directory.
+- File saves now run off the UI thread. Save/close/quit continuations wait for
+  completion, and edits made during a save remain dirty rather than being lost.
+- Delayed remote file-stat responses no longer advance an editor's save baseline;
+  application writers serialize version checks with atomic replacement and
+  advance millisecond versions even for back-to-back saves.
+- Remote transcript snapshots use a bounded, ordered/coalescing upload queue and
+  relay-side revision checks, preventing late or legacy snapshots from replacing
+  newer versioned history. Update the relay alongside the desktop to enable this.
+- Filesystem APIs reject special files and open without FIFO blocking, preventing
+  stalled reads from exhausting relay file-read capacity.
+- Explorer no longer hides files beyond the first 80 entries or five levels.
+  Global safety limits remain bounded and incomplete scans show a warning beside
+  the available files.
+- Added isolated `--save-smoke` coverage for delayed relay I/O, concurrent editing,
+  save continuations and external-change conflict protection.
+
 ## [0.1.0-beta.11] — 2026-11-08
 
 ### Added
@@ -941,6 +1033,8 @@ surfaces are intentionally absent.
 - The relay database is not encrypted at rest; use FileVault or an encrypted
   volume.
 
+[Unreleased]: https://github.com/corapoid/dunlin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.11...v0.2.0
 [0.1.0-beta.11]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [0.1.0-beta.10]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.9...v0.1.0-beta.10
 [0.1.0-beta.9]: https://github.com/corapoid/dunlin/compare/v0.1.0-beta.8...v0.1.0-beta.9

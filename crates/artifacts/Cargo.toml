@@ -7,9 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2 = "0.11.1"
 
 [dev-dependencies]
 tempfile = "3"

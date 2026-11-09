@@ -1,6 +1,6 @@
 use super::*;
 use crate::comparisons::{Choice, Spec};
-use dunlin_ui::component::input::{Textarea, TextareaState};
+use dunlin_ui::component::input::TextareaState;
 use dunlin_workspace::{checks, comparison as api, task_review};
 use std::sync::{Arc, atomic::AtomicBool};
 enum CompareCheckPlan {
@@ -844,20 +844,20 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let p = palette(cx);
     let busy = this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.)).child("Same committed baseline + identical approved prompt. Separate worktrees are not security sandboxes. Creating trees does not start agents; starting both requires a separate cost confirmation and shared durable request/time budget.")
-        .child(Input::new(&s.label).small()).child(Textarea::new(&s.prompt).h(px(100.)));
+        .child(compact_input(&s.label).aria_label("Comparison label")).child(textarea(&s.prompt).aria_label("Comparison prompt").h(px(100.)));
     for i in 0..2 {
         body = body
             .child(format!(
                 "{} harness / model",
                 if i == 0 { "A" } else { "B" }
             ))
-            .child(Input::new(&s.harness[i]).small())
-            .child(Input::new(&s.model[i]).small());
+            .child(compact_input(&s.harness[i]).aria_label(format!("Comparison agent {}", i + 1)))
+            .child(compact_input(&s.model[i]).aria_label(format!("Comparison model {}", i + 1)));
     }
     body = body
         .child("Shared wall time (seconds) / client request attempts")
-        .child(Input::new(&s.seconds).small())
-        .child(Input::new(&s.requests).small())
+        .child(compact_input(&s.seconds).aria_label("Comparison time limit in seconds"))
+        .child(compact_input(&s.requests).aria_label("Comparison request limit"))
         .child(
             dunlin_ui::button("compare-prepare")
                 .small()
@@ -882,7 +882,11 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_comparison_trees(w, cx))),
             );
     }
-    body = body.child(Input::new(&s.check).small());
+    body = body.child(
+        code_input(&s.check)
+            .small()
+            .aria_label("Comparison check command"),
+    );
     for run in this
         .comparisons
         .runs

@@ -9,7 +9,6 @@ use dunlin_domain::{SessionStatus, SpanKind, SpanStatus, TraceSpan};
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::Input;
 use dunlin_ui::component::{Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
@@ -157,7 +156,22 @@ pub(crate) fn render(
                 .text_size(px(11.5))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child(format!("{} spans · {running} running", spans.len())),
+                .flex()
+                .items_center()
+                .child(
+                    MorphText::new("trace-spans", spans.len().to_string())
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" spans · ")
+                .child(
+                    MorphText::new("trace-running", running.to_string())
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" running"),
         )
         .child(div().w(px(1.)).h(px(13.)).bg(p.border))
         .child(
@@ -165,19 +179,33 @@ pub(crate) fn render(
                 .text_size(px(11.5))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child(format!(
-                    "{} active · ${total_cost:.2} · {}",
-                    total_duration,
-                    crate::activity::token_label(tokens)
-                )),
+                .flex()
+                .items_center()
+                .child(
+                    MorphText::new("trace-total-duration", total_duration)
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" active · ")
+                .child(
+                    MorphText::new("trace-total-cost", format!("${total_cost:.2}"))
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                )
+                .child(" · ")
+                .child(
+                    MorphText::new("trace-total-tokens", crate::activity::token_label(tokens))
+                        .numeric()
+                        .scope(session.id.clone())
+                        .reduce_motion(this.reduce_motion),
+                ),
         )
-        .child(
-            div().w(px(150.)).child(
-                Input::new(&this.activity_search)
-                    .small()
-                    .aria_label("Search trace waterfall"),
-            ),
-        )
+        .child(div().w(px(150.)).child(search_input(
+            &this.activity_search,
+            "Search trace waterfall",
+        )))
         .child(
             dunlin_ui::button("trace-zoom-out")
                 .ghost()
@@ -474,7 +502,7 @@ fn span_row(
         .w(relative(width))
         .min_w(px(2.))
         .h(px(15.))
-        .rounded(px(3.))
+        .rounded(px(dunlin_ui::radii::BADGE))
         .bg(if span.status == SpanStatus::Done {
             color.opacity(0.72)
         } else {
@@ -574,7 +602,7 @@ fn span_row(
                     div()
                         .size(px(18.))
                         .flex_shrink_0()
-                        .rounded(px(5.))
+                        .rounded(px(dunlin_ui::radii::ICON))
                         .bg(color.opacity(0.12))
                         .flex()
                         .items_center()
@@ -728,7 +756,7 @@ fn span_detail(
                     div()
                         .size(px(24.))
                         .flex_shrink_0()
-                        .rounded(px(6.))
+                        .rounded(px(dunlin_ui::radii::ROW))
                         .bg(color.opacity(0.12))
                         .flex()
                         .items_center()
@@ -762,7 +790,7 @@ fn span_detail(
                                     div()
                                         .h(px(16.))
                                         .px(px(5.))
-                                        .rounded(px(3.))
+                                        .rounded(px(dunlin_ui::radii::BADGE))
                                         .bg(status_soft)
                                         .flex()
                                         .items_center()
@@ -793,7 +821,7 @@ fn span_detail(
         )
         .child(
             div()
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.subtle)
@@ -1018,7 +1046,7 @@ fn span_detail(
 fn metric(label: &str, value: String, p: &Palette) -> AnyElement {
     div()
         .flex_1()
-        .rounded(px(6.))
+        .rounded(px(dunlin_ui::radii::ROW))
         .border_1()
         .border_color(p.border)
         .bg(p.card)

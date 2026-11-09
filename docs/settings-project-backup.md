@@ -1,6 +1,6 @@
 # Export and import of settings and project structure
 
-**Settings → General → Export / import settings and project structure**.
+**Settings → Data & Backup → Export and import**.
 
 1. Select **Settings**, **Project structure**, or both scopes.
 2. JSON export shows a preview before choosing the target file.

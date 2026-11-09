@@ -8,7 +8,7 @@ use dunlin_terminal::{
 };
 use dunlin_ui::component::Sizable;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::{Input, InputState};
+use dunlin_ui::component::input::InputState;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use std::cell::Cell;
@@ -1643,7 +1643,7 @@ fn render_pane(
                 this.terminal_pointer_up(cx);
             }),
         )
-        .on_scroll_wheel(cx.listener(move |this, event: &ScrollWheelEvent, _, cx| {
+        .on_scroll(cx.listener(move |this, event: &ScrollEvent, _, cx| {
             let delta = event.delta.pixel_delta(px(16.)).y;
             let lines = (delta / px(1.)).abs().max(1.) as usize / 12;
             if delta > px(0.) {
@@ -1786,7 +1786,7 @@ pub(crate) fn render(
                 .h(px(25.))
                 .max_w(px(230.))
                 .px(px(7.))
-                .rounded(px(5.))
+                .rounded(px(dunlin_ui::radii::ICON))
                 .bg(if active {
                     p.accent
                 } else {
@@ -1928,11 +1928,10 @@ fn search_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Div {
         .items_center()
         .gap(px(6.))
         .flex_shrink_0()
-        .child(
-            div()
-                .w(px(190.))
-                .child(Input::new(&this.terminal_search).small()),
-        )
+        .child(div().w(px(190.)).child(search_input(
+            &this.terminal_search,
+            "Search terminal output",
+        )))
         .child(
             div()
                 .text_size(px(9.5))

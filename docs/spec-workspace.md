@@ -32,7 +32,7 @@ files.
 
 ## Global switch
 
-**Settings → General → Spec & intent tools** disables the Spec workspace,
+**Settings → Extensions → Spec & intent tools** disables the Spec workspace,
 Intent Inbox, agent contract, the Spec tab and the bundled Spec Kit /
 agent-contract pack commands. The switch is stored in `StoredSettings` and
 defaults to on for existing installations. Disabling it never deletes or edits

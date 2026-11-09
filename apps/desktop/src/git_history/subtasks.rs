@@ -370,9 +370,9 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .text_color(p.muted_fg)
                 .child("Creates an isolated local branch and worktree from an explicit commit. This is a task-board v1: no automatic decomposition, agent start, merge, push or sandbox. Every creation and removal is a separate two-phase Git approval."),
         )
-        .child(Input::new(&s.task).small())
-        .child(Input::new(&s.name).small())
-        .child(Input::new(&s.revision).small())
+        .child(compact_input(&s.task).aria_label("Subtask identifier"))
+        .child(compact_input(&s.name).aria_label("Subtask branch name"))
+        .child(compact_input(&s.revision).aria_label("Subtask base revision"))
         .child(
             dunlin_ui::button("subtask-create")
                 .small()
@@ -413,7 +413,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         let exists = Path::new(&entry.path).is_dir();
         body = body.child(
             div()
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.card)

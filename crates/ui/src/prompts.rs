@@ -117,16 +117,12 @@ impl Render for Confirmation {
                 }
             }))
             .child(
-                div()
+                crate::SurfaceGeometry::DIALOG.paint(p.card, p.border_strong)
                     .w(px(520.))
                     .max_w(relative(0.92))
                     .max_h(relative(0.85))
                     .flex()
                     .flex_col()
-                    .rounded(px(12.))
-                    .border_1()
-                    .border_color(p.border_strong)
-                    .bg(p.card)
                     .text_color(p.fg)
                     .overflow_hidden()
                     .child(

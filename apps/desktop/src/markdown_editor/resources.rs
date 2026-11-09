@@ -2,11 +2,7 @@
 use super::{Mode, document::Document, editable};
 use crate::app::DunlinApp;
 use dunlin_ui::{
-    component::{
-        Disableable, Sizable,
-        button::ButtonVariants,
-        input::{Input, InputState},
-    },
+    component::{Disableable, Sizable, button::ButtonVariants, input::InputState},
     prelude::FluentBuilder as _,
     *,
 };
@@ -599,8 +595,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                 div()
                     .flex()
                     .gap(px(6.))
-                    .child(Input::new(&d.address).small())
-                    .child(Input::new(&d.title).small()),
+                    .child(compact_input(&d.address).aria_label("Link or image address"))
+                    .child(compact_input(&d.title).aria_label("Link or image title")),
             )
             .child(
                 div()

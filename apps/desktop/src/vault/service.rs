@@ -148,6 +148,37 @@ pub struct ServiceHandle {
     sessions: SharedSessions,
     shutdown: Arc<AtomicBool>,
     join: Option<JoinHandle<Vec<JoinHandle<()>>>>,
+    // Keep the private short-path fallback alive until the listener stops.
+    _socket_directory: Option<tempfile::TempDir>,
+}
+
+fn socket_location(
+    data_dir: &Path,
+    temporary_root: &Path,
+) -> Result<(PathBuf, Option<tempfile::TempDir>), String> {
+    let socket = data_dir.join("vault.sock");
+    if socket.as_os_str().as_encoded_bytes().len() <= 100 {
+        return Ok((socket, None));
+    }
+    let socket = temporary_root.join(format!("dunlin-vault-{}.sock", std::process::id()));
+    if socket.as_os_str().as_encoded_bytes().len() <= 100 {
+        return Ok((socket, None));
+    }
+    // TMPDIR itself can exceed AF_UNIX's path limit (e.g. isolated QA homes).
+    // A random 0700 directory avoids both long paths and a predictable shared
+    // socket directly in /tmp. Socket permissions are still set to 0600 below.
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("dunlin-vault-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    let directory = builder.tempdir_in("/tmp").map_err(|error| {
+        format!("Could not create private credential socket directory: {error}")
+    })?;
+    let socket = directory.path().join("vault.sock");
+    Ok((socket, Some(directory)))
 }
 
 impl ServiceHandle {
@@ -181,12 +212,7 @@ impl ServiceHandle {
         // directory must not race two concurrent first-open migrations.
         dunlin_storage::Store::open(&database)
             .map_err(|error| format!("Could not open credential storage: {error}"))?;
-        let mut socket = data_dir.join("vault.sock");
-        // AF_UNIX paths are short on macOS; fall back to the private per-user
-        // temporary directory if the Application Support path is too long.
-        if socket.as_os_str().as_encoded_bytes().len() > 100 {
-            socket = std::env::temp_dir().join(format!("dunlin-vault-{}.sock", std::process::id()));
-        }
+        let (socket, socket_directory) = socket_location(&data_dir, &std::env::temp_dir())?;
         match std::fs::remove_file(&socket) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -279,6 +305,7 @@ impl ServiceHandle {
             sessions,
             shutdown,
             join: Some(join),
+            _socket_directory: socket_directory,
         })
     }
 
@@ -626,6 +653,35 @@ mod tests {
         });
         assert!(!approver.approve(&edited));
         worker.join().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn long_data_and_temporary_paths_use_a_private_short_socket_directory() {
+        use std::os::unix::fs::PermissionsExt;
+        let long = PathBuf::from("/long-root").join("x".repeat(120));
+        let (socket, directory) = super::socket_location(&long, &long).unwrap();
+        let directory = directory.expect("both long roots need a private short fallback");
+        assert!(socket.as_os_str().as_encoded_bytes().len() <= 100);
+        assert_eq!(
+            std::fs::metadata(directory.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        drop(listener);
+        drop(directory);
+        assert!(!socket.exists());
+
+        let (socket, directory) = super::socket_location(Path::new("/short"), &long).unwrap();
+        assert_eq!(socket, Path::new("/short/vault.sock"));
+        assert!(directory.is_none());
+        let (socket, directory) = super::socket_location(&long, Path::new("/short-temp")).unwrap();
+        assert_eq!(socket.parent(), Some(Path::new("/short-temp")));
+        assert!(directory.is_none());
     }
 
     #[cfg(unix)]

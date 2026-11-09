@@ -4,7 +4,7 @@ use dunlin_ui::{
     component::{
         Disableable, Selectable, Sizable,
         button::{Button, ButtonVariants},
-        input::{Input, InputEvent, InputState},
+        input::{InputEvent, InputState},
         menu::{DropdownMenu, PopupMenu, PopupMenuItem},
     },
     *,
@@ -623,11 +623,11 @@ pub(crate) fn render(
         content = content
             .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().text_size(px(11.)).text_color(p.muted_fg).child(status))
                 .child(button("import-refresh-gh", "Check again", !this.project_import.checking_cli).on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))))
-            .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
+            .child(div().rounded(px(dunlin_ui::radii::PANEL)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
                 .child(div().font_weight(FontWeight::SEMIBOLD).child("1. Find repositories"))
                 .child(div().text_size(px(11.)).text_color(p.muted_fg).child(if mode == Mode::GitLab { "GitLab repository URL or search text" } else { "GitHub repository URL or native search query" }))
                 .child(div().flex().flex_wrap().items_center().gap(px(8.))
-                    .child(div().flex_1().min_w(px(180.)).child(Input::new(&query).disabled(busy)))
+                    .child(div().flex_1().min_w(px(180.)).child(search_input(&query, "Find repositories").with_size(dunlin_ui::component::Size::Medium).disabled(busy)))
                     .child(button("import-search-preview", if busy { "Searching…" } else { "Search repositories" }, !busy && !query.read(cx).value().trim().is_empty())
                         .relative().children({
                             #[cfg(debug_assertions)]
@@ -640,10 +640,10 @@ pub(crate) fn render(
                 .child(div().text_size(px(11.)).text_color(p.muted_fg).child(if mode == Mode::GitLab {
                     "Search includes projects you are a member of, using your glab account."
                 } else { "Example: org:example in:name media archived:false · uses your active gh account." })))
-            .child(div().rounded(px(8.)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
+            .child(div().rounded(px(dunlin_ui::radii::PANEL)).border_1().border_color(p.border).bg(p.card).p(px(12.)).flex().flex_col().gap(px(8.))
                 .child(div().font_weight(FontWeight::SEMIBOLD).child("2. Choose a destination"))
                 .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Repositories are downloaded into <owner>/<repo> subfolders. Existing folders are never overwritten."))
-                .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(Input::new(&destination).disabled(busy)))
+                .child(div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(dunlin_ui::input(&destination).aria_label("Repository download folder").disabled(busy)))
                  .child(button("import-browse-destination", "Browse…", !busy).on_click(cx.listener(|this, _, window, cx| {
                     this.choose_import_folder(Purpose::Destination, window, cx);
                 }))))
@@ -700,7 +700,7 @@ pub(crate) fn render(
                     let watch = this.project_import.watch;
                     content = content.child(dunlin_ui::button("import-watch-root").label(if watch { "☑ Track this root and automatically import new repositories" } else { "☐ Track this root and automatically import new repositories" }).selected(watch).toggled(watch).disabled(busy)
                         .on_click(cx.listener(|this, _, _, cx| { this.project_import.watch = !this.project_import.watch; cx.notify(); })))
-                        .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Checked every 30 seconds while Dunlin runs. New projects require trust; stop tracking in Settings → General."));
+                        .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Checked every 30 seconds while Dunlin runs. New projects require trust; stop tracking in Settings → Workspace."));
                 }
                 (
                     discovery
@@ -735,7 +735,7 @@ pub(crate) fn render(
         }
         content = content.child(
             div()
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.card)
@@ -767,7 +767,7 @@ pub(crate) fn render(
     if let Some(error) = &this.project_import.error {
         content = content.child(
             div()
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .bg(p.red_soft)
                 .border_1()
                 .border_color(p.red.opacity(0.3))
@@ -816,14 +816,14 @@ pub(crate) fn render(
                 })
                 .w(px(width))
                 .h(px(height))
-                .rounded(px(12.))
-                .border_1()
+                .rounded(px(SurfaceGeometry::DIALOG.radius))
+                .border(px(SurfaceGeometry::DIALOG.border))
                 .border_color(p.border_strong)
                 .bg(p.panel)
                 .overflow_hidden()
                 .flex()
                 .flex_col()
-                .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
+                .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()
@@ -915,7 +915,7 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     } else {
         p.muted_fg
     };
-    let mut card = div().rounded(px(8.)).border_1().border_color(p.border).overflow_hidden()
+    let mut card = dunlin_ui::settings::card(p).overflow_hidden()
         .child(div().px(px(14.)).py(px(12.)).flex().items_center().gap(px(10.))
             .child(div().flex_1().flex().flex_col().gap(px(4.))
                 .child(div().font_weight(FontWeight::MEDIUM).child("GitHub CLI"))
@@ -973,7 +973,7 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         );
     }
     div().flex().flex_col().gap(px(10.))
-        .child(div().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(p.muted_fg).child("Project imports"))
+        .child(dunlin_ui::settings::section("Project discovery and Git hosting · this Mac", p))
         .child(card)
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Local folder tracking adds new Git repositories every 30 seconds while Dunlin runs. It never deletes projects or updates repository contents."))
         .into_any_element()

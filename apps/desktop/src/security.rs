@@ -12,8 +12,7 @@ use std::time::Duration;
 use dunlin_audit::{AuditEngine, AuditSnapshot, CoverageStatus, RunStatus, Severity, Verdict};
 use dunlin_domain::MainView;
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
-use dunlin_ui::component::input::Input;
+use dunlin_ui::component::{Disableable, Icon};
 use dunlin_ui::prelude::*;
 use dunlin_ui::*;
 
@@ -233,7 +232,11 @@ fn action(
 }
 
 fn card(p: &Palette) -> Div {
-    card_surface(*p).p(px(16.)).flex().flex_col().gap(px(10.))
+    dunlin_ui::settings::card(*p)
+        .p(px(14.))
+        .flex()
+        .flex_col()
+        .gap(px(10.))
 }
 
 fn badge(label: impl Into<SharedString>, p: &Palette) -> Div {
@@ -1004,7 +1007,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     div()
                         .h(px(18.))
                         .px(px(6.))
-                        .rounded(px(4.))
+                        .rounded(px(dunlin_ui::radii::CODE))
                         .bg(p.muted)
                         .flex()
                         .items_center()
@@ -1115,7 +1118,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     if !run.errors.is_empty() {
         let mut errors = div()
             .p(px(10.))
-            .rounded(px(7.))
+            .rounded(px(dunlin_ui::radii::CONTROL))
             .border_1()
             .border_color(p.red.opacity(0.35))
             .bg(p.red_soft)
@@ -1157,7 +1160,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         section = section.child(
             div()
                 .p(px(10.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.amber_soft)
                 .text_size(px(10.5))
                 .text_color(p.amber)
@@ -1167,7 +1170,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     if !run.warnings.is_empty() {
         let mut warnings = div()
             .p(px(10.))
-            .rounded(px(7.))
+            .rounded(px(dunlin_ui::radii::CONTROL))
             .bg(p.muted)
             .flex()
             .flex_col()
@@ -1195,7 +1198,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         section = section.child(
             div()
                 .p(px(10.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.muted)
                 .text_size(px(11.))
                 .text_color(p.muted_fg)
@@ -1207,20 +1210,11 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             let active = index == selected_finding;
             let triage = this.triage_status(finding);
             let mut row = div()
-                .id(format!("security-finding:{index}"))
-                .p(px(8.))
-                .rounded(px(6.))
-                .border_1()
-                .border_color(if active { p.border_strong } else { p.border })
-                .bg(if active { p.muted } else { p.card })
+                .w_full()
+                .min_w(px(0.))
                 .flex()
                 .flex_col()
                 .gap(px(2.))
-                .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.security.selected_finding = index;
-                    cx.notify();
-                }))
                 .child(
                     div()
                         .flex()
@@ -1268,7 +1262,20 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                         .child(format!("{}:{}", location.path, location.line)),
                 );
             }
-            list = list.child(row);
+            list = list.child(
+                choice_card(
+                    format!("security-finding:{index}"),
+                    format!("Select finding {}", finding.title),
+                    active,
+                    p,
+                )
+                .p(px(8.))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.security.selected_finding = index;
+                    cx.notify();
+                }))
+                .child(row),
+            );
         }
         section = section
             .child(
@@ -1419,7 +1426,7 @@ fn runs_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     .max_h(px(220.))
                     .overflow_y_scroll()
                     .p(px(8.))
-                    .rounded(px(6.))
+                    .rounded(px(dunlin_ui::radii::ROW))
                     .bg(p.bg)
                     .border_1()
                     .border_color(p.border)
@@ -1459,7 +1466,7 @@ fn finding_detail(
     let p = palette(cx);
     let mut detail = div()
         .p(px(10.))
-        .rounded(px(7.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .bg(p.subtle)
         .border_1()
         .border_color(p.border)
@@ -2061,38 +2068,14 @@ pub(crate) fn render(
     let busy = this.skills_ui.busy;
     let project_id = project.id.clone();
 
-    let mut content = div()
-        .w_full()
-        .max_w(px(780.))
-        .mx_auto()
-        .p(px(24.))
-        .flex()
-        .flex_col()
-        .gap(px(14.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(5.))
-                .child(
-                    div()
-                        .text_size(px(22.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child("Security"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(p.muted_fg)
-                        .child("Audit skills are installed into a harness; their findings and evidence stay on this Mac. Dunlin does not execute target code or claim coverage it cannot prove."),
-                ),
-        );
+    // Settings owns the page padding, title and single scroll container.
+    let mut content = div().w_full().min_w(px(0.)).flex().flex_col().gap(px(20.));
 
     if let Some(message) = message {
         content = content.child(
             div()
                 .p(px(10.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.muted)
                 .text_size(px(11.5))
                 .text_color(p.muted_fg)
@@ -2117,7 +2100,7 @@ pub(crate) fn render(
                     div()
                         .h(px(28.))
                         .w(px(28.))
-                        .rounded(px(7.))
+                        .rounded(px(dunlin_ui::radii::CONTROL))
                         .bg(p.green_soft)
                         .flex()
                         .items_center()
@@ -2288,7 +2271,7 @@ pub(crate) fn render(
                     div()
                         .h(px(28.))
                         .w(px(28.))
-                        .rounded(px(7.))
+                        .rounded(px(dunlin_ui::radii::CONTROL))
                         .bg(p.muted)
                         .flex()
                         .items_center()
@@ -2332,7 +2315,7 @@ pub(crate) fn render(
                         .on_click(cx.listener(|_, _, _, cx| cx.open_url(CODEX_SECURITY_DOCS))),
                 )
                 .child(
-                    action("security-codex-harness", "Harness settings", p).on_click(
+                    action("security-codex-harness", "Agent settings", p).on_click(
                         cx.listener(|this, _, _, cx| {
                             this.settings_open = true;
                             this.settings_tab = SettingsTab::Harnesses;
@@ -2351,7 +2334,7 @@ pub(crate) fn render(
                             },
                             p,
                         )
-                        .when(this.security.codex_scanning, |button| button.opacity(0.5))
+                        .disabled(this.security.codex_scanning)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             run_codex_scan(this, cli.clone(), window, cx);
                         })),
@@ -2411,7 +2394,7 @@ pub(crate) fn render(
                 .text_color(p.muted_fg)
                 .child("Run an explicit argv in a macOS seatbelt profile: no network, writes only to a private scratch directory, credential reads denied, and bounded CPU, file size, process and wall-clock limits. This is a local check, not a container and not a sandbox for the ACP harness."),
         )
-        .child(Input::new(&this.security_check_argv))
+        .child(code_input(&this.security_check_argv).aria_label("Sandboxed check command arguments"))
         .child(
             div()
                 .flex()
@@ -2427,7 +2410,7 @@ pub(crate) fn render(
                         },
                         p,
                     )
-                    .when(this.security.check_running, |button| button.opacity(0.5))
+                    .disabled(this.security.check_running)
                     .on_click(cx.listener(|this, _, window, cx| {
                         run_sandboxed_check(this, window, cx)
                     })),
@@ -2440,7 +2423,7 @@ pub(crate) fn render(
                 .max_h(px(220.))
                 .overflow_y_scroll()
                 .p(px(8.))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .bg(p.bg)
                 .border_1()
                 .border_color(p.border)
@@ -2458,26 +2441,20 @@ pub(crate) fn render(
     content = content.child(
         div()
             .p(px(12.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .border_1()
             .border_color(p.border)
             .bg(p.subtle)
             .text_size(px(11.))
             .text_color(p.muted_fg)
-            .child("Dunlin parses supported artifacts and validates their structure; it never executes a scan or treats an empty findings list as proof that a repository is secure. Codex Security remains an external plugin."),
+            .child("Dunlin validates artifact structure. External scans and sandboxed checks run only after an explicit action; neither empty findings nor a successful check proves a repository is secure."),
     );
 
-    div()
-        .id("security-view")
-        .flex_1()
-        .min_h(px(0.))
-        .overflow_y_scroll()
-        .child(content)
-        .into_any_element()
+    content.into_any_element()
 }
 
-/// Compact status list in the sidebar. The main panel owns setup and actions.
-pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+/// Read-only availability in Configuration; audit actions live on Project audits.
+pub(crate) fn configuration_status(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let target = current_target(this);
     let installed = skill_installed(this, target);
@@ -2485,15 +2462,12 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     let codex_installed =
         crate::harness::command_available(&crate::harness::harness_command("OpenAI Codex", ""));
     div()
-        .p(px(10.))
         .flex()
         .flex_col()
         .gap(px(8.))
         .child(
-            div()
-                .p(px(10.))
-                .rounded(px(8.))
-                .bg(p.fg.opacity(0.045))
+            dunlin_ui::settings::card(p)
+                .p(px(14.))
                 .flex()
                 .flex_col()
                 .gap(px(4.))
@@ -2528,10 +2502,8 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 ),
         )
         .child(
-            div()
-                .p(px(10.))
-                .rounded(px(8.))
-                .bg(p.fg.opacity(0.045))
+            dunlin_ui::settings::card(p)
+                .p(px(14.))
                 .flex()
                 .flex_col()
                 .gap(px(4.))
@@ -2564,7 +2536,7 @@ pub(crate) fn sidebar_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .text_size(px(10.))
                 .text_color(p.muted_fg)
-                .child("Open Security to install the audit skill or read the limitations."),
+                .child("Use Project audits to install tools or inspect findings. Agent permissions are configured separately."),
         )
         .into_any_element()
 }

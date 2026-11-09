@@ -2,6 +2,13 @@
 
 # Release acceptance / hardening
 
+**Current distribution policy:** desktop app packages and their Actions copies
+have been withdrawn. Homebrew, prebuilt app downloads and OCI publication are
+paused until Apple Developer ID signing and notarization are available; beta
+users should clone the repository and build from source. Relay releases continue.
+The package verification records below describe past publication, not currently
+available desktop downloads.
+
 ## 0.1.0-beta.10 recovery — 2026-11-07
 
 **Status: published prerelease; automated distribution checks passed. Manual

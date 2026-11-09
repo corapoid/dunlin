@@ -8,7 +8,7 @@ use dunlin_ui::{
         Sizable,
         button::{Button, ButtonVariants},
         diff::{Diff, DiffFile, DiffState},
-        input::{Input, InputState},
+        input::InputState,
     },
     prelude::FluentBuilder as _,
     *,
@@ -16,11 +16,13 @@ use dunlin_ui::{
 use dunlin_workspace::git::history::{self, Commit};
 use std::path::Path;
 
+mod actions;
 mod budgets;
 mod checks;
 mod compare;
 mod context;
 mod details;
+mod graph;
 mod impact;
 mod mutations;
 mod overview;
@@ -99,6 +101,7 @@ pub(crate) struct View {
     loading: bool,
     limit: usize,
     scope: Option<String>,
+    loaded_revision: String,
     load_request: uuid::Uuid,
     detail_request: uuid::Uuid,
     patch_request: uuid::Uuid,
@@ -121,6 +124,8 @@ pub(crate) struct View {
     subtasks: subtasks::State,
     compare: compare::State,
     impact: impact::State,
+    hovered: Option<usize>,
+    inspector: details::State,
 }
 impl View {
     fn hide_tools(&mut self) {
@@ -168,43 +173,62 @@ fn pin_scope(scope: &mut Option<String>, incoming: String) -> Result<(), String>
 
 /// Each active lane owns an expected ancestor. Edges connect every visible
 /// parent, including merge parents; unshown ancestors continue below the limit.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct LaneRow {
     lane: usize,
     edges: Vec<(usize, usize)>,
     width: usize,
     incoming: usize,
+    color: usize,
+    incoming_colors: Vec<usize>,
+    edge_colors: Vec<usize>,
 }
 fn layout(commits: &[Commit]) -> Vec<LaneRow> {
-    let mut lanes: Vec<String> = Vec::new();
+    let mut lanes: Vec<(String, usize)> = Vec::new();
     commits
         .iter()
         .map(|commit| {
             let incoming = lanes.len();
             let lane = lanes
                 .iter()
-                .position(|id| id == &commit.oid)
+                .position(|(id, _)| id == &commit.oid)
                 .unwrap_or_else(|| {
-                    lanes.push(commit.oid.clone());
+                    let color = graph::distinct(
+                        graph::identity(commit),
+                        lanes.iter().map(|(_, color)| *color),
+                    );
+                    lanes.push((commit.oid.clone(), color));
                     lanes.len() - 1
                 });
             let before = lanes.clone();
+            let color = before[lane].1;
             lanes.remove(lane);
             for (offset, parent) in commit.parents.iter().enumerate() {
-                if !lanes.contains(parent) {
-                    lanes.insert((lane + offset).min(lanes.len()), parent.clone());
+                if !lanes.iter().any(|(id, _)| id == parent) {
+                    let parent_color = if offset == 0 {
+                        color
+                    } else {
+                        graph::distinct(graph::hash(parent), lanes.iter().map(|(_, color)| *color))
+                    };
+                    lanes.insert(
+                        (lane + offset).min(lanes.len()),
+                        (parent.clone(), parent_color),
+                    );
                 }
             }
             let mut edges = Vec::new();
-            for (column, id) in before.iter().enumerate() {
+            let mut edge_colors = Vec::new();
+            for (column, (id, lane_color)) in before.iter().enumerate() {
                 if id == &commit.oid {
                     for parent in &commit.parents {
-                        if let Some(to) = lanes.iter().position(|id| id == parent) {
+                        if let Some(to) = lanes.iter().position(|(id, _)| id == parent) {
                             edges.push((column, to));
+                            edge_colors.push(lanes[to].1);
                         }
                     }
-                } else if let Some(to) = lanes.iter().position(|next| next == id) {
+                } else if let Some(to) = lanes.iter().position(|(next, _)| next == id) {
                     edges.push((column, to));
+                    edge_colors.push(*lane_color);
                 }
             }
             LaneRow {
@@ -212,9 +236,26 @@ fn layout(commits: &[Commit]) -> Vec<LaneRow> {
                 width: before.len().max(lanes.len()),
                 edges,
                 incoming,
+                color,
+                incoming_colors: before
+                    .iter()
+                    .take(incoming)
+                    .map(|(_, color)| *color)
+                    .collect(),
+                edge_colors,
             }
         })
         .collect()
+}
+
+/// Anchor the first visible commit, including its fractional row offset, when
+/// new commits are inserted above it. Falling out of a filter resets separately.
+fn scroll_anchor(before: &[Commit], after: &[Commit], offset: f32) -> Option<f32> {
+    let distance = (-offset).max(0.);
+    let index = (distance / graph::ROW_HEIGHT).floor() as usize;
+    let oid = &before.get(index)?.oid;
+    let next = after.iter().position(|commit| &commit.oid == oid)?;
+    Some(-(next as f32 * graph::ROW_HEIGHT + distance % graph::ROW_HEIGHT))
 }
 
 impl DunlinApp {
@@ -291,6 +332,7 @@ impl DunlinApp {
             loading: false,
             limit: 500,
             scope: None,
+            loaded_revision: String::new(),
             load_request: uuid::Uuid::now_v7(),
             detail_request: uuid::Uuid::now_v7(),
             patch_request: uuid::Uuid::now_v7(),
@@ -313,6 +355,8 @@ impl DunlinApp {
             subtasks: subtasks::State::new(window, cx),
             compare: compare::State::new(window, cx),
             impact: impact::State::new(window, cx),
+            hovered: None,
+            inspector: details::State::new(cx),
         });
         self.git_history.active = true;
         self.remember_workspace_tab();
@@ -328,6 +372,7 @@ impl DunlinApp {
             .focus
             .focus(window, cx);
         self.load_git_history(cx);
+        self.load_git_overview(cx);
     }
     pub(crate) fn show_git_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_git_history(window, cx);
@@ -357,16 +402,8 @@ impl DunlinApp {
             return;
         };
         view.loading = true;
-        view.rows.clear();
-        view.lanes.clear();
-        view.selected = None;
-        view.detail = None;
-        view.detail_loading = false;
-        view.patch_loading = false;
-        view.detail_request = uuid::Uuid::now_v7();
-        view.patch_request = uuid::Uuid::now_v7();
-        view.patch_note = None;
-        view.detail_error = None;
+        // Keep the displayed snapshot and its immutable comparison while a new
+        // graph is read. Replacing it atomically avoids empty flashes and jumps.
         view.error = None;
         view.load_request = uuid::Uuid::now_v7();
         let request = view.load_request;
@@ -382,34 +419,83 @@ impl DunlinApp {
                     let response = backend.history_load(&revision, limit, expected.as_deref())?;
                     let rows = response.value;
                     let lanes = layout(&rows);
-                    Ok::<_, String>((response.scope, rows, lanes))
+                    Ok::<_, String>((response.scope, rows, lanes, revision))
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.git_history.prune(&this.projects, &this.remote_hosts);
-                if !this.projects.iter().any(|p| owns(&project, p)) { return; }
-                let mut select = false;
-                if let Some(view) = this.git_history.view.as_mut().filter(|v| v.id == id && v.load_request == request) {
+                if !this.projects.iter().any(|p| owns(&project, p)) {
+                    return;
+                }
+                let mut select = None;
+                if let Some(view) = this
+                    .git_history
+                    .view
+                    .as_mut()
+                    .filter(|v| v.id == id && v.load_request == request)
+                {
                     view.loading = false;
                     match result {
-                        Ok((root, rows, lanes)) => {
+                        Ok((root, rows, lanes, revision)) => {
                             if let Err(error) = pin_scope(&mut view.scope, root) {
                                 view.error = Some(error);
                                 cx.notify();
                                 return;
                             }
+                            let previous = view
+                                .selected
+                                .and_then(|i| view.rows.get(i))
+                                .map(|c| c.oid.clone());
+                            let retained = previous
+                                .as_ref()
+                                .and_then(|oid| rows.iter().position(|c| &c.oid == oid));
+                            let old_offset = view.scroll.0.borrow().base_handle.offset();
+                            let anchored_y =
+                                scroll_anchor(&view.rows, &rows, f32::from(old_offset.y));
+                            view.loaded_revision = revision;
                             view.lanes = lanes;
                             view.rows = rows;
-                            view.scroll.scroll_to_item_strict(0, ScrollStrategy::Top);
-                            select = !view.rows.is_empty();
+                            view.hovered = None;
+                            if let Some(index) = retained {
+                                view.selected = Some(index);
+                                if let Some(y) = anchored_y {
+                                    view.scroll
+                                        .0
+                                        .borrow()
+                                        .base_handle
+                                        .set_offset(point(old_offset.x, px(y)));
+                                }
+                            } else {
+                                view.selected = None;
+                                view.detail = None;
+                                view.detail_loading = false;
+                                view.patch_loading = false;
+                                view.detail_request = uuid::Uuid::now_v7();
+                                view.patch_request = uuid::Uuid::now_v7();
+                                view.selected_file = None;
+                                view.patch_note = None;
+                                view.detail_error = None;
+                                view.inspector.clear();
+                                view.scroll.scroll_to_item_strict(0, ScrollStrategy::Top);
+                                select = (!view.rows.is_empty()).then_some(0);
+                            }
                             view.error = None;
                         }
                         Err(error) => {
-                            view.error = Some(format!("{error}. Check the commit/ref or whether the repository has commits. No fetch was performed."))
+                            view.error = Some(format!(
+                                "{error}. {}No fetch was performed.",
+                                if view.rows.is_empty() {
+                                    "Check the revision or whether the repository has commits. "
+                                } else {
+                                    "Showing the previous cached snapshot. "
+                                }
+                            ))
                         }
                     }
                 }
-                if select { this.select_history_commit(0, 0, cx); }
+                if let Some(index) = select {
+                    this.select_history_commit(index, 0, cx);
+                }
                 cx.notify();
             });
         })
@@ -428,11 +514,20 @@ impl DunlinApp {
         let Some(expected) = view.scope.clone() else {
             return;
         };
+        if view.selected == Some(index)
+            && view.parent == parent
+            && (view.detail.is_some() || view.detail_loading)
+        {
+            view.scroll.scroll_to_item(index, ScrollStrategy::Nearest);
+            return;
+        }
         let oid = commit.oid.clone();
         let project = view.project.clone();
         let backend = view.backend.clone();
         let id = view.id;
         view.selected = Some(index);
+        view.inspector.clear();
+        view.branch_form_open = false;
         view.scroll.scroll_to_item(index, ScrollStrategy::Nearest);
         view.parent = parent;
         view.detail = None;
@@ -475,7 +570,7 @@ impl DunlinApp {
                 if !this.projects.iter().any(|p| owns(&project, p)) {
                     return;
                 }
-                let mut select_file = false;
+                let mut open_patch = false;
                 if let Some(view) = this
                     .git_history
                     .view
@@ -485,13 +580,15 @@ impl DunlinApp {
                     view.detail_loading = false;
                     match result {
                         Ok(detail) => {
-                            select_file = !detail.files.is_empty();
+                            open_patch = view.inspector.tab == details::Tab::Patch
+                                && !detail.files.is_empty();
+                            view.inspector.install(&detail.files);
                             view.detail = Some(detail);
                         }
                         Err(error) => view.detail_error = Some(error),
                     }
                 }
-                if select_file {
+                if open_patch {
                     this.select_history_file(0, cx);
                 }
                 cx.notify();
@@ -686,40 +783,6 @@ impl DunlinApp {
     }
 }
 
-fn graph_cell(row: LaneRow, width: f32, color: Hsla) -> AnyElement {
-    canvas(
-        |bounds, _, _| bounds,
-        move |bounds, _, window, _| {
-            let paint = |window: &mut Window, x, y, w, h, radius| {
-                window.paint_quad(quad(
-                    Bounds::new(bounds.origin + point(px(x), px(y)), size(px(w), px(h))),
-                    Corners::all(px(radius)),
-                    color,
-                    Edges::default(),
-                    color,
-                    BorderStyle::default(),
-                ))
-            };
-            for (from, to) in &row.edges {
-                let a = 12. + *from as f32 * 16.;
-                let b = 12. + *to as f32 * 16.;
-                paint(window, a, 16., 1.5, 8., 0.);
-                paint(window, a.min(b), 24., (a - b).abs().max(1.5), 1.5, 0.);
-                paint(window, b, 24., 1.5, 8., 0.);
-            }
-            // Incoming lanes from the preceding row end at this row's center.
-            for lane in 0..row.incoming {
-                paint(window, 12. + lane as f32 * 16., 0., 1.5, 16., 0.);
-            }
-            paint(window, 8.5 + row.lane as f32 * 16., 12.5, 8., 8., 4.);
-        },
-    )
-    .w(px(width))
-    .h(px(32.))
-    .flex_shrink_0()
-    .into_any_element()
-}
-
 pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     if this
         .git_history
@@ -778,7 +841,6 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     {
         return context::render(this, cx);
     }
-    let p = palette(cx);
     let Some(view) = this
         .git_history
         .view
@@ -787,146 +849,257 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     else {
         return div().into_any_element();
     };
-    let width = (view.lanes.iter().map(|r| r.width).max().unwrap_or(1) as f32 * 16. + 24.).max(44.);
     if view.overview.visible {
         return overview::render(this, cx);
     }
-    let list = uniform_list(
-        "git-history-list",
-        view.rows.len(),
-        cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
-            let Some(view) = &this.git_history.view else {
-                return Vec::new();
-            };
-            range
-                .filter_map(|i| Some((i, view.rows.get(i)?, view.lanes.get(i)?)))
-                .map(|(i, commit, lane)| {
-                    let selected = view.selected == Some(i);
-                    let date = chrono::DateTime::from_timestamp(commit.timestamp, 0)
-                        .map(|d| {
-                            d.with_timezone(&chrono::Local)
-                                .format("%Y-%m-%d %H:%M")
-                                .to_string()
-                        })
-                        .unwrap_or_default();
-                    div()
-                        .id(("history-commit", i))
-                        .h(px(32.))
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .min_w(px(0.))
-                        .w_full()
-                        .overflow_hidden()
-                        .gap(px(8.))
-                        .px(px(8.))
-                        .cursor_pointer()
-                        .when(selected, |s| s.bg(p.blue_soft))
-                        .hover(move |s| s.bg(p.hover))
-                        .aria_label(format!("Commit {}: {}", commit.oid, commit.subject))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if let Some(view) = &this.git_history.view {
-                                view.focus.focus(window, cx);
-                            }
-                            this.select_history_commit(i, 0, cx);
-                        }))
-                        .child(
-                            div()
-                                .w(px(width))
-                                .flex_shrink_0()
-                                .overflow_hidden()
-                                .child(graph_cell(lane.clone(), width, p.blue)),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .w(px(60.))
-                                .flex_shrink_0()
-                                .text_color(p.muted_fg)
-                                .child(commit.oid.chars().take(8).collect::<String>()),
-                        )
-                        .child(
-                            div()
-                                .min_w(px(0.))
-                                .flex_1()
-                                .text_size(px(12.))
-                                .truncate()
-                                .child(commit.subject.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .min_w(px(0.))
-                                .max_w(px(220.))
-                                .truncate()
-                                .text_color(p.blue)
-                                .child(commit.refs.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(p.muted_fg)
-                                .max_w(px(120.))
-                                .truncate()
-                                .child(commit.author.clone()),
-                        )
-                        .child(
-                            div()
-                                .w(px(106.))
-                                .flex_shrink_0()
-                                .text_size(px(10.))
-                                .text_color(p.muted_fg)
-                                .child(date),
-                        )
-                        .into_any_element()
-                })
-                .collect::<Vec<_>>()
-        }),
-    )
-    .track_scroll(&view.scroll)
-    .flex_1()
-    .min_h(px(0.))
-    .min_w(px(0.));
-    let selected = view.selected.and_then(|i| view.rows.get(i));
+    browser(this, cx)
+}
+
+fn browser(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let p = palette(cx);
+    let view = this.git_history.view.as_ref().unwrap();
+    let width = graph::width(view);
+    let list = graph::render(this, cx);
     let detail_panel = details::render(this, cx);
-    div().id("git-history-panel").relative().children({
-        #[cfg(debug_assertions)]
-        { crate::workspace_ui_smoke::probe("git-history-panel") }
-        #[cfg(not(debug_assertions))]
-        { None::<AnyElement> }
-    }).track_focus(&view.focus).flex_1().min_w(px(0.)).min_h(px(0.)).text_color(p.fg).flex().flex_col().overflow_hidden()
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                let Some(view) = this.git_history.view.as_ref() else { return; };
-                if !view.focus.is_focused(window) || event.keystroke.modifiers.platform { return; }
-                let index = match event.keystroke.key.as_str() {
-                    "up" => view.selected.unwrap_or(0).saturating_sub(1),
-                    "down" => (view.selected.unwrap_or(0) + 1).min(view.rows.len().saturating_sub(1)),
-                    "home" => 0,
-                    "end" => view.rows.len().saturating_sub(1),
-                    _ => return,
-                };
-                this.select_history_commit(index, 0, cx);
-                cx.stop_propagation();
-            }))
-              .child(div().px(px(12.)).py(px(6.)).flex_shrink_0().flex().flex_wrap().items_center().gap(px(6.))
-                  .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).child("History"))
-                  .child(div().text_size(px(11.)).text_color(p.muted_fg).child(view.project.name.clone()))
-                  .child(div().flex_1())
-                  .child(div().text_size(px(10.)).text_color(p.muted_fg).child(if view.loading { "Loading…".into() } else { format!("{} commits · cached {} snapshot", view.rows.len(), if view.project.is_remote() { "relay" } else { "local" }) }))
-                   )
-            .child(div().px(px(12.)).pb(px(8.)).flex().gap(px(8.))
-                .child(Input::new(&view.revision).flex_1())
-                  .child(dunlin_ui::button("history-revision").ghost().label("Show history").disabled(view.loading || this.git_history.running).on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx)))))
-             .child(div().flex_1().min_h(px(80.)).flex().flex_col().overflow_hidden().child(list))
-             .child(detail_panel)
-              .when(view.branch_form_open, |panel| panel.child(
-                  div().px(px(12.)).py(px(8.)).flex_shrink_0().flex().flex_col().gap(px(6.)).border_t_1().border_color(p.border)
-                      .child(div().flex().items_center().gap(px(8.))
-                          .child(Input::new(&view.name).flex_1())
-                          .child(dunlin_ui::button("history-create").primary().label(if this.git_history.running { "Creating…" } else { "Create branch" }).disabled(selected.is_none() || this.git_history.running || view.loading).on_click(cx.listener(|this, _, _, cx| this.create_history_branch(cx)))))
-                      .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Creates a branch on the local or relay repository from the selected commit only — no checkout or changes to files/staging."))))
-              .when_some(view.error.as_ref(), |panel, error| panel.child(div().px(px(12.)).py(px(6.)).flex_shrink_0().text_size(px(12.)).text_color(p.red).child(error.clone())))
-          .into_any_element()
+    let status = actions::status(this, cx);
+    div()
+        .id("git-history-panel")
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("git-history-panel")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .track_focus(&view.focus)
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .text_color(p.fg)
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+            let Some(view) = this.git_history.view.as_ref() else {
+                return;
+            };
+            if !view.focus.is_focused(window) || event.keystroke.modifiers.platform {
+                return;
+            }
+            let index = match event.keystroke.key.as_str() {
+                "up" => view.selected.unwrap_or(0).saturating_sub(1),
+                "down" => (view.selected.unwrap_or(0) + 1).min(view.rows.len().saturating_sub(1)),
+                "home" => 0,
+                "end" => view.rows.len().saturating_sub(1),
+                "enter" => {
+                    if let Some(view) = &mut this.git_history.view {
+                        if let Some(commit) = view.selected.and_then(|i| view.rows.get(i)) {
+                            view.mutations.initialize_target(&commit.oid, window, cx);
+                        }
+                        view.inspector.tab = details::Tab::Operations;
+                    }
+                    cx.notify();
+                    cx.stop_propagation();
+                    return;
+                }
+                _ => return,
+            };
+            this.select_history_commit(index, 0, cx);
+            cx.stop_propagation();
+        }))
+        .child(
+            div()
+                .px(px(10.))
+                .py(px(6.))
+                .flex_shrink_0()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    dunlin_ui::input(&view.revision)
+                        .aria_label("Commit or revision")
+                        .small()
+                        .min_w(px(120.))
+                        .flex_1(),
+                )
+                .child(
+                    dunlin_ui::button("history-revision")
+                        .ghost()
+                        .small()
+                        .label("Show history")
+                        .disabled(view.loading || this.git_history.running)
+                        .on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx))),
+                )
+                .child(
+                    dunlin_ui::button("history-all")
+                        .ghost()
+                        .small()
+                        .label("All refs")
+                        .disabled(view.loading || this.git_history.running)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if let Some(v) = &this.git_history.view {
+                                v.revision.update(cx, |s, cx| s.set_value("", window, cx));
+                            }
+                            this.load_git_history(cx);
+                        })),
+                )
+                .child(
+                    dunlin_ui::button("history-refresh")
+                        .ghost()
+                        .small()
+                        .label("Refresh")
+                        .disabled(view.loading || this.git_history.running)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.load_git_history(cx);
+                            this.load_git_overview(cx);
+                        })),
+                )
+                .child(
+                    dunlin_ui::button("history-state")
+                        .ghost()
+                        .small()
+                        .label("Repository state")
+                        .on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))),
+                ),
+        )
+        .child(div().px(px(10.)).flex_shrink_0().child(status))
+        .child(
+            div().flex_1().min_h(px(0.)).min_w(px(0.)).child(
+                dunlin_ui::component::resizable::h_resizable("history-columns")
+                    .child(
+                        dunlin_ui::component::resizable::resizable_panel()
+                            .size(px(620.))
+                            .size_range(px(220.)..px(4000.))
+                            .child(
+                                div()
+                                    .size_full()
+                                    .min_w(px(0.))
+                                    .min_h(px(0.))
+                                    .flex()
+                                    .flex_col()
+                                    .overflow_hidden()
+                                    .child(
+                                        div()
+                                            .h(px(34.))
+                                            .px(px(12.))
+                                            .flex_shrink_0()
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(8.))
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .text_color(p.muted_fg)
+                                                    .child("REPOSITORY HISTORY"),
+                                            )
+                                            .child(div().flex_1())
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.))
+                                                    .text_color(p.muted_fg)
+                                                    .child(if view.loading {
+                                                        "Refreshing…".into()
+                                                    } else {
+                                                        format!(
+                                                            "{} commits · {} · {}",
+                                                            view.rows.len(),
+                                                            if view.project.is_remote() {
+                                                                "relay"
+                                                            } else {
+                                                                "local"
+                                                            },
+                                                            if view.loaded_revision.is_empty() {
+                                                                "all refs".into()
+                                                            } else {
+                                                                view.loaded_revision
+                                                                    .chars()
+                                                                    .take(12)
+                                                                    .collect::<String>()
+                                                            }
+                                                        )
+                                                    }),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .h(px(24.))
+                                            .pr(px(10.))
+                                            .flex_shrink_0()
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.))
+                                            .text_size(px(10.))
+                                            .text_color(p.muted_fg)
+                                            .border_b_1()
+                                            .border_color(p.border)
+                                            .child(
+                                                div()
+                                                    .w(px(width))
+                                                    .flex_shrink_0()
+                                                    .pl(px(10.))
+                                                    .child("Graph"),
+                                            )
+                                            .child(div().flex_1().child("Commit"))
+                                            .child(div().w(px(112.)).min_w(px(70.)).child("Date")),
+                                    )
+                                    .when(view.rows.is_empty(), |panel| {
+                                        panel.child(
+                                            div()
+                                                .p(px(16.))
+                                                .text_size(px(12.))
+                                                .text_color(p.muted_fg)
+                                                .child(if view.loading {
+                                                    "Loading repository history…"
+                                                } else {
+                                                    "No commits in this snapshot."
+                                                }),
+                                        )
+                                    })
+                                    .child(list)
+                                    .when(view.limit < 2000 && view.rows.len() == view.limit, |panel| {
+                                        panel.child(
+                                            dunlin_ui::button("history-more")
+                                                .ghost()
+                                                .small()
+                                                .label("Load more commits")
+                                                .disabled(view.loading || this.git_history.running)
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    if let Some(v) = &mut this.git_history.view {
+                                                        v.limit = (v.limit + 500).min(2000);
+                                                    }
+                                                    this.load_git_history(cx);
+                                                })),
+                                        )
+                                    })
+                                    .child(div().h(px(26.)).px(px(10.)).flex_shrink_0().text_size(px(10.)).text_color(p.muted_fg).child("↑ ↓ Select · Enter Operations · Right-click for commit actions")),
+                            ),
+                    )
+                    .child(
+                        dunlin_ui::component::resizable::resizable_panel()
+                            .size(px(480.))
+                            .size_range(px(220.)..px(4000.))
+                            .child(detail_panel),
+                    ),
+            ),
+        )
+        .when_some(view.error.as_ref(), |panel, error| {
+            panel.child(
+                div()
+                    .px(px(12.))
+                    .py(px(6.))
+                    .flex_shrink_0()
+                    .text_size(px(12.))
+                    .text_color(p.red)
+                    .child(error.clone()),
+            )
+        })
+        .into_any_element()
 }
 
 #[cfg(test)]

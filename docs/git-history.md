@@ -21,22 +21,41 @@ The **Repository state** button opens an independent read-only
 [repository-state view](git-repository-state.md) in this same tab, including
 unborn repositories. It does not change the selected comparison or file buffers.
 
-The commit inspector uses flat file rows with file icons, a filename-first label,
-muted directory/rename origin and colored status letters. Full paths and rename
-identities remain available on hover and in accessibility labels. Selection uses
-a pale accent with a thin left marker, not a filled pill. The file list takes 28%
-of the comparison width (170–260 logical pixels); the diff gets the remainder.
+History has two resizable columns: the full-height commit graph on the left,
+changed files above the commit inspector on the right. The inspector also has a
+resizable horizontal divider. **Tree** groups files into collapsible directories;
+**Flat** shows basenames with muted directories/rename origins. Both lists are
+virtualized. Status names are colored, and full literal paths/rename identities
+remain available in tooltips and accessibility labels. Presentation sorting
+never changes the backend file indices used to request an immutable patch.
 
-Commit metadata shows the subject, short ID (click to copy the full ID), author
-and date without repeating the subject in the body. Only merges offer parent
-controls; a single parent is a quiet comparison caption. Toolbar actions are
-borderless. **Create branch…** reveals the branch form on demand and works for
-both local and relay repositories; **Checkout commit…** is local-only and
-requires a clean worktree. Both leave more vertical room by default.
+The graph uses identity-colored first-parent paths, curved branch/merge edges,
+ring markers for merges and a selected-commit halo. Hover emphasizes the matching
+path. Clicking refs filters to history ending at that exact commit; **All refs**
+restores the unfiltered view. Short selection fades respect both the app and OS
+reduced-motion settings; scrolling does not animate the whole graph.
+
+**Commit details**, **Diff** and **Operations** switch the lower-right pane without
+closing history. Metadata shows the subject, copyable short ID, author, commit
+date, refs, parents and message body without duplicating the subject. Only merges
+offer comparison-parent controls. Selecting a file opens **Diff**; patches load
+on demand rather than eagerly during commit navigation. **Create branch…** in
+Operations reveals the ref-only branch form for local or relay repositories.
+
+Right-click a commit for **Create branch here…**, **Merge into current branch…**,
+**Rebase current branch onto here…**, **Cherry-pick…**, **Create worktree here…**
+or the general operation form. Actions pin a commit OID and view identity, not a
+virtual row index. Merge cherry-picks require an explicitly entered mainline.
+Mutations retain the existing fresh preflight and native confirmation. The
+history toolbar also exposes **Repository state**, including stash/worktree
+inventory, and an operation banner shows observed in-progress operations and
+conflicts with **Continue… / Abort…** where supported. These are snapshots, not
+inferred historical rebase/cherry-pick events.
 
 - Select a commit to load its full message and changed-file list. With focus on
   the graph, Up/Down/Home/End select and reveal commits. Inputs/buttons retain
-  their ordinary keyboard handling.
+  their ordinary keyboard handling. Enter opens Operations. In the file tree,
+  Up/Down/Home/End navigate, Left/Right collapse/expand, and Enter opens a diff.
 - Root commits compare against the empty tree, without writing a tree object.
 - Ordinary commits compare against their parent. Merge commits default to parent
   1 and expose explicit parent buttons; this is **not** a combined merge diff.
@@ -53,6 +72,11 @@ Selection is debounced and each history/details/patch request has an independent
 generation. A superseded or closed view cannot accept an earlier result. Reads,
 layout and patch parsing run off the UI thread. Already-running reads may finish
 after closing, but their results are discarded; each Git child is timeout-bounded.
+Refresh and **Load more commits** keep the displayed snapshot until its replacement
+is ready, preserve the selected OID when still present, and anchor scrolling to
+the first visible commit. A failed refresh explicitly labels retained data as the
+previous cached snapshot. A removed selection clears its comparison and invalidates
+pending detail/patch reads before selecting the first replacement row.
 
 ## Limits and safety
 
@@ -112,6 +136,19 @@ Old endpoints/protocols produce an explicit update/error state: **no legacy Git
 API or local fallback is attempted**. Tokens/raw error bodies are not echoed in
 history transport errors. No agent is started and no prompt or mutation is sent.
 
+## Automated redesign checks
+
+The desktop suite passed 440 tests, including 20 history tests. Graph-specific
+coverage checks distinct fork colors, color continuity across virtual rows,
+column compaction, stable older-page extension and fractional scroll anchoring.
+File-tree coverage checks literal paths, sorted patch indices and collapsed
+directories without hiding similarly named siblings.
+
+The isolated native-window smoke passed in dark (1,200 × 800) and light/narrow
+(760 × 800) windows, including the virtual 500-commit list and existing buffer,
+stash and mutation-lock protections. This is automated controller/painting
+acceptance, not manual visual or native-confirmation-dialog acceptance.
+
 ## Manual QA checklist (not yet executed)
 
 Original history/inventory baseline: 403 tests passed, 4 optional integration tests
@@ -130,16 +167,21 @@ Current operation/blame validation is documented in
   patch under a new commit label. Change projects, revoke trust and relocate roots.
 - Use source-control icon, native menu, `⌘⌥G`, arrows/Home/End, Tab/Shift-Tab,
   Escape and `⌘W`; check focus and scrolling in light/dark at minimum window size.
-- Check the redesigned inspector at narrow/wide widths: visible basenames, muted
-  directories, complete hover labels, subtle selection/focus and no pill-shaped
-  file/parent controls. Copy an ID, compare each merge parent and reveal/hide the
-  branch form. Visual validation of this redesign has not yet been performed.
+- Check both resizable dividers at narrow/wide widths, Tree/Flat switching,
+  nested collapse/expand, keyboard focus, literal/renamed paths and status names.
+  Copy an ID, compare each merge parent, open a file diff and reveal/hide the branch
+  form. Verify hover paths, merge curves and reduced-motion behavior in both themes.
+  Refresh while scrolled, prepend commits, and load older history without losing
+  the visible anchor, selection or immutable comparison. Right-click before a
+  refresh and ensure menu actions never target a newly occupying row. Visual
+  validation of this redesign has not yet been performed.
 - Create a branch from an older commit, close/navigate while it runs, and verify
   the working branch/index/files remain unchanged and quit/mutation guards hold.
 - Test empty/non-Git roots, missing objects and oversized patches; never present
   another project's data or silently fetch.
 - Pair a real updated relay and compare graph/parents/files/patches with its local
-  repository. Verify the relay read-only label and absent branch-create controls.
+  repository. Verify the relay label, explicit remote branch/operation requests
+  and no local interpretation of server paths.
 - Revoke a grant/device, change host/pairing or retarget a server project alias
   while loading: access/scope errors, no local fallback or stale cross-host data.
 - Test an older relay (404), offline server, busy limit (429), oversized/malformed

@@ -1,6 +1,7 @@
 //! Bounded history transport. Never falls back to a local path or an older API,
 //! follows redirects, or exposes a token/raw server body in an error.
 use super::{RemoteWorkspace, WorkspaceBackend, encode};
+use dunlin_http as ureq;
 use dunlin_workspace::git::history::{
     self, Commit, CommitDetails, CommitFile, CommitPatch, HistoryResponse,
 };

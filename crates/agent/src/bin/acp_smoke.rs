@@ -2,12 +2,13 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::schema::v1::{
+use agent_client_protocol::v1::ConnectionTo;
+use agent_client_protocol::v1::schema::{
     ContentBlock, InitializeRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
     SelectedPermissionOutcome, SessionNotification, SessionUpdate, TextContent,
 };
-use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
+use agent_client_protocol::{AcpAgent, Agent, Client};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let command = std::env::args()
@@ -29,7 +30,7 @@ async fn run(
     let agent = AcpAgent::from_str(&command)?;
 
     Client
-        .builder()
+        .v1()
         .name("dunlin-smoke")
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {

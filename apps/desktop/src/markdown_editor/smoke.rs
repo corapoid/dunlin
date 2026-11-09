@@ -77,6 +77,11 @@ pub(crate) fn run() {
                 default_harness: "Custom ACP".into(),
                 notifications_enabled: false,
                 dark: !light_narrow,
+                appearance: Some(if light_narrow {
+                    crate::app::Appearance::Light
+                } else {
+                    crate::app::Appearance::Dark
+                }),
                 ..Default::default()
             },
         )
@@ -242,8 +247,11 @@ pub(crate) fn run() {
                             }
                             9 if app.active_file_tab().is_some_and(|t| !t.markdown.pending) => {
                                 assert_eq!(app.active_file_tab().unwrap().markdown.mode, Mode::Visual);
-                                app.save_editor(cx);
-                                assert_eq!(fs::read_to_string(&path).unwrap(), typed);
+                                 app.save_editor(cx);
+                                 stage = 900;
+                             }
+                             900 if app.active_file_tab().is_some_and(|tab| !tab.saving) => {
+                                 assert_eq!(fs::read_to_string(&path).unwrap(), typed);
                                 assert!(!app.editor_dirty);
                                 let block = app.active_file_tab().unwrap().markdown.visual.document.as_ref().unwrap().blocks.iter().find(|b| b.text == "left").unwrap().clone();
                                 app.begin_visual_block(block, Some(0..4), window, cx); stage = 10;
@@ -280,8 +288,11 @@ pub(crate) fn run() {
                             }
                             17 => {
                                 assert_eq!(app.editor.read(cx).text().to_string(), image_edited);
-                                app.save_editor(cx);
-                                assert_eq!(fs::read_to_string(&path).unwrap(), image_edited);
+                                 app.save_editor(cx);
+                                 stage = 1700;
+                             }
+                             1700 if app.active_file_tab().is_some_and(|tab| !tab.saving) => {
+                                 assert_eq!(fs::read_to_string(&path).unwrap(), image_edited);
                                 let block = app.active_file_tab().unwrap().markdown.visual.document.as_ref().unwrap().blocks.iter().find(|b| b.text == "right").unwrap().clone();
                                 app.begin_visual_block(block, Some(0..5), window, cx); stage = 18;
                             }
@@ -347,8 +358,11 @@ pub(crate) fn run() {
                                 app.edit_visual_table(target, Operation::RowAfter, window, cx);
                                 assert_eq!(app.editor.read(cx).text().to_string(), image_edited, "read-only table edits must not mutate source");
                                 app.workbench.tabs.iter_mut().find(|t| t.id == id).unwrap().readonly = false;
-                                app.save_editor(cx);
-                                assert_eq!(fs::read_to_string(&path).unwrap(), image_edited);
+                                 app.save_editor(cx);
+                                 stage = 3200;
+                             }
+                             3200 if app.active_file_tab().is_some_and(|tab| !tab.saving) => {
+                                 assert_eq!(fs::read_to_string(&path).unwrap(), image_edited);
                                 let block = app.active_file_tab().unwrap().markdown.visual.document.as_ref().unwrap().blocks[0].clone();
                                 app.begin_visual_block(block, Some(6..6), window, cx); stage = 40;
                             }
@@ -407,7 +421,10 @@ pub(crate) fn run() {
                                 assert_eq!(app.editor.read(cx).text().to_string(), code_entered, "locked prose must not split");
                                 let id = app.active_file_tab().unwrap().id.clone();
                                 app.workbench.tabs.iter_mut().find(|t| t.id == id).unwrap().readonly = false;
-                                app.save_editor(cx); assert_eq!(fs::read_to_string(&path).unwrap(), code_entered);
+                                 app.save_editor(cx); stage = 5500;
+                             }
+                             5500 if app.active_file_tab().is_some_and(|tab| !tab.saving) => {
+                                 assert_eq!(fs::read_to_string(&path).unwrap(), code_entered);
                                 app.set_markdown_mode(Mode::Visual, window, cx);
                                  app.close_active_tab();
                                  app.open_workbench_file(advanced_path.to_str().unwrap(),None,window,cx);stage=60;
@@ -495,7 +512,11 @@ pub(crate) fn run() {
                                  app.close_visual_resource(cx);app.visual_history(false,window,cx);stage=99;
                              }
                              99=>{
-                                 assert_eq!(app.editor.read(cx).text().to_string(),advanced);app.save_editor(cx);app.close_active_tab();stage=33;
+                                 assert_eq!(app.editor.read(cx).text().to_string(),advanced);app.save_editor(cx);stage=9900;
+                             }
+                             9900 if app.active_file_tab().is_some_and(|tab| !tab.saving) => {
+                                 assert_eq!(fs::read_to_string(&advanced_path).unwrap(), advanced);
+                                 assert!(!app.editor_dirty);app.close_active_tab();stage=33;
                              }
                              33 => {
                                  assert!(app.workbench.tabs.is_empty());

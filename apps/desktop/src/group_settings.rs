@@ -4,7 +4,7 @@ use dunlin_ui::{
     component::{
         Disableable, Sizable,
         button::ButtonVariants,
-        input::{Editor, EditorState, Input, InputState},
+        input::{Editor, EditorState, InputState},
     },
     prelude::FluentBuilder as _,
     *,
@@ -582,13 +582,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .children(crate::workspace_ui_smoke::probe("group-settings-save"));
     div().id("group-settings-overlay").absolute().inset_0().size_full().flex().items_center().justify_center()
         .on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx)))
-        .child(div().id("group-settings-panel").w(px(620.)).max_w(relative(0.95)).max_h(relative(0.85)).overflow_hidden()
-            .child(crate::effects::rounded_probe(&this.overlay_backdrop, 12.))
-            .rounded(px(12.)).border_1().border_color(p.border_strong).bg(p.card).text_color(p.fg).flex().flex_col()
+        .child(div().id("group-settings-panel").role(Role::Dialog).aria_label("Group settings").tab_group().w(px(620.)).max_w(relative(0.95)).max_h(relative(0.85)).overflow_hidden()
+            .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+            .rounded(px(SurfaceGeometry::DIALOG.radius)).border(px(SurfaceGeometry::DIALOG.border)).border_color(p.border_strong).bg(p.card).text_color(p.fg).flex().flex_col()
             .on_click(|_, _, cx| cx.stop_propagation())
             .track_focus(&draft.focus)
             .child(div().id("group-settings-content").min_h(px(0.)).overflow_y_scroll().p(px(16.)).flex().flex_col().gap(px(10.))
             .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(format!("Group settings · {}", group.name)))
+            .child(dunlin_ui::settings::notice("Group scope · this Mac. All choices in this form are drafts until Save group settings. Cancel discards them. Defaults inherit from parent groups, then global settings.", p))
             .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).child("Group appearance"))
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Choose a logo or your own image instead of the dot, or keep a color dot."))
             .child(icons)
@@ -600,9 +601,9 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .child(div().text_size(px(11.)).child("Client permissions"))
             .child(permissions)
             .child(div().text_size(px(11.)).child(format!("Default model · {} · blank = inherit", draft.model_harness)))
-            .child(Input::new(&draft.model).small())
+            .child(dunlin_ui::input(&draft.model).aria_label("Group default model"))
             .child(div().text_size(px(11.)).child("Local environment overrides · NAME=value; omitted keys inherit"))
-            .child(div().h(px(100.)).overflow_hidden().child(Editor::new(&draft.environment).h_full()))
+            .child(div().h(px(120.)).overflow_hidden().child(Editor::new(&draft.environment).aria_label("Group environment overrides").h_full()))
             .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Values are literal and stored unencrypted locally, not in Keychain. Do not paste secrets. Environment/model defaults are not forwarded to relay; env applies at the next local connection."))
             .child(match preview { Ok(resolved) => render_sources(this, &resolved, cx), Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element() })
             .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error))))

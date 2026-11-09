@@ -16,6 +16,10 @@ design, real product screenshots, no analytics and no cookies.
 
 Requires Node 22.23.4 or newer.
 
+TypeScript stays on the latest 6.x release: `@astrojs/check` 0.9.12 declares
+support for TypeScript 5/6, not 7. Do not bypass that peer dependency with
+`--force` or `--legacy-peer-deps`; upgrade once Astro's checker supports 7.
+
 ```sh
 npm install
 npm run dev
@@ -46,11 +50,12 @@ public/             Favicon, brand icon, OG image, robots.txt, licenses
 
 - Site metadata, GitHub links, release version and download URLs live in
   `src/lib/site.ts`.
-- Download links are pinned to the currently verified published artifacts; update them only after a release is verified.
-  All ten GitHub asset digests, both checksum manifests, bundle identity/version
-  and macOS/Linux relay architectures were independently checked after publication.
-  Advance the single version constant only after checking publication, asset
-  digests and bundle identity; a pushed tag alone is not sufficient.
+- Desktop downloads, Homebrew installation and GitHub Packages publication are
+  paused until Apple Developer ID signing and notarization are available.
+  `/download` now recommends cloning the repository and building the beta from source.
+- Relay download links are pinned to verified published artifacts and use
+  `RELAY-SHA256SUMS`. Advance the single version constant only after checking
+  publication, asset digests and relay architectures; a pushed tag alone is not sufficient.
 - The canonical domain is a placeholder (`https://dunlin.sh`). Override it with
   `SITE_URL` in the deploy environment, and update the sitemap URL in
   `public/robots.txt` when the final domain is chosen.

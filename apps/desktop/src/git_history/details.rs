@@ -1,7 +1,37 @@
-//! Compact commit inspector: quiet metadata, flat file rows and a dominant patch.
+//! Right-hand inspector: changed-file tree above details, patch and operations.
 use super::*;
-use dunlin_ui::component::{Icon, button::ButtonCustomVariant, tooltip::Tooltip};
+use dunlin_ui::component::tooltip::Tooltip;
 use dunlin_workspace::git::history::CommitFile;
+
+mod files;
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum Tab {
+    #[default]
+    Details,
+    Patch,
+    Operations,
+}
+
+pub(super) struct State {
+    pub(super) tab: Tab,
+    files: files::State,
+}
+impl State {
+    pub(super) fn new(cx: &mut Context<DunlinApp>) -> Self {
+        Self {
+            tab: Tab::Details,
+            files: files::State::new(cx),
+        }
+    }
+    pub(super) fn clear(&mut self) {
+        self.tab = Tab::Details;
+        self.files.clear();
+    }
+    pub(super) fn install(&mut self, files: &[CommitFile]) {
+        self.files.install(files);
+    }
+}
 
 fn short_oid(oid: &str) -> String {
     oid.chars().take(8).collect()
@@ -117,7 +147,6 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .id("commit-subject")
                 .text_size(px(13.))
                 .font_weight(FontWeight::MEDIUM)
-                .truncate()
                 .child(commit.subject.clone())
                 .tooltip(move |window, cx| Tooltip::new(full_subject.clone()).build(window, cx)),
         )
@@ -142,7 +171,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         }),
                 )
                 .child(commit.author.clone())
-                .child(date),
+                .child(date.clone()),
         )
         .child(comparison);
     if let Some(detail) = &view.detail {
@@ -151,8 +180,6 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             header = header.child(
                 div()
                     .id("commit-message")
-                    .max_h(px(52.))
-                    .overflow_y_scroll()
                     .text_size(px(11.))
                     .text_color(p.muted_fg)
                     .child(body.to_string()),
@@ -160,132 +187,6 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         }
     }
     let count = view.detail.as_ref().map_or(0, |d| d.files.len());
-    let mut rows = div()
-        .id("commit-file-list")
-        .flex_1()
-        .min_h(px(0.))
-        .overflow_y_scroll()
-        .flex()
-        .flex_col();
-    if let Some(detail) = &view.detail {
-        for (index, file) in detail.files.iter().enumerate() {
-            let labels = file_labels(file);
-            let active = view.selected_file == Some(index);
-            let (icon, icon_color) = crate::file_icons::appearance(&file.path, &p);
-            rows = rows.child(
-                dunlin_ui::button(format!("commit-file-{index}"))
-                    .custom(
-                        ButtonCustomVariant::new(cx)
-                            .color(if active { p.blue_soft } else { p.panel })
-                            .foreground(p.fg)
-                            .hover(if active { p.blue_soft } else { p.hover })
-                            .active(p.blue_soft),
-                    )
-                    .small()
-                    .rounded(px(0.))
-                    .w_full()
-                    .h(px(44.))
-                    .px(px(10.))
-                    .flex_shrink_0()
-                    .border_l_2()
-                    .border_color(if active { p.blue } else { p.panel })
-                    .accessibility_label(format!(
-                        "{} {}{}",
-                        file.status,
-                        labels.full,
-                        if active { ", selected" } else { "" }
-                    ))
-                    .tooltip(format!("{} · {}", file.status, labels.full))
-                    .child(
-                        div()
-                            .w_full()
-                            .min_w(px(0.))
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(
-                                Icon::new(icon)
-                                    .size(px(14.))
-                                    .flex_shrink_0()
-                                    .text_color(icon_color),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(0.))
-                                    .flex()
-                                    .flex_col()
-                                    .items_start()
-                                    .gap(px(2.))
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .text_size(px(12.))
-                                            .font_weight(FontWeight::NORMAL)
-                                            .text_color(p.fg)
-                                            .truncate()
-                                            .child(labels.name),
-                                    )
-                                    .when(!labels.directory.is_empty(), |text| {
-                                        text.child(
-                                            div()
-                                                .w_full()
-                                                .text_size(px(10.))
-                                                .font_weight(FontWeight::NORMAL)
-                                                .text_color(p.muted_fg)
-                                                .truncate()
-                                                .child(labels.directory),
-                                        )
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .w(px(12.))
-                                    .flex_shrink_0()
-                                    .text_size(px(10.))
-                                    .font_family(dunlin_ui::theme::code_font())
-                                    .text_color(status_color(&file.status, &p))
-                                    .child(file.status.chars().take(1).collect::<String>()),
-                            ),
-                    )
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.select_history_file(index, cx)),
-                    ),
-            );
-        }
-    }
-    let files = div()
-        .w(relative(0.28))
-        .min_w(px(170.))
-        .max_w(px(260.))
-        .flex_shrink_0()
-        .min_h(px(0.))
-        .bg(p.panel)
-        .rounded_bl(px(dunlin_ui::scale::WORKSPACE_RADIUS))
-        // Overflow masks are rectangular; keep scrolling row fills above the curved bottom.
-        .pb(px(dunlin_ui::scale::WORKSPACE_RADIUS))
-        .border_r_1()
-        .border_color(p.border)
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .h(px(30.))
-                .px(px(12.))
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .text_size(px(10.))
-                .text_color(p.muted_fg)
-                .child("CHANGED FILES")
-                .child(if view.detail_loading {
-                    "…".into()
-                } else {
-                    count.to_string()
-                }),
-        )
-        .child(rows);
     let patch: AnyElement = if view.detail_loading || view.patch_loading {
         notice("Loading comparison…", p.muted_fg)
     } else if let Some(error) = &view.detail_error {
@@ -310,36 +211,215 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .pb(px(dunlin_ui::scale::WORKSPACE_RADIUS))
             .into_any_element()
     };
-    div()
-        .id("commit-inspector")
+    let metadata = div()
+        .id("commit-metadata-scroll")
         .flex_1()
-        .min_h(px(160.))
-        .min_w(px(0.))
-        .overflow_hidden()
-        .border_t_1()
-        .border_color(p.border)
+        .min_h(px(0.))
+        .overflow_y_scroll()
+        .child(header)
+        .child(
+            div()
+                .p(px(12.))
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .text_size(px(11.))
+                .child(metadata_row("Commit", commit.oid.clone(), p))
+                .child(metadata_row("Author", commit.author.clone(), p))
+                .child(metadata_row("Committed", date, p))
+                .child(metadata_row(
+                    "Refs",
+                    if commit.refs.is_empty() {
+                        "—".into()
+                    } else {
+                        commit.refs.clone()
+                    },
+                    p,
+                ))
+                .child(metadata_row(
+                    "Parents",
+                    if commit.parents.is_empty() {
+                        "Initial commit".into()
+                    } else {
+                        commit.parents.join("\n")
+                    },
+                    p,
+                )),
+        )
+        .when(view.detail_loading, |r| {
+            r.child(notice("Loading commit details…", p.muted_fg))
+        })
+        .when_some(view.detail_error.as_ref(), |r, error| {
+            r.child(notice(error, p.red))
+        })
+        .into_any_element();
+    let content = match view.inspector.tab {
+        Tab::Details => metadata,
+        Tab::Patch => patch,
+        Tab::Operations => div()
+            .id("history-operations-scroll")
+            .flex_1()
+            .min_h(px(0.))
+            .overflow_y_scroll()
+            .child(
+                dunlin_ui::button("history-branch-form")
+                    .ghost()
+                    .small()
+                    .label(if view.branch_form_open {
+                        "Hide branch form"
+                    } else {
+                        "Create branch…"
+                    })
+                    .disabled(this.git_history.running || view.loading)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(v) = &mut this.git_history.view {
+                            v.branch_form_open = !v.branch_form_open;
+                        }
+                        cx.notify();
+                    })),
+            )
+            .when(view.branch_form_open, |r| {
+                r.child(
+                    div()
+                        .p(px(10.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .border_b_1()
+                        .border_color(p.border)
+                        .child("Create branch from selected commit")
+                        .child(dunlin_ui::input(&view.name).aria_label("New branch name"))
+                        .child(
+                            dunlin_ui::button("history-create")
+                                .small()
+                                .primary()
+                                .label("Create branch")
+                                .disabled(this.git_history.running || view.loading)
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.create_history_branch(cx)),
+                                ),
+                        )
+                        .child(
+                            div().text_color(p.muted_fg).child(
+                                "Creates a ref only; no checkout or changes to files/staging.",
+                            ),
+                        ),
+                )
+            })
+            .child(mutations::render(this, cx))
+            .into_any_element(),
+    };
+    let mut tabs = div()
+        .min_h(px(34.))
+        .px(px(6.))
+        .flex_shrink_0()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(4.))
+        .border_b_1()
+        .border_color(p.border);
+    for (tab, label) in [
+        (Tab::Details, "Commit details"),
+        (Tab::Patch, "Diff"),
+        (Tab::Operations, "Operations"),
+    ] {
+        tabs = tabs.child(
+            dunlin_ui::button(format!("history-inspector-{label}"))
+                .ghost()
+                .small()
+                .rounded(px(dunlin_ui::radii::CODE))
+                .label(label)
+                .when(view.inspector.tab == tab, |b| {
+                    b.bg(p.hover).text_color(p.fg)
+                })
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    if tab == Tab::Operations
+                        && let Some(view) = &mut this.git_history.view
+                        && let Some(commit) = view.selected.and_then(|i| view.rows.get(i))
+                    {
+                        // Opening this tab must not invalidate an already
+                        // prepared request; its pinned target stays visible.
+                        view.mutations.initialize_target(&commit.oid, window, cx);
+                    }
+                    if tab == Tab::Patch
+                        && this.git_history.view.as_ref().is_some_and(|v| {
+                            v.selected_file.is_none()
+                                && v.detail.as_ref().is_some_and(|d| !d.files.is_empty())
+                        })
+                    {
+                        this.select_history_file(0, cx);
+                    }
+                    if let Some(v) = &mut this.git_history.view {
+                        v.inspector.tab = tab;
+                    }
+                    cx.notify();
+                })),
+        );
+    }
+    let lower = div()
+        .size_full()
         .flex()
         .flex_col()
-        .text_size(px(11.))
-        .child(header)
+        .min_h(px(0.))
+        .min_w(px(0.))
+        .overflow_hidden()
+        .child(tabs)
         .child(
             div()
                 .flex_1()
                 .min_h(px(0.))
                 .min_w(px(0.))
                 .flex()
+                .flex_col()
                 .overflow_hidden()
-                .child(files)
+                .child(content),
+        );
+    div()
+        .id("commit-inspector")
+        .size_full()
+        .min_h(px(0.))
+        .min_w(px(0.))
+        .overflow_hidden()
+        .flex()
+        .flex_col()
+        .text_size(px(11.))
+        .child(
+            dunlin_ui::component::resizable::v_resizable("history-inspector-rows")
                 .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .min_h(px(0.))
-                        .flex()
-                        .flex_col()
-                        .overflow_hidden()
-                        .child(patch),
+                    dunlin_ui::component::resizable::resizable_panel()
+                        .size(px(380.))
+                        .size_range(px(100.)..px(4000.))
+                        .child(files::render(this, cx)),
+                )
+                .child(
+                    dunlin_ui::component::resizable::resizable_panel()
+                        .size(px(260.))
+                        .size_range(px(120.)..px(4000.))
+                        .child(lower),
                 ),
+        )
+        .into_any_element()
+}
+
+fn metadata_row(label: &str, value: String, p: Palette) -> AnyElement {
+    div()
+        .flex()
+        .gap(px(8.))
+        .min_w(px(0.))
+        .child(
+            div()
+                .w(px(62.))
+                .flex_shrink_0()
+                .text_color(p.muted_fg)
+                .child(label.to_owned()),
+        )
+        .child(
+            div()
+                .min_w(px(0.))
+                .flex_1()
+                .font_family(dunlin_ui::theme::code_font())
+                .child(value),
         )
         .into_any_element()
 }

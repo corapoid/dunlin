@@ -4,6 +4,7 @@ import json
 import plistlib
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -111,7 +112,7 @@ class ReleaseGateTests(unittest.TestCase):
         config.write_text(json.dumps({"schema": 1, "manual_acceptance": {
             "decision": "deferred", "version_series": "0.1.0-beta", "reason": "Explicit fixture decision"}}))
         self.assertIn("NOT passed", gate.acceptance_policy(self.root, self.version))
-        for value in ["0.1.0", "1.0.0-beta.1", "0.1.0-rc.1"]:
+        for value in ["0.1.0", "0.2.0", "1.0.0-beta.1", "0.1.0-rc.1"]:
             with self.assertRaises(ValueError):
                 gate.acceptance_policy(self.root, value)
 
@@ -121,6 +122,20 @@ class ReleaseGateTests(unittest.TestCase):
             (self.root / "CHANGELOG.md").write_text(text)
             with self.assertRaises(ValueError):
                 gate.changelog(self.root, self.version)
+
+    def test_release_notes_describe_source_only_desktop_and_relay_signing(self):
+        for signing in ["ad-hoc", "developer-id", "notarized"]:
+            result = subprocess.run(
+                [sys.executable, str(gate.ROOT / "scripts/release_gate.py"), "notes",
+                 "--version", gate.workspace_version(), "--signing", signing],
+                capture_output=True, text=True,
+            )
+            with self.subTest(signing=signing):
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("build the desktop app from source", result.stdout)
+                self.assertIn("Only relay server archives and bootstrap scripts are distributed here", result.stdout)
+                self.assertIn("The macOS relay is", result.stdout)
+                self.assertNotIn("The .pkg installer", result.stdout)
 
     def test_valid_artifacts_and_legacy_manifest_prefix(self):
         self.archives()

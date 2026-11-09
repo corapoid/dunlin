@@ -6,15 +6,14 @@ use dunlin_workspace::git::overview::Overview;
 #[derive(Default)]
 pub(super) struct State {
     pub visible: bool,
-    value: Option<Overview>,
-    error: Option<String>,
-    loading: bool,
+    pub(super) value: Option<Overview>,
+    pub(super) error: Option<String>,
+    pub(super) loading: bool,
     request: uuid::Uuid,
     scroll: ScrollHandle,
 }
 
 impl DunlinApp {
-    #[cfg(debug_assertions)]
     pub(super) fn open_git_overview(&mut self, cx: &mut Context<Self>) {
         if let Some(view) = &mut self.git_history.view {
             view.overview.visible = true;
@@ -31,7 +30,6 @@ impl DunlinApp {
             return;
         }
         view.overview.loading = true;
-        view.overview.value = None;
         view.overview.error = None;
         view.overview.request = uuid::Uuid::now_v7();
         let (id, request) = (view.id, view.overview.request);

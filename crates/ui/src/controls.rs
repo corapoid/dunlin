@@ -4,12 +4,44 @@ use gpui_kit::component::{
     Selectable, Sizable,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
+    input::{Input, InputState, Textarea, TextareaState},
     switch::Switch,
     tab::{Tab, TabBar},
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::{Palette, scale};
+use crate::{Palette, SurfaceEdges, SurfaceGeometry, scale};
+
+/// Ordinary form fields retain the kit's themed border, focus and disabled states.
+/// Use `small()` for dense toolbars, not a custom height or a hand-drawn frame.
+pub fn input(state: &Entity<InputState>) -> Input {
+    Input::new(state).font_family(crate::theme::ui_font())
+}
+
+pub fn compact_input(state: &Entity<InputState>) -> Input {
+    input(state).small()
+}
+
+pub fn search_input(state: &Entity<InputState>, label: impl Into<SharedString>) -> Input {
+    compact_input(state)
+        .aria_label(label)
+        .prefix(gpui_kit::component::Icon::new(IconName::Search).size(px(12.)))
+}
+
+pub fn code_input(state: &Entity<InputState>) -> Input {
+    input(state).font_family(crate::theme::code_font())
+}
+
+pub fn textarea(state: &Entity<TextareaState>) -> Textarea {
+    Textarea::new(state).font_family(crate::theme::ui_font())
+}
+
+/// The composer is a compound control; its surrounding card owns the focus border.
+/// Document editors are intentionally not form fields and keep their own surface.
+pub fn composer_input(state: &Entity<TextareaState>) -> Textarea {
+    textarea(state).appearance(false).bordered(false)
+}
 
 /// Standard action. Use the kit's semantic variants, sizes and loading state.
 pub fn button(id: impl Into<ElementId>) -> Button {
@@ -32,13 +64,28 @@ pub fn icon_button(
     label: impl Into<SharedString>,
 ) -> Button {
     let label = label.into();
+    named_icon_button(id, icon, label.clone()).tooltip(label)
+}
+
+fn named_icon_button(id: impl Into<ElementId>, icon: IconName, label: SharedString) -> Button {
     button(id)
         .small()
         .ghost()
         .size(px(28.))
         .icon(icon)
-        .accessibility_label(label.clone())
-        .tooltip(label)
+        .accessibility_label(label)
+}
+
+/// Rich hover content keeps the same size and keyboard behavior as ordinary icons.
+pub fn tooltip_icon_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl Into<SharedString>,
+    tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
+) -> Button {
+    let mut button = named_icon_button(id, icon, label.into());
+    button.interactivity().tooltip(tooltip);
+    button
 }
 
 pub fn switch(id: impl Into<ElementId>, label: impl Into<SharedString>, checked: bool) -> Switch {
@@ -124,6 +171,57 @@ pub fn action_row(id: impl Into<ElementId>, label: impl Into<SharedString>) -> B
         .flex_shrink_0()
 }
 
+/// Full-width card action: hover/selected paint must follow the card, not the
+/// smaller ordinary button radius. An expanded card has a square internal join.
+pub fn card_action_row(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    expanded: bool,
+) -> Button {
+    SurfaceGeometry::CARD.round_child(
+        action_row(id, label),
+        if expanded {
+            SurfaceEdges::Top
+        } else {
+            SurfaceEdges::All
+        },
+    )
+}
+
+/// Exclusive choices use the same focus, selected and disabled behavior as actions.
+pub fn choice_card(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    p: Palette,
+) -> Button {
+    action_row(id, label)
+        .selected(selected)
+        .toggled(selected)
+        .rounded(px(SurfaceGeometry::CHOICE_CARD.radius))
+        .border(px(SurfaceGeometry::CHOICE_CARD.border))
+        .border_color(if selected { p.border_strong } else { p.border })
+        .p(px(14.))
+        .items_start()
+}
+
+/// Decorative indicator inside a keyboard-accessible choice, never a separate radio.
+pub fn choice_indicator(selected: bool, p: Palette) -> Div {
+    div()
+        .mt(px(1.))
+        .size(px(16.))
+        .flex_shrink_0()
+        .rounded_full()
+        .border_1()
+        .border_color(if selected { p.fg } else { p.border_strong })
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(selected, |this| {
+            this.child(div().size(px(7.)).rounded_full().bg(p.fg))
+        })
+}
+
 pub fn menu_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
     let label = label.into();
     button(id)
@@ -139,13 +237,12 @@ pub fn menu_button(id: impl Into<ElementId>, label: impl Into<SharedString>) -> 
 
 /// Shared opaque surface; glass belongs to window chrome, not reading areas.
 pub fn card_surface(p: Palette) -> Div {
-    div().rounded(px(scale::RADIUS_LG)).bg(p.card)
+    SurfaceGeometry::CARD.paint(p.card, p.border)
 }
 
 pub fn dialog_surface(p: Palette) -> Div {
-    card_surface(p)
-        .border_1()
-        .border_color(p.border_strong)
+    SurfaceGeometry::DIALOG
+        .paint(p.card, p.border_strong)
         .p(px(16.))
         .flex()
         .flex_col()
@@ -173,16 +270,16 @@ pub fn code_surface(p: Palette) -> Div {
 }
 
 pub fn code_header(p: Palette) -> Div {
-    panel_header(p)
+    SurfaceGeometry::CARD
+        .round_child(panel_header(p), SurfaceEdges::Top)
         .bg(p.subtle)
         .font_family(crate::theme::code_font())
 }
 
 /// One inset workspace contains editors and docks, preserving their split layout.
 pub fn workspace_surface(p: Palette) -> Div {
-    card_surface(p)
-        .bg(transparent_black())
-        .rounded(px(scale::WORKSPACE_RADIUS))
+    SurfaceGeometry::WORKSPACE
+        .paint(transparent_black(), p.border)
         .flex()
         .flex_col()
         .flex_1()
@@ -214,6 +311,25 @@ pub fn window_options() -> WindowOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn choices_share_theme_tokens_in_both_palettes() {
+        for p in [crate::theme::light(), crate::theme::dark()] {
+            for selected in [false, true] {
+                let mut choice = choice_card("choice", "Permission mode", selected, p);
+                assert_eq!(
+                    choice.style().border_color,
+                    Some(if selected { p.border_strong } else { p.border })
+                );
+                assert_eq!(choice.style().border_widths.top, Some(px(1.).into()));
+                let mut indicator = choice_indicator(selected, p);
+                assert_eq!(
+                    indicator.style().border_color,
+                    Some(if selected { p.fg } else { p.border_strong })
+                );
+            }
+        }
+    }
 
     #[test]
     fn document_tabs_have_no_frame() {

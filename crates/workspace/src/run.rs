@@ -100,7 +100,7 @@ fn id(source: &str, cwd: &str, program: &str, args: &[String]) -> String {
         hash.update([0]);
         hash.update(arg.as_bytes());
     }
-    format!("{:x}", hash.finalize())[..16].to_string()
+    hex::encode(hash.finalize())[..16].to_string()
 }
 
 fn candidate(

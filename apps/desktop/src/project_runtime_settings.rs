@@ -4,7 +4,7 @@ use dunlin_ui::{
     component::{
         Disableable, Sizable,
         button::ButtonVariants,
-        input::{Editor, EditorState, Input, InputState},
+        input::{Editor, EditorState, InputState},
     },
     prelude::FluentBuilder as _,
     *,
@@ -23,6 +23,9 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
+    pub(crate) fn is_saving(&self) -> bool {
+        self.saving
+    }
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.model.read(cx).focus_handle(cx)
     }
@@ -63,6 +66,80 @@ fn live_model_target(
 }
 
 impl DunlinApp {
+    pub(crate) fn request_close_project_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(draft) = &self.project_runtime_draft else {
+            self.close_project_settings(cx);
+            return;
+        };
+        if draft.saving {
+            self.set_notice("Wait for project settings to finish saving", cx);
+            return;
+        }
+        if self.settings_ui.confirming_leave {
+            return;
+        }
+        self.settings_ui.confirming_leave = true;
+        let id = draft.project_id.clone();
+        let answer = window.prompt(PromptLevel::Warning, "Discard model and environment edits?",
+            Some("These form edits have not been saved. Appearance, agent and approval choices already saved outside this form are not reverted."),
+            &[PromptButton::cancel("Keep editing"), PromptButton::new("Discard edits")], cx);
+        let answer = self.overlay_backdrop.track_native(answer, cx);
+        cx.spawn(async move |this, cx| {
+            let discard = answer.await == Ok(1);
+            let _ = this.update(cx, |this, cx| {
+                this.settings_ui.confirming_leave = false;
+                if discard
+                    && this
+                        .project_runtime_draft
+                        .as_ref()
+                        .is_some_and(|draft| draft.project_id == id && !draft.saving)
+                {
+                    this.close_project_settings(cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn request_reset_project_settings(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .project_runtime_draft
+            .as_ref()
+            .is_some_and(|draft| draft.saving)
+        {
+            self.set_notice("Wait for project settings to finish saving", cx);
+            return;
+        }
+        let Some(project) = self.projects.get(index) else {
+            return;
+        };
+        let id = project.id.clone();
+        let answer = window.prompt(PromptLevel::Warning, "Reset all project overrides?",
+            Some("Clear this project’s appearance, agent, approval, model and environment overrides, including any unsaved runtime form. Inherited defaults will apply. Repository files and running agents stay unchanged."),
+            &["Cancel", "Reset overrides"], cx);
+        let answer = self.overlay_backdrop.track_native(answer, cx);
+        cx.spawn(async move |this, cx| {
+            if answer.await == Ok(1) {
+                let _ = this.update(cx, |this, cx| {
+                    if let Some(index) = this.projects.iter().position(|project| project.id == id) {
+                        this.reset_project_settings(index, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
+
     pub(crate) fn apply_saved_project_model(&mut self, cx: &mut Context<Self>) {
         if self.project().is_remote() {
             self.set_notice("Saved project model defaults are local-only", cx);
@@ -312,15 +389,15 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
         .flatten();
     div().flex().flex_col().gap(px(8.))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child(format!("Default model · {} · new conversations only; blank = inherit", draft.harness)))
-        .child(Input::new(&draft.model).small())
-        .when_some(current, |view, model| view.child(dunlin_ui::button("project-use-current-model").label("Use current session model")
+        .child(dunlin_ui::input(&draft.model).aria_label("Project default model").disabled(draft.saving))
+        .when_some(current, |view, model| view.child(dunlin_ui::button("project-use-current-model").label("Use current session model").disabled(draft.saving)
             .on_click(cx.listener(move |this, _, window, cx| {
                 if let Some(draft) = &this.project_runtime_draft {
                     draft.model.update(cx, |s, cx| s.set_value(model.clone(), window, cx));
                 }
             }))))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Environment overrides · NAME=value; omitted names inherit; no shell expansion"))
-        .child(div().h(px(100.)).overflow_hidden().child(Editor::new(&draft.environment).h_full()))
+        .child(div().h(px(120.)).overflow_hidden().child(Editor::new(&draft.environment).aria_label("Project environment overrides").readonly(draft.saving).h_full()))
         .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(if project.is_remote() {
             "Stored on the relay for this project, unencrypted. Only relay administrators can save. Values reach the remote harness at its next connection; do not paste secrets."
         } else {
@@ -329,7 +406,7 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
         .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
         .child(div().flex().gap(px(6.))
             .child(dunlin_ui::button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model & environment" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
-            .child(dunlin_ui::button("cancel-project-runtime").label("Cancel edit").on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
+            .child(dunlin_ui::button("cancel-project-runtime").label("Cancel edit").disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
         .into_any_element()
 }
 

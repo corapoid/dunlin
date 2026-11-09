@@ -248,7 +248,7 @@ pub fn monorepo(root: &Path) -> Option<String> {
         }
     }
     if text(root, "Cargo.toml")
-        .and_then(|s| s.parse::<toml::Value>().ok())
+        .and_then(|s| toml::from_str::<toml::Value>(&s).ok())
         .and_then(|v| v.get("workspace")?.get("members")?.as_array().cloned())
         .is_some_and(|a| {
             a.iter()

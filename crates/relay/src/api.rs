@@ -39,6 +39,7 @@ pub struct AppState {
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
     pub(crate) vault: Option<Arc<crate::vault::RelayVault>>,
+    pub(crate) coordination: Option<Arc<dunlin_coordination::service::Service>>,
     pub(crate) artifact_dir: PathBuf,
     pub leases: Arc<Mutex<HashMap<String, Lease>>>,
     pub usage_cache: UsageCache,
@@ -96,6 +97,7 @@ impl AppState {
                 .join("artifacts"),
             config: Arc::new(config),
             vault,
+            coordination: None,
             leases: Arc::new(Mutex::new(HashMap::new())),
             usage_cache: Arc::new(Mutex::new(None)),
             history_reads: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -328,12 +330,17 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/git/blame", get(operations::blame))
         .route("/v1/pair", post(pair))
         .route("/v1/me", get(me))
+        .route(
+            "/v1/sessions/{id}/transcript/revision",
+            get(session_transcript_revision),
+        )
         .route("/v1/usage", get(usage))
         .route(
             "/v1/billing/evidence",
             get(billing_evidence_get).post(billing_evidence_put),
         )
         .route("/v1/projects", get(projects))
+        .route("/v1/coordination", post(crate::coordination::request))
         .route(
             "/v1/project/settings",
             get(project_settings_get).put(project_settings_put),
@@ -696,7 +703,7 @@ fn public_mime(value: &str) -> &'static str {
 
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 #[derive(Deserialize)]
@@ -1535,6 +1542,23 @@ fn owned_session(state: &AppState, user: &User, id: &str) -> Result<(), ApiError
 #[derive(Deserialize)]
 struct TranscriptRequest {
     payload: Value,
+    #[serde(default)]
+    expected_revision: Option<i64>,
+}
+
+async fn session_transcript_revision(
+    AuthUser { user, .. }: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    owned_session(&state, &user, &id)?;
+    let revision = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("store lock poisoned"))?
+        .transcript_revision(&id)
+        .map_err(ApiError::from)?;
+    Ok(Json(json!({ "revision": revision })))
 }
 
 async fn session_transcript_save(
@@ -1555,12 +1579,22 @@ async fn session_transcript_save(
     if payload.len() > 4 * 1024 * 1024 {
         return Err(ApiError::bad_request("Transcript is larger than 4 MiB"));
     }
-    state
-        .store
-        .lock()
-        .map_err(|_| ApiError::internal("store lock poisoned"))?
-        .save_transcript(&id, &payload)
-        .map_err(ApiError::from)?;
+    let saved = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("store lock poisoned"))?;
+        match request.expected_revision {
+            Some(revision) => store.save_transcript_if_revision(&id, &payload, revision),
+            None => store.save_transcript(&id, &payload),
+        }
+        .map_err(ApiError::from)?
+    };
+    if !saved {
+        return Err(ApiError::conflict(
+            "The relay has a newer transcript revision; the stale snapshot was not saved",
+        ));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1840,19 +1874,23 @@ async fn fs_write(
     Json(request): Json<WriteFileRequest>,
 ) -> Result<Json<workspace_fs::FileStat>, ApiError> {
     let project = state.project_for_user(&user.id, &request.project)?;
-    if let Some(expected) = request.expected_mtime_ms {
-        let current =
-            workspace_fs::stat_file(&project.path, &request.path).map_err(ApiError::bad_request)?;
-        if current.mtime_ms != expected {
-            return Err(ApiError::conflict(
-                "File changed on the relay since it was opened",
-            ));
-        }
-    }
-    let stat = run_blocking(move || {
-        workspace_fs::write_file(&project.path, &request.path, &request.contents)
+    let stat = tokio::task::spawn_blocking(move || {
+        workspace_fs::write_file_checked(
+            &project.path,
+            &request.path,
+            &request.contents,
+            request.expected_mtime_ms,
+        )
     })
-    .await?;
+    .await
+    .map_err(|error| ApiError::internal(error.to_string()))?
+    .map_err(|error| {
+        if error.starts_with("conflict:") {
+            ApiError::conflict(error)
+        } else {
+            ApiError::bad_request(error)
+        }
+    })?;
     Ok(Json(stat))
 }
 

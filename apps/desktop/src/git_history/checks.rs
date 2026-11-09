@@ -71,8 +71,10 @@ fn validate_remote_argv(argv: Vec<String>) -> Result<Vec<String>, String> {
 
 fn key(p: &Project) -> String {
     format!(
-        "local-check-reports:{:x}",
-        Sha256::digest(format!("{}\0{}\0{:?}", p.id, p.path, p.remote).as_bytes())
+        "local-check-reports:{}",
+        hex::encode(Sha256::digest(
+            format!("{}\0{}\0{:?}", p.id, p.path, p.remote).as_bytes()
+        ))
     )
 }
 impl DunlinApp {
@@ -395,7 +397,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let running = this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child(if v.project.is_remote() { "Explicit commands run on the relay host with that process's permissions and inherited environment. Not sandboxed. Logs may contain secrets; inspect before sharing. Exit status is recorded, never guessed from text. No automatic test discovery/execution." } else { "Explicit native commands only. Logs may contain secrets: inspect before sharing. Exit status is recorded, never guessed from text. Existing reports do not verify later source changes. No automatic test discovery/execution." })
-        .child(Input::new(&s.argv).small()).child(dunlin_ui::button("check-prepare").label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
+        .child(code_input(&s.argv).small().aria_label("Check command arguments")).child(dunlin_ui::button("check-prepare").label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
     if let Some((_, plan)) = &s.prepared {
         body = body
             .child(format!(

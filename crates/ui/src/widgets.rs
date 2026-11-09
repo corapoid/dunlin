@@ -23,7 +23,7 @@ pub fn kbd(label: impl Into<SharedString>, p: Palette) -> Div {
         .h(px(20.))
         .min_w(px(20.))
         .px(px(5.))
-        .rounded(px(5.))
+        .rounded(px(crate::radii::ICON))
         .border_1()
         .border_color(p.border)
         .bg(p.card)
@@ -112,19 +112,7 @@ pub fn usage_meter(
                 ),
         )
         .child(
-            div()
-                .h(px(4.))
-                .w_full()
-                .rounded_full()
-                .bg(p.muted)
-                .overflow_hidden()
-                .child(
-                    div()
-                        .h_full()
-                        .w(relative(pct / 100.0))
-                        .rounded_full()
-                        .bg(accent),
-                ),
+            crate::progress_bar(pct, accent, p.muted),
         )
         .child(
             div()

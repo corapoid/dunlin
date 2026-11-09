@@ -8,7 +8,7 @@ checks and must never be cited as R11 acceptance.
 ## Evidence
 
 1. Launch the packaged `Dunlin.app` (not `target/debug/dunlin`).
-2. Open **Settings → Advanced → Release QA → Run QA checks**.
+2. Open **Settings → Diagnostics & About → Troubleshooting → Run diagnostics**.
 3. Use **Copy report** and attach the report to the run record.
 4. Record every case below as **PASS**, **FAIL**, or **DEFERRED** with a short
    observation. The report itself prints `Manual R11 status: NOT evaluated by
@@ -40,6 +40,18 @@ python3 scripts/release_qa.py --tmp-root "$TMPDIR" --native --audit
 The native set includes `--onboarding-smoke`: a fresh data directory, no saved
 project, empty harness discovery, five permission rows, the copyable QA report
 and the Permissions settings surface. It does not approve TCC prompts.
+
+It also includes `--save-smoke`, using a disposable project and a loopback mock
+relay. A deliberately stalled HTTP save must not block foreground progress;
+typing during the save must remain dirty; a batch completion must wait for the
+write; and a delayed file-stat response must not authorize overwriting external
+edits. This is automated regression coverage, not deployed-relay acceptance.
+
+Transcript concurrency protection requires the updated relay revision API. The
+desktop serializes/coalesces pending snapshots; the relay rejects stale revisions
+and unversioned updates to already-versioned history. An older relay or a revision
+conflict must not trigger an unconditional fallback upload; local history remains
+available and the synchronization failure is logged.
 
 ## Cases
 

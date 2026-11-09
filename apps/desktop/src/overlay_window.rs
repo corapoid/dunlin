@@ -70,7 +70,7 @@ fn reconcile(owner: Entity<DunlinApp>, parent: AnyWindowHandle, cx: &mut App) {
             app.overlay_backdrop.set_external_modal(false);
         });
         if let Some(handle) = existing {
-            let _ = handle.update(cx, |_, window, _| window.remove_window());
+            close_window(handle, cx);
         }
         let _ = parent.update(cx, |_, window, cx| {
             window.activate_window();
@@ -102,7 +102,7 @@ fn reconcile(owner: Entity<DunlinApp>, parent: AnyWindowHandle, cx: &mut App) {
             })
         });
         if !matches!(result, Ok(Ok(true))) {
-            let _ = handle.update(cx, |_, window, _| window.remove_window());
+            close_window(handle, cx);
             owner.update(cx, |app, cx| {
                 app.overlay_window.window = None;
                 app.overlay_window.plane = None;
@@ -176,7 +176,7 @@ fn reconcile(owner: Entity<DunlinApp>, parent: AnyWindowHandle, cx: &mut App) {
                 })
             });
             if !matches!(attached, Ok(Ok(true))) {
-                let _ = handle.update(cx, |_, window, _| window.remove_window());
+                close_window(handle, cx);
             }
             owner.update(cx, |app, cx| {
                 app.overlay_window.window = matches!(attached, Ok(Ok(true))).then_some(handle);
@@ -195,6 +195,13 @@ fn reconcile(owner: Entity<DunlinApp>, parent: AnyWindowHandle, cx: &mut App) {
             app.file_notice("Native panel unavailable; using the in-window dialog", cx);
         }),
     }
+}
+
+fn close_window(handle: WindowHandle<component::Root>, cx: &mut App) {
+    let _ = handle.update(cx, |_, window, _| {
+        native::prepare_close(window);
+        window.remove_window();
+    });
 }
 
 pub(crate) struct OverlayWindow {
@@ -246,6 +253,7 @@ impl OverlayWindow {
 impl Render for OverlayWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(owner) = self.owner.upgrade() else {
+            native::prepare_close(window);
             window.remove_window();
             return div().into_any_element();
         };
@@ -263,7 +271,36 @@ impl Render for OverlayWindow {
 mod native {
     use dunlin_ui::Window;
     use objc2_app_kit::{NSView, NSWindowOrderingMode, NSWindowStyleMask};
+    use objc2_quartz_core::CATransaction;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    pub(super) fn prepare_close(window: &Window) {
+        let Ok(handle) = HasWindowHandle::window_handle(window) else {
+            return;
+        };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: The raw handle borrows a live GPUI view on the main thread.
+        let view: &NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
+        let Some(child) = view.window() else {
+            return;
+        };
+        // AccessKit restores the content view's Objective-C class when GPUI
+        // drops its window. First let AppKit remove its nextResponder KVO
+        // observers; otherwise its deferred Touch Bar update throws an
+        // NSRangeException after the accessibility subclass has been removed.
+        child.makeFirstResponder(None);
+        child.orderOut(None);
+        if let Some(parent) = child.parentWindow() {
+            parent.removeChildWindow(&child);
+            parent.makeKeyAndOrderFront(None);
+        }
+        // Touch Bar observation invalidation runs in the display transaction,
+        // not synchronously in orderOut:. Flush while AccessKit is still alive.
+        CATransaction::flush();
+    }
+
     pub(super) fn attach(child: &Window, parent: &Window) -> bool {
         let (Ok(c), Ok(p)) = (
             HasWindowHandle::window_handle(child),
@@ -303,6 +340,8 @@ mod native {
 }
 #[cfg(not(target_os = "macos"))]
 mod native {
+    pub(super) fn prepare_close(_: &dunlin_ui::Window) {}
+
     pub(super) fn attach(_: &dunlin_ui::Window, _: &dunlin_ui::Window) -> bool {
         false
     }

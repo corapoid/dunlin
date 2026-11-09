@@ -5,7 +5,7 @@ const faqs = [
   {
     question: "What do I need to run Dunlin?",
     answer:
-      "macOS 15 or newer on Apple Silicon, plus an ACP harness such as OpenCode. Git is optional for source control. Dunlin is a native app, so there is no Node runtime or browser to install.",
+      "macOS 15 or newer on Apple Silicon, Git and Rust 1.92+ to build from source, plus an ACP harness such as OpenCode. Dunlin is a native app, so there is no Node runtime or browser to install.",
   },
   {
     question: "Which harnesses are supported?",
@@ -28,9 +28,9 @@ const faqs = [
       "Not in 0.1. The beta is arm64 only, for Apple Silicon. Intel support is not on the release gate.",
   },
   {
-    question: "Why does macOS warn when I open the beta?",
+    question: "How do I install the beta?",
     answer:
-      "The current beta is ad-hoc signed because there is no Apple Developer ID yet. Open System Settings, go to Privacy & Security, and approve Dunlin. Signed and notarized builds will replace this once the developer account is available.",
+      "Clone the repository and build from source following the README. Prebuilt app downloads, Homebrew installation and GitHub Packages publication are paused until Apple Developer ID signing and notarization are available. Local bundles use an ad-hoc signature.",
   },
   {
     question: "Can I keep using my terminal?",

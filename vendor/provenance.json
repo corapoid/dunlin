@@ -39,31 +39,31 @@
     },
     {
       "name": "gpui-base",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
-      "registry_archive_sha256": "d5cd7de73d5b2d3d18b94a928abf343922091fa77bc472f77b7d2e7e8b1823a7",
-      "tree_sha256": "b21b9910506cd80e8fed93ca710690b5d01b84bf7cdec5d8504d526103fa99a1",
-      "files": 212,
+      "registry_archive_sha256": "cff6377e30f0c857681662e7edc7286bf30f5606033390401b0706d7bd930833",
+      "tree_sha256": "709dafc425ea1ada0b275631f24c718808e48876cec17dba7104d3d2ca414d08",
+      "files": 220,
       "changes": [
         {
           "path": "Cargo.toml",
-          "upstream_sha256": "32bf44eee7999662dad6fe2b13a2906ba5e05aaff013714cfc72f78ae63c5e3d",
-          "patched_sha256": "21461f3281a27ecddf572e646f98741104e080f400c794fe21afaa64fea7be67"
+          "upstream_sha256": "86122885033c6e0b8de64631902a14f8a5fb3493bf8292103b3188f902a79e05",
+          "patched_sha256": "865c79bf506c34cc01817ae9ce7d493e287d9dbe73d76edfa77e0c346f9367e3"
         },
         {
           "path": "src/hover_card.rs",
-          "upstream_sha256": "94f35f91b6a518b8c80ff6383c1c0fa1ba7cf676c82c0bf705fee4431e6d9a68",
-          "patched_sha256": "99d65b77fc5369c2b0ead129c81d688fd608849bcf9217008706c13f5ebb009d"
+          "upstream_sha256": "0fa5143e3e9657b0d2fe427b830d9fc0422351b14a2fbe8207cfa83bc74a025a",
+          "patched_sha256": "4130b7a3f32cec14280357c8d342af7ddec2538a9d823d88ea7c2606a92a4d48"
         },
         {
           "path": "src/input/base/blink_cursor.rs",
-          "upstream_sha256": "e2cd5e37849e683d596bf85528def80a84203938eb09bfa8498680786eadcb04",
-          "patched_sha256": "c1ca3bed87b721ff5e4a0b61ab630a9f6e33b953bf0a072e2fe1e972bc1dd3da"
+          "upstream_sha256": "c42fe540ba6e1c3fb60a24f9dfd471c3efaec844a7af08405234d8f6603800a0",
+          "patched_sha256": "4b4c23dc5b8847d3c5dc314e6f913140e8262b66496425be4b145160be2eac6c"
         },
         {
           "path": "src/input/base/state.rs",
-          "upstream_sha256": "e0ce05a59cfc7194c0222a74c0a80e068c8dfd196ebe4a798f9b7f071f083891",
-          "patched_sha256": "27a433ca43b13bed7050426260aaf8537e1e1aa415ac3fb4ec2e0104451ff206"
+          "upstream_sha256": "afc5e6ac4dd2540172eac154a69e8ae0af913ca4492239e7df65449d2eb80b93",
+          "patched_sha256": "c6ba6a1738f46f4f949c6a2fe246ddc9e5609a63c9cfe32e489a1d45259fb807"
         },
         {
           "path": "src/input/editor/lsp/document_colors.rs",
@@ -72,8 +72,8 @@
         },
         {
           "path": "src/input/editor/lsp/hover.rs",
-          "upstream_sha256": "757c52bf1a46c0d47310a05297df3e342bb5c2555317199ef8691399e8e7ee8f",
-          "patched_sha256": "6966bff88fed1359eded16f8b570e406c03c3a6c26d09ee1578a53a6a1bcc2b6"
+          "upstream_sha256": "5e36a2c930d3c50f57b8d8d0f89e12ce91e41df99fd7eb6ecdc68cf93d5a60f0",
+          "patched_sha256": "f01511356c3d450f482f55bf310ddc4d41a73773f8bedee8f34a7115ccca7aee"
         },
         {
           "path": "src/input/editor/lsp/semantic_tokens.rs",
@@ -86,9 +86,14 @@
           "patched_sha256": "d550afe8cec5431b710d17a3dcb441ca2d1e3b4bd0beca6f1bd19c1366f0d512"
         },
         {
+          "path": "src/scrollable_mask.rs",
+          "upstream_sha256": "aa6fa0a80e9ac3b435d1cd77220c3b26f232d57479d79c08225eff134d0631c5",
+          "patched_sha256": "b443f5553b58c1e2a83d06ae1ffcb40a3dcf66f27dd47c4362e84a479ba3a3ac"
+        },
+        {
           "path": "src/scrollbar.rs",
-          "upstream_sha256": "06b2c387d8068c7932948ce5a8731c3e72f643fb0bd39071b7aaae770632bf94",
-          "patched_sha256": "2846124f89756d6ab95d17d9e66ca2e1eb5e7d2c3c5d2f4c86754adbf0638c24"
+          "upstream_sha256": "8434eeca38a53483859096f94bed8225a96ffaaa62aa34d8e53294f8c995e99f",
+          "patched_sha256": "aa1024d6170b092bdc5627523c97f15f3123ad227b444eae9d6f5394c78cf87d"
         },
         {
           "path": "src/undo_history.rs",
@@ -99,16 +104,31 @@
     },
     {
       "name": "gpui-component",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
-      "registry_archive_sha256": "4097e161cc81e86323b439664be0cdd4f7c56148e867ed6f67fd72b966b6c2d1",
-      "tree_sha256": "2be1db773937ffaa1bfafac8fe42b16e26e48743d52f770a9b98987c189f4904",
-      "files": 280,
+      "registry_archive_sha256": "45bbfdba0efa392190f2fd446ec311325302eb047d5ce45dc1bcf189cb18f5eb",
+      "tree_sha256": "e9f46a1bca293516b03a75989738d5fa9ea2807fafd2ecf5f186d1ecc41508f9",
+      "files": 285,
       "changes": [
         {
           "path": "Cargo.toml",
-          "upstream_sha256": "a8062e5260b0826f095d62857abc3c4c8734846459e2e6dd15ede813b1e4f053",
-          "patched_sha256": "2f0a2e926d01f01958399843c1ec5159acc6bff6f3a9b5fce04a5c4e8e654f03"
+          "upstream_sha256": "7666fdfafe3e4f5709c22d0ed9c51fc65a36e4f0e3441c9a5cf832b830720066",
+          "patched_sha256": "47e57efd4349adf11f8557e8bb237c52322f7e32acd31810a8f1d4b184c5b79a"
+        },
+        {
+          "path": "src/highlighter/language_name.rs",
+          "upstream_sha256": "fdc1ab8e8d2ccec27e16b9de07bcdeff8c3d14d9d9e5a75154e34cd130f06c6b",
+          "patched_sha256": "c59cd6f0365518650494d1dc13564e2458c04f5024c33cade4b3af4998f195af"
+        },
+        {
+          "path": "src/highlighter/mod.rs",
+          "upstream_sha256": "39f59d1d092b0c25174f2e793d8ccf671b5624cbad5392f73bf0528147b4e94c",
+          "patched_sha256": "c2ca5f23785e6c68302ef05b9443c874bfb0d2f4fdcee3d0d967da8e6c8af8c7"
+        },
+        {
+          "path": "src/highlighter/syntect_backend.rs",
+          "upstream_sha256": "8c9330f4d351c7656caf8e7a32eb7af1a62abe11e60640858fcf641ff738d9ec",
+          "patched_sha256": "73cc0bf2f659b36e8f1d705b3da61692659d362a187d37c6a1b913f785851810"
         },
         {
           "path": "src/tab/tab.rs",
@@ -117,43 +137,73 @@
         },
         {
           "path": "src/tab/tab_bar.rs",
-          "upstream_sha256": "49e96968a222446580405469201b4505544f2f38a77eb2a21b61ce5e08a6c1b8",
-          "patched_sha256": "c5c20c588ecac5d5158260550e303e218de52a31ac8d14753ab8d4492a421b80"
+          "upstream_sha256": "2d737027220ff389cad010fbe4043e738e82d0d4d06195812902b3b4d69331ff",
+          "patched_sha256": "4ba67601c0c57e6ed6fcaf478a9bf0276d2ecbd666edf043b02b0128c5c1f8bc"
+        }
+      ]
+    },
+    {
+      "name": "gpui-kit",
+      "version": "0.9.0",
+      "upstream_repository": "https://github.com/longbridge/gpui-kit",
+      "registry_archive_sha256": "2c464934b5cdb85dd3fc511e60d09fb446fba422de159a80038368f52893c14b",
+      "tree_sha256": "3b4a6af31ba9b88cb974706aa92a47ea5b472ee033044129f2abc3500db923aa",
+      "files": 55,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "df597d297dd1d654df4e5352a3ec665ea9e62b3a389119d079c446c1ed25a621",
+          "patched_sha256": "99da0f2515f203fb85ed39d4c28df563640996c03283fafd0e6ee1790d01df04"
+        }
+      ]
+    },
+    {
+      "name": "gpui-kit-assets",
+      "version": "0.9.0",
+      "upstream_repository": "https://github.com/longbridge/gpui-kit",
+      "registry_archive_sha256": "956a9864880e1f230e274a74cea8006e5018b8af383ad7bbd30b6b18254a97a9",
+      "tree_sha256": "42cb55b5102c2a3df464d161744877d061348480b69b93da7c8a8af69d825483",
+      "files": 1848,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "5e73fda438a9d6ab81b491bbfe7755b777ce8c9a679e9821d9e368b980e70b67",
+          "patched_sha256": "22e564acb4b5aa461fb18bbb195fcb6061c046152ac88e0d4ec3657a62fbeb7d"
         }
       ]
     },
     {
       "name": "gpui-pre",
-      "version": "0.3.9",
+      "version": "0.3.12",
       "upstream_repository": "https://github.com/zed-industries/zed",
-      "registry_archive_sha256": "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0",
-      "tree_sha256": "21ad17b6a9c12f50397dc2cdb31eb5d9e8c1090f7575b0b97388bee3b8b1630f",
-      "files": 159,
+      "registry_archive_sha256": "29db89613527079737f53752eab27fb65c9a7dd94979256c65a0e590c9fd34d8",
+      "tree_sha256": "3cda729c8d7676d1cab5ec8a3f27bbe22786084332c1298c55aa269cc0ec65cb",
+      "files": 164,
       "changes": [
         {
           "path": "Cargo.toml",
-          "upstream_sha256": "43ac0a636d1283313dbb48810ff32c0f6b55737824a886bd9fad37735ec0c56c",
-          "patched_sha256": "136dd115a9b8a6eeda8db785a62e39befadb359a4b3b76beb8a39d6e9a5e6310"
-        },
-        {
-          "path": "src/gpui.rs",
-          "upstream_sha256": "2f060a8bdbf87be91f434ac8290f44bd26bab08be0f2ead38a5aa6d2f664c440",
-          "patched_sha256": "4929675406039f20c4aabdf8f6395e95dad51ee60746fb5a8607e4370f24ad29"
-        },
-        {
-          "path": "src/svg_renderer.rs",
-          "upstream_sha256": "fb12dae87c0cd4c5f5a1fbbd2f9548d52fde9440c21e3d576dfeb0233eda88a6",
-          "patched_sha256": "a9d8efd7b23e64790ce625f311f2e54fc552eefdbedefc3f39cbfb9028ada6f7"
+          "upstream_sha256": "bc447800775eecc6d4abea6871735e1e1cc1c29f8f077a140bd89a38c5a01c39",
+          "patched_sha256": "714de0fc8a88feb404ed48312ae97a484d823e7cb2fd5669045e7f41b0affbe1"
         },
         {
           "path": "src/app.rs",
-          "upstream_sha256": "dcde9e61f8f13da16d045d7d977731add76e317b3c6283fb61deb299b6e8418b",
-          "patched_sha256": "b47948086c12a7ce3d9f0f539c092ba08ca6a299bb54e0fe58c10be7aa1a5070"
+          "upstream_sha256": "c8373021181270662bf02713235d01edb5dae4220a30f702a7630f3c6a9cbed3",
+          "patched_sha256": "dac0da9b68dcfdb6d98d5d62336f2a12c1d76f9162838649e19933dbe0c2e9e1"
+        },
+        {
+          "path": "src/gpui.rs",
+          "upstream_sha256": "e1c5f74225bd7bd80e19997c83d5283abd3c54c38dda1ba1158867faf25dc978",
+          "patched_sha256": "19fa09e29b3be6a4c35d597e23bb30e88845a3441421ac33b41c064949f42d08"
+        },
+        {
+          "path": "src/svg_renderer.rs",
+          "upstream_sha256": "4f002bcfa1be479e77665c6144629ab95a932e55e52d29142e46f31949e958ca",
+          "patched_sha256": "1c712bcfcfc9a2c09b5992d3077296e020fd7b216c42cabf40650413ed2c7b25"
         },
         {
           "path": "src/window.rs",
-          "upstream_sha256": "44f32319b9385fa6dbc15c36b3edea00a26208309b37283ae4f9bd4bead674f8",
-          "patched_sha256": "c6d6ea6789f6c9cf1f7aab1d10f5b033c653ac0175679c77686541962b74fa6b"
+          "upstream_sha256": "9f4891f1e9c323d8d14a0624ce86c436cb9e623a52e8300a9b67ec0119f4aaa5",
+          "patched_sha256": "5a586ed458de8112ef6ef2267171399164419c77908d11856b98c5239e6b43d9"
         }
       ]
     },
@@ -264,41 +314,41 @@
     },
     {
       "name": "two-face",
-      "version": "0.4.5",
-      "upstream_repository": "https://github.com/CosmicHorrorDev/two-face",
-      "registry_archive_sha256": "39e51b6e60e545cfdae5a4639ff423818f52372211a8d9a3e892b4b0761f76b2",
-      "tree_sha256": "a228f5c92703825641b0a406aac865ff8570183aa20eef208de6af9b73af8ffb",
-      "files": 19,
+      "version": "0.5.2+bat-0.26.1",
+      "upstream_repository": "https://codeberg.org/CosmicHarper/two-face",
+      "registry_archive_sha256": "915be7adc2ff6f4338acbf71f3eda0a146f46003b992a1669c674308610efdac",
+      "tree_sha256": "4ea3cc4f688dc309895501c4076b382b7dbd9740724f9a0963df3aa9ed5454c8",
+      "files": 20,
       "changes": [
         {
           "path": "generated/acknowledgements_full.bin",
-          "upstream_sha256": "105d547e77f3019f361fb99a7fb3486755455a04de2167355aaf2ffe8a74b4e2",
-          "patched_sha256": "fc6ce87c52022fa52977c4150a50364f11cc47ffe490f0aca3c91ba7decc3356"
+          "upstream_sha256": "e4bf45ad159b67de6a7152874904728adb6421996eb15da01ca75406e6cd51fb",
+          "patched_sha256": "86273278c29794728ff46fbc7ff07b6c51dc2ae91980ce7880f4f386ba0fbbb2"
         },
         {
           "path": "generated/syntaxes-fancy-newlines.bin",
-          "upstream_sha256": "ea0da56d0446cefc5df95e277ce25d1d1b2ada6d143946d12493bcfe93134fe5",
-          "patched_sha256": "6c0501e3debc67789ce557225fb2ee6ee9402a2681cbf28a510e2858a0b0a909"
+          "upstream_sha256": "758bf07782d9d81479db7a0c4651aebf844ef20510ceb5bee08c61158368b0f3",
+          "patched_sha256": "17c3d02e4946c84603db06e6e9ee6ad1d34db9db1a446fab418f22645d120449"
         },
         {
           "path": "generated/syntaxes-fancy-no-newlines.bin",
-          "upstream_sha256": "b8a5120c20678a290d16ac86e5223a68352e13828e4d52a4741c6f96fde571fc",
-          "patched_sha256": "94c3a6d19e4f3c583b479980dc1994129ceaeac313276de55d638b7773f605b7"
+          "upstream_sha256": "14907b8da6438cba2af4dc5650b76a571db583aa1a981e8f1d8e4b9233c34c53",
+          "patched_sha256": "6729db1eaed1d1ce56310c53286a35a36d6eca1a4874fd5d888c5e84d82f762d"
         },
         {
           "path": "generated/syntaxes-onig-newlines.bin",
-          "upstream_sha256": "9ad5dd570c605d1df3bf4e98f8f7f2368578facf4c1df1d180dd6e716b04f6ef",
-          "patched_sha256": "b546374c8d67c6d6b899d9fa5a7b356538c18cc2edaa995b90794fa9b851919a"
+          "upstream_sha256": "7b567f54cf1b4b33abb7b64258647c256f99043c4bee6804b38f9ef612d0110a",
+          "patched_sha256": "a7abe2d7e4eb8380a65c75e4c662028d6522b8752a8fbcc8a4e401983dc21cf2"
         },
         {
           "path": "generated/syntaxes-onig-no-newlines.bin",
-          "upstream_sha256": "6f0679139b708de51db33f665bb1d4bbd8dab60958144a3534489d82c849224e",
-          "patched_sha256": "b7a17ff2a0300c253531a28c8a70c55979f3358a78c51889d4ef8f036c22fed8"
+          "upstream_sha256": "45e130ac157619bd2af7a4d50cf180ceda9ebe9058611fea5303b1a28f391fbb",
+          "patched_sha256": "ac487771bb2092edc24df919b288544afc69046beb40cc2e835dcaa1839154e4"
         },
         {
           "path": "generated/themes.bin",
-          "upstream_sha256": "9544eb93d5e397205cca3e87f4baf174e2f777fc3097ebcb2f601b5326fa6c99",
-          "patched_sha256": "0158ba3769ecc4e5591af80f39dbafef75b3bba626d19f3e327689aa839b47c8"
+          "upstream_sha256": "be28f0c1a167469c5bd1e5311d4d3503e6503b378791f2afb9e3e5f2f7f4642e",
+          "patched_sha256": "0fde34c864121789488ddbd6367c8f998835dc3a24bac58d2e002190b9e6ec48"
         }
       ]
     }

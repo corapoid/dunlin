@@ -52,6 +52,8 @@ SHA-256: `f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60`.
 | --- | --- |
 | GPUI, GPUI Kit, GPUI Component | Apache-2.0 |
 | syntect, two-face, bincode, bit-set, bit-vec, fancy-regex | MIT or Apache-2.0 |
+| onig | MIT |
+| onig_sys / Oniguruma | MIT / BSD-2-Clause |
 | image | MIT or Apache-2.0 |
 | raw-window-handle | MIT or Apache-2.0 or Zlib |
 | agent-client-protocol | Apache-2.0 |
@@ -68,6 +70,7 @@ SHA-256: `f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60`.
 | serde, serde_json, thiserror, base64, http, uuid | MIT OR Apache-2.0 |
 | notify-rust, rand, sha2, toml, futures-util, async-channel, async-io, ttf-parser | MIT OR Apache-2.0 |
 | ureq | MIT OR Apache-2.0 |
+| hex | MIT OR Apache-2.0 |
 | security-framework | MIT OR Apache-2.0 |
 | zeroize, percent-encoding | MIT OR Apache-2.0 |
 | url | MIT OR Apache-2.0 |

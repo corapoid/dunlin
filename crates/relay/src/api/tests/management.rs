@@ -19,7 +19,7 @@ fn administrator() -> Fixture {
     f
 }
 fn manifest(name: &str, contents: &[u8]) -> Value {
-    json!({"name":name,"history":false,"branch":null,"files":[{"path":"src/main.txt","size":contents.len(),"sha256":format!("{:x}", Sha256::digest(contents)),"executable":false}]})
+    json!({"name":name,"history":false,"branch":null,"files":[{"path":"src/main.txt","size":contents.len(),"sha256":hex::encode(Sha256::digest(contents)),"executable":false}]})
 }
 
 #[cfg(target_os = "macos")]

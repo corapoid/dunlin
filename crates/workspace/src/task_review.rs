@@ -479,10 +479,9 @@ pub fn restore(plan: Restore) -> Result<(), String> {
     Ok(())
 }
 pub fn fingerprint(checkpoint: &Checkpoint) -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(checkpoint).unwrap_or_default())
-    )
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(checkpoint).unwrap_or_default(),
+    ))
 }
 
 #[cfg(test)]

@@ -8,7 +8,6 @@ use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::{DunlinApp, SettingsTab};
-use crate::harness::{command_available, harness_command};
 
 #[derive(Clone)]
 enum Action {
@@ -203,14 +202,13 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                 menu = menu.label("No visible harness is installed or configured");
             }
             for name in configured {
-                let command = harness_command(&name, &this.custom_harness_command);
-                let available = command_available(&command);
+                let unavailable = this.harness_unavailable_reason(&name);
                 menu = menu.item(item(
                     &app,
-                    (name.clone(), String::new()),
+                    (name.clone(), unavailable.clone().unwrap_or_default()),
                     IconName::Bot,
                     this.session_harness() == name,
-                    this.chat_controls_busy() || !available,
+                    this.chat_controls_busy() || unavailable.is_some(),
                     Action::Harness(name),
                 ));
             }
@@ -463,7 +461,7 @@ pub(crate) fn provider_controls(
             .flex_shrink_0()
             .items_center()
             .gap(px(2.))
-            .rounded(px(6.))
+            .rounded(px(dunlin_ui::radii::ROW))
             .border_1()
             .border_color(p.border)
             .bg(p.card)

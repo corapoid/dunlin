@@ -1,6 +1,6 @@
 # Session import
 
-**Settings → Harnesses → harness card → Import sessions…** automatically
+**Settings → Agents → agent card → Import sessions…** automatically
 scans the standard session folders of the selected harness. A preview of titles,
 directories, entry counts and assignments appears first. Nothing is saved
 before confirmation. The separate **Import a portable file…** link remains for the

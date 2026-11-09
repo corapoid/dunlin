@@ -13,9 +13,9 @@ use dunlin_artifacts::{
 use dunlin_domain::Project;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::{Input, InputState};
+use dunlin_ui::component::input::InputState;
 use dunlin_ui::component::text::TextView;
-use dunlin_ui::component::{Icon, Sizable};
+use dunlin_ui::component::{Icon, Selectable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::tree::FileTree;
@@ -428,7 +428,7 @@ impl DunlinApp {
     pub(crate) fn open_spec_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.spec_tools_enabled {
             self.file_notice(
-                "Spec, intent and agent-contract tools are disabled in Settings → General",
+                "Spec, intent and agent-contract tools are disabled in Settings → Extensions",
                 cx,
             );
             return;
@@ -763,7 +763,7 @@ impl DunlinApp {
 
     pub(crate) fn start_intent_interview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.spec_tools_enabled {
-            self.file_notice("Intent capture is disabled in Settings → General", cx);
+            self.file_notice("Intent capture is disabled in Settings → Extensions", cx);
             return;
         }
         let prompt = "Help me capture the intent for the current change. Interview me one question at a time about the problem, proposed outcome, affected users and systems, constraints, non-goals and open questions. Do not invent answers. When the answers are clear, write intent/YYYY-MM-DD-<slug>.md using the intent template and show it for review. Do not edit other files or commit without explicit approval.";
@@ -785,7 +785,7 @@ impl DunlinApp {
 
     pub(crate) fn capture_intent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.spec_tools_enabled {
-            self.file_notice("Intent capture is disabled in Settings → General", cx);
+            self.file_notice("Intent capture is disabled in Settings → Extensions", cx);
             return;
         }
         if self.projects.is_empty() {
@@ -862,7 +862,10 @@ impl DunlinApp {
 
     pub(crate) fn open_agent_contract(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.spec_tools_enabled {
-            self.file_notice("The agent contract is disabled in Settings → General", cx);
+            self.file_notice(
+                "The agent contract is disabled in Settings → Extensions",
+                cx,
+            );
             return;
         }
         if self.projects.is_empty() {
@@ -1372,7 +1375,7 @@ fn badge(label: impl Into<SharedString>, color: Hsla, p: &Palette) -> Div {
     div()
         .h(px(19.))
         .px(px(7.))
-        .rounded(px(4.))
+        .rounded(px(dunlin_ui::radii::CODE))
         .bg(p.muted)
         .flex()
         .items_center()
@@ -1458,7 +1461,7 @@ fn metric_card(
         .min_w(px(112.))
         .px(px(10.))
         .py(px(7.))
-        .rounded(px(7.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .border_1()
         .border_color(p.border)
         .bg(p.card)
@@ -1846,66 +1849,65 @@ fn trace_panel(
                 .collect();
             let color = if linked.is_empty() { p.amber } else { p.green };
             panel = panel.child(
-                div()
-                    .id(format!("trace-req:{}", requirement.id))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.))
-                    .px(px(8.))
-                    .py(px(6.))
-                    .rounded(px(6.))
-                    .cursor_pointer()
-                    .border_1()
-                    .border_color(p.border)
-                    .bg(p.card)
-                    .hover(move |row| row.bg(p.hover))
-                    .on_click(cx.listener({
-                        let id = requirement.id.clone();
-                        move |this, _, _, cx| {
-                            if let Some(view) = this.spec.view.as_mut()
-                                && !view.expanded_requirements.remove(&id)
-                            {
-                                view.expanded_requirements.insert(id.clone());
-                            }
-                            cx.notify();
+                action_row(
+                    format!("trace-req:{}", requirement.id),
+                    format!("Expand requirement {}", requirement.id),
+                )
+                .toggled(expanded)
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .px(px(8.))
+                .py(px(6.))
+                .border_1()
+                .border_color(p.border)
+                .on_click(cx.listener({
+                    let id = requirement.id.clone();
+                    move |this, _, _, cx| {
+                        if let Some(view) = this.spec.view.as_mut()
+                            && !view.expanded_requirements.remove(&id)
+                        {
+                            view.expanded_requirements.insert(id.clone());
                         }
-                    }))
-                    .child(
-                        Icon::new(if expanded {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        })
-                        .size(px(12.))
-                        .text_color(p.muted_fg),
-                    )
-                    .child(div().size(px(7.)).rounded_full().bg(color))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .child(
-                                div()
-                                    .text_size(px(11.5))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(format!("{} · {}", requirement.id, requirement.text)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(9.5))
-                                    .text_color(p.muted_fg)
-                                    .child(format!(
-                                        "{} task(s) · {} evidence row(s)",
-                                        linked.len(),
-                                        view.evidence
+                        cx.notify();
+                    }
+                }))
+                .child(
+                    Icon::new(if expanded {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size(px(12.))
+                    .text_color(p.muted_fg),
+                )
+                .child(div().size(px(7.)).rounded_full().bg(color))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(format!("{} · {}", requirement.id, requirement.text)),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(9.5))
+                                .text_color(p.muted_fg)
+                                .child(format!(
+                                    "{} task(s) · {} evidence row(s)",
+                                    linked.len(),
+                                    view.evidence
+                                        .iter()
+                                        .filter(|evidence| linked
                                             .iter()
-                                            .filter(|evidence| linked
-                                                .iter()
-                                                .any(|task| { task.id == evidence.task_id }))
-                                            .count()
-                                    )),
-                            ),
-                    ),
+                                            .any(|task| { task.id == evidence.task_id }))
+                                        .count()
+                                )),
+                        ),
+                ),
             );
             if expanded {
                 if linked.is_empty() {
@@ -1933,53 +1935,52 @@ fn trace_panel(
                         .filter(|evidence| evidence.task_id == task.id)
                         .collect();
                     panel = panel.child(
-                        div()
-                            .id(format!("trace-task:{}:{}", requirement.id, task.id))
-                            .pl(px(26.))
-                            .pr(px(8.))
-                            .py(px(5.))
-                            .rounded(px(6.))
-                            .cursor_pointer()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .hover(move |row| row.bg(p.hover))
-                            .on_click(cx.listener({
-                                let id = task.id.clone();
-                                move |this, _, _, cx| {
-                                    if let Some(view) = this.spec.view.as_mut()
-                                        && !view.expanded_tasks.remove(&id)
-                                    {
-                                        view.expanded_tasks.insert(id.clone());
-                                    }
-                                    cx.notify();
+                        action_row(
+                            format!("trace-task:{}:{}", requirement.id, task.id),
+                            format!("Open task {}", task.id),
+                        )
+                        .pl(px(26.))
+                        .pr(px(8.))
+                        .py(px(5.))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .on_click(cx.listener({
+                            let id = task.id.clone();
+                            move |this, _, _, cx| {
+                                if let Some(view) = this.spec.view.as_mut()
+                                    && !view.expanded_tasks.remove(&id)
+                                {
+                                    view.expanded_tasks.insert(id.clone());
                                 }
-                            }))
-                            .child(
-                                Icon::new(if task_expanded {
-                                    IconName::ChevronDown
-                                } else {
-                                    IconName::ChevronRight
-                                })
-                                .size(px(11.))
-                                .text_color(p.muted_fg),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(if task.done { p.green } else { p.fg })
-                                    .child(format!(
-                                        "{} {} · {}{}",
-                                        if task.done { "[x]" } else { "[ ]" },
-                                        task.id,
-                                        task.text,
-                                        if worktree.is_some() {
-                                            " · worktree"
-                                        } else {
-                                            " · worktree required"
-                                        }
-                                    )),
-                            ),
+                                cx.notify();
+                            }
+                        }))
+                        .child(
+                            Icon::new(if task_expanded {
+                                IconName::ChevronDown
+                            } else {
+                                IconName::ChevronRight
+                            })
+                            .size(px(11.))
+                            .text_color(p.muted_fg),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(if task.done { p.green } else { p.fg })
+                                .child(format!(
+                                    "{} {} · {}{}",
+                                    if task.done { "[x]" } else { "[ ]" },
+                                    task.id,
+                                    task.text,
+                                    if worktree.is_some() {
+                                        " · worktree"
+                                    } else {
+                                        " · worktree required"
+                                    }
+                                )),
+                        ),
                     );
                     if task_expanded {
                         if let Some(worktree) = worktree {
@@ -2110,48 +2111,52 @@ fn artifact_list(view: &View, p: &Palette, cx: &mut Context<DunlinApp>) -> State
             let title = artifact.title.clone();
             let subtitle = artifact.path.clone();
             list = list.child(
-                div()
-                    .id(format!("spec-artifact:{}", artifact.path))
-                    .mx(px(6.))
-                    .px(px(8.))
-                    .py(px(7.))
-                    .rounded(px(6.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .cursor_pointer()
-                    .when(selected, |row| row.bg(p.selection))
-                    .hover(move |row| row.bg(p.hover))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(view) = this.spec.view.as_mut() {
-                            view.selected = Some(path.clone());
-                        }
-                        cx.notify();
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .child(div().size(px(6.)).rounded_full().bg(color).flex_shrink_0())
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(0.))
-                                    .truncate()
-                                    .text_size(px(11.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child(title),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .pl(px(12.))
-                            .text_size(px(10.))
-                            .text_color(p.muted_fg)
-                            .truncate()
-                            .child(format!("{subtitle} · {label}")),
-                    ),
+                action_row(
+                    format!("spec-artifact:{}", artifact.path),
+                    format!("Select artifact {title}"),
+                )
+                .mx(px(6.))
+                .px(px(8.))
+                .py(px(7.))
+                .selected(selected)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if let Some(view) = this.spec.view.as_mut() {
+                        view.selected = Some(path.clone());
+                    }
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .w_full()
+                        .min_w(px(0.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .child(div().size(px(6.)).rounded_full().bg(color).flex_shrink_0())
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w(px(0.))
+                                        .truncate()
+                                        .text_size(px(11.5))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(title),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .pl(px(12.))
+                                .text_size(px(10.))
+                                .text_color(p.muted_fg)
+                                .truncate()
+                                .child(format!("{subtitle} · {label}")),
+                        ),
+                ),
             );
         }
     }
@@ -2181,7 +2186,7 @@ fn phase_strip(snapshot: &Snapshot, p: &Palette, cx: &mut Context<DunlinApp>) ->
             .max_w(px(220.))
             .flex_shrink_0()
             .p(px(10.))
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .border_1()
             .border_color(p.border)
             .bg(p.card)
@@ -2338,14 +2343,14 @@ fn detail_panel(
             panel.child(div().text_size(px(10.)).text_color(p.muted_fg).child(
                 "Decision note · stored with the next approve/reject, never sent to the agent",
             ));
-        panel = panel.child(Input::new(note).small());
+        panel = panel.child(compact_input(note).aria_label("Review note"));
     }
     if let Some(approval) = &approval {
         let stale = approval.revision != artifact.revision;
         panel = panel.child(
             div()
                 .p(px(8.))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .border_1()
                 .border_color(if stale { p.amber } else { p.border })
                 .bg(if stale { p.amber_soft } else { p.subtle })
@@ -2374,7 +2379,7 @@ fn detail_panel(
         panel = panel.child(
             div()
                 .p(px(8.))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .border_1()
                 .border_color(p.amber)
                 .bg(p.amber_soft)
@@ -2596,7 +2601,7 @@ fn detail_panel(
                 panel = panel.child(
                     div()
                         .p(px(8.))
-                        .rounded(px(6.))
+                        .rounded(px(dunlin_ui::radii::ROW))
                         .border_1()
                         .border_color(p.amber)
                         .bg(p.amber_soft)
@@ -2640,7 +2645,7 @@ fn detail_panel(
             panel = panel.child(
                 div()
                     .p(px(8.))
-                    .rounded(px(6.))
+                    .rounded(px(dunlin_ui::radii::ROW))
                     .border_1()
                     .border_color(p.red)
                     .bg(p.red_soft)
@@ -2694,7 +2699,7 @@ fn detail_panel(
     panel = panel.child(section_label("Document", p)).child(
         div()
             .id("spec-document")
-            .rounded(px(8.))
+            .rounded(px(dunlin_ui::radii::PANEL))
             .border_1()
             .border_color(p.border)
             .bg(p.card)
@@ -3024,7 +3029,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             div()
                 .m(px(16.))
                 .p(px(12.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .border_1()
                 .border_color(p.red)
                 .bg(p.red_soft)

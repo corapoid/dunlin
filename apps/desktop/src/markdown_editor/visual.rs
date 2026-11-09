@@ -1277,15 +1277,12 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         let active = &state.editors[index];
         let block = &active.block;
         if let Kind::Cell { table, .. } = block.kind {
-            let mut grid = div()
+            let mut grid = SurfaceGeometry::TABLE.paint(p.card, p.border)
                 .w_full()
                 .min_w(px(0.))
                 .flex_shrink_0()
                 .flex()
                 .flex_col()
-                .border_1()
-                .border_color(p.border)
-                .rounded(px(4.))
                 .overflow_hidden();
             while index < state.editors.len()
                 && matches!(state.editors[index].block.kind, Kind::Cell { table: t, .. } if t == table)
@@ -1300,7 +1297,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .w_full()
                     .min_w(px(0.))
                     .flex()
-                    .when(current_row == 0, |row| row.bg(p.muted))
+                    .when(current_row == 0, |row| {
+                        SurfaceGeometry::TABLE.round_child(row, SurfaceEdges::Top).bg(p.muted)
+                    })
                     .when(current_row > 0, |row| {
                         row.border_t_1().border_color(p.border)
                     });
@@ -1395,7 +1394,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .gap(px(4.))
                     .p(px(8.))
                     .bg(p.muted)
-                    .rounded(px(4.))
+                    .rounded(px(dunlin_ui::radii::CODE))
                     .child(div().text_size(px(10.)).text_color(p.muted_fg).child(label))
                     .child(editor_element(active, !editable(this, tab), cx)),
             );
@@ -1410,7 +1409,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             dunlin_ui::button("visual-add-paragraph")
                 .ghost()
                 .small()
-                .rounded(px(4.))
+                .rounded(px(dunlin_ui::radii::CODE))
                 .label("+ Paragraph")
                 .disabled(!editable(this, tab))
                 .on_click(

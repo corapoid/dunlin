@@ -3,12 +3,9 @@ use crate::{
     app::{DunlinApp, SettingsTab},
     remote::RemoteHost,
 };
+use dunlin_http as ureq;
 use dunlin_ui::{
-    component::{
-        Disableable,
-        button::ButtonVariants as _,
-        input::{Input, InputState},
-    },
+    component::{Disableable, button::ButtonVariants as _, input::InputState},
     *,
 };
 use dunlin_workspace::{
@@ -30,10 +27,7 @@ pub const INSTALL: &str = "bash <(curl -fsSL https://raw.githubusercontent.com/c
 
 pub fn selected_host(this: &DunlinApp) -> Option<String> {
     if this.settings_open
-        && matches!(
-            this.settings_tab,
-            SettingsTab::Remote | SettingsTab::Harnesses
-        )
+        && this.settings_tab == SettingsTab::Remote
         && let Some(id) = &this.server_panel.host
     {
         return Some(id.clone());
@@ -130,7 +124,7 @@ fn raw_with_agent(
     };
     result.map_err(|error| match error {
         ureq::Error::Status(404 | 405, _) => "This action requires a newer Dunlin relay.".into(),
-        ureq::Error::Status(code, response) => decode::<Value>(response)
+        ureq::Error::Status(code, response) => decode::<Value>(*response)
             .ok()
             .and_then(|v| v["error"].as_str().map(str::to_owned))
             .unwrap_or_else(|| format!("Relay error {code}")),
@@ -157,10 +151,7 @@ impl DunlinApp {
                             return false;
                         }
                         if !this.settings_open
-                            || !matches!(
-                                this.settings_tab,
-                                SettingsTab::Remote | SettingsTab::Harnesses
-                            )
+                            || this.settings_tab != SettingsTab::Remote
                             || this.server_panel.host.as_deref() != Some(&host)
                         {
                             this.server_panel.watching = None;
@@ -803,7 +794,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     }
     let Some(id) = this.server_panel.host.clone() else {
         return body
-            .child("Choose Manage on a paired server below.")
+            .child("Choose Manage on a paired server above. Installation and authorization actions run only when explicitly requested.")
             .into_any_element();
     };
     this.watch_server(cx);
@@ -857,22 +848,30 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         }
         if admin && let Some(input) = &this.server_panel.name {
             body = body.child(
-                div().flex().gap(px(8.)).child(Input::new(input)).child(
-                    button("server-rename")
-                        .label("Rename server")
-                        .disabled(busy)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            let name = this
-                                .server_panel
-                                .name
-                                .as_ref()
-                                .unwrap()
-                                .read(cx)
-                                .value()
-                                .to_string();
-                            this.server_update(json!({"name":name}), cx);
-                        })),
-                ),
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(
+                        dunlin_ui::input(input)
+                            .aria_label("Server name")
+                            .disabled(busy),
+                    )
+                    .child(
+                        button("server-rename")
+                            .label("Rename server")
+                            .disabled(busy)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let name = this
+                                    .server_panel
+                                    .name
+                                    .as_ref()
+                                    .unwrap()
+                                    .read(cx)
+                                    .value()
+                                    .to_string();
+                                this.server_update(json!({"name":name}), cx);
+                            })),
+                    ),
             );
         }
         body = body.child("Harnesses installed and configured on this server");
@@ -957,27 +956,37 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             );
         }
         if let Some(input) = &this.server_panel.repo {
-            body = body.child(Input::new(input)).child(
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(
-                        button("server-clone-github")
-                            .label("Clone from GitHub")
-                            .disabled(!admin || busy)
-                            .on_click(
-                                cx.listener(|this, _, _, cx| this.clone_on_server("github", cx)),
-                            ),
-                    )
-                    .child(
-                        button("server-clone-gitlab")
-                            .label("Clone from GitLab")
-                            .disabled(!admin || busy)
-                            .on_click(
-                                cx.listener(|this, _, _, cx| this.clone_on_server("gitlab", cx)),
-                            ),
-                    ),
-            );
+            body = body
+                .child(
+                    dunlin_ui::input(input)
+                        .aria_label("Repository URL")
+                        .disabled(!admin || busy),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(
+                            button("server-clone-github")
+                                .label("Clone from GitHub")
+                                .disabled(!admin || busy)
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.clone_on_server("github", cx)
+                                    }),
+                                ),
+                        )
+                        .child(
+                            button("server-clone-gitlab")
+                                .label("Clone from GitLab")
+                                .disabled(!admin || busy)
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.clone_on_server("gitlab", cx)
+                                    }),
+                                ),
+                        ),
+                );
         }
         body = body.child(
             div()
@@ -1022,7 +1031,11 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 ),
         );
         if let Some(input) = &this.server_panel.exclusions {
-            body = body.child(Input::new(input));
+            body = body.child(
+                dunlin_ui::input(input)
+                    .aria_label("Project copy exclusions")
+                    .disabled(busy),
+            );
         }
     }
     if let Some(snapshot) = this.server_panel.snapshot.clone() {

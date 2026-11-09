@@ -40,7 +40,7 @@ impl Render for TabPreview {
             .px(px(12.))
             .py(px(7.))
             .max_w(px(260.))
-            .rounded(px(10.))
+            .rounded(px(dunlin_ui::radii::DRAG_PREVIEW))
             .bg(p.card)
             .shadow_md()
             .opacity(0.92)
@@ -296,7 +296,9 @@ impl DunlinApp {
             let subscription = cx.subscribe(&search, |this, input, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.activity_query = input.read(cx).value().to_string();
-                    cx.notify();
+                    // Match the original pane's search subscription: filtering
+                    // must not leave an invisible selected/active descendant.
+                    this.activity_normalize_selection(cx);
                 }
             });
             self.workbench.panes.subscriptions.push(subscription);
@@ -338,6 +340,12 @@ impl DunlinApp {
             &input,
             window,
             move |this, input, event: &InputEvent, window, cx| {
+                if matches!(
+                    event,
+                    InputEvent::Focus | InputEvent::Blur | InputEvent::Change
+                ) {
+                    cx.notify();
+                }
                 if matches!(event, InputEvent::PressEnter { shift: false, .. }) {
                     let Some(session) = this
                         .workbench

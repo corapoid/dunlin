@@ -2,9 +2,13 @@
 //! only when a project is available, and retain the ordinary safety guards.
 use dunlin_ui::*;
 impl crate::app::DunlinApp {
-    pub(crate) fn dismiss_history_for_menu(&mut self, _cx: &mut Context<Self>) -> bool {
+    pub(crate) fn dismiss_history_for_menu(&mut self, cx: &mut Context<Self>) -> bool {
         // History is a document tab, not a blocking overlay. Menus may open over
         // it without destroying its state or releasing an in-flight Git lock.
+        if self.settings_open && self.settings_have_draft() {
+            self.set_notice("Save or cancel the settings form before navigating elsewhere", cx);
+            return false;
+        }
         true
     }
 }

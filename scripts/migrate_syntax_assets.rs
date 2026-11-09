@@ -1,6 +1,6 @@
 //! One-time converter for checksum-pinned, trusted upstream asset files ONLY.
 //! Run in an isolated non-workspace Cargo project against the original syntect
-//! 5.3.0/two-face 0.4.5. Its legacy reader is NOT linked into Dunlin or run in CI.
+//! 5.3.0/two-face 0.5.2+bat-0.26.1. Its legacy reader is NOT linked into Dunlin or run in CI.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -66,10 +66,7 @@ fn main() {
     let trusted: BTreeMap<String, String> =
         serde_json::from_str(include_str!("../vendor/asset-sources.json")).unwrap();
     for (path, expected) in trusted {
-        let actual = format!(
-            "{:x}",
-            Sha256::digest(fs::read(registry.join(&path)).unwrap())
-        );
+        let actual = hex::encode(Sha256::digest(fs::read(registry.join(&path)).unwrap()));
         assert_eq!(actual, expected, "Untrusted historical asset: {path}");
     }
     let legacy = registry.join("syntect-5.3.0/assets");
@@ -87,8 +84,8 @@ fn main() {
     )
     .unwrap();
 
-    let legacy = registry.join("two-face-0.4.5/generated");
-    let target = root.join("vendor/two-face-0.4.5/generated");
+    let legacy = registry.join("two-face-0.5.2+bat-0.26.1/generated");
+    let target = root.join("vendor/two-face-0.5.2+bat-0.26.1/generated");
     for name in [
         "syntaxes-fancy-newlines.bin",
         "syntaxes-fancy-no-newlines.bin",
@@ -109,7 +106,7 @@ fn main() {
     fs::write(target.join("themes.bin"), pack(&themes, false)).unwrap();
     let acknowledgements: two_face::acknowledgement::Acknowledgements =
         dumps::from_dump_file(legacy.join("acknowledgements_full.bin")).unwrap();
-    println!("Original license Markdown SHA256: {:x}", Sha256::digest(acknowledgements.to_md().as_bytes()));
+    println!("Original license Markdown SHA256: {}", hex::encode(Sha256::digest(acknowledgements.to_md().as_bytes())));
     fs::write(
         target.join("acknowledgements_full.bin"),
         pack(&acknowledgements, true),

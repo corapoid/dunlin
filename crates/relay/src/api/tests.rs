@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use tower::ServiceExt;
 
+mod coordination;
 mod history;
 mod management;
 mod operations;
@@ -167,6 +168,129 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
     }
+}
+
+#[tokio::test]
+async fn concurrent_file_saves_return_one_success_and_one_conflict() {
+    let fixture = Fixture::new();
+    fs::write(fixture.root.join("file.txt"), "original").unwrap();
+    let expected = dunlin_workspace::fs::stat_file(fixture.root.to_str().unwrap(), "file.txt")
+        .unwrap()
+        .mtime_ms;
+    let first = json!({"project": fixture.project, "path": "file.txt", "contents": "first", "expected_mtime_ms": expected});
+    let second = json!({"project": fixture.project, "path": "file.txt", "contents": "second", "expected_mtime_ms": expected});
+    let (first, second) = tokio::join!(
+        fixture.put("/v1/fs/file", Some(&fixture.token), first),
+        fixture.put("/v1/fs/file", Some(&fixture.token), second)
+    );
+    assert!(matches!(
+        (first.0, second.0),
+        (StatusCode::OK, StatusCode::CONFLICT) | (StatusCode::CONFLICT, StatusCode::OK)
+    ));
+    let expected_text = if first.0 == StatusCode::OK {
+        "first"
+    } else {
+        "second"
+    };
+    assert_eq!(
+        fs::read_to_string(fixture.root.join("file.txt")).unwrap(),
+        expected_text
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn special_files_cannot_exhaust_the_file_read_slots() {
+    use std::os::unix::ffi::OsStrExt;
+    let fixture = Fixture::new();
+    let pipe =
+        std::ffi::CString::new(fixture.root.join("pipe.txt").as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(pipe.as_ptr(), 0o600) }, 0);
+    let path = format!("/v1/fs/file?project={}&path=pipe.txt", fixture.project);
+    for _ in 0..10 {
+        let (status, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            fixture.get_json(&path, Some(&fixture.token)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    fs::write(fixture.root.join("regular.txt"), "still available").unwrap();
+    let path = format!("/v1/fs/file?project={}&path=regular.txt", fixture.project);
+    let (status, body) = fixture.get_json(&path, Some(&fixture.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["contents"], "still available");
+}
+
+#[tokio::test]
+async fn transcript_revisions_reject_late_and_legacy_snapshots() {
+    let fixture = Fixture::new();
+    {
+        let store = fixture.state.store.lock().unwrap();
+        let (user, device) = store.authenticate(&fixture.token).unwrap().unwrap();
+        store
+            .create_session("session", &user.id, &fixture.project, "Test", &device.id)
+            .unwrap();
+    }
+    let path = "/v1/sessions/session/transcript";
+    let revision_path = format!("{path}/revision");
+    assert_eq!(
+        fixture
+            .get_json(&revision_path, Some(&fixture.token))
+            .await
+            .1["revision"],
+        0
+    );
+    assert_eq!(
+        fixture
+            .put(
+                path,
+                Some(&fixture.token),
+                json!({"payload":["first"], "expected_revision":0})
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        fixture
+            .put(
+                path,
+                Some(&fixture.token),
+                json!({"payload":["latest"], "expected_revision":1})
+            )
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    for stale in [
+        json!({"payload":["stale"], "expected_revision":0}),
+        json!({"payload":["legacy"]}),
+    ] {
+        assert_eq!(
+            fixture.put(path, Some(&fixture.token), stale).await.0,
+            StatusCode::CONFLICT
+        );
+    }
+    assert_eq!(
+        fixture.get_json(path, Some(&fixture.token)).await.1,
+        json!(["latest"])
+    );
+    assert_eq!(
+        fixture
+            .get_json(&revision_path, Some(&fixture.token))
+            .await
+            .1["revision"],
+        2
+    );
+    assert_eq!(
+        fixture
+            .get_json(&revision_path, Some(&fixture.ungranted_token))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]

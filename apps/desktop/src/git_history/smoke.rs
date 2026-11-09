@@ -102,6 +102,11 @@ pub(crate) fn run() {
                 default_harness: "Custom ACP".into(),
                 notifications_enabled: false,
                 dark: !light_narrow,
+                appearance: Some(if light_narrow {
+                    crate::app::Appearance::Light
+                } else {
+                    crate::app::Appearance::Dark
+                }),
                 ..Default::default()
             },
         )
@@ -154,12 +159,16 @@ pub(crate) fn run() {
     application().with_assets(assets::AllAssets).run(move |cx| {
         cx.set_app_identity("dev.dunlin.ide.git-smoke","Dunlin Git Smoke");dunlin_ui::init(cx);crate::logging::init();
         crate::workspace_ui_smoke::enable_probes();
-        let (handle,owner)=open_window(WindowOptions{window_bounds:Some(WindowBounds::Windowed(Bounds::new(point(px(90.),px(90.)),size(px(if light_narrow {760.} else {1200.}),px(800.))))),..dunlin_ui::window_options()},cx,|window,cx|cx.new(|cx|DunlinApp::new(window,cx))).unwrap();
+         // Match the production window's supported minimum width (main.rs).
+         // A 760 px window cannot fit both minimum-width history columns and
+         // the sidebar, and is not a user-reachable production window size.
+         let (handle,owner)=open_window(WindowOptions{window_bounds:Some(WindowBounds::Windowed(Bounds::new(point(px(90.),px(90.)),size(px(if light_narrow {1100.} else {1200.}),px(800.))))),..dunlin_ui::window_options()},cx,|window,cx|cx.new(|cx|DunlinApp::new(window,cx))).unwrap();
         handle.update(cx,|_,w,cx|owner.update(cx,|app,cx|app.open_workbench_file(path.to_str().unwrap(),None,w,cx))).unwrap();
         cx.spawn(async move |cx| {
-            let start=Instant::now();let mut stage=0;
+             let start=Instant::now();let mut stage=0;let mut previous_stage=None;
             loop {cx.background_executor().timer(Duration::from_millis(250)).await;
-                let done=cx.update(|cx| {
+                 let done=cx.update(|cx| {
+                     if previous_stage != Some(stage) { eprintln!("Native Git/workbench stage {stage}"); previous_stage=Some(stage); }
                     assert!(start.elapsed()<Duration::from_secs(75),"Git smoke stalled at stage {stage}");
                     handle.update(cx,|_,w,cx|{w.refresh();w.draw(cx).clear(cx);}).unwrap();
                     handle.update(cx,|_,w,cx|owner.update(cx,|app,cx| {
@@ -211,11 +220,29 @@ pub(crate) fn run() {
                                   view.scroll.scroll_to_item_strict(0, ScrollStrategy::Top);
                                   stage = 3003;
                               },
-                              3003 => {
-                                  assert_eq!(app.git_history.view.as_ref().unwrap().scroll.0.borrow().base_handle.offset().y, px(0.));
-                                  app.load_git_history(cx);
-                                  app.open_git_overview(cx);
-                                  stage = 4;
+                               3003 => {
+                                   assert_eq!(app.git_history.view.as_ref().unwrap().scroll.0.borrow().base_handle.offset().y, px(0.));
+                                   assert!(app.git_history.view.as_ref().unwrap().selected_file.is_none(), "commit browsing must not eagerly load a patch");
+                                   app.load_git_history(cx);
+                                   let view = app.git_history.view.as_mut().unwrap();
+                                   assert!(!view.rows.is_empty() && view.detail.is_some(), "refresh must retain the displayed immutable snapshot");
+                                   view.inspector.tab = super::details::Tab::Patch;
+                                   app.select_history_file(0, cx);
+                                   stage = 3004;
+                               },
+                               3004 if app.git_history.view.as_ref().is_some_and(|view| !view.loading && !view.patch_loading) => {
+                                   crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                   let view = app.git_history.view.as_mut().unwrap();
+                                   assert_eq!(view.selected_file, Some(0));
+                                   assert!(view.patch_note.is_none(), "fixture text diff must parse without fallback: {:?}", view.patch_note);
+                                   view.inspector.tab = super::details::Tab::Operations;
+                                   view.branch_form_open = true;
+                                   stage = 3005;
+                               },
+                               3005 => {
+                                   crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                   app.open_git_overview(cx);
+                                   stage = 4;
                               },
                             4 if !app.git_loading=>{app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.locks("another-project"),"aliases and linked worktrees must remain protected");stage=5;},
                              5 if !app.git_history.running && !app.git_loading=>{let view=app.git_history.view.as_mut().unwrap();assert!(view.mutations.pending.is_some(),"{:?}",view.mutations.error);assert_eq!(fs::read_to_string(&path).unwrap(),disk);view.mutations.pending=None;app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.running,"{:?}",app.notice);stage=6;},

@@ -4,8 +4,8 @@ import { site } from "../lib/site";
 ---
 
 <Base
-  title={`Download Dunlin ${site.version} for macOS`}
-  description="Download the Dunlin public beta for macOS 15+ on Apple Silicon. Free, open source, and ad-hoc signed until the Apple Developer ID is available."
+  title="Build the Dunlin beta from source for macOS"
+  description="Dunlin is in beta. Clone the repository and build from source on macOS 15+ with Apple Silicon. Prebuilt app downloads are paused until Apple signing and notarization are available."
 >
   <section class="relative overflow-hidden pb-16 pt-32 sm:pt-36 lg:pb-24 lg:pt-44">
     <div class="page-container">
@@ -20,16 +20,17 @@ import { site } from "../lib/site";
             data-reveal
             style="--reveal-delay: 60ms"
           >
-            Download Dunlin.
+            Build the beta.
           </h1>
           <p
             class="mt-7 max-w-[560px] text-base leading-7 text-ink/65 sm:text-lg sm:leading-8"
             data-reveal
             style="--reveal-delay: 120ms"
           >
-            The public beta is a native macOS app for Apple Silicon. Open a
-            folder, connect an ACP harness, and keep the whole turn in one
-            window.
+            Dunlin is in beta. We recommend cloning the repository and building
+            from source. Prebuilt app downloads and Homebrew installation are
+            paused until Apple Developer ID signing and notarization are
+            available.
           </p>
 
           <div
@@ -37,17 +38,13 @@ import { site } from "../lib/site";
             data-reveal
             style="--reveal-delay: 180ms"
           >
-            <a href={site.downloadDmg} class="btn-primary" download>
-              Download DMG
-              <span aria-hidden="true">↓</span>
+            <a href={site.sourceInstall} class="btn-primary">
+              Build from source
+              <span aria-hidden="true">↗</span>
             </a>
-            <a href={site.downloadPkg} class="btn-secondary" download>
-              Download .pkg
-              <span aria-hidden="true">↓</span>
-            </a>
-            <a href={site.downloadZip} class="btn-secondary" download>
-              Download ZIP
-              <span aria-hidden="true">↓</span>
+            <a href={site.github} class="btn-secondary">
+              View repository
+              <span aria-hidden="true">↗</span>
             </a>
           </div>
           <div
@@ -56,12 +53,16 @@ import { site } from "../lib/site";
             style="--reveal-delay: 200ms"
           >
             <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-              Homebrew beta
+              Source installation
             </p>
             <code class="mt-2 block font-mono text-xs leading-6 text-ink/75">
-              brew trust corapoid/tap
+              git clone https://github.com/corapoid/dunlin.git
               <br />
-              brew install --cask corapoid/tap/dunlin@beta
+              cd dunlin
+              <br />
+              ./scripts/bundle-macos.sh --build
+              <br />
+              open dist/Dunlin.app
             </code>
           </div>
           <p
@@ -69,7 +70,7 @@ import { site } from "../lib/site";
             data-reveal
             style="--reveal-delay: 220ms"
           >
-            macOS 15+ · Apple Silicon · ad-hoc signed
+            macOS 15+ · Apple Silicon · Rust 1.92+
           </p>
         </div>
 
@@ -77,7 +78,7 @@ import { site } from "../lib/site";
           <div class="overflow-hidden rounded-2xl border border-line bg-paper-soft">
             <div class="flex items-center justify-between border-b border-line px-5 py-4">
               <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/35">
-                Release
+                Beta source build
               </span>
               <span class="rounded-full bg-moss-soft px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-moss">
                 beta
@@ -103,15 +104,15 @@ import { site } from "../lib/site";
                 </dd>
               </div>
               <div class="flex items-center justify-between gap-4 px-5 py-4">
-                <dt class="text-sm text-ink/50">Checksums</dt>
+                <dt class="text-sm text-ink/50">Instructions</dt>
                 <dd>
                   <a
-                    href={site.checksums}
+                    href={site.sourceInstall}
                     target="_blank"
                     rel="noreferrer"
                     class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink underline decoration-ink/20 underline-offset-4 hover:text-clay"
                   >
-                    SHA256
+                    README
                   </a>
                 </dd>
               </div>
@@ -127,17 +128,13 @@ import { site } from "../lib/site";
                 </a>
               </p>
               <p class="mt-3 text-xs leading-5 text-ink/55">
-                OCI package:{" "}
+                Relay checksums:{" "}
                 <a
-                  href={site.packages}
+                  href={site.relayChecksums}
                   class="font-semibold text-ink underline decoration-ink/20 underline-offset-4 hover:text-clay"
                 >
-                  ghcr.io/corapoid/dunlin
+                  RELAY-SHA256SUMS
                 </a>
-                {" · "}
-                <code class="font-mono text-[10px]">
-                  oras pull ghcr.io/corapoid/dunlin:beta
-                </code>
               </p>
             </div>
           </div>
@@ -169,6 +166,10 @@ import { site } from "../lib/site";
               Git on your PATH for source control.
             </li>
             <li class="flex gap-3">
+              <span class="mt-2 size-1.5 shrink-0 rounded-full bg-moss"></span>
+              Rust 1.92 or newer; rustup is recommended.
+            </li>
+            <li class="flex gap-3">
               <span class="mt-2 size-1.5 shrink-0 rounded-full bg-clay"></span>
               No Intel build in this beta.
             </li>
@@ -178,21 +179,21 @@ import { site } from "../lib/site";
         <div data-reveal style="--reveal-delay: 100ms">
           <p class="eyebrow text-clay">Install</p>
           <h2 class="mt-5 font-serif text-4xl leading-none tracking-[-0.03em] sm:text-5xl">
-            Drag, open, approve.
+            Clone, build, open.
           </h2>
           <ol class="mt-8 space-y-4 text-sm leading-6 text-ink/70">
             <li class="flex gap-4">
               <span class="font-mono text-xs text-clay">01</span>
-              Open the DMG and drag Dunlin to Applications.
+              Clone the repository and open its directory in your terminal.
             </li>
             <li class="flex gap-4">
               <span class="font-mono text-xs text-clay">02</span>
-              Open Dunlin. macOS may block the ad-hoc signed beta.
+              Run{" "}
+              <code class="font-mono">./scripts/bundle-macos.sh --build</code>.
             </li>
             <li class="flex gap-4">
               <span class="font-mono text-xs text-clay">03</span>
-              Go to System Settings, Privacy &amp; Security, and choose Open
-              Anyway.
+              Run <code class="font-mono">open dist/Dunlin.app</code>.
             </li>
             <li class="flex gap-4">
               <span class="font-mono text-xs text-clay">04</span>
@@ -200,9 +201,9 @@ import { site } from "../lib/site";
             </li>
           </ol>
           <p class="mt-6 rounded-xl border border-clay/20 bg-clay-soft/40 px-4 py-3 text-xs leading-5 text-ink/60">
-            This build is ad-hoc signed because there is no Apple Developer ID
-            yet. It is still the same app that will be signed and notarized once
-            the account is available.
+            Local app bundles are ad-hoc signed, not Apple-notarized. You do not
+            need an Apple Developer ID certificate to build from source. GitHub
+            Packages publication is paused alongside prebuilt desktop downloads.
           </p>
         </div>
       </div>
@@ -213,10 +214,10 @@ import { site } from "../lib/site";
     <div class="flex flex-col items-start justify-between gap-6 border-t border-line pt-8 sm:flex-row sm:items-center">
       <div>
         <p class="font-serif text-3xl tracking-[-0.03em] sm:text-4xl">
-          Prefer to build it yourself?
+          Prefer a development run?
         </p>
         <p class="mt-2 text-sm leading-6 text-ink/60">
-          Clone the repository and run{" "}
+          From your cloned repository, run{" "}
           <span class="font-mono text-ink">cargo run -p dunlin</span>.
         </p>
       </div>

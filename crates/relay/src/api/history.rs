@@ -73,7 +73,7 @@ fn scope(project: &Project, root: &str) -> String {
         hash.update(part.as_bytes());
         hash.update([0]);
     }
-    format!("{:x}", hash.finalize())
+    hex::encode(hash.finalize())
 }
 
 pub(super) async fn read<T, F>(

@@ -3,7 +3,7 @@ use crate::{app::DunlinApp, harness::ChatItem};
 use chrono::{Days, Local, NaiveDate, TimeZone, Timelike};
 use dunlin_domain::{Project, SidebarSection};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
+use dunlin_ui::component::Sizable;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
@@ -444,7 +444,7 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                 .max_w_full()
                 .h(px(132.))
                 .flex_shrink_0()
-                .rounded(px(10.))
+                .rounded(px(dunlin_ui::radii::DRAG_PREVIEW))
                 .border_1()
                 .border_color(p.border)
                 .bg(p.subtle)
@@ -516,21 +516,23 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                                 )),
                         )
                         .child(
-                            div()
-                                .id(format!("dashboard-open:{open_id}"))
-                                .flex_shrink_0()
-                                .px(px(7.))
-                                .py(px(4.))
-                                .rounded(px(5.))
-                                .bg(p.muted)
-                                .flex()
-                                .items_center()
-                                .gap(px(5.))
-                                .text_size(px(11.))
-                                .text_color(p.fg)
-                                .cursor_pointer()
-                                .child("Open")
-                                .child(Icon::new(IconName::ChevronRight).size(px(11.))),
+                            dunlin_ui::button(format!("dashboard-open:{open_id}"))
+                                .small()
+                                .label("Open")
+                                .icon(IconName::ChevronRight)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    if let Some(index) = this
+                                        .projects
+                                        .iter()
+                                        .position(|project| project.id == open_id)
+                                    {
+                                        this.select_project(index, cx);
+                                        if this.project().id == open_id {
+                                            this.set_view(dunlin_domain::MainView::Chat, cx);
+                                        }
+                                    }
+                                })),
                         ),
                 ),
         )
@@ -582,31 +584,29 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .map(|s| s.title.clone())
                 .unwrap_or_default();
             agents = agents.child(
-                div()
-                    .id(format!("dashboard-agent:{session}"))
-                    .rounded(px(9.))
-                    .border_1()
-                    .border_color(p.border)
-                    .bg(p.card)
-                    .p(px(12.))
-                    .flex()
-                    .items_center()
-                    .gap(px(12.))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select_project(index, cx);
-                        if this.project().id == project {
-                            if let Some(index) = this.sessions.iter().position(|s| s.id == session)
-                            {
-                                this.select_session(index, cx);
-                            }
-                            this.section = SidebarSection::Projects;
-                            this.set_view(dunlin_domain::MainView::Chat, cx);
+                choice_card(
+                    format!("dashboard-agent:{session}"),
+                    format!("Open {name}: {title}"),
+                    false,
+                    p,
+                )
+                .p(px(12.))
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.select_project(index, cx);
+                    if this.project().id == project {
+                        if let Some(index) = this.sessions.iter().position(|s| s.id == session) {
+                            this.select_session(index, cx);
                         }
-                    }))
-                    .child(div().size(px(7.)).rounded_full().bg(p.blue))
-                    .child(div().flex_1().child(format!("{name} · {title}")))
-                    .child(div().text_size(px(11.)).text_color(p.blue).child(status)),
+                        this.section = SidebarSection::Projects;
+                        this.set_view(dunlin_domain::MainView::Chat, cx);
+                    }
+                }))
+                .child(div().size(px(7.)).rounded_full().bg(p.blue))
+                .child(div().flex_1().child(format!("{name} · {title}")))
+                .child(div().text_size(px(11.)).text_color(p.blue).child(status)),
             );
         }
         body = body.child(agents);

@@ -353,7 +353,7 @@ impl State {
             .wasm
             .as_ref()
             .ok_or("Bundled plugin has no WASM module")?;
-        let actual = format!("{:x}", Sha256::digest(catalog.wasm));
+        let actual = hex::encode(Sha256::digest(catalog.wasm));
         if !actual.eq_ignore_ascii_case(&wasm.sha256) {
             return Err("Bundled WASM failed its SHA-256 check".into());
         }
@@ -446,14 +446,18 @@ impl State {
 }
 
 fn card(p: &Palette) -> Div {
-    card_surface(*p).p(px(14.)).flex().flex_col().gap(px(7.))
+    dunlin_ui::settings::card(*p)
+        .p(px(14.))
+        .flex()
+        .flex_col()
+        .gap(px(10.))
 }
 
 fn badge(label: impl Into<SharedString>, color: Hsla, p: &Palette) -> Div {
     div()
         .h(px(19.))
         .px(px(7.))
-        .rounded(px(4.))
+        .rounded(px(dunlin_ui::radii::CODE))
         .bg(p.muted)
         .flex()
         .items_center()
@@ -499,28 +503,31 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     let directory = State::directory()
         .map(|path| path.to_string_lossy().to_string())
         .unwrap_or_else(|| "unavailable".into());
-    let mut content = div()
-        .id("extensions-scroll")
-        .flex_1()
-        .min_h(px(0.))
-        .overflow_y_scroll()
-        .flex()
-        .flex_col()
-        .gap(px(10.))
-        .p(px(14.))
+    let mut content = dunlin_ui::settings::page()
+        .child(dunlin_ui::settings::section("Built-in workspace tools · this Mac", p))
+        .child(dunlin_ui::settings::card(p).child(dunlin_ui::settings::row("Spec & intent tools",
+            "Show Spec, Intent Inbox and agent-contract commands. Disabling leaves existing files untouched.",
+            dunlin_ui::switch("spec-tools", "Spec & intent tools", this.spec_tools_enabled)
+                .on_click(cx.listener(|this, enabled: &bool, _, cx| {
+                    this.spec_tools_enabled = *enabled;
+                    if !enabled { this.spec.active = false; this.spec.view = None; }
+                    this.persist_settings(cx); cx.notify();
+                })).into_any_element(), p)))
+        .child(dunlin_ui::settings::section("Extension packs", p))
+        .child(dunlin_ui::settings::description("Preferences and installed packs live on this Mac. Project overrides do not install packs or authorize tools on a remote server.", p))
         .child(
             card(&p)
                 .child(
                     div()
                         .text_size(px(13.))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .child("Declarative packs"),
+                        .child("Methodology packs"),
                 )
                 .child(
                     div()
                         .text_size(px(11.))
                         .text_color(p.muted_fg)
-                        .child("A pack can contribute methodology metadata, commands, skill names, view names, MCP declarations and an optional sandboxed WASM validator. It cannot link GPUI, inject context silently or run native code. WASM packs are disabled by default and loaded only when explicitly enabled."),
+                        .child("Packs add methodology, commands and optional sandboxed WASM validation. They cannot run native app code. Installation and enabling are separate actions; review capabilities before enabling."),
                 )
                 .child(
                     div()
@@ -562,20 +569,14 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .child(
                     div()
                         .flex()
+                        .flex_wrap()
                         .gap(px(6.))
                         .child(
-                            dunlin_ui::button("extensions-scope")
-                                .ghost()
-                                .small()
-                                .label(if this.plugins.scope_project {
-                                    format!("Scope: {}", project.name)
-                                } else {
-                                    "Scope: global".into()
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.plugins.scope_project = !this.plugins.scope_project;
-                                    cx.notify();
-                                })),
+                            segment_group(p)
+                                .child(segment_button("extensions-scope-global", "This Mac · global", !this.plugins.scope_project)
+                                    .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = false; cx.notify(); })))
+                                .child(segment_button("extensions-scope-project", format!("Project: {}", project.name), this.plugins.scope_project).max_w(px(260.))
+                                    .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = true; cx.notify(); }))),
                         )
                         .child(
                             dunlin_ui::button("extensions-refresh")
@@ -592,7 +593,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                             dunlin_ui::button("extensions-open-folder")
                                 .ghost()
                                 .small()
-                                .label("Open plugins folder")
+                                .label("Open extensions folder")
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     if let Some(directory) = State::directory()
                                         && std::fs::create_dir_all(&directory).is_ok()
@@ -610,7 +611,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         content = content.child(
             div()
                 .p(px(10.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .bg(p.red_soft)
                 .text_color(p.red)
                 .text_size(px(11.))
@@ -621,7 +622,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         content = content.child(
             div()
                 .p(px(9.))
-                .rounded(px(8.))
+                .rounded(px(dunlin_ui::radii::PANEL))
                 .bg(p.amber_soft)
                 .text_color(p.amber)
                 .text_size(px(10.5))
@@ -668,7 +669,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 dunlin_ui::button(format!("extension-install:{index}"))
                                     .primary()
                                     .small()
-                                    .label("Install automatically")
+                                    .label("Install pack")
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         match this.plugins.install_bundled(&id) {
                                             Ok(message) => this.set_notice(message, cx),
@@ -708,7 +709,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 div()
                     .text_size(px(12.5))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Build your own plugin"),
+                    .child("Build your own extension"),
             )
             .child(
                 div()
@@ -735,6 +736,8 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             Source::External => "external",
         };
         let color = if enabled { p.green } else { p.muted_fg };
+        let details = this.settings_ui.extension_details.as_deref() == Some(&id);
+        let details_id = id.clone();
         let mut item =
             card(&p)
                 .child(
@@ -764,10 +767,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         )
                         .child(badge(if enabled { "enabled" } else { "off" }, color, &p))
                         .child(
-                            dunlin_ui::button(format!("extension-toggle:{index}"))
-                                .ghost()
-                                .small()
-                                .label(if enabled { "Disable" } else { "Enable" })
+                            dunlin_ui::switch(format!("extension-toggle:{index}"), format!("Enable {} for the selected scope", pack.manifest.name), enabled)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let pack = this
                                         .plugins
@@ -816,7 +816,16 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .text_size(px(10.))
                         .text_color(p.muted_fg)
                         .child(format!("Permissions: {}", permissions(pack))),
-                );
+                )
+                .child(dunlin_ui::button(format!("extension-details:{index}")).label(if details { "Hide technical details" } else { "Technical details…" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.settings_ui.extension_details = if details { None } else { Some(details_id.clone()) };
+                        cx.notify();
+                    })));
+        if !details {
+            content = content.child(item);
+            continue;
+        }
         if let Some(wasm) = &pack.manifest.wasm {
             let wasm_id = pack.manifest.id.clone();
             let status = this.plugins.wasm_status.get(&wasm_id).cloned();
@@ -929,13 +938,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .child("No packs discovered."),
         );
     }
-    div()
-        .flex()
-        .flex_col()
-        .flex_1()
-        .min_h(px(0.))
-        .child(content)
-        .into_any_element()
+    content.into_any_element()
 }
 
 #[cfg(test)]

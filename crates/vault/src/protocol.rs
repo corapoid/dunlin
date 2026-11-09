@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 
 use dunlin_domain::vault::SecretSummary;
-use rand::RngCore;
+use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 

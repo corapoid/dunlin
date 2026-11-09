@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowUpRightIcon,
-  DownloadSimpleIcon,
   GithubLogoIcon,
   ListIcon,
   XIcon,
@@ -113,8 +112,8 @@ export default function SiteNav() {
             href="/download"
             className="hidden items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-paper-soft transition-transform duration-700 ease-fluid active:scale-[0.98] sm:inline-flex"
           >
-            <DownloadSimpleIcon size={16} weight="bold" />
-            Download
+            <ArrowUpRightIcon size={16} weight="bold" />
+            Build from source
           </a>
           <button
             ref={toggleRef}
@@ -206,8 +205,8 @@ export default function SiteNav() {
                 className="flex items-center justify-between rounded-full bg-ink px-5 py-4 text-sm font-semibold text-paper-soft"
                 onClick={() => setOpen(false)}
               >
-                Download the beta
-                <DownloadSimpleIcon size={18} weight="bold" />
+                Build the beta
+                <ArrowUpRightIcon size={18} weight="bold" />
               </a>
             </div>
           </motion.div>

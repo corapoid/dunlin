@@ -176,6 +176,10 @@ impl DunlinApp {
         if self.navigation_blocked() || self.branch_ui.is_open() || self.command_open {
             return;
         }
+        if self.settings_open && self.settings_have_draft() {
+            self.set_notice("Save or cancel the settings form before using navigation history", cx);
+            return;
+        }
         self.record_navigation();
         let Some(index) = self
             .navigation

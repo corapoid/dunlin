@@ -8,7 +8,7 @@ use dunlin_domain::*;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::diff::{Diff, DiffFile, DiffState};
 use dunlin_ui::component::input::{
-    Editor, EditorState, Input, InputEvent, InputState, Position, TextareaState,
+    Editor, EditorState, InputEvent, InputState, Position, TextareaState,
 };
 use dunlin_ui::component::{ActiveTheme, Icon, ThemeMode};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -49,6 +49,7 @@ pub(crate) enum SettingsTab {
     Remote,
     Editor,
     Usage,
+    Data,
     Advanced,
 }
 
@@ -56,26 +57,27 @@ impl SettingsTab {
     pub fn label(self) -> &'static str {
         match self {
             SettingsTab::General => "General",
-            SettingsTab::Design => "Design",
-            SettingsTab::Sidebar => "Sidebar",
+            SettingsTab::Design => "Appearance",
+            SettingsTab::Sidebar => "Workspace",
             SettingsTab::Chat => "Chat",
-            SettingsTab::Harnesses => "Harnesses",
+            SettingsTab::Harnesses => "Agents",
             SettingsTab::Skills => "Skills",
-            SettingsTab::Security => "Security",
-            SettingsTab::Secrets => "Secrets",
+            SettingsTab::Security => "Security Audits",
+            SettingsTab::Secrets => "Credentials",
             SettingsTab::Extensions => "Extensions",
             SettingsTab::Permissions => "Permissions",
-            SettingsTab::Remote => "Remote",
-            SettingsTab::Editor => "Editor",
-            SettingsTab::Usage => "Usage",
-            SettingsTab::Advanced => "Advanced",
+            SettingsTab::Remote => "Remote & SSH",
+            SettingsTab::Editor => "Editor & Terminal",
+            SettingsTab::Usage => "Usage & Limits",
+            SettingsTab::Data => "Data & Backup",
+            SettingsTab::Advanced => "Diagnostics & About",
         }
     }
 
     pub fn icon(self) -> IconName {
         match self {
             SettingsTab::General => IconName::Settings2,
-            SettingsTab::Design => IconName::SlidersHorizontal,
+            SettingsTab::Design => IconName::Sun,
             SettingsTab::Sidebar => IconName::PanelLeft,
             SettingsTab::Chat => IconName::MessageSquare,
             SettingsTab::Harnesses => IconName::Bot,
@@ -83,11 +85,12 @@ impl SettingsTab {
             SettingsTab::Security => IconName::ShieldCheck,
             SettingsTab::Secrets => IconName::KeyRound,
             SettingsTab::Extensions => IconName::Puzzle,
-            SettingsTab::Permissions => IconName::ShieldCheck,
+            SettingsTab::Permissions => IconName::Lock,
             SettingsTab::Remote => IconName::Cloud,
             SettingsTab::Editor => IconName::Code,
             SettingsTab::Usage => IconName::ChartNoAxesColumn,
-            SettingsTab::Advanced => IconName::SlidersHorizontal,
+            SettingsTab::Data => IconName::Database,
+            SettingsTab::Advanced => IconName::Info,
         }
     }
 }
@@ -138,6 +141,7 @@ pub(crate) enum BottomPanel {
     Terminal,
     Run,
     Secrets,
+    Agents,
 }
 
 /// Everything Dunlin remembers between launches. Stored as one JSON value in
@@ -516,6 +520,7 @@ pub(crate) enum Command {
     AgentContract,
     Subtasks,
     Budgets,
+    Coordination,
     Checks,
     Context,
     Review,
@@ -607,6 +612,7 @@ pub(crate) struct DunlinApp {
     pub ssh_status: std::collections::HashMap<String, String>,
     pub ssh_tunnels: std::collections::HashMap<String, dunlin_ssh::Tunnel>,
     pub task_budgets: crate::task_budgets::State,
+    pub coordination: crate::coordination::State,
     pub subtask_worktrees: crate::subtask_worktrees::State,
     pub comparisons: crate::comparisons::State,
     pub overlay_window: crate::overlay_window::State,
@@ -643,6 +649,7 @@ pub(crate) struct DunlinApp {
     pub harness_setup: Option<String>,
     pub harness_setup_notice: Option<String>,
     pub harness_scanning: bool,
+    pub harness_checks: HashMap<u64, harness::HarnessStatus>,
     pub permissions_refreshing: bool,
     pub factory_resetting: bool,
     pub density: UiDensity,
@@ -653,6 +660,7 @@ pub(crate) struct DunlinApp {
     pub acp_log_text: Option<String>,
     pub acp_log_error: Option<String>,
     pub acp_log_loading: bool,
+    pub acp_log_exporting: bool,
     pub qa_report: Option<String>,
     pub qa_error: Option<String>,
     pub terminal: crate::terminal::State,
@@ -715,6 +723,7 @@ pub(crate) struct DunlinApp {
     _command_subscription: Subscription,
 
     pub settings_open: bool,
+    pub settings_ui: views::settings::State,
     pub settings_tab: SettingsTab,
     pub default_harness: String,
     pub hidden_harnesses: Vec<String>,
@@ -917,6 +926,13 @@ impl DunlinApp {
             &composer,
             window,
             |this, input, event: &InputEvent, window, cx| {
+                if matches!(
+                    event,
+                    InputEvent::Focus | InputEvent::Blur | InputEvent::Change
+                ) {
+                    // The compound composer owns its frame and send-action state.
+                    cx.notify();
+                }
                 if is_composer_submit(event) && this.composer == *input {
                     this.send_prompt(window, cx);
                 }
@@ -1205,6 +1221,7 @@ impl DunlinApp {
                 stored.project_enabled_plugins.clone(),
             ),
             task_budgets,
+            coordination: crate::coordination::State::start(),
             subtask_worktrees,
             comparisons,
             overlay_window: Default::default(),
@@ -1242,6 +1259,7 @@ impl DunlinApp {
             acp_log_text: None,
             acp_log_error: None,
             acp_log_loading: false,
+            acp_log_exporting: false,
             qa_report: None,
             qa_error: None,
             onboarding_step: stored.onboarding_step,
@@ -1249,6 +1267,7 @@ impl DunlinApp {
             harness_setup: None,
             harness_setup_notice: None,
             harness_scanning: false,
+            harness_checks: HashMap::new(),
             permissions_refreshing: false,
             factory_resetting: false,
             density: stored.density,
@@ -1320,6 +1339,7 @@ impl DunlinApp {
             command_index: 0,
             _command_subscription: command_subscription,
             settings_open: false,
+            settings_ui: views::settings::State::default(),
             settings_tab: SettingsTab::Harnesses,
             default_harness: stored.default_harness.clone(),
             hidden_harnesses: stored.hidden_harnesses.clone(),
@@ -1532,6 +1552,7 @@ impl DunlinApp {
                         this.poll_project_folders(cx);
                         this.refresh_project_icons(cx);
                         this.poll_task_budgets(cx);
+                        this.poll_coordination(cx);
                         this.advance_comparisons(cx);
                         this.resume_visible_queue(cx);
                         this.advance_ai_commit(cx);
@@ -2051,6 +2072,15 @@ impl DunlinApp {
                 keywords: "limits cost request time".into(),
             },
             CommandItem {
+                command: Command::Coordination,
+                label: "Open Agent Coordination".into(),
+                hint: None,
+                icon: IconName::Bot,
+                keywords:
+                    "agents peers inbox messages wait dependencies continuations orchestration"
+                        .into(),
+            },
+            CommandItem {
                 command: Command::Checks,
                 label: "Open Checks / Problems".into(),
                 hint: None,
@@ -2243,10 +2273,10 @@ impl DunlinApp {
             },
             CommandItem {
                 command: Command::Settings(SettingsTab::Harnesses),
-                label: "Configure Harnesses".into(),
+                label: "Configure Agents".into(),
                 hint: None,
                 icon: IconName::Bot,
-                keywords: "opencode claude codex acp agent".into(),
+                keywords: "opencode claude codex acp agent harness adapter".into(),
             },
             CommandItem {
                 command: Command::Settings(SettingsTab::Usage),
@@ -2481,6 +2511,9 @@ impl DunlinApp {
                 } else if section == SidebarSection::Search {
                     let handle = self.search_input.read(cx).focus_handle(cx);
                     window.focus(&handle, cx);
+                } else if section == SidebarSection::Files {
+                    self.sidebar_collapsed = false;
+                    self.focus_explorer(window, cx);
                 } else if section == SidebarSection::SourceControl {
                     self.open_git_history(window, cx);
                     if !self.git_loading {
@@ -2553,7 +2586,7 @@ impl DunlinApp {
                     self.open_spec_workspace(window, cx)
                 } else {
                     self.file_notice(
-                        "Spec, intent and agent-contract tools are disabled in Settings → General",
+                        "Spec, intent and agent-contract tools are disabled in Settings → Extensions",
                         cx,
                     )
                 }
@@ -2562,18 +2595,22 @@ impl DunlinApp {
                 if self.spec_tools_enabled {
                     self.capture_intent(window, cx)
                 } else {
-                    self.file_notice("Intent capture is disabled in Settings → General", cx)
+                    self.file_notice("Intent capture is disabled in Settings → Extensions", cx)
                 }
             }
             Command::AgentContract => {
                 if self.spec_tools_enabled {
                     self.open_agent_contract(window, cx)
                 } else {
-                    self.file_notice("The agent contract is disabled in Settings → General", cx)
+                    self.file_notice(
+                        "The agent contract is disabled in Settings → Extensions",
+                        cx,
+                    )
                 }
             }
             Command::Subtasks => self.open_subtask_worktrees(window, cx),
             Command::Budgets => self.open_task_budgets(window, cx),
+            Command::Coordination => self.toggle_bottom_panel(BottomPanel::Agents, window, cx),
             Command::Checks => self.open_checks(window, cx),
             Command::Context => self.open_context_inspector(window, cx),
             Command::Review => self.open_task_review(window, cx),
@@ -3028,6 +3065,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn open_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.settings_ui.project_focus = Some(cx.focus_handle());
         self.reset_project_color_picker();
         self.group_settings_draft = None;
         self.project_runtime_draft = None;
@@ -3038,6 +3076,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn close_project_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings_ui.project_focus = None;
         self.project_runtime_draft = None;
         self.project_settings_target = None;
         cx.notify();
@@ -3936,6 +3975,15 @@ impl DunlinApp {
             return;
         };
         let active = index == self.selected_project;
+        if self
+            .workbench
+            .tabs
+            .iter()
+            .any(|tab| tab.project == id && tab.saving)
+        {
+            self.file_notice("Wait for pending saves before removing the project", cx);
+            return;
+        }
         if self.workbench.tabs.iter().any(|tab| {
             tab.project == id && tab.dirty && Some(&tab.id) != self.workbench.active.as_ref()
         }) {
@@ -3999,6 +4047,9 @@ impl DunlinApp {
             self.remote_sessions_loading = false;
             self.close_inspector();
             self.diff_view = None;
+            self.explorer.search.clear(&mut self.file_tree);
+            self.explorer.selected = None;
+            self.explorer.scroll = ScrollHandle::new();
             self.file_tree = FileTree {
                 root: String::new(),
                 entries: Vec::new(),
@@ -4350,8 +4401,7 @@ impl DunlinApp {
         }
         if self.project_settings_target.is_some() {
             if event.keystroke.key == "escape" {
-                self.close_project_settings(cx);
-                self.focus_handle.focus(window, cx);
+                self.request_close_project_settings(window, cx);
                 cx.stop_propagation();
             }
             return;
@@ -4392,6 +4442,21 @@ impl DunlinApp {
         let keystroke = &event.keystroke;
         let platform = keystroke.modifiers.platform;
         let shift = keystroke.modifiers.shift;
+
+        if self.settings_open && platform {
+            match keystroke.key.as_str() {
+                "," => self.request_settings_location(Some(SettingsTab::General), window, cx),
+                "w" => self.request_settings_location(None, window, cx),
+                "f" => {
+                    if let Some(search) = &self.settings_ui.search {
+                        search.read(cx).focus_handle(cx).focus(window, cx);
+                    }
+                }
+                _ => return, // Let focused inputs own copy/paste, undo and selection.
+            }
+            cx.stop_propagation();
+            return;
+        }
 
         if self.project_import.open {
             if keystroke.key == "escape" {
@@ -4511,6 +4576,11 @@ impl DunlinApp {
                 }
                 _ => {}
             }
+        }
+
+        if self.explorer_key_down(event, window, cx) {
+            cx.stop_propagation();
+            return;
         }
 
         if (self.bottom_panel == BottomPanel::Terminal
@@ -4753,8 +4823,7 @@ impl DunlinApp {
 
         if keystroke.key == "escape" {
             if self.settings_open {
-                self.settings_open = false;
-                self.focus_handle.focus(window, cx);
+                self.request_settings_location(None, window, cx);
                 cx.stop_propagation();
                 cx.notify();
             } else if self.project_menu_open {
@@ -4882,6 +4951,7 @@ impl DunlinApp {
                 self.disconnect_harness(cx);
             }
             self.stop_project_runtimes(&stored.id, cx);
+            self.revoke_project_coordination(&stored.id, cx);
             self.notice = Some(format!("Untrusted {name} · harness stopped"));
         }
         cx.notify();
@@ -4989,6 +5059,8 @@ impl DunlinApp {
         self.remote_sessions_loading = false;
         self.selected_project = index;
         self.explorer.selected = None;
+        self.explorer.search.clear(&mut self.file_tree);
+        self.explorer.scroll = ScrollHandle::new();
         self.explorer.creation = None;
         self.explorer.expand_after_scan.clear();
         self.new_file_prompt = false;
@@ -5146,8 +5218,6 @@ impl DunlinApp {
                 return;
             }
         };
-        let mut expanded = self.file_tree.expanded_paths();
-        expanded.extend(self.explorer.expand_after_scan.iter().cloned());
         let expected = self.project().path.clone();
         let project = self.project().id.clone();
         self.explorer.tree_generation = self.explorer.tree_generation.wrapping_add(1);
@@ -5174,9 +5244,15 @@ impl DunlinApp {
                 match result {
                     Ok(mut tree) => {
                         if current || this.file_tree.entries.is_empty() {
+                            // Use live expansion state: a query or Escape may have changed
+                            // it while the filesystem/relay scan was running.
+                            let mut expanded = this.file_tree.expanded_paths();
+                            expanded.extend(this.explorer.expand_after_scan.iter().cloned());
                             tree.restore_expanded(&expanded);
                             this.explorer.expand_after_scan.clear();
+                            this.explorer.search.refresh(&mut tree);
                             this.file_tree = tree;
+                            this.select_explorer_search_match();
                         }
                     }
                     Err(error) => {
@@ -6015,10 +6091,9 @@ impl DunlinApp {
         {
             return;
         }
-        if self
-            .active_file_tab()
-            .is_some_and(|t| t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading)
-        {
+        if self.active_file_tab().is_some_and(|t| {
+            t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading || t.saving
+        }) {
             return;
         }
         if self.editor_dirty && !explicit {
@@ -6161,6 +6236,10 @@ impl DunlinApp {
     /// Close the inspector, discarding any unsaved editor buffer.
     /// Prompt before closing when the buffer has unsaved edits.
     pub(crate) fn request_close_inspector(&mut self, cx: &mut Context<Self>) {
+        if self.active_file_tab().is_some_and(|tab| tab.saving) {
+            self.file_notice("Wait for the file to finish saving before closing it", cx);
+            return;
+        }
         if self.git_history.is_active_for(self.project()) {
             self.close_git_history(cx);
             return;
@@ -6190,6 +6269,10 @@ impl DunlinApp {
     }
 
     pub(crate) fn discard_pending_editor(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.active_file_tab().is_some_and(|tab| tab.saving) {
+            self.file_notice("Wait for the pending save before discarding the buffer", cx);
+            return;
+        }
         if let Some(id) = self.workbench.active.take() {
             self.workbench
                 .panes
@@ -6272,46 +6355,9 @@ impl DunlinApp {
             cx.notify();
             return;
         }
-        let value = self.editor.read(cx).value().to_string();
-        let backend = match self.backend() {
-            Ok(backend) => backend,
-            Err(error) => {
-                if announce {
-                    self.notice = Some(error);
-                }
-                cx.notify();
-                return;
-            }
-        };
-        match backend.write_file(&inspector.path, &value, expected_mtime) {
-            Ok(stat) => {
-                self.record_saved_editor_text(value);
-                self.remember_dashboard_project(cx);
-                self.editor_dirty = false;
-                self.editor_mtime = Some(stat.mtime_ms);
-                self.editor_conflict = None;
-                if announce {
-                    self.notice = Some(format!("Saved {}", inspector.name));
-                }
-                self.refresh_git_status(cx);
-            }
-            Err(error) if error.starts_with("conflict:") => {
-                self.editor_conflict = Some(EditorConflict {
-                    path: inspector.path.clone(),
-                    message: error,
-                });
-                self.notice = Some(format!(
-                    "{} changed elsewhere · reload or overwrite",
-                    inspector.name
-                ));
-            }
-            Err(error) => {
-                if announce {
-                    self.notice = Some(format!("Could not save {}: {error}", inspector.name));
-                }
-            }
+        if let Some(id) = self.active_file_tab().map(|tab| tab.id.clone()) {
+            self.save_file_tab(&id, expected_mtime, announce, cx);
         }
-        cx.notify();
     }
 
     pub(crate) fn cancel_editor_conflict(&mut self, cx: &mut Context<Self>) {
@@ -6320,7 +6366,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn reload_editor_conflict(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.git_history.running {
+        if self.git_history.running || self.active_file_tab().is_some_and(|tab| tab.saving) {
             return;
         }
         if let Some(id) = self.workbench.active.clone()
@@ -6339,7 +6385,7 @@ impl DunlinApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.git_history.running {
+        if self.git_history.running || self.active_file_tab().is_some_and(|tab| tab.saving) {
             return;
         }
         if self.active_file_tab().is_some_and(|t| t.git_changed) {
@@ -6384,10 +6430,9 @@ impl DunlinApp {
         if self.git_history.running || self.active_file_tab().is_some_and(|t| t.git_changed) {
             return;
         }
-        if self
-            .active_file_tab()
-            .is_some_and(|t| t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading)
-        {
+        if self.active_file_tab().is_some_and(|t| {
+            t.kind != dunlin_workspace::preview::PreviewKind::Text || t.loading || t.saving
+        }) {
             return;
         }
         if self.editor_dirty || self.editor_stale || self.editor_conflict.is_some() {
@@ -6414,6 +6459,8 @@ impl DunlinApp {
                     .await;
                 this.update(cx, |this, cx| {
                     if this.git_history.running
+                        || this.editor_dirty
+                        || this.editor_conflict.is_some()
                         || this.active_file_tab().is_some_and(|t| t.git_changed)
                         || this
                             .active_file_tab()
@@ -6430,7 +6477,8 @@ impl DunlinApp {
                         && this.editor_mtime == known
                         && known != Some(stat.mtime_ms)
                     {
-                        this.editor_mtime = Some(stat.mtime_ms);
+                        // This is an observation, not the version of our buffer.
+                        // Only a successful reload may advance the save baseline.
                         this.editor_stale = true;
                         cx.notify();
                     }
@@ -6444,7 +6492,6 @@ impl DunlinApp {
             return;
         };
         if self.editor_mtime != Some(modified) {
-            self.editor_mtime = Some(modified);
             self.editor_stale = true;
             cx.notify();
         }
@@ -6901,6 +6948,17 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
             });
             return false;
         }
+        if handle
+            .read_with(cx, |this, _| {
+                this.workbench.tabs.iter().any(|tab| tab.saving)
+            })
+            .unwrap_or(false)
+        {
+            let _ = handle.update(cx, |this, cx| {
+                this.file_notice("Wait for pending file saves before quitting", cx)
+            });
+            return false;
+        }
         let (dirty, busy, checkout) = handle
             .read_with(cx, |this, _| {
                 (
@@ -6963,13 +7021,25 @@ pub(crate) fn install_close_guard(window: &mut Window, cx: &mut Context<DunlinAp
         cx.spawn(async move |cx| {
             let answer = receiver.await;
             prompting.set(false);
-            let quit = if dirty && answer == Ok(0) {
-                handle
-                    .update(cx, |this, cx| this.save_all_tabs(cx))
-                    .unwrap_or(false)
-            } else {
-                answer == Ok(1)
-            };
+            if dirty && answer == Ok(0) {
+                let _ = handle.update(cx, |this, cx| {
+                    this.save_tabs_then(None, cx, move |this, cx| {
+                        if this.has_dirty_tabs()
+                            || this.branch_ui.running()
+                            || this.git_history.running
+                            || this.session_import.applying
+                            || this.explorer.busy
+                            || this.group_cleanup.busy
+                        {
+                            return;
+                        }
+                        confirmed.set(true);
+                        cx.quit();
+                    });
+                });
+                return;
+            }
+            let quit = answer == Ok(1);
             if quit {
                 if handle
                     .read_with(cx, |this, _| {

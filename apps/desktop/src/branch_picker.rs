@@ -6,9 +6,9 @@ use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     assets::IconName,
     component::{
-        Icon, Sizable,
+        Icon, Selectable, Sizable,
         button::ButtonVariants,
-        input::{Input, InputEvent, InputState},
+        input::{InputEvent, InputState},
     },
     *,
 };
@@ -406,8 +406,9 @@ fn branch_badge(
     } else {
         label
     };
-    div()
-        .id(id)
+    dunlin_ui::button(id)
+        .small()
+        .accessibility_label(format!("Switch Git branch · {label}"))
         .relative()
         .children({
             #[cfg(debug_assertions)]
@@ -423,10 +424,9 @@ fn branch_badge(
                 None::<AnyElement>
             }
         })
-        .aria_label(format!("Switch Git branch · {label}"))
         .px(px(6.))
         .py(px(3.))
-        .rounded(px(5.))
+        .rounded(px(dunlin_ui::radii::ICON))
         .flex()
         .items_center()
         .gap(px(5.))
@@ -435,8 +435,6 @@ fn branch_badge(
         .when(presentation == Presentation::StatusBar, |badge| {
             badge.text_sm().text_color(p.fg)
         })
-        .cursor_pointer()
-        .hover(move |style| style.bg(p.hover).text_color(p.fg))
         .on_click(cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
             this.open_branch_picker_with(&project, presentation, window, cx);
@@ -481,43 +479,43 @@ pub(crate) fn render(this: &DunlinApp, window: &Window, cx: &mut Context<DunlinA
             let branch = branch.clone();
             let current = branch == context.current;
             rows = rows.child(
-                div()
-                    .id(format!("branch-choice:{index}"))
-                    .px(px(9.))
-                    .h(px(layout.row))
-                    .flex_shrink_0()
-                    .text_size(px(if compact { 12. } else { 13. }))
-                    .rounded(px(6.))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .cursor_pointer()
-                    .when(index == picker.selected, |row| row.bg(p.accent))
-                    .hover(move |style| style.bg(p.hover))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.choose_branch(&branch, window, cx)
-                    }))
-                    .when(!compact, |row| {
-                        row.child(Icon::new(IconName::GitBranch).size(px(13.)))
-                    })
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .truncate()
-                            .child(branches[index].clone()),
-                    )
-                    .when(current, |row| {
-                        if compact {
-                            row.child(
-                                Icon::new(IconName::Check)
-                                    .size(px(12.))
-                                    .text_color(p.muted_fg),
-                            )
-                        } else {
-                            row.child(div().text_size(px(10.)).text_color(p.blue).child("Current"))
-                        }
-                    }),
+                action_row(
+                    format!("branch-choice:{index}"),
+                    format!("Switch to branch {branch}"),
+                )
+                .px(px(9.))
+                .h(px(layout.row))
+                .flex_shrink_0()
+                .text_size(px(if compact { 12. } else { 13. }))
+                .rounded(px(dunlin_ui::radii::ROW))
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .selected(index == picker.selected)
+                .on_click(
+                    cx.listener(move |this, _, window, cx| this.choose_branch(&branch, window, cx)),
+                )
+                .when(!compact, |row| {
+                    row.child(Icon::new(IconName::GitBranch).size(px(13.)))
+                })
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .truncate()
+                        .child(branches[index].clone()),
+                )
+                .when(current, |row| {
+                    if compact {
+                        row.child(
+                            Icon::new(IconName::Check)
+                                .size(px(12.))
+                                .text_color(p.muted_fg),
+                        )
+                    } else {
+                        row.child(div().text_size(px(10.)).text_color(p.blue).child("Current"))
+                    }
+                }),
             );
         }
         if branches.is_empty() {
@@ -601,7 +599,7 @@ pub(crate) fn render(this: &DunlinApp, window: &Window, cx: &mut Context<DunlinA
                 .px(px(12.))
                 .flex()
                 .items_center()
-                .child(Input::new(&picker.filter).small()),
+                .child(search_input(&picker.filter, "Filter local branches")),
         )
         .child(
             div()

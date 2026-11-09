@@ -42,7 +42,7 @@ pub struct CatalogPlugin {
 
 pub fn catalog() -> Vec<CatalogPlugin> {
     let manifest = parse(GOVERNANCE_MANIFEST).expect("bundled governance manifest is valid");
-    let manifest_hash = format!("{:x}", Sha256::digest(GOVERNANCE_MANIFEST.as_bytes()));
+    let manifest_hash = hex::encode(Sha256::digest(GOVERNANCE_MANIFEST.as_bytes()));
     vec![CatalogPlugin {
         id: manifest.id.clone(),
         manifest,
@@ -411,7 +411,7 @@ pub fn load_dir_with_hash(directory: &Path) -> Result<(Manifest, String), String
     }
     let contents = fs::read_to_string(&path)
         .map_err(|error| format!("Cannot read {}: {error}", path.display()))?;
-    let hash = format!("{:x}", Sha256::digest(contents.as_bytes()));
+    let hash = hex::encode(Sha256::digest(contents.as_bytes()));
     Ok((parse(&contents)?, hash))
 }
 
@@ -430,7 +430,7 @@ pub fn discover(external: Option<&Path>) -> (Vec<LoadedPack>, Vec<String>) {
                     manifest,
                     source: Source::Bundled,
                     directory: None,
-                    manifest_hash: format!("{:x}", Sha256::digest(contents.as_bytes())),
+                    manifest_hash: hex::encode(Sha256::digest(contents.as_bytes())),
                 });
             }
             Ok(_) => warnings.push(format!("Bundled plugin {expected} has a mismatched id")),
@@ -570,11 +570,11 @@ mod tests {
         let plugin = &catalog[0];
         assert_eq!(plugin.id, "dunlin-governance");
         assert!(plugin.manifest.wasm.is_some());
-        let wasm_hash = format!("{:x}", Sha256::digest(plugin.wasm));
+        let wasm_hash = hex::encode(Sha256::digest(plugin.wasm));
         assert_eq!(wasm_hash, plugin.manifest.wasm.as_ref().unwrap().sha256);
         assert_eq!(
             plugin.manifest_hash,
-            format!("{:x}", Sha256::digest(plugin.manifest_text.as_bytes()))
+            hex::encode(Sha256::digest(plugin.manifest_text.as_bytes()))
         );
     }
 

@@ -9,7 +9,7 @@ use crate::{app::DunlinApp, providers, remote};
 
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Scope {
     pub location: String,
     pub remote: bool,

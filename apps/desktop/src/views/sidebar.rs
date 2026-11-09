@@ -9,7 +9,6 @@ use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
 use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::Input;
 use dunlin_ui::component::menu::{ContextMenuExt, DropdownMenu, PopupMenu, PopupMenuItem};
 use dunlin_ui::component::{Disableable, Selectable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -44,12 +43,14 @@ pub(crate) fn render(
         .id("sidebar-scroll")
         .flex_1()
         .min_h(px(0.))
-        .when(section == SidebarSection::Sessions, |view| {
-            view.flex().flex_col().overflow_hidden()
-        })
-        .when(section != SidebarSection::Sessions, |view| {
-            view.overflow_y_scroll()
-        })
+        .when(
+            matches!(section, SidebarSection::Sessions | SidebarSection::Files),
+            |view| view.flex().flex_col().overflow_hidden(),
+        )
+        .when(
+            !matches!(section, SidebarSection::Sessions | SidebarSection::Files),
+            |view| view.overflow_y_scroll(),
+        )
         .when(section == SidebarSection::Files, |view| {
             crate::explorer::drop_target(view, this.project().path.clone(), cx)
         })
@@ -93,7 +94,7 @@ pub(crate) fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) ->
     .max_w(px(310.))
     .flex_shrink_0()
     .px(px(10.))
-    .rounded(px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
+    .rounded(px(dunlin_ui::radii::FOLDER_TAB))
     .border_1()
     .border_color(p.fg.opacity(0.06))
     .bg(p.fg.opacity(0.035))
@@ -300,7 +301,7 @@ fn projects_body(this: &mut DunlinApp, width: f32, cx: &mut Context<DunlinApp>) 
         || cx.has_active_drag_of::<crate::project_groups::GroupDrag>()
         || this.editing_project_tree;
     if dragging {
-        list = list.child(div().p(px(9.)).mb(px(6.)).rounded(px(7.)).bg(p.blue_soft).text_size(px(11.)).text_color(p.blue).child("Drag projects into groups. Drop groups on an insertion line to reorder, or inside another group to nest. Files stay in place."));
+        list = list.child(div().p(px(9.)).mb(px(6.)).rounded(px(dunlin_ui::radii::CONTROL)).bg(p.blue_soft).text_size(px(11.)).text_color(p.blue).child("Drag projects into groups. Drop groups on an insertion line to reorder, or inside another group to nest. Files stay in place."));
     }
     let groups = this.project_groups.clone();
     let modified: std::collections::HashMap<_, _> = this
@@ -393,7 +394,7 @@ fn projects_body(this: &mut DunlinApp, width: f32, cx: &mut Context<DunlinApp>) 
                         .id(format!("group-insert:{}", group.id))
                         .ml(px(depth.min(8) as f32 * 12.))
                         .h(px(14.))
-                        .rounded(px(4.))
+                        .rounded(px(dunlin_ui::radii::CODE))
                         .border_1()
                         .border_dashed()
                         .border_color(p.border_strong)
@@ -617,7 +618,7 @@ fn project_sessions(
                 })
                 .px(px(6.))
                 .py(px(if compact { 2. } else { 5. }))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .cursor_pointer()
                 .hover(move |s| s.bg(p.hover))
                 .when(
@@ -679,17 +680,18 @@ fn project_sessions(
     rows.into_any_element()
 }
 
-fn project_view_controls(this: &DunlinApp, cx: &mut Context<DunlinApp>, p: &Palette) -> AnyElement {
+fn project_view_controls(
+    this: &DunlinApp,
+    cx: &mut Context<DunlinApp>,
+    _p: &Palette,
+) -> AnyElement {
     let row = div().flex().items_center().gap(px(3.)).pb(px(6.));
     row.child(
-        div().id("project-sessions-filter").aria_label("Toggle running sessions only")
-            .px(px(6.)).py(px(4.)).rounded(px(5.)).text_size(px(10.))
-            .text_color(if this.project_sessions_running_only { p.blue } else { p.muted_fg })
-            .cursor_pointer().hover(move |s| s.bg(p.hover))
+        segment_button("project-sessions-filter", if this.project_sessions_running_only { "Running only" } else { "Running + 8h" }, this.project_sessions_running_only)
+            .accessibility_label("Toggle running sessions only")
             .on_click(cx.listener(|this, _, _, cx| {
                 this.project_sessions_running_only = !this.project_sessions_running_only; cx.notify();
             }))
-            .child(if this.project_sessions_running_only { "Running only" } else { "Running + 8h" })
     ).child(div().flex_1())
         .child(dunlin_ui::button("edit-project-tree").ghost().small()
             .label(if this.editing_project_tree { "Done" } else { "Edit tree" })
@@ -814,7 +816,7 @@ fn project_group_drop_zone(
     let project_group = group.clone();
     div()
         .id(format!("group-drop-zone:{key}"))
-        .rounded(px(8.))
+        .rounded(px(dunlin_ui::radii::PANEL))
         .border_2()
         .border_color(if dragging {
             p.border_strong
@@ -927,10 +929,10 @@ fn group_header(
         .mt(px(dunlin_ui::scale::space(3.)))
         .flex_col()
         .px(px(7.))
-        .rounded(px(6.))
+        .rounded(px(dunlin_ui::radii::ROW))
         .flex()
         .gap(px(2.))
-        .child(div().id(format!("group-collapse-{}", group.id)).h(px(dunlin_ui::scale::control(34.))).flex().items_center().gap(px(5.)).cursor_pointer().rounded(px(5.)).hover(move |style| style.bg(p.hover)).on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
+        .child(div().id(format!("group-collapse-{}", group.id)).h(px(dunlin_ui::scale::control(34.))).flex().items_center().gap(px(5.)).cursor_pointer().rounded(px(dunlin_ui::radii::ICON)).hover(move |style| style.bg(p.hover)).on_drag(drag, |drag, _, _, cx| cx.new(|_| drag.clone()))
         .on_click(cx.listener(move |this, _, _, cx| {
             this.toggle_project_group(&id, cx);
         }))
@@ -1027,7 +1029,7 @@ fn chat_space_row(
         .id(("chat-space-row", index))
         .h(px(36.))
         .px(px(8.))
-        .rounded(px(7.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .flex()
         .items_center()
         .gap(px(8.))
@@ -1150,7 +1152,7 @@ fn project_row(
         )))
         .py(px(if compact { 2. } else { 5. }))
         .px(px(8.))
-        .rounded(px(8.))
+        .rounded(px(dunlin_ui::radii::PANEL))
         .flex()
         .items_center()
         .gap(px(dunlin_ui::scale::space(8.)))
@@ -1368,7 +1370,7 @@ pub(crate) fn project_group_picker(
         .mx(px(4.))
         .mb(px(3.))
         .p(px(7.))
-        .rounded(px(7.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .border_1()
         .border_color(p.border)
         .bg(p.subtle)
@@ -1388,17 +1390,26 @@ pub(crate) fn project_group_picker(
 
 fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let selected = this
+    let focus = this
         .explorer
-        .selected
-        .as_ref()
-        .filter(|(project, _, _)| project == &this.project().id)
-        .map(|(_, path, _)| path.clone())
-        .or_else(|| {
-            this.inspector
-                .as_ref()
-                .map(|inspector| inspector.path.clone())
-        });
+        .focus
+        .get_or_insert_with(|| cx.focus_handle())
+        .clone();
+    let query = this.explorer.search.query.clone();
+    let selected = if query.is_empty() {
+        this.explorer
+            .selected
+            .as_ref()
+            .filter(|(project, _, _)| project == &this.project().id)
+            .map(|(_, path, _)| path.clone())
+            .or_else(|| {
+                this.inspector
+                    .as_ref()
+                    .map(|inspector| inspector.path.clone())
+            })
+    } else {
+        this.explorer.search.current().map(|entry| entry.path.clone())
+    };
     let root_path = this.project().path.clone();
     let project = this.project().id.clone();
     let app = cx.entity().downgrade();
@@ -1408,15 +1419,51 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         &project,
         &root_path,
         this.show_file_sizes,
+        &query,
         cx,
     );
 
     let mut root = div()
         .id("explorer-files")
+        .track_focus(&focus)
+        .flex_1()
+        .min_h(px(0.))
         .flex()
         .flex_col()
-        .pb(px(10.))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, window, cx| {
+                this.focus_explorer(window, cx);
+            }),
+        )
         .context_menu(move |menu, _, _| creation_menu(menu, &app, &root_path));
+
+    if !query.is_empty() {
+        let count = this.explorer.search.matches.len();
+        let position = this.explorer.search.index.map_or(0, |index| index + 1);
+        root = root.child(
+            div()
+                .id("explorer-speed-search")
+                .flex_shrink_0()
+                .mx(px(8.))
+                .my(px(5.))
+                .px(px(7.))
+                .py(px(5.))
+                .rounded(px(dunlin_ui::radii::ICON))
+                .bg(if count == 0 { p.amber_soft } else { p.subtle })
+                .text_size(px(11.))
+                .text_color(if count == 0 { p.amber } else { p.fg })
+                .overflow_hidden()
+                .child(format!(
+                    "{query}  ·  {}  ·  Esc to clear",
+                    if count == 0 {
+                        "No matches".to_string()
+                    } else {
+                        format!("{position}/{count}")
+                    }
+                )),
+        );
+    }
 
     if let Some(error) = this.file_tree.error.clone() {
         root = root.child(
@@ -1424,14 +1471,24 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .mx(px(8.))
                 .mt(px(8.))
                 .p(px(9.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.amber_soft)
                 .text_size(px(11.5))
                 .text_color(p.amber)
                 .child(error),
         );
-    } else if rows.is_empty() {
-        root = root.child(
+    }
+    let mut tree = div()
+        .id("explorer-files-tree")
+        .flex_1()
+        .min_h(px(0.))
+        .flex()
+        .flex_col()
+        .overflow_y_scroll()
+        .track_scroll(&this.explorer.scroll)
+        .pb(px(10.));
+    if rows.is_empty() && this.file_tree.error.is_none() {
+        tree = tree.child(
             div()
                 .mx(px(8.))
                 .mt(px(8.))
@@ -1445,9 +1502,9 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 }),
         );
     } else {
-        root = root.children(rows);
+        tree = tree.children(rows);
     }
-    root.into_any_element()
+    root.child(tree).into_any_element()
 }
 
 fn file_rows(
@@ -1456,6 +1513,7 @@ fn file_rows(
     project: &str,
     root: &str,
     show_sizes: bool,
+    query: &str,
     cx: &mut Context<DunlinApp>,
 ) -> Vec<AnyElement> {
     let p = palette(cx);
@@ -1485,6 +1543,7 @@ fn file_rows(
         let mut row = div()
             .id(format!("file-row:{path}"))
             .h(px(dunlin_ui::scale::control(24.)))
+            .flex_shrink_0()
             .pl(px(7. + depth as f32 * 13.))
             .pr(px(8.))
             .flex()
@@ -1495,12 +1554,16 @@ fn file_rows(
             .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.select_explorer_entry(&select_path, is_dir);
+                this.explorer.search.select_path(&select_path);
                 if is_dir {
                     this.toggle_folder(&path, cx);
                 } else {
                     this.open_file(&path, window, cx);
                     cx.notify();
                 }
+                // Clicking a tree row keeps typing in the Explorer; Enter opens
+                // the selected search result with the editor's usual focus.
+                this.focus_explorer(window, cx);
             }));
         if show_sizes {
             let kind = if is_dir { "Folder" } else { "File" };
@@ -1536,7 +1599,20 @@ fn file_rows(
                     .text_size(px(12.5))
                     .text_color(if active { p.fg } else { p.fg.opacity(0.86) })
                     .truncate()
-                    .child(name),
+                    .child(
+                        StyledText::new(name.clone()).with_highlights(
+                            crate::explorer::search::match_ranges(&name, query)
+                                .into_iter()
+                                .map(|range| {
+                                    (range, HighlightStyle {
+                                        color: Some(p.blue),
+                                        background_color: Some(p.blue_soft),
+                                        font_weight: Some(FontWeight::BOLD),
+                                        ..Default::default()
+                                    })
+                                }),
+                        ),
+                    ),
             );
 
         let parent = if is_dir {
@@ -1570,6 +1646,7 @@ fn file_rows(
                 project,
                 root,
                 show_sizes,
+                query,
                 cx,
             ));
         }
@@ -1626,16 +1703,8 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
     let hits = this.search_hits.clone();
     let loading = this.search_loading;
 
-    let input = Input::new(&this.search_input)
-        .appearance(false)
-        .bordered(false)
+    let input = search_input(&this.search_input, "Search project files")
         .cleanable(true)
-        .h(px(28.))
-        .prefix(
-            Icon::new(IconName::Search)
-                .size(px(12.5))
-                .text_color(p.muted_fg),
-        )
         .suffix(
             div()
                 .text_size(px(11.0))
@@ -1651,12 +1720,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         .child(
             div()
                 .mx(px(6.))
-                .px(px(6.))
-                .h(px(30.))
-                .rounded(px(7.))
-                .border_1()
-                .border_color(p.border)
-                .bg(p.card)
+                .py(px(4.))
                 .flex()
                 .items_center()
                 .gap(px(4.))
@@ -1664,6 +1728,7 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 .child(
                     dunlin_ui::button("run-search")
                         .primary()
+                        .small()
                         .label("Run")
                         .on_click(cx.listener(|this, _, _, cx| this.run_search(cx))),
                 ),
@@ -1717,61 +1782,66 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         let (file_icon, file_color) = crate::file_icons::appearance(&file, &p);
 
         root_el = root_el.child(
-            div()
-                .id(format!("search-hit:{path}:{line}"))
-                .px(px(9.))
-                .py(px(6.))
-                .mx(px(6.))
-                .rounded(px(6.))
-                .flex()
-                .flex_col()
-                .gap(px(3.))
-                .cursor_pointer()
-                .hover(move |style| style.bg(p.hover))
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_search_hit(&hit_path, hit_line, window, cx);
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .child(Icon::new(file_icon).size(px(11.5)).text_color(file_color))
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(p.fg)
-                                .child(file),
-                        )
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w(px(0.))
-                                .text_size(px(11.0))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg.opacity(0.7))
-                                .truncate()
-                                .child(directory),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg)
-                                .child(format!(":{line}")),
-                        ),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .line_height(relative(1.45))
-                        .truncate()
-                        .child(preview.clone()),
-                ),
+            action_row(
+                format!("search-hit:{path}:{line}"),
+                format!("Open {display} at line {line}"),
+            )
+            .px(px(9.))
+            .py(px(6.))
+            .mx(px(6.))
+            .rounded(px(dunlin_ui::radii::ROW))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_search_hit(&hit_path, hit_line, window, cx);
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .w_full()
+                    .min_w(px(0.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .child(Icon::new(file_icon).size(px(11.5)).text_color(file_color))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.fg)
+                                    .child(file),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg.opacity(0.7))
+                                    .truncate()
+                                    .child(directory),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .text_color(p.muted_fg)
+                                    .child(format!(":{line}")),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .font_family(dunlin_ui::theme::code_font())
+                            .text_color(p.muted_fg)
+                            .line_height(relative(1.45))
+                            .truncate()
+                            .child(preview.clone()),
+                    ),
+            ),
         );
     }
 
@@ -1836,7 +1906,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     let header = div()
         .mx(px(6.))
         .p(px(9.))
-        .rounded(px(8.))
+        .rounded(px(dunlin_ui::radii::PANEL))
         .bg(p.fg.opacity(0.045))
         .flex()
         .flex_col()
@@ -1871,34 +1941,23 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         .text_size(px(11.0))
                         .font_family(dunlin_ui::theme::code_font())
                         .text_color(p.muted_fg)
-                        .child(format!(
-                            "{change_count} {}",
-                            if change_count == 1 {
-                                "change"
-                            } else {
-                                "changes"
-                            }
-                        )),
+                        .flex()
+                        .items_center()
+                        .child(
+                            MorphText::new("git-total-count", change_count.to_string())
+                                .numeric()
+                                .scope(this.project().id.clone())
+                                .reduce_motion(this.reduce_motion),
+                        )
+                        .child(if change_count == 1 {
+                            " change"
+                        } else {
+                            " changes"
+                        }),
                 ),
         )
         .when(!ai, |header| {
-            header.child(
-                div()
-                    .h(px(26.))
-                    .px(px(6.))
-                    .rounded(px(5.))
-                    .border_1()
-                    .border_color(p.border)
-                    .bg(p.sidebar)
-                    .flex()
-                    .items_center()
-                    .child(
-                        Input::new(&this.commit_input)
-                            .appearance(false)
-                            .bordered(false)
-                            .h(px(24.)),
-                    ),
-            )
+            header.child(compact_input(&this.commit_input).aria_label("Commit message"))
         })
         .child(
             dunlin_ui::button("commit-button")
@@ -1987,16 +2046,12 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         ] {
             let owner = this.project().id.clone();
             actions = actions.child(
-                div()
-                    .id(format!("source-control:{label}"))
-                    .text_size(px(11.))
-                    .text_color(if label.starts_with("Discard") {
-                        p.red
-                    } else {
-                        p.blue
+                dunlin_ui::button(format!("source-control:{label}"))
+                    .small()
+                    .label(label)
+                    .when(label.starts_with("Discard"), |button| {
+                        button.danger().outline()
                     })
-                    .cursor_pointer()
-                    .child(label)
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if this.project().id == owner {
                             this.request_git_action(action.clone(), window, cx);
@@ -2012,7 +2067,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             div()
                 .mx(px(6.))
                 .p(px(9.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .bg(p.red_soft)
                 .flex()
                 .items_start()
@@ -2066,12 +2121,28 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     for change in &changes {
         if section != Some(change.staged) {
             section = Some(change.staged);
-            let label = if change.staged {
-                format!("STAGED · {staged_count}")
+            let (id, label, count) = if change.staged {
+                ("git-staged-count", "STAGED · ", staged_count)
             } else {
-                format!("CHANGES · {worktree_count}")
+                ("git-worktree-count", "CHANGES · ", worktree_count)
             };
-            list = list.child(group_label(&label, &p));
+            list = list.child(
+                div()
+                    .px(px(12.))
+                    .h(px(24.))
+                    .flex()
+                    .items_center()
+                    .text_size(px(11.))
+                    .font_family(dunlin_ui::theme::code_font())
+                    .text_color(p.muted_fg.opacity(0.75))
+                    .child(label)
+                    .child(
+                        MorphText::new(id, count.to_string())
+                            .numeric()
+                            .scope(this.project().id.clone())
+                            .reduce_motion(this.reduce_motion),
+                    ),
+            );
         }
         let path = change.path.clone();
         let file_name = Path::new(&path)
@@ -2116,7 +2187,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .mx(px(6.))
                 .px(px(7.))
                 .h(px(dunlin_ui::scale::control(29.)))
-                .rounded(px(6.))
+                .rounded(px(dunlin_ui::radii::ROW))
                 .flex()
                 .items_center()
                 .gap(px(6.))
@@ -2129,7 +2200,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .child(
                     div()
                         .size(px(15.))
-                        .rounded(px(4.))
+                        .rounded(px(dunlin_ui::radii::CODE))
                         .bg(soft)
                         .flex()
                         .items_center()
@@ -2272,7 +2343,7 @@ fn knowledge_body(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             div()
                 .px(px(8.))
                 .py(px(5.))
-                .rounded(px(5.))
+                .rounded(px(dunlin_ui::radii::ICON))
                 .flex()
                 .items_center()
                 .gap(px(6.))
@@ -2429,7 +2500,7 @@ fn sessions_section(
                 .mx(px(6.))
                 .px(px(8.))
                 .py(px(7.))
-                .rounded(px(7.))
+                .rounded(px(dunlin_ui::radii::CONTROL))
                 .flex()
                 .flex_col()
                 .gap(px(2.))
@@ -2591,10 +2662,15 @@ fn sessions_section(
     section.into_any_element()
 }
 
-pub(crate) fn account_usage_panel(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+pub(crate) fn account_usage_panel(
+    this: &mut DunlinApp,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
     let p = palette(cx);
     let usages = this.active_usages();
     let refreshing = this.usage_request.as_ref() == Some(&this.usage_target());
+    let usage_scope = format!("{:?}", this.usage_target());
 
     let mut footer = div()
         .id("account-usage-panel")
@@ -2702,8 +2778,19 @@ pub(crate) fn account_usage_panel(this: &mut DunlinApp, cx: &mut Context<DunlinA
                     .child(usage.detail.clone()),
             );
         }
-        for window in &usage.windows {
-            let percent = window.used_percent.clamp(0.0, 100.0);
+        for quota in &usage.windows {
+            let percent = quota.used_percent.clamp(0.0, 100.0);
+            let displayed_percent = dunlin_ui::base::transition(
+                format!("usage-bar:{usage_scope}:{}:{}", usage.provider, quota.label),
+                percent,
+                dunlin_ui::base::Transition::new(if this.reduce_motion {
+                    std::time::Duration::ZERO
+                } else {
+                    std::time::Duration::from_millis(220)
+                }),
+                window,
+                cx,
+            );
 
             content = content.child(
                 div()
@@ -2723,37 +2810,37 @@ pub(crate) fn account_usage_panel(this: &mut DunlinApp, cx: &mut Context<DunlinA
                                     .truncate()
                                     .text_size(px(10.5))
                                     .text_color(p.muted_fg)
-                                    .child(window.label.clone()),
+                                    .child(quota.label.clone()),
                             )
                             .child(
                                 div()
                                     .flex_shrink_0()
                                     .text_size(px(10.0))
                                     .text_color(p.muted_fg)
-                                    .child(window.resets_in.clone()),
+                                    .child(quota.resets_in.clone()),
                             )
                             .child(
                                 div()
                                     .text_size(px(11.0))
                                     .font_family(dunlin_ui::theme::code_font())
                                     .text_color(p.muted_fg)
-                                    .child(format!("{percent:.0}%")),
+                                    .child(
+                                        MorphText::new(
+                                            format!(
+                                                "usage-percent:{}:{}",
+                                                usage.provider, quota.label
+                                            ),
+                                            format!("{percent:.0}%"),
+                                        )
+                                        .numeric()
+                                        .scope(usage_scope.clone())
+                                        .reduce_motion(this.reduce_motion),
+                                    ),
                             ),
                     )
                     .child(
-                        div()
-                            .h(px(3.))
-                            .w_full()
-                            .rounded_full()
-                            .bg(p.muted)
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(relative(percent / 100.0))
-                                    .rounded_full()
-                                    .bg(if percent > 85. { p.red } else { tone }),
-                            ),
+                        progress_bar(displayed_percent, if percent > 85. { p.red } else { tone }, p.muted)
+                            .h(px(3.)),
                     ),
             );
         }
@@ -2797,43 +2884,48 @@ fn project_menu_row(
     let active = index == this.selected_project;
     let name = project.name.clone();
 
-    let row = div()
-        .id(("project-menu-row", index))
-        .h(px(42.))
-        .flex_shrink_0()
-        .px(px(6.))
-        .rounded(px(6.))
-        .flex()
-        .items_center()
-        .gap(px(7.))
-        .cursor_pointer()
-        .when(active, |this| this.bg(p.accent))
-        .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.select_project(index, cx);
-            if this.selected_project == index {
-                this.project_menu_open = false;
-                cx.notify();
-            }
-        }))
-        .child(div().w(px(12.)).flex_shrink_0())
-        .child(crate::project_icons::render(this, project, 24., p))
-        .child(
-            div()
-                .flex_1()
-                .min_w(px(0.))
-                .text_size(px(13.0))
-                .font_weight(FontWeight::NORMAL)
-                .text_color(p.fg)
-                .truncate()
-                .child(name),
-        )
-        .when(active, |this| {
-            this.child(Icon::new(IconName::Check).size(px(11.)).text_color(p.fg))
-        });
+    let row = action_row(
+        ("project-menu-row", index),
+        format!("Switch to {}", project.name),
+    )
+    .h(px(42.))
+    .flex_shrink_0()
+    .px(px(6.))
+    .rounded(px(dunlin_ui::radii::ROW))
+    .flex()
+    .items_center()
+    .gap(px(7.))
+    .selected(active)
+    .on_click(cx.listener(move |this, _, _, cx| {
+        this.select_project(index, cx);
+        if this.selected_project == index {
+            this.project_menu_open = false;
+            cx.notify();
+        }
+    }))
+    .child(div().w(px(12.)).flex_shrink_0())
+    .child(crate::project_icons::render(this, project, 24., p))
+    .child(
+        div()
+            .flex_1()
+            .min_w(px(0.))
+            .text_size(px(13.0))
+            .font_weight(FontWeight::NORMAL)
+            .text_color(p.fg)
+            .truncate()
+            .child(name),
+    )
+    .when(active, |this| {
+        this.child(Icon::new(IconName::Check).size(px(11.)).text_color(p.fg))
+    });
     #[cfg(debug_assertions)]
-    let row = row
+    // A button mounts children inside its padded label container. Measure the
+    // complete hit target, not that inner content, just as group headers do.
+    let row = div()
         .relative()
+        .w_full()
+        .flex_shrink_0()
+        .child(row)
         .when(active, |r| {
             r.children(crate::workspace_ui_smoke::probe("project-menu-active-row"))
         })
@@ -2855,7 +2947,7 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
             cx.notify();
         }))
         .popover_style(cx)
-        .rounded(px(dunlin_ui::scale::RADIUS_LG.min(32. / 3.)))
+        .rounded(px(dunlin_ui::radii::FOLDER_TAB))
         .occlude()
         .absolute()
         .top(px(44.))
@@ -2900,7 +2992,7 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
             .h(px(32.))
             .flex_shrink_0()
             .px(px(6.))
-            .rounded(px(6.))
+            .rounded(px(dunlin_ui::radii::ROW))
             .flex()
             .items_center()
             .gap(px(7.))
@@ -3030,7 +3122,7 @@ fn empty_state(icon_name: IconName, title: &str, body: &str, p: &Palette) -> Any
         .child(
             div()
                 .size(px(30.))
-                .rounded(px(9.))
+                .rounded(px(dunlin_ui::radii::MESSAGE))
                 .bg(p.muted)
                 .flex()
                 .items_center()

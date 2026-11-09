@@ -3,11 +3,8 @@ mod data;
 use crate::app::{Appearance, DunlinApp};
 use data::Backup;
 use dunlin_ui::{
-    component::{
-        Disableable, Selectable,
-        button::Button,
-        input::{Input, InputState},
-    },
+    component::{Disableable, button::Button, input::InputState},
+    prelude::FluentBuilder as _,
     *,
 };
 use dunlin_workspace::catalog_backup as hosted;
@@ -467,22 +464,25 @@ pub(crate) fn settings(
     }
     let p = palette(cx);
     let busy = this.backup.busy || this.factory_resetting;
-    let mut view = div().flex().flex_col().gap(px(10.)).p(px(14.)).rounded(px(8.)).border_1().border_color(p.border)
-        .child(div().font_weight(FontWeight::SEMIBOLD).child("Export / import settings and project structure"))
-        .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Portable preferences and nested groups with GitHub.com / GitLab.com URLs only. No local paths, sessions, trust, permissions, commands, environment variables, secrets or relay configuration. Remote-host projects and unsupported repositories are excluded. Project/group runtime overrides and custom icons are not transferred."))
+    let mut view = dunlin_ui::settings::card(p).flex().flex_col().gap(px(12.)).p(px(14.))
+        .child(dunlin_ui::settings::section("Portable preferences and project structure", p))
+        .child(dunlin_ui::settings::description("Export selected preferences and repository/group organization. This is not a full backup of conversations or credentials.", p))
+        .child(button("backup-details", if this.settings_ui.backup_details { "Hide export details" } else { "What is included?" }, true)
+            .on_click(cx.listener(|this, _, _, cx| { this.settings_ui.backup_details = !this.settings_ui.backup_details; cx.notify(); })))
+        .when(this.settings_ui.backup_details, |view| view.child(dunlin_ui::settings::notice("Includes portable preferences and nested groups with GitHub.com / GitLab.com URLs only. Excludes local paths, sessions, trust, permissions, commands, environment variables, credentials, relay configuration, remote projects, unsupported repositories, project/group runtime overrides and custom icons.", p)))
         .child(div().flex().gap(px(8.))
-            .child(button("backup-settings", "Settings", !busy).selected(this.backup.include_settings).toggled(this.backup.include_settings).on_click(cx.listener(|this, _, _, cx| { this.backup.include_settings = !this.backup.include_settings; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); })))
-            .child(button("backup-projects", "Project structure", !busy).selected(this.backup.include_projects).toggled(this.backup.include_projects).on_click(cx.listener(|this, _, _, cx| { this.backup.include_projects = !this.backup.include_projects; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); }))))
+            .child(dunlin_ui::checkbox("backup-settings", "Settings", this.backup.include_settings).label("Settings").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_settings = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); })))
+            .child(dunlin_ui::checkbox("backup-projects", "Project structure", this.backup.include_projects).label("Project structure").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_projects = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); }))))
         .child(div().flex().gap(px(8.))
             .child(button("backup-export-file", "Export to JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.prepare_backup_export(false, cx))))
             .child(button("backup-import-file", "Import JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.read_backup(false, cx)))))
-        .child(Input::new(this.backup.repository.as_ref().unwrap()).disabled(busy))
+        .child(dunlin_ui::settings::field("Backup repository URL", dunlin_ui::input(this.backup.repository.as_ref().unwrap()).aria_label("Backup repository URL").disabled(busy), p))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Repository export creates/updates dunlin-backup.json with a commit on the default branch using gh/glab. Use an initialized private repository: repository names and preferences may be sensitive. Import reads that file; it does not execute code."))
         .child(div().flex().gap(px(8.))
             .child(button("backup-export-repo", "Export to repository…", !busy).on_click(cx.listener(|this, _, _, cx| this.prepare_backup_export(true, cx))))
             .child(button("backup-import-repo", "Import from repository…", !busy).on_click(cx.listener(|this, _, _, cx| this.read_backup(true, cx)))))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Download folder for imported projects · <host>/<owner or group>/<repo>. Nothing is cloned during import."))
-        .child(div().flex().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(Input::new(this.backup.destination.as_ref().unwrap()).disabled(busy)))
+        .child(div().flex().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(dunlin_ui::input(this.backup.destination.as_ref().unwrap()).aria_label("Download folder for imported projects").disabled(busy)))
             .child(button("backup-folder", "Browse…", !busy).on_click(cx.listener(|this, _, window, cx| {
                 let paths = cx.prompt_for_paths(PathPromptOptions { files:false, directories:true, multiple:false, prompt:Some("Choose repository download folder".into()) });
                 let paths = this.overlay_backdrop.track_native(paths, cx);

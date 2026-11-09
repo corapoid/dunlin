@@ -1,10 +1,8 @@
 //! The ⌘K command palette: a calm, keyboard-first launcher for navigation,
 //! project switching and workspace actions.
 
-use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Icon;
 use dunlin_ui::component::ThemeStyled as _;
-use dunlin_ui::component::input::Input;
+use dunlin_ui::component::{Icon, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -32,16 +30,9 @@ pub(crate) fn render(
         .items_center()
         .gap(px(9.))
         .child(
-            Icon::new(IconName::Search)
-                .size(px(14.))
-                .text_color(p.muted_fg),
-        )
-        .child(
             div().flex_1().min_w(px(0.)).child(
-                Input::new(&this.command_query)
-                    .appearance(false)
-                    .bordered(false)
-                    .h(px(40.)),
+                search_input(&this.command_query, "Search commands and projects")
+                    .with_size(dunlin_ui::component::Size::Medium),
             ),
         )
         .when(show_shortcuts, |this| this.child(kbd("esc", p)));
@@ -102,7 +93,7 @@ pub(crate) fn render(
                     .id(format!("command-row:{index}"))
                     .h(px(if projects_only { 48. } else { 38. }))
                     .px(px(7.))
-                    .rounded(px(7.))
+                    .rounded(px(dunlin_ui::radii::CONTROL))
                     .flex()
                     .items_center()
                     .gap(px(9.))
@@ -115,7 +106,7 @@ pub(crate) fn render(
                     .child(
                         div()
                             .size(px(24.))
-                            .rounded(px(6.))
+                            .rounded(px(dunlin_ui::radii::ROW))
                             .bg(if active { p.card } else { p.muted })
                             .flex()
                             .items_center()

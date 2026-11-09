@@ -10,6 +10,7 @@ mod acp;
 mod api;
 mod auth;
 mod config;
+mod coordination;
 mod management;
 mod store;
 mod terminal;
@@ -25,6 +26,9 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--mcp-vault") {
         std::process::exit(dunlin_vault::mcp::run_stdio());
+    }
+    if args.first().map(String::as_str) == Some("--mcp-coordination") {
+        std::process::exit(dunlin_coordination::mcp::run_stdio());
     }
     if args.is_empty() || matches!(args[0].as_str(), "help" | "-h" | "--help") {
         print_help();
@@ -612,7 +616,12 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         .build()
         .map_err(|error| error.to_string())?;
     runtime.block_on(async move {
-        let state = AppState::new_with_vault(store, config.clone(), relay_vault);
+        let mut state = AppState::new_with_vault(store, config.clone(), relay_vault);
+        state.coordination = Some(std::sync::Arc::new(
+            dunlin_coordination::service::Service::start(
+                &config.db.with_extension("coordination"),
+            )?,
+        ));
         let app = api::router(state);
         let listener = tokio::net::TcpListener::bind(&config.listen)
             .await

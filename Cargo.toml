@@ -5,18 +5,20 @@ exclude = ["vendor/*", "plugins/*"]
 
 [patch.crates-io]
 block = { path = "vendor/block-0.1.6" }
-gpui-base = { path = "vendor/gpui-base-0.8.0" }
-gpui-component = { path = "vendor/gpui-component-0.8.0" }
-gpui-pre = { path = "vendor/gpui-pre-0.3.9" }
+gpui-kit = { path = "vendor/gpui-kit-0.9.0" }
+gpui-kit-assets = { path = "vendor/gpui-kit-assets-0.9.0" }
+gpui-base = { path = "vendor/gpui-base-0.9.0" }
+gpui-component = { path = "vendor/gpui-component-0.9.0" }
+gpui-pre = { path = "vendor/gpui-pre-0.3.12" }
 syntect = { path = "vendor/syntect-5.3.0" }
-two-face = { path = "vendor/two-face-0.4.5" }
+two-face = { path = "vendor/two-face-0.5.2+bat-0.26.1" }
 metal = { path = "vendor/metal-0.33.0" }
 pulp = { path = "vendor/pulp-0.22.3" }
 rav1e = { path = "vendor/rav1e-0.8.1" }
 cosmic-text = { path = "vendor/cosmic-text-0.19.0" }
 
 [workspace.package]
-version = "0.1.0-beta.11"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT"
@@ -25,10 +27,13 @@ repository = "https://github.com/corapoid/dunlin"
 homepage = "https://github.com/corapoid/dunlin"
 
 [workspace.dependencies]
-gpui-kit = { version = "0.8.0", features = ["syntect"] }
+hex = "0.4.3"
+gpui-kit = { version = "0.9.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
+dunlin-http = { path = "crates/http" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }
+dunlin-coordination = { path = "crates/coordination" }
 dunlin-artifacts = { path = "crates/artifacts" }
 dunlin-audit = { path = "crates/audit" }
 dunlin-knowledge = { path = "crates/knowledge" }
@@ -40,7 +45,7 @@ dunlin-vault = { path = "crates/vault" }
 dunlin-workspace = { path = "crates/workspace" }
 dunlin-usage = { path = "crates/usage" }
 dunlin-terminal = { path = "crates/terminal" }
-notify = "8.2"
+notify = "8.2.2"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder", "NSDockTile", "NSView", "NSVisualEffectView"] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSFileManager", "NSURL", "NSError"] }
@@ -48,7 +53,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
-uuid = { version = "1", features = ["v7", "serde"] }
+uuid = { version = "1.29.2", features = ["v7", "serde"] }
 
 # GPUI is slow in debug builds. Keep our own code debuggable while making the
 # framework fast enough to use during development. Debug info is limited to our

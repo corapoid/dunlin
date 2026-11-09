@@ -27,6 +27,7 @@ const LEGACY_KEYCHAIN_SERVICE: &str = "dev.kestrel.remote";
 
 mod history;
 pub(crate) mod operations;
+pub(crate) mod transcripts;
 
 fn explorer_relay_error(error: String) -> String {
     if error.starts_with("Relay error 404:") || error.starts_with("Relay error 405:") {
@@ -146,6 +147,8 @@ pub(crate) struct RemoteSessionInfo {
 /// Relay URLs must be HTTPS, or plain HTTP only on loopback. A self-hosted
 /// relay on Tailscale normally terminates TLS; refusing clear-text LAN URLs
 /// keeps pairing codes, bearer tokens and prompts off the wire.
+use dunlin_http as ureq;
+
 fn http_agent() -> ureq::Agent {
     // A relay bearer token must never be forwarded through an environment
     // proxy by accident.
@@ -269,6 +272,31 @@ pub(crate) fn project_settings(
     response.into_json().map_err(|error| error.to_string())
 }
 
+pub(crate) fn coordination(
+    url: &str,
+    token: &str,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .post(&format!("{}/v1/coordination", url.trim_end_matches('/')))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(15))
+        .send_json(body)
+        .map_err(http_error)?;
+    let mut bytes = Vec::new();
+    use std::io::Read;
+    response
+        .into_reader()
+        .take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("Relay coordination response exceeds 8 MiB".into());
+    }
+    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+}
+
 pub(crate) fn save_project_settings(
     url: &str,
     token: &str,
@@ -378,6 +406,7 @@ pub(crate) fn save_transcript(
     token: &str,
     session_id: &str,
     payload: &serde_json::Value,
+    expected_revision: i64,
 ) -> Result<(), String> {
     validate_relay_url(url)?;
     http_agent()
@@ -388,9 +417,34 @@ pub(crate) fn save_transcript(
         ))
         .set("Authorization", &format!("Bearer {token}"))
         .timeout(Duration::from_secs(30))
-        .send_json(serde_json::json!({ "payload": payload }))
+        .send_json(
+            serde_json::json!({ "payload": payload, "expected_revision": expected_revision }),
+        )
         .map(|_| ())
         .map_err(http_error)
+}
+
+fn transcript_revision(url: &str, token: &str, session_id: &str) -> Result<i64, String> {
+    validate_relay_url(url)?;
+    let response = http_agent()
+        .get(&format!(
+            "{}/v1/sessions/{}/transcript/revision",
+            url.trim_end_matches('/'),
+            encode(session_id)
+        ))
+        .set("Authorization", &format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .call()
+        .map_err(http_error)?;
+    #[derive(Deserialize)]
+    struct Revision {
+        revision: i64,
+    }
+    let value: Revision = response.into_json().map_err(|error| error.to_string())?;
+    if value.revision < 0 || value.revision == i64::MAX {
+        return Err("Invalid relay transcript revision".into());
+    }
+    Ok(value.revision)
 }
 
 pub(crate) fn delete_session(url: &str, token: &str, session_id: &str) -> Result<(), String> {
@@ -1207,13 +1261,7 @@ impl WorkspaceBackend {
         match self {
             WorkspaceBackend::Local { root } => {
                 let relative = entry_relative(root, path)?;
-                if let Some(expected) = expected_mtime_ms {
-                    let current = workspace_fs::stat_file(root, &relative)?;
-                    if current.mtime_ms != expected {
-                        return Err("conflict: file changed on disk since it was opened".into());
-                    }
-                }
-                workspace_fs::write_file(root, &relative, contents)
+                workspace_fs::write_file_checked(root, &relative, contents, expected_mtime_ms)
             }
             WorkspaceBackend::Remote(remote) => {
                 remote.write_file(path, contents, expected_mtime_ms)
