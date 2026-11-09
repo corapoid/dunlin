@@ -1277,7 +1277,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         let active = &state.editors[index];
         let block = &active.block;
         if let Kind::Cell { table, .. } = block.kind {
-            let mut grid = SurfaceGeometry::TABLE.paint(p.card, p.border)
+            let mut grid = SurfaceGeometry::TABLE
+                .paint(p.card, p.border)
                 .w_full()
                 .min_w(px(0.))
                 .flex_shrink_0()
@@ -1298,7 +1299,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .min_w(px(0.))
                     .flex()
                     .when(current_row == 0, |row| {
-                        SurfaceGeometry::TABLE.round_child(row, SurfaceEdges::Top).bg(p.muted)
+                        SurfaceGeometry::TABLE
+                            .round_child(row, SurfaceEdges::Top)
+                            .bg(p.muted)
                     })
                     .when(current_row > 0, |row| {
                         row.border_t_1().border_color(p.border)

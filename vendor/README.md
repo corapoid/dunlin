@@ -18,7 +18,7 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 | gpui-base 0.9.0 | `instant` → existing maintained `web-time`; same clock/duration API; opt-out `scrollable` flag so embedded visual editors forward wheel input to the document; GPUI pre pins → 0.3.12 |
 | gpui-component 0.9.0 | `instant` → `web-time`, `paste` → `pastey`; Windows SVG dependency → resvg 0.49; transparent folder strips, spring-animated selection fill (text stays still), reduced-motion opt-out and compact trailing close-control padding; Syntect Oniguruma backend restores JSX/PowerShell; YAML/Jinja capture overlays and named-capture API; GPUI pre pins → 0.3.12 and two-face → 0.5.2 |
 | gpui-pre 0.3.12 | resvg/usvg 0.49 (harfrust/fontdb 0.24); glyph coverage through skrifa, not ttf-parser; re-export the test attribute as `gpui_test` so it cannot shadow the built-in `#[test]`; typed active-drag query keeps unrelated project/tab drop affordances isolated; expose existing painted-quad inspection in debug builds for native corner regression checks |
-| metal 0.33.0 / pulp 0.22.3 / rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |
+| rav1e 0.8.1 | Macro dependency `paste` → maintained `pastey` |
 | rav1e 0.8.1 C API | Fail-closed null-context/frame/buffer guards, checked nullable test views and bounded rate-control decoding; five isolated C API tests pass (this feature is not enabled in Dunlin) |
 | cosmic-text 0.19.0 | fontdb 0.24, preventing the non-macOS graph from retaining old ttf-parser |
 | syntect 5.3.0 | Replace bincode dumps with a versioned MessagePack envelope (`DLSYNP01`), bounded reader and explicit compression finalization; compile metadata file loaders only with `yaml-load` or tests |
@@ -27,6 +27,10 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 The application's own resvg is also 0.49. All five packages (`bincode`, `instant`,
 `paste`, `rustybuzz`, `ttf-parser`) are absent from the entire application lockfile
 and explicitly banned in `deny.toml`. `advisories.ignore` remains empty.
+
+The GPUI 0.9 dependency graph no longer contains metal 0.33.0 or pulp 0.22.3.
+Their unused patches and vendored source trees were removed; the verifier also
+rejects unused patches recorded in `Cargo.lock`.
 
 ## Asset conversion and compatibility
 

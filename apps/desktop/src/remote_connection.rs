@@ -209,7 +209,11 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .w(px(560.))
                 .max_w(relative(0.95))
                 .max_h(relative(0.9))
-                .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                .child(crate::effects::panel_probe(
+                    &this.overlay_backdrop,
+                    SurfaceGeometry::DIALOG,
+                    false,
+                ))
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()

@@ -290,11 +290,20 @@ impl Drop for NativeLease {
 /// A scroll container translates all its children, including an absolute
 /// measuring canvas. Its content mask, unlike child coordinates, stays fixed
 /// to the visible panel; do not move the sharp cutout when its contents scroll.
-pub(crate) fn panel_probe(backdrop: &OverlayBackdrop, geometry: SurfaceGeometry, scroll: bool) -> AnyElement {
+pub(crate) fn panel_probe(
+    backdrop: &OverlayBackdrop,
+    geometry: SurfaceGeometry,
+    scroll: bool,
+) -> AnyElement {
     let frame = backdrop.shared.frame.clone();
     canvas(
         move |bounds, window, _| {
-            let bounds = surface_bounds(bounds, window.content_mask().bounds, scroll, geometry.border);
+            let bounds = surface_bounds(
+                bounds,
+                window.content_mask().bounds,
+                scroll,
+                geometry.border,
+            );
             if nonempty(bounds) {
                 frame.borrow_mut().surface = Some(bounds);
                 frame.borrow_mut().radius = geometry.radius;

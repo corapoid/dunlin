@@ -6,7 +6,10 @@ impl crate::app::DunlinApp {
         // History is a document tab, not a blocking overlay. Menus may open over
         // it without destroying its state or releasing an in-flight Git lock.
         if self.settings_open && self.settings_have_draft() {
-            self.set_notice("Save or cancel the settings form before navigating elsewhere", cx);
+            self.set_notice(
+                "Save or cancel the settings form before navigating elsewhere",
+                cx,
+            );
             return false;
         }
         true

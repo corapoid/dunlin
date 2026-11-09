@@ -117,7 +117,8 @@ impl Render for Confirmation {
                 }
             }))
             .child(
-                crate::SurfaceGeometry::DIALOG.paint(p.card, p.border_strong)
+                crate::SurfaceGeometry::DIALOG
+                    .paint(p.card, p.border_strong)
                     .w(px(520.))
                     .max_w(relative(0.92))
                     .max_h(relative(0.85))

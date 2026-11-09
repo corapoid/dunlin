@@ -12,6 +12,11 @@ use syn::{
     parse::Parser,
     visit::{self, Visit},
 };
+
+fn source_line(span: proc_macro2::Span) -> usize {
+    span.start().line
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Symbol {
     pub id: String,
@@ -135,7 +140,7 @@ impl<'a> Visit<'a> for References {
             path_segments(path),
             path.segments
                 .first()
-                .map_or(1, |s| s.ident.span().start().line as u32),
+                .map_or(1, |s| source_line(s.ident.span()) as u32),
         ));
         visit::visit_path(self, path);
     }
@@ -325,7 +330,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                 refs.visit_block(&f.block);
                 push(
                     f.sig.ident.to_string(),
-                    f.sig.ident.span().start().line,
+                    source_line(f.sig.ident.span()),
                     "function",
                     f.attrs
                         .iter()
@@ -339,7 +344,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                 refs.visit_fields(&s.fields);
                 push(
                     s.ident.to_string(),
-                    s.ident.span().start().line,
+                    source_line(s.ident.span()),
                     "struct",
                     false,
                     refs,
@@ -353,7 +358,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                 }
                 push(
                     e.ident.to_string(),
-                    e.ident.span().start().line,
+                    source_line(e.ident.span()),
                     "enum",
                     false,
                     refs,
@@ -365,7 +370,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                 refs.visit_type(&t.ty);
                 push(
                     t.ident.to_string(),
-                    t.ident.span().start().line,
+                    source_line(t.ident.span()),
                     "type",
                     false,
                     refs,
@@ -378,7 +383,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                 refs.visit_type(&c.ty);
                 push(
                     c.ident.to_string(),
-                    c.ident.span().start().line,
+                    source_line(c.ident.span()),
                     "const",
                     false,
                     refs,
@@ -405,7 +410,7 @@ fn items(items: &[syn::Item], module: &[String], directory: &Path, file: &str, u
                         refs.visit_block(&f.block);
                         push(
                             format!("{ty}::{}", f.sig.ident),
-                            f.sig.ident.span().start().line,
+                            source_line(f.sig.ident.span()),
                             "associated function",
                             false,
                             refs,

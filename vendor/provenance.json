@@ -208,36 +208,6 @@
       ]
     },
     {
-      "name": "metal",
-      "version": "0.33.0",
-      "upstream_repository": "https://github.com/gfx-rs/metal-rs",
-      "registry_archive_sha256": "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15",
-      "tree_sha256": "a05461dde9a501bfd31109d48713bbda0bfdd97586f8a617741e85285336b17e",
-      "files": 89,
-      "changes": [
-        {
-          "path": "Cargo.toml",
-          "upstream_sha256": "620b270dfa7965d4203977b073b3c724409c1a840b0c4143472e4a1d171f688a",
-          "patched_sha256": "fa945dda9576ed1ca82b2248b155b440cc51c7e6014bc91f1c31038924c88d32"
-        }
-      ]
-    },
-    {
-      "name": "pulp",
-      "version": "0.22.3",
-      "upstream_repository": "https://github.com/sarah-quinones/pulp/",
-      "registry_archive_sha256": "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a",
-      "tree_sha256": "0dbc0d9e02e86d1e35341c9ad8e237e716f8aafcf94e6e684e04e05cd514f20e",
-      "files": 37,
-      "changes": [
-        {
-          "path": "Cargo.toml",
-          "upstream_sha256": "b9d9fe17a5a2188b06a704d5810b4b68b82474816d238f2442501495abb1e4df",
-          "patched_sha256": "c1408f10e189b67fffa7c80a3634010b9703b31a7f3eecacf014ffc1ec2da4bf"
-        }
-      ]
-    },
-    {
       "name": "rav1e",
       "version": "0.8.1",
       "upstream_repository": "https://github.com/xiph/rav1e/",

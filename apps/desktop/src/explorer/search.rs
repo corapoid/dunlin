@@ -131,10 +131,11 @@ fn visible_index(entries: &[FileEntry], path: &str, index: &mut usize) -> Option
             return Some(*index);
         }
         *index += 1;
-        if entry.is_dir && entry.expanded {
-            if let Some(found) = visible_index(&entry.children, path, index) {
-                return Some(found);
-            }
+        if entry.is_dir
+            && entry.expanded
+            && let Some(found) = visible_index(&entry.children, path, index)
+        {
+            return Some(found);
         }
     }
     None
@@ -363,11 +364,19 @@ mod tests {
     #[test]
     fn highlights_all_occurrences_with_original_unicode_byte_ranges() {
         assert_eq!(match_ranges("Match-MATCH.rs", "match"), [0..5, 6..11]);
-        assert_eq!(match_ranges("ŻÓŁĆ.rs", "żółć"), [0..8]);
-        assert_eq!(match_ranges("ΟΣ.rs", "ΟΣ"), [0..4]);
-        assert_eq!(match_ranges("İx.rs", "x"), [2..3]);
-        assert_eq!(match_ranges("İx.rs", "i"), [0..2]);
-        assert_eq!(match_ranges("a🦀b.rs", "🦀"), [1..5]);
+        for (name, query, expected) in [
+            ("ŻÓŁĆ.rs", "żółć", 0..8),
+            ("ΟΣ.rs", "ΟΣ", 0..4),
+            ("İx.rs", "x", 2..3),
+            ("İx.rs", "i", 0..2),
+            ("a🦀b.rs", "🦀", 1..5),
+        ] {
+            assert_eq!(
+                match_ranges(name, query),
+                std::slice::from_ref(&expected),
+                "{name}: {query}"
+            );
+        }
         assert!(match_ranges("file.rs", "").is_empty());
         assert!(match_ranges("file.rs", "missing").is_empty());
     }

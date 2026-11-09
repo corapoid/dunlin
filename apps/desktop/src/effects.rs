@@ -3,8 +3,8 @@ use std::time::Instant;
 
 mod backdrop;
 pub(crate) use backdrop::{
-    ControlGlass, OverlayBackdrop, for_panel_window, for_window, menu_item,
-    menu_surface, panel_probe,
+    ControlGlass, OverlayBackdrop, for_panel_window, for_window, menu_item, menu_surface,
+    panel_probe,
 };
 
 #[derive(Default)]

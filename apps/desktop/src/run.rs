@@ -682,64 +682,81 @@ pub(crate) fn render(
                         .border_1()
                         .border_color(p.border)
                         .bg(p.card)
-                        .children(candidates.into_iter().enumerate().map(|(index, candidate)| {
-                            let run_candidate = candidate.clone();
-                            let copy_candidate = candidate.clone();
-                            let command = candidate.command_line();
-                            div()
-                                .px(px(9.))
-                                .py(px(7.))
-                                .flex()
-                                .items_center()
-                                .gap(px(8.))
-                                .when(index > 0, |row| row.border_t_1().border_color(p.border.opacity(0.55)))
-                                .child(
+                        .children(
+                            candidates
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, candidate)| {
+                                    let run_candidate = candidate.clone();
+                                    let copy_candidate = candidate.clone();
+                                    let command = candidate.command_line();
                                     div()
-                                        .flex_1()
-                                        .min_w(px(0.))
+                                        .px(px(9.))
+                                        .py(px(7.))
                                         .flex()
-                                        .flex_col()
-                                        .gap(px(2.))
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .when(index > 0, |row| {
+                                            row.border_t_1().border_color(p.border.opacity(0.55))
+                                        })
                                         .child(
                                             div()
-                                                .text_size(px(11.5))
-                                                .text_color(p.fg)
-                                                .child(candidate.label.clone()),
+                                                .flex_1()
+                                                .min_w(px(0.))
+                                                .flex()
+                                                .flex_col()
+                                                .gap(px(2.))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(11.5))
+                                                        .text_color(p.fg)
+                                                        .child(candidate.label.clone()),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.5))
+                                                        .font_family(dunlin_ui::theme::code_font())
+                                                        .text_color(p.muted_fg)
+                                                        .truncate()
+                                                        .child(format!(
+                                                            "{} · {} · cwd {}",
+                                                            command,
+                                                            candidate.source,
+                                                            candidate.cwd
+                                                        )),
+                                                ),
                                         )
                                         .child(
-                                            div()
-                                                .text_size(px(10.5))
-                                                .font_family(dunlin_ui::theme::code_font())
-                                                .text_color(p.muted_fg)
-                                                .truncate()
-                                                .child(format!(
-                                                    "{} · {} · cwd {}",
-                                                    command, candidate.source, candidate.cwd
-                                                )),
-                                        ),
-                                )
-                                .child(
-                                    dunlin_ui::button(format!("run-copy:{}", candidate.id))
-                                        .ghost()
-                                        .small()
-                                        .label("Copy")
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                copy_candidate.command_line(),
-                                            ));
-                                            this.set_notice("Copied command; nothing was run", cx);
-                                        })),
-                                )
-                                .child(
-                                    dunlin_ui::button(format!("run-start:{}", candidate.id))
-                                        .small()
-                                        .label("Run…")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.start_run(window, run_candidate.clone(), cx)
-                                        })),
-                                )
-                                .into_any_element()
-                        })),
+                                            dunlin_ui::button(format!("run-copy:{}", candidate.id))
+                                                .ghost()
+                                                .small()
+                                                .label("Copy")
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    cx.write_to_clipboard(
+                                                        ClipboardItem::new_string(
+                                                            copy_candidate.command_line(),
+                                                        ),
+                                                    );
+                                                    this.set_notice(
+                                                        "Copied command; nothing was run",
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                        .child(
+                                            dunlin_ui::button(format!(
+                                                "run-start:{}",
+                                                candidate.id
+                                            ))
+                                            .small()
+                                            .label("Run…")
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.start_run(window, run_candidate.clone(), cx)
+                                            })),
+                                        )
+                                        .into_any_element()
+                                }),
+                        ),
                 );
         }
         if !this.run.warnings.is_empty() {

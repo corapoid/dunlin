@@ -111,9 +111,7 @@ pub fn usage_meter(
                         .child(format!("{pct:.0}%")),
                 ),
         )
-        .child(
-            crate::progress_bar(pct, accent, p.muted),
-        )
+        .child(crate::progress_bar(pct, accent, p.muted))
         .child(
             div()
                 .flex()

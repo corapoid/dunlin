@@ -1611,7 +1611,8 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
     let mode = chat_controls::mode(this, cx);
     let model = chat_controls::model(this, cx);
 
-    let card = SurfaceGeometry::COMPOSER.paint(p.subtle, p.border)
+    let card = SurfaceGeometry::COMPOSER
+        .paint(p.subtle, p.border)
         .w_full()
         .border_color(
             if this.composer.read(cx).focus_handle(cx).is_focused(window) {

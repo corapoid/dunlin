@@ -961,7 +961,11 @@ impl DunlinApp {
             .child(
                 dialog_surface(p)
                     .id("editor-prompt")
-                    .child(crate::effects::panel_probe(&self.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                    .child(crate::effects::panel_probe(
+                        &self.overlay_backdrop,
+                        SurfaceGeometry::DIALOG,
+                        false,
+                    ))
                     .w(px(400.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
@@ -1083,9 +1087,14 @@ impl DunlinApp {
             .justify_center()
             .on_click(cx.listener(|this, _, window, cx| this.close_diff(window, cx)))
             .child(
-                SurfaceGeometry::DIALOG.paint(p.card, p.border_strong)
+                SurfaceGeometry::DIALOG
+                    .paint(p.card, p.border_strong)
                     .id("diff-dialog")
-                    .child(crate::effects::panel_probe(&self.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                    .child(crate::effects::panel_probe(
+                        &self.overlay_backdrop,
+                        SurfaceGeometry::DIALOG,
+                        false,
+                    ))
                     .w(px(880.))
                     .h(px(560.))
                     .overflow_hidden()
@@ -1404,7 +1413,11 @@ impl DunlinApp {
             .child(
                 dialog_surface(p)
                     .id("new-file-modal")
-                    .child(crate::effects::panel_probe(&self.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                    .child(crate::effects::panel_probe(
+                        &self.overlay_backdrop,
+                        SurfaceGeometry::DIALOG,
+                        false,
+                    ))
                     .w(px(380.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
@@ -2208,7 +2221,11 @@ impl DunlinApp {
             .child(
                 dialog_surface(p)
                     .id("group-modal")
-                    .child(crate::effects::panel_probe(&self.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                    .child(crate::effects::panel_probe(
+                        &self.overlay_backdrop,
+                        SurfaceGeometry::DIALOG,
+                        false,
+                    ))
                     .w(px(380.))
                     .on_click(|_, _, cx| cx.stop_propagation())
                     .child(
@@ -2969,7 +2986,11 @@ impl DunlinApp {
                                     None::<AnyElement>
                                 }
                             })
-                            .child(crate::effects::panel_probe(&self.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                            .child(crate::effects::panel_probe(
+                                &self.overlay_backdrop,
+                                SurfaceGeometry::DIALOG,
+                                false,
+                            ))
                             .on_click(|_, _, cx| cx.stop_propagation())
                             .child(
                                 div()

@@ -1408,7 +1408,10 @@ fn files_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     .map(|inspector| inspector.path.clone())
             })
     } else {
-        this.explorer.search.current().map(|entry| entry.path.clone())
+        this.explorer
+            .search
+            .current()
+            .map(|entry| entry.path.clone())
     };
     let root_path = this.project().path.clone();
     let project = this.project().id.clone();
@@ -1604,12 +1607,15 @@ fn file_rows(
                             crate::explorer::search::match_ranges(&name, query)
                                 .into_iter()
                                 .map(|range| {
-                                    (range, HighlightStyle {
-                                        color: Some(p.blue),
-                                        background_color: Some(p.blue_soft),
-                                        font_weight: Some(FontWeight::BOLD),
-                                        ..Default::default()
-                                    })
+                                    (
+                                        range,
+                                        HighlightStyle {
+                                            color: Some(p.blue),
+                                            background_color: Some(p.blue_soft),
+                                            font_weight: Some(FontWeight::BOLD),
+                                            ..Default::default()
+                                        },
+                                    )
                                 }),
                         ),
                     ),
@@ -2839,8 +2845,12 @@ pub(crate) fn account_usage_panel(
                             ),
                     )
                     .child(
-                        progress_bar(displayed_percent, if percent > 85. { p.red } else { tone }, p.muted)
-                            .h(px(3.)),
+                        progress_bar(
+                            displayed_percent,
+                            if percent > 85. { p.red } else { tone },
+                            p.muted,
+                        )
+                        .h(px(3.)),
                     ),
             );
         }

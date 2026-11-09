@@ -295,9 +295,11 @@ pub(crate) fn language_badge(
             .tooltip(move |window, cx| {
                 let languages = tooltip_languages.clone();
                 component::tooltip::Tooltip::element(move |_window, _cx| {
-                    let strip = segmented_bar(languages.iter().map(|stat| {
-                        (stat.bytes as f32, Hsla::from(rgb(stat.color)))
-                    }));
+                    let strip = segmented_bar(
+                        languages
+                            .iter()
+                            .map(|stat| (stat.bytes as f32, Hsla::from(rgb(stat.color)))),
+                    );
                     let mut rows = div().flex().flex_col().gap(px(4.));
                     for stat in &languages {
                         let fraction = stat.bytes as f32 / total as f32;

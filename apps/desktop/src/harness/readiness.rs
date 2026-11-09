@@ -247,7 +247,13 @@ mod tests {
             key,
             config_key("Agent", &HarnessConfig::new("agent --acp", "/other"))
         );
-        assert_ne!(key, config_key("Agent", &HarnessConfig::new("different-agent --acp", "/project")));
+        assert_ne!(
+            key,
+            config_key(
+                "Agent",
+                &HarnessConfig::new("different-agent --acp", "/project")
+            )
+        );
         let mut changed_model = HarnessConfig::new("agent --acp", "/project");
         changed_model.default_model = Some("different-model".into());
         assert_ne!(key, config_key("Agent", &changed_model));

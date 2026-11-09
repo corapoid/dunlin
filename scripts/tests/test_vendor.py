@@ -39,6 +39,12 @@ class VendorIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Obsolete dependencies returned"):
             vendor.verify(self.root)
 
+    def test_unused_reviewed_patches_are_rejected(self):
+        with (self.root / "Cargo.lock").open("a") as lock:
+            lock.write('[[patch.unused]]\nname="fixture"\nversion="1.0"\n')
+        with self.assertRaisesRegex(ValueError, "Unused dependency patches"):
+            vendor.verify(self.root)
+
     def test_symlinks_and_unregistered_patches_fail_closed(self):
         (self.directory / "link").symlink_to("source.rs")
         with self.assertRaisesRegex(ValueError, "Symlink"):

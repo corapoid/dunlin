@@ -823,7 +823,11 @@ pub(crate) fn render(
                 .overflow_hidden()
                 .flex()
                 .flex_col()
-                .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
+                .child(crate::effects::panel_probe(
+                    &this.overlay_backdrop,
+                    SurfaceGeometry::DIALOG,
+                    false,
+                ))
                 .on_click(|_, _, cx| cx.stop_propagation())
                 .child(
                     div()

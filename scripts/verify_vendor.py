@@ -45,6 +45,9 @@ def verify(root=ROOT):
         if digest != package["tree_sha256"] or count != package["files"]:
             raise ValueError(f"Unreviewed vendor tree change: {package['name']}")
     lock = tomllib.loads((root / "Cargo.lock").read_text())
+    unused = {p["name"] for p in lock.get("patch", {}).get("unused", [])} & packages
+    if unused:
+        raise ValueError(f"Unused dependency patches: {sorted(unused)}")
     present = OBSOLETE & {p["name"] for p in lock["package"]}
     if present:
         raise ValueError(f"Obsolete dependencies returned: {sorted(present)}")

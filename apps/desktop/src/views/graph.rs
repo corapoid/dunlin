@@ -730,7 +730,8 @@ fn node_card(
     }
     let mut card = card
         .child(
-            SurfaceGeometry::GRAPH_NODE.round_child(div(), SurfaceEdges::Top)
+            SurfaceGeometry::GRAPH_NODE
+                .round_child(div(), SurfaceEdges::Top)
                 .h(crate::workspace_text::size(30., cx))
                 .px(px(9.))
                 .flex()
@@ -852,7 +853,8 @@ fn node_card(
 
     if node.status == AgentStatus::Running {
         card = card.child(
-            SurfaceGeometry::GRAPH_NODE.bottom_indicator(div())
+            SurfaceGeometry::GRAPH_NODE
+                .bottom_indicator(div())
                 .h(px(2.))
                 .bg(p.muted)
                 .child(

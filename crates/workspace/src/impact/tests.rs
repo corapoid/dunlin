@@ -1,5 +1,23 @@
 use super::*;
 use std::{fs, process::Command};
+
+#[test]
+fn ast_evidence_preserves_original_source_lines() {
+    let unit = parse(
+        "src/lib.rs",
+        "fixture",
+        &[],
+        "\n\npub struct Example;\n\npub fn compute() {}\n",
+    )
+    .unwrap();
+    let locations: Vec<_> = unit
+        .raw
+        .iter()
+        .map(|raw| (raw.symbol.name.as_str(), raw.symbol.line))
+        .collect();
+    assert_eq!(locations, [("Example", 3), ("compute", 5)]);
+}
+
 fn repo() -> tempfile::TempDir {
     let d = tempfile::tempdir().unwrap();
     fs::create_dir(d.path().join("src")).unwrap();

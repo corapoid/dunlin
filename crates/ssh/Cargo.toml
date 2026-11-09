@@ -13,10 +13,7 @@ path = "src/askpass.rs"
 [dependencies]
 hex.workspace = true
 dunlin-domain.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 sha2 = "0.11.1"
-thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7"

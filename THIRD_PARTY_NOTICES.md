@@ -9,7 +9,7 @@ identify the selected harness and do not imply endorsement.
 ## Maintained dependency forks
 
 The release-hardening branch maintains local migrations of GPUI, syntect,
-two-face, metal, pulp, rav1e and cosmic-text to replace unmaintained dependencies,
+two-face, rav1e and cosmic-text to replace unmaintained dependencies,
 and block to fix Rust compatibility warnings while preserving its C ABI.
 Original licenses/notices are retained under `vendor/`; exact archive provenance
 and reviewed file changes are in `vendor/provenance.json`. See

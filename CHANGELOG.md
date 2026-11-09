@@ -68,6 +68,10 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Fixed
 
+- Normalized Rust formatting and resolved strict Clippy findings without
+  weakening lint settings. Removed six unused direct dependencies and obsolete
+  metal/pulp patches; preserved AST span locations with explicit proc-macro2
+  usage and a source-line regression test.
 - ACP refusal/token-limit stop reasons no longer appear as successful completed
   turns. Coordination distinguishes normal turn completion from task-result claims.
 - Restored JSX and PowerShell highlighting using Syntect's Oniguruma backend and

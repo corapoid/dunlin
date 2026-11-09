@@ -12,7 +12,8 @@ use dunlin_ui::component::{Disableable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement,
-    IntoElement, ParentElement, StatefulInteractiveElement, Styled, SurfaceGeometry, Window, div, palette, px,
+    IntoElement, ParentElement, StatefulInteractiveElement, Styled, SurfaceGeometry, Window, div,
+    palette, px,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};

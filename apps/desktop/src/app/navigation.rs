@@ -177,7 +177,10 @@ impl DunlinApp {
             return;
         }
         if self.settings_open && self.settings_have_draft() {
-            self.set_notice("Save or cancel the settings form before using navigation history", cx);
+            self.set_notice(
+                "Save or cancel the settings form before using navigation history",
+                cx,
+            );
             return;
         }
         self.record_navigation();

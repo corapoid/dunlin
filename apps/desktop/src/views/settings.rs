@@ -109,7 +109,8 @@ pub(crate) fn render(
         px(top - (f32::from(viewport.height) - height) / 2.),
     );
 
-    let panel = SurfaceGeometry::SETTINGS.paint(p.subtle, p.border_strong)
+    let panel = SurfaceGeometry::SETTINGS
+        .paint(p.subtle, p.border_strong)
         .id("settings-panel")
         .absolute()
         .left(px(left))
@@ -140,7 +141,8 @@ pub(crate) fn render(
         .tab_group()
         .child(settings_nav(this, cx))
         .child(
-            SurfaceGeometry::SETTINGS_CONTENT.paint(p.bg, p.border)
+            SurfaceGeometry::SETTINGS_CONTENT
+                .paint(p.bg, p.border)
                 .relative()
                 .children({
                     #[cfg(debug_assertions)]
@@ -1005,7 +1007,13 @@ fn theme_card(
                                     .rounded_full()
                                     .bg(preview.fg.opacity(0.8)),
                             )
-                            .child(div().h(px(18.)).w_full().rounded(px(dunlin_ui::radii::CODE)).bg(preview.muted))
+                            .child(
+                                div()
+                                    .h(px(18.))
+                                    .w_full()
+                                    .rounded(px(dunlin_ui::radii::CODE))
+                                    .bg(preview.muted),
+                            )
                             .child(
                                 div()
                                     .h(px(5.))
@@ -2033,9 +2041,15 @@ fn usage(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                     .child(format!("{percent:.0}%")),
                             ),
                     )
-                    .child(
-                        progress_bar(percent, if percent > 85. { p.red } else { p.fg.opacity(0.65) }, p.muted),
-                    ),
+                    .child(progress_bar(
+                        percent,
+                        if percent > 85. {
+                            p.red
+                        } else {
+                            p.fg.opacity(0.65)
+                        },
+                        p.muted,
+                    )),
             );
         }
 
