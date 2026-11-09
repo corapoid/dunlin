@@ -3,6 +3,8 @@
 Plany 01–07 wynikają z audytu Git v2, rozmów oraz agent workbench.
 Plany 08–19 rozwijają porównanie obsługi Dunlina z VS Code, JetBrains i Orcą,
 z naciskiem na narzędzie AI-first, nie kopiowanie klasycznego IDE.
+Plany 20–21 uzupełniają audyt skills i ustawień relay/grup; nie powtarzają
+istniejącej biblioteki skills, kolorów/kolejności grup ani lokalnego dziedziczenia.
 Numeracja identyfikuje zakres; nie oznacza kolejności wykonania.
 
 Status początkowy: **zaplanowane, nieodebrane**. Opisy stanu bazują na audycie
@@ -33,9 +35,11 @@ Istnienie testu lub wcześniejszego raportu nie oznacza świeżego wyniku testó
 | 17 | [Workspace zadania](17-workspace-zadania.md) | Model zadania i opcjonalny worktree | P2 |
 | 18 | [Przepływ plan → wykonanie](18-plan-do-wykonania.md) | Rewizje planu, zgody i dispatch | P2 |
 | 19 | [CLI/API sterujące aplikacją](19-cli-api-aplikacji.md) | Serwisy, capabilities i transport | P2 lokalnie / P3 relay |
+| 20 | [Skills: frontmatter i odbiór](20-skills-frontmatter-i-odbior.md) | Parser, bezstratne metadane, migracja i QA istniejącego UI | P1 poprawność/QA / P2 metadane |
+| 21 | [Relay: ustawienia i sync grup](21-relay-ustawienia-i-sync-grup.md) | Aktualność/CAS, organizacja per-user i zdalne Apply model | P1 poprawność/QA / P2 sync |
 
 Priorytety nowych planów są propozycją kolejności produktowej; nie zastępują
-blokad wydania P0 w `docs/ROADMAP.md`. W grupie większych inspiracji ujęto tylko
+blokad wydania P0 w `docs/project/roadmap.md`. W grupie większych inspiracji ujęto tylko
 workspace zadania, plan → wykonanie i CLI/API. Design Mode, dyktowanie, daemon
 utrzymujący procesy oraz pełny koordynator/DAG nie są nowymi zakresami tych planów.
 
@@ -114,8 +118,12 @@ nie prowadzić drugiego, rozbieżnego rejestru statusów ukończenia.
 
 ## Domknięcie dokumentacji
 
+Dla zakresów 20–21: najpierw odebrać istniejące UI/runtime i zgodność skills,
+potem lokalne FTS5 historii (C1 planu 08), a pełny sync grup dopiero po kontrakcie
+konfliktów/uprawnień. Nowe plany nie przesuwają blokad P0 ani wcześniejszych zadań P1.
+
 Po wykonaniu danego zakresu zaktualizować odpowiadające mu pozycje
-[`docs/ROADMAP.md`](../docs/ROADMAP.md), przewodnik i changelog.
+[roadmapy](../docs/project/roadmap.md), przewodnik i changelog.
 Zgodnie z udokumentowanym wycofaniem PR/Actions usunąć sprzeczne aktywne wpisy
 backlogu lub oznaczyć je jako historyczne. Żaden z tych planów nie przywraca
 PR/Actions, nie rozszerza mutacji Git ani funkcji blame.
