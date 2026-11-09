@@ -183,7 +183,7 @@ fn opencode(value: &Value) -> Result<Candidate, String> {
     })
 }
 
-/// Portable format for custom ACP adapters; documented in docs/session-import.md.
+/// Portable format for custom ACP adapters; documented in docs/user-guide/session-import.md.
 fn portable(value: &Value) -> Result<Candidate, String> {
     if value["format"] != "dunlin.session.v1" {
         return Err(

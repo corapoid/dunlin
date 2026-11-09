@@ -10,6 +10,21 @@ All notable changes to Dunlin are documented here. The format follows
 
 ### Changed
 
+- Remote project model/environment defaults refresh on project entry and settings
+  opening, rather than only on first import. Delayed reads preserve local
+  appearance, harness/client approval choices, open forms and newer runtime saves;
+  a runtime save no longer replaces local choices made while HTTP was pending.
+  Full revisioned settings/group synchronization remains planned.
+- Rebuilt documentation around getting started, user guides, administration,
+  reference, architecture, development, quality and project status, with section
+  indexes and explicitly historical archives. Corrected removed PR/Actions scope,
+  SSH/tab lifecycle, plugin guarantees, reset scope and configuration precedence.
+  Added offline local-link/anchor/navigation checks to CI and updated repository
+  and website documentation links.
+- Added 14 independent native GUI workflows for file save/close/conflicts,
+  chat send/queue/stop/retry and agent permission decisions. Tests dispatch real
+  GPUI input, check storage and mock ACP effects, and report named steps with
+  per-scenario diagnostics; the existing native CI gate discovers them automatically.
 - Updated Rust dependencies and website packages, including GPUI Kit 0.9 / GPUI
   pre 0.3.12, ACP SDK 5, rusqlite 0.41, ureq 3, SHA-2/HMAC and ZIP 9. Preserved
   local UI/security patches and regenerated two-face 0.5 syntax/theme assets with
@@ -154,7 +169,7 @@ All notable changes to Dunlin are documented here. The format follows
 - Current documentation no longer pins release versions in README, SECURITY or
   guides; versions and dates stay in this changelog and GitHub Releases.
 - Planning documents were consolidated into one priority-ordered
-  [`docs/ROADMAP.md`](docs/ROADMAP.md) table and the remaining documentation is
+  [roadmap](docs/project/roadmap.md) table and the remaining documentation is
   indexed by task in [`docs/README.md`](docs/README.md).
 - The unfinished non-macOS client scaffold and its project files were removed so
   the source tree only advertises the supported macOS client.
@@ -210,7 +225,7 @@ prevented publication.
   OpenCode/Codex/Claude CLI and ACP installations, 15-minute one-use pairing,
   Linux Secret Service storage and fail-closed bubblewrap agent startup.
 - Native Linux x86_64/ARM64 relay release jobs, archive architecture checks and
-  separately checksummed bootstrap assets. See `docs/relay-setup.md` for trust
+  separately checksummed bootstrap assets. See `docs/administration/relay-setup.md` for trust
   restrictions and the required real-machine acceptance checks.
 - Portable settings and project-structure export/import through JSON or an
   existing GitHub/GitLab repository, with preview, revision-bound updates,
@@ -276,14 +291,14 @@ prevented publication.
   exclusions do not remove secrets from Git history.
 - Manual GUI, real-provider login, clean Linux installation and reboot acceptance
   remain deferred, not passed. Automated release/security gates remain mandatory;
-  see [release acceptance](docs/release-acceptance.md) and
-  [server setup](docs/relay-setup.md).
+  see [historical release acceptance](docs/archive/release-acceptance.md) and
+  [server setup](docs/administration/relay-setup.md).
 
 ## [0.1.0-beta.8] — 2026-11-04
 
 ### Added
 
-- Native spec workspace and governance: file-first intent, Spec Kit and agent-contract indexing for local and relay projects; Intent Inbox with age/acceptance metrics; ten-phase Spec Kit cockpit with Clarify, Checklist, Analyze and Converge gates; hash-bound approvals with observed HEAD and decision notes; per-project flow-back/flow-forward/living-spec mode; interactive requirement → task → worktree/evidence/session trace; task worktree merge gate with completion and GitHub CI/PR evidence; heuristic contract runtime audit, AGENTS.md policy lint and manual eval prompt; declarative plugin packs with per-project enablement and palette commands; global Settings → General switch that hides the entire surface without deleting files. See [docs/spec-workspace.md](docs/spec-workspace.md).
+- Native spec workspace and governance: file-first intent, Spec Kit and agent-contract indexing for local and relay projects; Intent Inbox with age/acceptance metrics; ten-phase Spec Kit cockpit with Clarify, Checklist, Analyze and Converge gates; hash-bound approvals with observed HEAD and decision notes; per-project flow-back/flow-forward/living-spec mode; interactive requirement → task → worktree/evidence/session trace; task worktree merge gate with completion and GitHub CI/PR evidence; heuristic contract runtime audit, AGENTS.md policy lint and manual eval prompt; declarative plugin packs with per-project enablement and palette commands; global Settings → General switch that hides the entire surface without deleting files. See [spec workspace](docs/user-guide/spec-workspace.md).
 
 - Use-only credential vault: short-lived API keys live in the macOS Keychain,
   while the security policy (hosts, path prefix, methods, injection, TTL, project
@@ -300,7 +315,7 @@ prevented publication.
   use, with a per-session allowance invalidated by policy edits. The relay can
   run a separate vault on the relay host, with its own Keychain namespace,
   `vault.db`, CLI and per-ACP-session MCP proxy. There is no reveal or export
-  path. See [docs/secrets.md](docs/secrets.md).
+  path. See [credentials](docs/user-guide/credentials.md).
 - Security workspace with a pinned, MIT-licensed Cloudflare
   `security-audit-skill` catalog entry, installation from the Security rail or
   Settings → Skills, and a source-only Phase 1 audit prompt. Codex Security is
@@ -370,7 +385,7 @@ prevented publication.
   virtualization for graph cards/edges, an aggregated minimap, and a virtualized
   trace waterfall. Selection is normalized after search/filter/collapse, scrolls
   into view, and exposes ARIA tree state/active descendant. See
-  [`docs/graph-trace-virtualization.md`](docs/graph-trace-virtualization.md) for
+  [Graph/Trace QA](docs/quality/graph-trace-virtualization.md) for
   the 10k fixtures and the remaining manual VoiceOver/keyboard matrix.
 
 ### Removed
@@ -389,14 +404,14 @@ beta.4/beta.5 working-tree scope together with the changes below.
 ### Added
 
 - Short, landing-page README with a native performance section; the detailed
-  feature and operations reference moved to [`docs/guide.md`](docs/guide.md).
+  feature and operations reference moved to the [former full guide](docs/archive/legacy-guide.md).
   Removed the competitor comparison table and added a “what you won't find
   combined anywhere else” section. Performance method and local M1 results are in
-  [`docs/performance.md`](docs/performance.md).
+  [performance measurements](docs/quality/performance.md).
 - Copyable **Release QA** report in Settings → Advanced, notification request /
   **Not granted** states, an optional onboarding notification card, a trusted-
   project banner in Chat and the `--onboarding-smoke` native fixture. The R11
-  manual matrix is [`docs/r11-qa.md`](docs/r11-qa.md).
+  manual matrix is [R11 QA](docs/quality/manual-acceptance.md).
 - Remote workbench endpoints for explicit checkpoints/restore, A/B comparison
   worktrees and projects, relay context, and administrator-only GitHub CI/PR.
   Remote restore previews are one-time plans; comparison/checkpoint payloads keep
@@ -495,7 +510,7 @@ beta.4/beta.5 working-tree scope together with the changes below.
   project, harness discovery, macOS permissions and remote hosts. A debug-only
   `--onboarding-smoke` fixture covers a fresh directory, no projects, empty
   harness discovery and the Permissions surface; the new
-  [R11 manual matrix](docs/r11-qa.md) remains explicitly separate from automatic
+  [R11 manual matrix](docs/quality/manual-acceptance.md) remains explicitly separate from automatic
   pass flags.
 - Session rows use compact Today/Yesterday/date labels, group by their real date,
   truncate titles in narrow sidebars and omit the redundant cost/duration chips.
@@ -663,7 +678,7 @@ USD is not a guaranteed billing cap, and Rust AST impact is not compiler/LSP-com
   effective project/group default for the current harness. Require an idle ACP
   session and an advertised, visible model; preserve other conversations and saved
   defaults on rejection, without sending prompts or restarting the process.
-- Plan the remaining subsystems in `docs/ROADMAP.md`, with dependencies,
+- Plan the remaining subsystems in `docs/project/roadmap.md`, with dependencies,
   acceptance criteria and explicit relay/security boundaries.
 - Add **Project settings → Model & environment…** for local projects: per-harness
   default ACP model IDs and validated literal child-process environment overrides.
@@ -989,7 +1004,7 @@ are preserved; imports do not resume or send prompts to source sessions.
   automatic source discovery/sync or billing scanners. Git history is local-only;
   advanced Git operations and relay history parity remain planned.
 - Standalone chat/repository context, terminal, computer use, automations,
-  artifacts and visual Markdown editing remain planned. See `docs/ROADMAP.md` for
+  artifacts and visual Markdown editing remain planned. See `docs/project/roadmap.md` for
   the reconciled backlog.
 
 ## [0.1.0-beta.1] — 2026-10-25

@@ -275,7 +275,7 @@ jobs:
           (cd dist && shasum -a 256 "dunlin-relay-$VERSION-macos-arm64.tar.gz" \
             "dunlin-relay-$VERSION-linux-x86_64.tar.gz" "dunlin-relay-$VERSION-linux-arm64.tar.gz" \
             install-relay.sh install-harness.sh) > dist/RELAY-SHA256SUMS
-          printf '\nServer setup: macOS arm64 and Linux x86_64/arm64 relay archives, interactive bootstrap and RELAY-SHA256SUMS are included. See docs/relay-setup.md for trust boundaries and acceptance requirements.\n' >> dist/release-notes.md
+          printf '\nServer setup: macOS arm64 and Linux x86_64/arm64 relay archives, interactive bootstrap and RELAY-SHA256SUMS are included. See docs/administration/relay-setup.md for trust boundaries and acceptance requirements.\n' >> dist/release-notes.md
       - name: Publish only verified existing tag
         env:
           GH_TOKEN: ${{ github.token }}

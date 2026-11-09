@@ -1,68 +1,50 @@
 # Dunlin documentation
 
-The documents are grouped by what you need them for. Start with the full guide
-and the roadmap; the rest are task-oriented references, acceptance evidence and
-implementation notes.
+Native, local-first agent workspace for **macOS 15+ on Apple Silicon**, with an
+optional self-hosted macOS/Linux relay. Start with the path that matches your task.
 
-## Start here
-
-| Document | What it covers |
+| I want to… | Start here |
 | --- | --- |
-| [Full guide](guide.md) | The complete feature and operations reference. |
-| [Roadmap](ROADMAP.md) | The single remaining-work backlog, ordered by priority. |
-| [Screenshot gallery](screenshots.md) | Light/dark captures and feature close-ups. |
-| [Performance](performance.md) | Measurement method, baseline and caveats. |
-| [Changelog](../CHANGELOG.md) | Versioned release history. |
+| Install Dunlin and send my first prompt | [Installation](getting-started/installation.md) → [First session](getting-started/first-session.md) |
+| Learn the application | [User guide](user-guide/README.md) |
+| Set up a remote machine | [Relay administration](administration/README.md) → [SSH](administration/ssh.md) |
+| Find a setting, command or data location | [Reference](reference/README.md) |
+| Understand or change the code | [Architecture](architecture/README.md) → [Development](development/README.md) |
+| Run tests or prepare a release | [Quality](quality/README.md) |
+| See limitations and remaining work | [Product status](project/status.md) → [Roadmap](project/roadmap.md) |
+| Investigate an older decision or test run | [Archive](archive/README.md) |
 
-## Setup and operations
+## Reading the documentation
 
-| Document | What it covers |
+- Active guides describe the **current source tree**, not necessarily the last
+  published release. Versioned changes are in the [changelog](../CHANGELOG.md).
+- **Implemented** does not mean **manually accepted**. Automated fixtures, live
+  provider checks, physical input/TCC and deployed-host acceptance are separate.
+  See the [manual acceptance matrix](quality/manual-acceptance.md).
+- Local Mac, relay host and SSH target are different scopes. Credentials, paths
+  and settings must not be assumed to synchronize between them.
+- Commands run from the repository root unless stated otherwise. Screenshots are
+  illustrations, not evidence that a feature passed acceptance on this checkout.
+
+## Documentation layout
+
+| Directory | Purpose |
 | --- | --- |
-| [Server setup and remote workspace](relay-setup.md) | Relay bootstrap, pairing, Linux service and remote acceptance boundaries. |
-| [Settings and project backup](settings-project-backup.md) | Portable JSON or repository-backed settings/project structure. |
-| [Secrets and use-only credentials](secrets.md) | Keychain storage, policies, HTTP/CLI broker and relay vault. |
-| [Terminal and Run](terminal-and-run.md) | Local/relay/SSH terminals, shell integration and command detection. |
-| [Project import](project-import.md) | Local collections, GitHub/GitLab imports and deferred downloads. |
-| [Session import](session-import.md) | Importing Claude Code, Codex and OpenCode history with preview and dedupe. |
-| [Collection import](collection-import.md) | Repository-collection discovery and import rules. |
-| [Standalone chat and worktrees](standalone-chat-worktree-usage.md) | Project-free chat, task worktrees, usage attribution and known boundaries. |
+| [getting-started/](getting-started/README.md) | Installation and a minimal first-session walkthrough. |
+| [user-guide/](user-guide/README.md) | Task-oriented application instructions and feature boundaries. |
+| [administration/](administration/README.md) | Relay/SSH setup, backups, diagnostics and recovery. |
+| [reference/](reference/README.md) | Configuration, command interfaces, formats and exact contracts. |
+| [architecture/](architecture/README.md) | Repository map, data flow, persistence and trust boundaries. |
+| [development/](development/README.md) | Contribution setup, CI/CD, shared UI and extension development. |
+| [quality/](quality/README.md) | Repeatable checks, coverage, performance and manual acceptance. |
+| [project/](project/README.md) | Current product status and the single remaining-work backlog. |
+| [archive/](archive/README.md) | Explicitly historical plans, investigations and release evidence. |
+| `screenshots/` | Assets used by the [gallery](user-guide/screenshots.md) and README. |
 
-## Feature reference
+## Repository policies
 
-| Document | What it covers |
-| --- | --- |
-| [Visual Markdown editor](markdown-editor.md) | Block editing, Raw mode, tables, selection and resource limits. |
-| [Git history](git-history.md) | Graph, commit details, diffs and history safety. |
-| [Git operations and blame](git-operations-and-blame.md) | Stash/worktree, merge/rebase/cherry-pick, inline blame and consent rules. |
-| [Git repository state](git-repository-state.md) | Read-only snapshots of locks, worktrees, sequencer state and conflicts. |
-| [Project runtime defaults](project-runtime-settings.md) | Harness/model/environment inheritance, sources and relay boundaries. |
-| [Spec workspace](spec-workspace.md) | Intent, spec, tasks, evidence and remaining governance phases. |
-| [Governance WASM plugin](governance-wasm-plugin.md) | Knowledge model, manifest v2, WASM ABI, MCP tools, artifacts and SSH fabric. |
-| [Session list](session-list.md) | Session scopes, filters, recent activity and workspace binding. |
-| [Agent coordination](agent-coordination.md) | Project peers, durable deferred turns, task reports, inboxes, scope grants and relay/device boundaries. |
-| [Session tabs and UI preferences](session-tabs-and-ui-preferences.md) | Tabs, panes, zoom, density and persisted UI settings. |
-| [Workspace polish and usage](workspace-polish-and-usage.md) | Dashboard, usage presentation and workspace polish decisions. |
-| [Native text motion](text-motion.md) | In-place metadata transitions, accessibility, reduced motion and isolated native regression checks. |
-| [Shared UI surfaces](ui-surfaces.md) | Central corner geometry, painted child edges, native backdrop alignment and regression checks. |
+[Contributing](../CONTRIBUTING.md) · [Security reporting](../SECURITY.md) ·
+[License](../LICENSE) · [Third-party notices](../THIRD_PARTY_NOTICES.md) ·
+[License texts](../licenses/)
 
-## Quality and acceptance
-
-| Document | What it covers |
-| --- | --- |
-| [Test quality and coverage](test-quality.md) | Native UI gate, measured coverage baseline, mutation checks and remaining UI acceptance gaps. |
-| [Agent workbench and GitHub](agent-workbench-and-github.md) | Review, checkpoints, checks, budgets, A/B comparison, impact map and GitHub scope. |
-| [Graph and trace virtualization](graph-trace-virtualization.md) | Large-graph/trace limits, keyboard behaviour and acceptance notes. |
-| [R11 manual QA](r11-qa.md) | The manual release matrix that automated checks do not replace. |
-| [Release acceptance](release-acceptance.md) | Published-artifact evidence, hardening and deferred manual acceptance. |
-| [CodeQL triage](codeql-triage.md) | Documented false positives and the rule that no query is disabled. |
-| [UI input regressions](ui-input-regressions.md) | Historical native input, focus, glass and popover investigations. |
-| [Popovers and factory reset](popovers-and-factory-reset.md) | Overlay behaviour and exact reset scope. |
-
-## Repository
-
-| Document | What it covers |
-| --- | --- |
-| [Contributing](../CONTRIBUTING.md) | Build, test and review expectations. |
-| [Security policy](../SECURITY.md) | Reporting and supported-release policy. |
-| [Third-party notices](../THIRD_PARTY_NOTICES.md) | Licenses for bundled dependencies, fonts and marks. |
-| [License texts](../licenses/) | Full Apache-2.0 text used by bundled dependencies. |
+For documentation changes, follow the [maintenance rules](development/documentation.md).

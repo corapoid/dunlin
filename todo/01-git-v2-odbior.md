@@ -21,7 +21,7 @@ odbioru natywnych dialogów, hoverów i rzeczywistego wdrożenia serwera.
 - `apps/desktop/src/inline_blame.rs`.
 - `crates/workspace/src/git/{operations.rs,blame.rs}`.
 - `crates/relay/src/api/operations.rs` i desktopowy transport `remote/operations`.
-- `docs/git-operations-and-blame.md`, `docs/git-history.md`.
+- `docs/user-guide/git-operations-and-blame.md`, `docs/user-guide/git-history.md`.
 - `scripts/git-operations-smoke.py`.
 
 ## Etapy

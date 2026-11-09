@@ -18,7 +18,7 @@ Koszt wyceniony z tokenów nie musi być kwotą faktycznie pobraną z subskrypcj
 - `crates/domain/src/{lib.rs,task_budget.rs}`.
 - `crates/agent/src/lib.rs`: obserwacje ACP i tokeny.
 - `crates/relay/src/{api.rs,store.rs}`: dowody i dostęp per user/device.
-- `docs/standalone-chat-worktree-usage.md`, `docs/workspace-polish-and-usage.md`.
+- `docs/user-guide/standalone-chat-and-worktrees.md`, `docs/user-guide/usage.md`.
 
 ## Etap A — poprawność obecnej implementacji (P1)
 

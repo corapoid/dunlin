@@ -82,7 +82,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("dist/RELAY-SHA256SUMS", publish)
 
     def test_installation_docs_recommend_source_without_package_commands(self):
-        for name in ["README.md", "docs/guide.md", "CONTRIBUTING.md"]:
+        for name in ["README.md", "docs/getting-started/installation.md", "CONTRIBUTING.md"]:
             text = (ROOT / name).read_text()
             with self.subTest(path=name):
                 self.assertIn("beta", text)

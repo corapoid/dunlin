@@ -111,7 +111,7 @@ filesystem and Gatekeeper work. There is no Electron, Chromium, Node runtime or
 Monaco in the running app; the UI is GPUI and the data layer is local SQLite.
 Long transcripts open as a bounded 120-item window, and file, Git, language and
 icon scans run off the UI thread with debounced refreshes.
-The exact method and caveats are in [`docs/performance.md`](docs/performance.md).
+The exact method and caveats are in [performance measurements](docs/quality/performance.md).
 
 ## Start
 
@@ -147,7 +147,7 @@ bash install-relay.sh
 ```
 
 Review the script before running it as your regular service user, not root.
-For source builds, see the [full guide](docs/guide.md#remote-relay).
+For source builds, see [relay setup](docs/administration/relay-setup.md#build-and-register-from-source).
 
 Pair in **Settings → Remote & SSH**, then choose **Manage** or use the title-bar host
 switcher. Server tool settings and authorization stay remote; appearance stays
@@ -159,7 +159,7 @@ authorization requires an administrator-only relay; separate OS accounts/service
 are needed for untrusted users. Existing macOS relays retain their agent homes
 until explicit `setup`; opting in may require sign-in and new conversations.
 
-See [Server setup and remote workspace](docs/relay-setup.md) for commands,
+See [Server setup and remote workspace](docs/administration/relay-setup.md) for commands,
 Linux keyring/reboot requirements, transfer limits and acceptance caveats.
 
 ## A quick look
@@ -187,22 +187,23 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
   </tr>
 </table>
 
-<p align="center"><sub><a href="docs/screenshots.md">Open the screenshot gallery — light and dark, plus feature close-ups →</a></sub></p>
+<p align="center"><sub><a href="docs/user-guide/screenshots.md">Open the screenshot gallery — light and dark, plus feature close-ups →</a></sub></p>
 
 ## Learn more
 
-- [Full guide](docs/guide.md) — the detailed feature and operations reference.
-- [Roadmap](docs/ROADMAP.md) — the single remaining-work backlog.
+- [Getting started](docs/getting-started/README.md) · [User guide](docs/user-guide/README.md).
+- [Roadmap](docs/project/roadmap.md) — the single remaining-work backlog.
 - [Documentation index](docs/README.md) — guides, references and acceptance notes grouped by task.
-- [Changelog](CHANGELOG.md) · [Performance methodology](docs/performance.md).
-- [Project import](docs/project-import.md) · [Session import](docs/session-import.md) · [Markdown editor](docs/markdown-editor.md) · [Server setup](docs/relay-setup.md).
-- [Settings and project backup](docs/settings-project-backup.md) — JSON or GitHub/GitLab, with deferred repository downloads.
-- [R11 manual QA matrix](docs/r11-qa.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md).
+- [Architecture](docs/architecture/README.md) · [Configuration reference](docs/reference/README.md).
+- [Changelog](CHANGELOG.md) · [Performance methodology](docs/quality/performance.md).
+- [Project import](docs/user-guide/project-import.md) · [Session import](docs/user-guide/session-import.md) · [Markdown editor](docs/user-guide/markdown-editor.md) · [Server setup](docs/administration/relay-setup.md).
+- [Settings and project backup](docs/administration/settings-project-backup.md) — JSON or GitHub/GitLab, with deferred repository downloads.
+- [R11 manual QA matrix](docs/quality/manual-acceptance.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md).
 
 ## Status
 
 Dunlin is an early public beta. Intel Macs are not supported in the current beta. See the
-[roadmap](docs/ROADMAP.md) for what is still open and the
+[roadmap](docs/project/roadmap.md) for what is still open and the
 [documentation index](docs/README.md) for the detailed references.
 
 ## License

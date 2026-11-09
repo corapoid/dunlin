@@ -93,7 +93,7 @@ obsolete GPUI/syntect/font/image packages found by the initial audit have been
 migrated out of the entire lockfile, with maintained local forks, preserved
 licenses and verified upstream provenance. `scripts/verify_vendor.py` checks
 their complete trees; `deny.toml` bans reintroduction. [Migration](vendor/README.md)
-and [acceptance evidence](docs/release-acceptance.md).
+and [historical acceptance evidence](docs/archive/release-acceptance.md).
 
 `python3 scripts/repository_policy.py --repo corapoid/dunlin` audits rules read-only.
 The explicitly approved solo-maintainer policy requires PRs, eight strict checks
@@ -105,7 +105,8 @@ Release source authorization independently verifies the actual mainline merge,
 an identical source tree at the reviewed PR head, trusted green PR checks
 (including both Linux architectures) and open CodeQL security alerts via read-only APIs, without
 giving build jobs owner/admin credentials. Manual GUI/TCC/real-host acceptance is
-explicitly deferred for beta releases, never marked passed or reused for stable/RC.
+explicitly deferred only for `0.1.0-beta.N`, never marked passed or reused for
+`0.2.0`, stable or RC releases. See the [current release process](docs/quality/release-process.md).
 
 Artifact provenance, Apple signing/notarization, developer commit/tag signatures,
 and manual/deployed-host acceptance are distinct evidence. None substitutes for
@@ -115,4 +116,5 @@ The hardening change and its signed mainline commit passed all required checks,
 aggregate CodeQL and read-only workflow source authorization. Both CI binary
 attestations were independently verified for the exact mainline source/workflow.
 Six proven analyzer false positives are individually documented, not query/path
-exclusions. [Final evidence and manual boundaries](docs/release-acceptance.md).
+exclusions. [Historical evidence](docs/archive/release-acceptance.md) and
+[current manual boundaries](docs/quality/manual-acceptance.md).

@@ -23,7 +23,7 @@ Nie ma obecnie hosta LSP w module workspace ani pełnej semantycznej impact map.
 - `apps/desktop/src/{workbench.rs,workbench/saving.rs}`: wersje buforów i zapisy.
 - Watchery plików, zmiana Git/root/trust i projektowe ustawienia runtime.
 - `crates/relay/src/api.rs` i desktopowy transport impact dla późniejszego remote.
-- `docs/agent-workbench-and-github.md`: wyłącznie aktualny zakres workbench,
+- `docs/user-guide/agent-workbench.md`: wyłącznie aktualny zakres workbench,
   bez historycznego PR/Actions.
 
 ## Etap A — kontrakt i bezpieczny host procesu

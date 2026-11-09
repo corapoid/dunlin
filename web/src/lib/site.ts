@@ -13,7 +13,8 @@ export const site = {
   releases: "https://github.com/corapoid/dunlin/releases",
   latestRelease: `${github}/releases/tag/v${version}`,
   sourceInstall: `${github}#start`,
-  roadmap: "https://github.com/corapoid/dunlin/blob/main/docs/ROADMAP.md",
+  roadmap:
+    "https://github.com/corapoid/dunlin/blob/main/docs/project/roadmap.md",
   security: "https://github.com/corapoid/dunlin/security/advisories/new",
   license: "https://github.com/corapoid/dunlin/blob/main/LICENSE",
   version,

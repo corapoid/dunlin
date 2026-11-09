@@ -71,11 +71,17 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo machete --skip-target-dir apps crates
 cargo test --workspace
 python3 -m unittest discover -s scripts/tests -v
+python3 scripts/check_docs.py
 ./scripts/relay-smoke.sh
 python3 scripts/git-operations-smoke.py
 cargo build -p dunlin -p dunlin-agent --bin dunlin --bin mock_acp_agent --locked
 python3 scripts/release_qa.py --native-only --tmp-root "$TMPDIR"
 ```
+
+For independent desktop workflows only, add `--native-filter 'gui-*'`, or name
+one discovered scenario such as `--native-filter gui-close-cancel-smoke`.
+See the [GUI scenario ledger](docs/quality/gui-scenarios.md) for input paths, backend and
+storage assertions, named-step failure evidence, and explicit acceptance gaps.
 
 To build a local app bundle:
 
@@ -89,7 +95,7 @@ Developer ID certificate.
 
 ## Code style
 
-See [test quality and measured coverage](docs/test-quality.md) for the native
+See [test quality and measured coverage](docs/quality/test-quality.md) for the native
 scenario registry, coverage reports, assertion-strength checks and remaining
 manual acceptance boundaries.
 
@@ -97,7 +103,7 @@ manual acceptance boundaries.
   keep rendering work off blocking threads.
 - Use the shared controls in `crates/ui`, including form/search/code inputs and
   choice cards. Do not draw static frames around borderless form fields or use
-  clickable text as an action. See [UI controls](docs/ui-controls.md).
+  clickable text as an action. See [UI controls](docs/development/ui-controls.md).
 - Prefer the shared types in `crates/domain` and the persistence layer in
   `crates/storage` over ad-hoc models.
 - Keep ACP protocol I/O on the agent worker and send events to the UI over
@@ -125,8 +131,11 @@ them through the same protected pull-request process as other changes.
 - Describe the user-visible change, how you tested it, and any trade-offs in
   the pull request.
 - Include screenshots or a short recording for UI changes.
-- Update `docs/ROADMAP.md` or `CHANGELOG.md` when a change affects the release
+- Update `docs/project/roadmap.md` or `CHANGELOG.md` when a change affects the release
   scope.
+- Update affected guides/references with behavior changes and follow the
+  [documentation maintenance rules](docs/development/documentation.md). Check
+  local links, anchors and navigation with `python3 scripts/check_docs.py`.
 - By contributing, you agree that your contribution is licensed under the MIT
   License.
 
@@ -165,7 +174,7 @@ For isolated automatic QA use `python3 scripts/release_qa.py --tmp-root "$TMPDIR
 --native --audit` after installing cargo-deny 0.20.2. Native mode needs a desktop;
 it never substitutes for manual GUI/TCC/deployed-host acceptance. The current
 dependency and repository-policy audits have unresolved findings; see
-[release acceptance](docs/release-acceptance.md) before cutting another tag.
+[release process](docs/quality/release-process.md) before cutting another tag.
 
 ## Code of conduct
 
