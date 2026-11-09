@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-glass="true" data-motion="true">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Dunlin — Quiet Workspace concept</title>
+    <link rel="stylesheet" href="quiet-workspace.css" />
+    <script src="quiet-workspace.js" defer></script>
+  </head>
+  <body>
+    <svg
+      class="icon-definitions"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <symbol id="i-sidebar" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="16" rx="3" />
+          <path d="M9 4v16" />
+        </symbol>
+        <symbol id="i-inspector" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="16" rx="3" />
+          <path d="M15 4v16" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" />
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24">
+          <path
+            d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2Z"
+          />
+        </symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24">
+          <path d="m8 10 4 4 4-4" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M12 19V5m-6 6 6-6 6 6" />
+        </symbol>
+        <symbol id="i-branch" viewBox="0 0 24 24">
+          <circle cx="6" cy="5" r="2" />
+          <circle cx="6" cy="19" r="2" />
+          <circle cx="18" cy="6" r="2" />
+          <path d="M6 7v10m12-9c0 6-12 3-12 8" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24">
+          <path d="m5 12 4 4L19 6" />
+        </symbol>
+        <symbol id="i-file" viewBox="0 0 24 24">
+          <path
+            d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Zm0 0v6h6M8 14h8m-8 3h5"
+          />
+        </symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24">
+          <path d="M4 7h16M4 17h16" />
+          <circle cx="9" cy="7" r="3" />
+          <circle cx="15" cy="17" r="3" />
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24">
+          <path d="m6 6 12 12M6 18 18 6" />
+        </symbol>
+        <symbol id="i-spark" viewBox="0 0 24 24">
+          <path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z" />
+        </symbol>
+        <symbol id="i-monitor" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="13" rx="2" />
+          <path d="M8 21h8m-4-4v4" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <header class="study-header">
+      <a class="wordmark" href="../ui-refresh-proposal.md"
+        >dunlin<span> / quiet workspace</span></a
+      >
+      <div class="study-controls" aria-label="Prototype appearance">
+        <label class="theme-picker"
+          >Theme
+          <select id="theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </select></label
+        >
+        <label><input id="glass" type="checkbox" checked /> Glass</label>
+        <label
+          ><input id="reduce-motion" type="checkbox" /> Reduce motion</label
+        >
+      </div>
+    </header>
+
+    <main
+      class="app-window"
+      id="workspace"
+      data-sidebar="true"
+      data-inspector="false"
+      aria-label="Dunlin interactive workspace concept"
+    >
+      <header class="toolbar">
+        <div class="toolbar-start">
+          <div class="traffic-lights" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <button
+            class="icon-button"
+            id="toggle-sidebar"
+            aria-label="Toggle project navigator"
+            aria-controls="navigator"
+            aria-expanded="true"
+          >
+            <svg><use href="#i-sidebar" /></svg>
+          </button>
+        </div>
+        <button class="command-trigger" id="open-commands">
+          <svg><use href="#i-search" /></svg><span>Search anything…</span
+          ><kbd>⌘ K</kbd>
+        </button>
+        <div class="toolbar-end">
+          <span class="host"
+            ><svg><use href="#i-monitor" /></svg> This Mac
+            <span class="local-label">· Local</span></span
+          ><button
+            class="icon-button"
+            id="toggle-inspector"
+            aria-label="Toggle context inspector"
+            aria-controls="inspector"
+            aria-expanded="false"
+          >
+            <svg><use href="#i-inspector" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace-body">
+        <aside class="navigator" id="navigator" aria-label="Project navigator">
+          <div class="navigator-inner">
+            <button class="project-picker" id="choose-project">
+              <span class="project-icon">d</span
+              ><span
+                ><strong id="project-name">Dunlin</strong
+                ><small>Personal workspace</small></span
+              ><svg><use href="#i-chevron" /></svg>
+            </button>
+            <button class="new-conversation" id="new-conversation">
+              <svg><use href="#i-plus" /></svg> New conversation
+            </button>
+            <div class="section-label">PINNED <span>02</span></div>
+            <nav id="conversations" aria-label="Conversations"></nav>
+            <div class="sidebar-note">
+              <span class="tiny-line"></span>
+              <p>Room for the work.<br />Everything else, a click away.</p>
+            </div>
+            <div class="navigator-footer">
+              <span class="privacy-label"
+                ><svg><use href="#i-monitor" /></svg> Local-first. Yours.</span
+              ><button
+                class="icon-button"
+                id="open-settings"
+                aria-label="Open concept settings"
+              >
+                <svg><use href="#i-settings" /></svg>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <section class="work-area" aria-label="Project work area">
+          <div class="destination-bar">
+            <div
+              class="destinations"
+              role="tablist"
+              aria-label="Project destinations"
+            >
+              <button
+                role="tab"
+                id="tab-work"
+                aria-controls="view-work"
+                aria-selected="true"
+                data-view="work"
+              >
+                Work</button
+              ><button
+                role="tab"
+                id="tab-changes"
+                aria-controls="view-changes"
+                aria-selected="false"
+                tabindex="-1"
+                data-view="changes"
+              >
+                Changes <span class="count">3</span></button
+              ><button
+                role="tab"
+                id="tab-activity"
+                aria-controls="view-activity"
+                aria-selected="false"
+                tabindex="-1"
+                data-view="activity"
+              >
+                Activity
+              </button>
+            </div>
+            <span class="branch-label"
+              ><svg><use href="#i-branch" /></svg> design/quiet-workspace</span
+            >
+          </div>
+
+          <section
+            class="view work-view"
+            id="view-work"
+            role="tabpanel"
+            aria-labelledby="tab-work"
+          >
+            <div class="conversation-scroll" id="conversation-scroll">
+              <div class="conversation-heading">
+                <div class="eyebrow">A LITTLE SPACE TO THINK</div>
+                <h1 id="conversation-title">Refine the workspace</h1>
+                <p id="conversation-subtitle">
+                  A simpler path from an idea to something great.
+                </p>
+              </div>
+              <div class="transcript" id="transcript"></div>
+            </div>
+            <form class="composer" id="composer">
+              <label class="sr-only" for="prompt">Message the demo agent</label
+              ><textarea
+                id="prompt"
+                rows="2"
+                placeholder="What would you like to build?"
+                maxlength="4000"
+              ></textarea>
+              <div class="composer-footer">
+                <div class="composer-options">
+                  <button
+                    type="button"
+                    class="icon-button attach-button"
+                    id="attach-context"
+                    aria-label="Attach demo context"
+                  >
+                    <svg><use href="#i-plus" /></svg></button
+                  ><span class="agent-label"
+                    ><svg><use href="#i-spark" /></svg> OpenCode
+                    <span>· Demo model</span></span
+                  >
+                </div>
+                <button
+                  class="send-button"
+                  type="submit"
+                  aria-label="Send demo message"
+                  disabled
+                >
+                  <svg><use href="#i-arrow" /></svg>
+                </button>
+              </div>
+              <div class="composer-hint">
+                Demo only · No agent is connected <span>⌘ ↵ to send</span>
+              </div>
+            </form>
+          </section>
+
+          <section
+            class="view changes-view"
+            id="view-changes"
+            role="tabpanel"
+            aria-labelledby="tab-changes"
+            hidden
+          >
+            <div class="page-heading">
+              <div class="eyebrow">A CLEARER FINAL LOOK</div>
+              <h1>Review with confidence.</h1>
+              <p>Small changes. Full context. Nothing committed without you.</p>
+            </div>
+            <div class="review-summary">
+              <span
+                ><svg><use href="#i-branch" /></svg>
+                <strong>3 changed files</strong></span
+              ><span class="diff-stat">+24 <span>−12</span></span>
+            </div>
+            <div class="review-layout">
+              <nav
+                class="changed-files"
+                id="changed-files"
+                aria-label="Sample changed files"
+              ></nav>
+              <div class="diff-panel">
+                <header>
+                  <span id="diff-filename"></span><span>Sample diff</span>
+                </header>
+                <pre
+                  id="diff-content"
+                  tabindex="0"
+                  aria-label="Sample file diff"
+                ></pre>
+              </div>
+            </div>
+            <div class="review-actions">
+              <p id="review-progress" role="status">0 of 3 files reviewed</p>
+              <button class="secondary-button" id="mark-reviewed">
+                Mark as reviewed</button
+              ><button class="primary-button" id="draft-commit">
+                Draft commit message
+              </button>
+            </div>
+            <p class="data-note">
+              Illustrative files, not your repository. No staging, commits or
+              pushes happen here.
+            </p>
+          </section>
+
+          <section
+            class="view activity-view"
+            id="view-activity"
+            role="tabpanel"
+            aria-labelledby="tab-activity"
+            hidden
+          >
+            <div class="page-heading">
+              <div class="eyebrow">THE STORY BEHIND THE WORK</div>
+              <h1>Nothing behind the curtain.</h1>
+              <p>One calm timeline. Open the details when you need them.</p>
+            </div>
+            <div class="activity-heading">
+              <h2>Latest run</h2>
+              <span class="badge">Sample · Completed</span>
+            </div>
+            <div class="timeline">
+              <details>
+                <summary>
+                  <span class="event-dot"></span
+                  ><span
+                    ><strong>Workspace context attached</strong
+                    ><small>3 files · Explicit conversation scope</small></span
+                  ><time>10:42</time>
+                </summary>
+                <p>
+                  Sample context: workspace.rs, palette.rs and navigation.rs. In
+                  the native app, these rows must describe recorded events,
+                  never fabricated progress.
+                </p>
+              </details>
+              <details>
+                <summary>
+                  <span class="event-dot"></span
+                  ><span
+                    ><strong>Agent proposed a plan</strong
+                    ><small>2 steps · Ready for your review</small></span
+                  ><time>10:43</time>
+                </summary>
+                <p>
+                  Plan steps are work items, not separate agents. Graph and
+                  Trace would open as lenses on the actual transcript.
+                </p>
+              </details>
+              <details>
+                <summary>
+                  <span class="event-dot complete"></span
+                  ><span
+                    ><strong>Changes ready to review</strong
+                    ><small>3 files · No Git operations performed</small></span
+                  ><time>10:44</time>
+                </summary>
+                <p>
+                  The native workflow would link each event to its source
+                  message, tool call and exact changed file.
+                </p>
+              </details>
+            </div>
+            <button class="secondary-button" data-go-view="changes">
+              Review sample changes <span aria-hidden="true">↗</span>
+            </button>
+          </section>
+        </section>
+
+        <aside
+          class="inspector"
+          id="inspector"
+          aria-label="Context inspector"
+          hidden
+        >
+          <div class="inspector-inner">
+            <div class="inspector-heading">
+              <h2>A little more context</h2>
+              <button
+                class="icon-button"
+                id="close-inspector"
+                aria-label="Close context inspector"
+              >
+                <svg><use href="#i-close" /></svg>
+              </button>
+            </div>
+            <div
+              class="inspector-tabs"
+              role="tablist"
+              aria-label="Inspector details"
+            >
+              <button
+                role="tab"
+                id="detail-context"
+                aria-selected="true"
+                aria-controls="inspector-context"
+                data-detail="context"
+              >
+                Context</button
+              ><button
+                role="tab"
+                id="detail-files"
+                aria-selected="false"
+                aria-controls="inspector-files"
+                tabindex="-1"
+                data-detail="files"
+              >
+                Files</button
+              ><button
+                role="tab"
+                id="detail-plan"
+                aria-selected="false"
+                aria-controls="inspector-plan"
+                tabindex="-1"
+                data-detail="plan"
+              >
+                Plan
+              </button>
+            </div>
+            <section
+              id="inspector-context"
+              role="tabpanel"
+              aria-labelledby="detail-context"
+            >
+              <div class="inspector-section">
+                <div class="section-label">WORKING IN</div>
+                <div class="scope-card">
+                  <svg><use href="#i-monitor" /></svg>
+                  <div>
+                    <strong id="scope-project">Dunlin</strong
+                    ><small>This Mac · Local project</small>
+                  </div>
+                </div>
+                <p class="inspector-copy">
+                  The target stays visible. Local and remote work never look the
+                  same.
+                </p>
+              </div>
+              <div class="inspector-section">
+                <div class="section-label">CONVERSATION</div>
+                <dl>
+                  <div>
+                    <dt>Agent</dt>
+                    <dd>OpenCode</dd>
+                  </div>
+                  <div>
+                    <dt>Model</dt>
+                    <dd>Demo model</dd>
+                  </div>
+                  <div>
+                    <dt>Permissions</dt>
+                    <dd>Ask first</dd>
+                  </div>
+                </dl>
+              </div>
+              <div class="inspector-section">
+                <div class="section-label">ATTACHED CONTEXT</div>
+                <div class="context-file">
+                  <svg><use href="#i-file" /></svg> workspace.rs
+                  <span>Sample</span>
+                </div>
+                <div class="context-file">
+                  <svg><use href="#i-file" /></svg> palette.rs
+                  <span>Sample</span>
+                </div>
+              </div>
+            </section>
+            <section
+              id="inspector-files"
+              role="tabpanel"
+              aria-labelledby="detail-files"
+              hidden
+            >
+              <div class="inspector-section">
+                <div class="section-label">PROJECT FILES · SAMPLE</div>
+                <p class="inspector-copy">
+                  Select a file to open its illustrative diff.
+                </p>
+                <button class="file-link" data-open-file="0">
+                  <svg><use href="#i-file" /></svg> src/workspace.rs</button
+                ><button class="file-link" data-open-file="1">
+                  <svg><use href="#i-file" /></svg> src/palette.rs</button
+                ><button class="file-link" data-open-file="2">
+                  <svg><use href="#i-file" /></svg> src/navigation.rs
+                </button>
+              </div>
+            </section>
+            <section
+              id="inspector-plan"
+              role="tabpanel"
+              aria-labelledby="detail-plan"
+              hidden
+            >
+              <div class="inspector-section">
+                <div class="section-label">PLAN · SAMPLE</div>
+                <ol class="plan-list">
+                  <li>
+                    <span class="step-check">✓</span>
+                    <div>
+                      <strong>Simplify the navigation</strong
+                      ><small>One project, three clear destinations.</small>
+                    </div>
+                  </li>
+                  <li>
+                    <span class="step-number">2</span>
+                    <div>
+                      <strong>Review the details</strong
+                      ><small>Materials, motion and accessibility.</small>
+                    </div>
+                  </li>
+                </ol>
+                <button class="secondary-button" data-go-view="changes">
+                  Open review
+                </button>
+              </div>
+            </section>
+          </div>
+        </aside>
+      </div>
+      <footer class="window-status">
+        <span
+          ><span class="status-dot"></span> Design study · Sample content</span
+        ><span>Native in spirit. Focused by design.</span>
+      </footer>
+    </main>
+
+    <footer class="study-footer">
+      <div>
+        <span class="study-number">01 /</span> Less chrome. <em>More flow.</em>
+      </div>
+      <p>
+        An interactive direction, not the production app.
+        <a href="../ui-refresh-proposal.md">Read the design proposal ↗</a>
+      </p>
+    </footer>
+    <div
+      class="sr-only"
+      role="status"
+      id="announcement"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
+    <dialog id="command-dialog" aria-labelledby="command-title">
+      <div class="dialog-heading">
+        <h2 id="command-title">Go anywhere.</h2>
+        <button
+          class="icon-button"
+          data-close-dialog
+          aria-label="Close commands"
+        >
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <label class="command-search"
+        ><svg><use href="#i-search" /></svg
+        ><input
+          id="command-query"
+          placeholder="Search commands, projects, conversations…"
+          aria-label="Search commands"
+          autocomplete="off"
+      /></label>
+      <div id="command-results" class="command-results"></div>
+      <div class="dialog-footnote">
+        Tab to a result · Enter to open · Escape to close
+      </div>
+    </dialog>
+    <dialog id="project-dialog" aria-labelledby="project-title">
+      <div class="dialog-heading">
+        <h2 id="project-title">Your projects</h2>
+        <button
+          class="icon-button"
+          data-close-dialog
+          aria-label="Close projects"
+        >
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <p class="dialog-description">
+        Demo projects on this Mac. No folders are opened or modified.
+      </p>
+      <div class="project-options">
+        <button data-project="dunlin">
+          <span class="project-icon">d</span
+          ><span
+            ><strong>Dunlin</strong><small>Native agent workspace</small></span
+          ><span>Local</span></button
+        ><button data-project="relay">
+          <span class="project-icon relay-icon">r</span
+          ><span
+            ><strong>Relay</strong
+            ><small>Self-hosted connection tools</small></span
+          ><span>Local</span>
+        </button>
+      </div>
+    </dialog>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <div class="dialog-heading">
+        <h2 id="settings-title">Quiet by choice.</h2>
+        <button
+          class="icon-button"
+          data-close-dialog
+          aria-label="Close settings"
+        >
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <p class="dialog-description">
+        Proposed settings groups. This prototype only changes appearance using
+        the controls above the window.
+      </p>
+      <div class="settings-groups">
+        <div>
+          <strong>General</strong><span>Startup, defaults and shortcuts</span>
+        </div>
+        <div>
+          <strong>Appearance & Accessibility</strong
+          ><span>Theme, materials, motion and reading</span>
+        </div>
+        <div>
+          <strong>Agents & Accounts</strong
+          ><span>Connections, models and authentication</span>
+        </div>
+        <div>
+          <strong>Connections</strong
+          ><span>Relay, SSH and target machines</span>
+        </div>
+        <div>
+          <strong>Extensions & Skills</strong
+          ><span>Explicitly installed capabilities</span>
+        </div>
+        <div>
+          <strong>Privacy & Data</strong
+          ><span>Permissions, credentials and backups</span>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="commit-dialog" aria-labelledby="commit-title">
+      <div class="dialog-heading">
+        <h2 id="commit-title">A clear finishing touch.</h2>
+        <button
+          class="icon-button"
+          data-close-dialog
+          aria-label="Close commit draft"
+        >
+          <svg><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <p class="dialog-description">
+        Illustrative message only. This does not stage, commit or push files.
+      </p>
+      <label class="draft-label" for="commit-message">Commit message</label
+      ><textarea id="commit-message" rows="4">
+feat(ui): introduce a quieter project workspace
+
+Group work, review and activity around the current project.</textarea
+      ><button class="primary-button dialog-done" data-close-dialog>
+        Done
+      </button>
+    </dialog>
+    <noscript
+      ><p class="noscript">
+        Enable JavaScript to try the local interactions. The
+        <a href="../ui-refresh-proposal.md">design proposal</a> is available
+        without JavaScript.
+      </p></noscript
+    >
+  </body>
+</html>

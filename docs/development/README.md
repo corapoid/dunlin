@@ -16,6 +16,8 @@ its check list here.
 
 ## Specialized work
 
+- [Quiet Workspace UI proposal](ui-refresh-proposal.md) — proposed task-first
+  navigation and an interactive design study; not the shipped native interface.
 - [Plugin manifests, WASM host and knowledge MCP](plugins.md)
 - [CI/CD execution, caches and release builds](ci-cd.md)
 - [Release process](../quality/release-process.md)
