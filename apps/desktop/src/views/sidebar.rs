@@ -163,9 +163,9 @@ fn section_header(
         SidebarSection::Knowledge => ("Knowledge", Some(this.knowledge.graph.objects.len())),
     };
 
-    let right: AnyElement =
-        match section {
-            SidebarSection::Files => div()
+    let right: AnyElement = match section {
+        SidebarSection::Files => {
+            div()
                 .id("explorer-actions")
                 .flex()
                 .items_center()
@@ -203,57 +203,61 @@ fn section_header(
                             this.new_explorer_entry(parent, true, window, cx);
                         })),
                 )
-                .into_any_element(),
-            SidebarSection::Projects | SidebarSection::Dashboard => div()
-                .flex()
-                .items_center()
-                .child(
-                    icon_button("search-projects", IconName::Search, "Search projects · ⌘⌥P")
-                        .relative()
-                        .children({
-                            #[cfg(debug_assertions)]
-                            {
-                                crate::workspace_ui_smoke::probe("search-projects")
-                            }
-                            #[cfg(not(debug_assertions))]
-                            {
-                                None::<AnyElement>
-                            }
-                        })
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_project_search(window, cx)),
-                        ),
+                .into_any_element()
+        }
+        SidebarSection::Projects | SidebarSection::Dashboard => div()
+            .flex()
+            .items_center()
+            .child(
+                icon_button(
+                    "search-projects",
+                    IconName::Search,
+                    this.shortcut_label("Search projects", "⌘⌥P"),
                 )
-                .child(
-                    icon_button("add-project", IconName::Plus, "Add project")
-                        .relative()
-                        .children({
-                            #[cfg(debug_assertions)]
-                            {
-                                crate::workspace_ui_smoke::probe("add-project")
-                            }
-                            #[cfg(not(debug_assertions))]
-                            {
-                                None::<AnyElement>
-                            }
-                        })
-                        .dropdown_menu_with_anchor(Anchor::TopRight, {
-                            let app = cx.entity().downgrade();
-                            move |menu, _, _| crate::project_import::source_menu(menu, app.clone())
-                        }),
-                )
-                .into_any_element(),
-            SidebarSection::Sessions => dunlin_ui::button("new-session")
-                .ghost()
-                .icon(IconName::Plus)
-                .label("New")
-                .accessibility_label("New session")
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.new_session(cx);
-                }))
-                .into_any_element(),
-            _ => div().into_any_element(),
-        };
+                .relative()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("search-projects")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .on_click(cx.listener(|this, _, window, cx| this.open_project_search(window, cx))),
+            )
+            .child(
+                icon_button("add-project", IconName::Plus, "Add project")
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("add-project")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .dropdown_menu_with_anchor(Anchor::TopRight, {
+                        let app = cx.entity().downgrade();
+                        move |menu, _, _| crate::project_import::source_menu(menu, app.clone())
+                    }),
+            )
+            .into_any_element(),
+        SidebarSection::Sessions => dunlin_ui::button("new-session")
+            .ghost()
+            .icon(IconName::Plus)
+            .label("New")
+            .accessibility_label("New session")
+            .tooltip(this.shortcut_label("New session", "⌘N"))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.new_session(cx);
+            }))
+            .into_any_element(),
+        _ => div().into_any_element(),
+    };
 
     let header = div()
         .id("sidebar-section-header")
@@ -1226,6 +1230,9 @@ fn project_row(
                                     .size(px(10.))
                                     .text_color(p.amber),
                             )
+                        })
+                        .when(this.project_list.show_preview, |row| {
+                            row.child(crate::project_catalog::preview_button(this, project, cx))
                         }),
                 )
                 .when(!compact && this.show_project_branches, |row| {
@@ -1306,7 +1313,6 @@ fn project_row(
     let row = row.relative().when(active, |row| {
         row.children(crate::workspace_ui_smoke::probe("active-project-row"))
     });
-    let row = crate::project_catalog::attach_preview(row, this, project, cx);
     div().flex().flex_col().child(row).into_any_element()
 }
 
@@ -1732,9 +1738,8 @@ fn search_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 .gap(px(4.))
                 .child(div().flex_1().min_w(px(0.)).child(input))
                 .child(
-                    dunlin_ui::button("run-search")
+                    dunlin_ui::action_button("run-search")
                         .primary()
-                        .small()
                         .label("Run")
                         .on_click(cx.listener(|this, _, _, cx| this.run_search(cx))),
                 ),
@@ -1886,7 +1891,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             .child(Icon::new(IconName::GitBranch).size(px(24.)).text_color(p.muted_fg))
             .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(p.fg).child("No Git repository"))
             .child(div().text_size(px(11.5)).line_height(relative(1.5)).text_color(p.muted_fg).child("You can edit files normally. Initialize Git here to track changes, or open an existing repository."))
-            .child(dunlin_ui::button("initialize-repository").primary()
+            .child(dunlin_ui::action_button("initialize-repository").primary()
                 .label(if this.git_loading { "Initializing…" } else { "Initialize repository" })
                 .on_click(cx.listener(|this, _, _, cx| this.initialize_repository(cx)))
                 )
@@ -1966,7 +1971,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             header.child(compact_input(&this.commit_input).aria_label("Commit message"))
         })
         .child(
-            dunlin_ui::button("commit-button")
+            dunlin_ui::action_button("commit-button")
                 .primary()
                 .icon(IconName::GitCommitHorizontal)
                 .disabled(!commit_enabled)
@@ -2010,7 +2015,8 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
     let mut list = div().flex().flex_col().pb(px(10.)).child(header).child(
         div()
             .px(px(12.))
-            .h(px(28.))
+            .min_h(px(40.))
+            .py(px(4.))
             .flex()
             .items_center()
             .gap(px(5.))
@@ -2023,8 +2029,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
             )
             .child(div().flex_1())
             .child(
-                dunlin_ui::button("stage-all")
-                    .ghost()
+                dunlin_ui::action_button("stage-all")
                     .label("Stage all")
                     .disabled(changes.is_empty())
                     .on_click(cx.listener(|this, _, _, cx| this.stage_all_changes(cx))),
@@ -2052,8 +2057,7 @@ fn source_control_body(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
         ] {
             let owner = this.project().id.clone();
             actions = actions.child(
-                dunlin_ui::button(format!("source-control:{label}"))
-                    .small()
+                dunlin_ui::action_button(format!("source-control:{label}"))
                     .label(label)
                     .when(label.starts_with("Discard"), |button| {
                         button.danger().outline()
@@ -2719,8 +2723,7 @@ pub(crate) fn account_usage_panel(
                 )
                 .child(div().flex_1())
                 .child(
-                    dunlin_ui::button("usage-details")
-                        .ghost()
+                    dunlin_ui::action_button("usage-details")
                         .label("Details")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.settings_open = true;
@@ -2861,7 +2864,7 @@ pub(crate) fn account_usage_panel(
             .flex()
             .items_center()
             .gap(px(8.))
-            .h(px(28.))
+            .min_h(px(40.))
             .child(
                 div()
                     .flex_1()
@@ -2871,8 +2874,7 @@ pub(crate) fn account_usage_panel(
             )
             .when(this.local_opencode(), |row| {
                 row.child(
-                    dunlin_ui::button("usage-open-console")
-                        .ghost()
+                    dunlin_ui::action_button("usage-open-console")
                         .label("Open Console ↗")
                         .on_click(|_, _, cx| cx.open_url("https://opencode.ai/console")),
                 )

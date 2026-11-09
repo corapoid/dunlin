@@ -1,24 +1,16 @@
-//! Preview-first session import. No harness commands; OpenCode's local database
+//! Automatic session import. No harness commands; OpenCode's local database
 //! is opened read-only and only session/message/part rows are read. Re-scanning
 //! can enrich an imported copy with missing token and diff metadata.
 mod adapters;
 mod opencode_db;
+mod opencode_files;
 #[cfg(debug_assertions)]
 pub(crate) mod smoke;
 use crate::app::{DunlinApp, blank_session};
 use crate::harness::ChatItem;
 use adapters::Candidate;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use dunlin_ui::component::Disableable;
-use dunlin_ui::prelude::FluentBuilder as _;
-use dunlin_ui::{
-    component::{
-        Sizable,
-        button::ButtonVariants,
-        menu::{DropdownMenu, PopupMenuItem},
-    },
-    *,
-};
+use dunlin_ui::*;
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
@@ -27,6 +19,10 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, UNIX_EPOCH},
 };
+
+pub(crate) fn supports_scan(harness: &str) -> bool {
+    matches!(harness, "OpenCode" | "Claude Code" | "OpenAI Codex")
+}
 
 #[derive(Default)]
 pub(crate) struct State {
@@ -38,6 +34,8 @@ pub(crate) struct State {
     error: Option<String>,
     generation: u64,
     backfill_started: bool,
+    pub(crate) pending: Vec<dunlin_domain::SessionSummary>,
+    pub(crate) notices: HashMap<String, String>,
 }
 impl State {
     pub(crate) fn progress_label(&self) -> Option<String> {
@@ -58,6 +56,7 @@ struct Row {
     duplicate: bool,
     update: bool,
     selected: bool,
+    #[cfg(test)]
     entries: usize,
     transcript: PathBuf,
 }
@@ -95,6 +94,7 @@ impl Preview {
         projects: &[dunlin_domain::Project],
     ) -> Result<(), String> {
         let project = adapters::match_project(candidate.directory.as_deref(), projects);
+        #[cfg(test)]
         let entries = candidate.transcript.len();
         let transcript = self
             .staging
@@ -111,6 +111,7 @@ impl Preview {
             duplicate: false,
             update: false,
             selected: true,
+            #[cfg(test)]
             entries,
             transcript,
         });
@@ -186,18 +187,57 @@ fn read_harness_sessions(
     progress: &mut dyn FnMut(Progress),
 ) -> Result<Vec<String>, String> {
     if harness == "OpenCode" {
-        let Some(path) = dunlin_usage::billing::default_opencode_db() else {
-            return Ok(vec![
-                "No opencode.db was found in the standard OpenCode data folders".into(),
-            ]);
+        let mut warnings = Vec::new();
+        let mut seen = HashSet::new();
+        let mut unique = |row: Candidate| {
+            if seen.insert(row.source_id.clone()) {
+                candidate(row)?;
+            }
+            Ok(())
         };
-        return opencode_db::visit(&path, None, candidate, &mut |completed, total| {
-            progress(Progress {
-                phase: "Reading OpenCode sessions",
-                completed,
-                total: Some(total),
-            });
-        });
+        let mut found = false;
+        for root in opencode_files::roots() {
+            for path in [root.join("opencode.db"), root.join("storage/opencode.db")] {
+                if !path.is_file() {
+                    continue;
+                }
+                found = true;
+                // Source read errors must not prevent importing other locations.
+                // Visitor/staging errors still abort rather than silently losing data.
+                let mut visitor_error = None;
+                let result = opencode_db::visit(
+                    &path,
+                    None,
+                    &mut |row| {
+                        unique(row)
+                            .inspect_err(|error: &String| visitor_error = Some(error.clone()))
+                    },
+                    &mut |completed, total| {
+                        progress(Progress {
+                            phase: "Reading OpenCode sessions",
+                            completed,
+                            total: Some(total),
+                        })
+                    },
+                );
+                if let Some(error) = visitor_error {
+                    return Err(error);
+                }
+                match result {
+                    Ok(notes) => warnings.extend(notes),
+                    Err(error) => warnings.push(error),
+                }
+            }
+            let storage = root.join("storage");
+            if storage.join("session").is_dir() {
+                found = true;
+                warnings.extend(opencode_files::visit(&storage, &mut unique, progress)?);
+            }
+        }
+        if !found {
+            warnings.push("No OpenCode database or legacy session storage found".into());
+        }
+        return Ok(warnings);
     }
     let (paths, mut warnings) = discover_session_files(harness, progress);
     if paths.is_empty() {
@@ -235,7 +275,7 @@ fn discover_session_files(
             return (
                 Vec::new(),
                 vec![format!(
-                    "No automatic session folder is known for {harness}. Use Import a portable file…"
+                    "Automatic session import is not supported for {harness}"
                 )],
             );
         }
@@ -408,11 +448,14 @@ fn finalize_import(
     cx: &mut Context<DunlinApp>,
 ) {
     this.session_import.loading = false;
-    this.session_import.scanning = None;
+    let harness = this.session_import.scanning.take();
     this.session_import.progress = None;
     let mut preview = match result {
         Ok(preview) => preview,
         Err(error) => {
+            if let Some(harness) = harness {
+                this.session_import.notices.insert(harness, error.clone());
+            }
             this.session_import.error = Some(error);
             cx.notify();
             return;
@@ -466,19 +509,82 @@ fn finalize_import(
             row.project = None;
         }
     }
+    for warning in &preview.warnings {
+        crate::logging::warn(&format!("{} import: {warning}", preview.harness));
+    }
+    let warnings = preview
+        .warnings
+        .first()
+        .map(|warning| format!("{} warning(s) · {warning}", preview.warnings.len()))
+        .unwrap_or_default();
+    this.session_import
+        .notices
+        .insert(preview.harness.clone(), warnings);
     this.session_import.preview = Some(preview);
     if found == 0 {
         this.file_notice(format!("No sessions found: {detail}"), cx);
-    } else {
-        this.file_notice(
-            format!("Found {found} sessions · review the import preview"),
-            cx,
-        );
     }
+    this.apply_session_import(cx);
     cx.notify();
 }
 
 impl DunlinApp {
+    /// Reconcile durable unassigned copies and older imported locations when
+    /// projects are added. Never transfer an active runtime to another root.
+    pub(crate) fn assign_imported_projects(&mut self, cx: &mut Context<Self>) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let pending = match store.pending_session_imports() {
+            Ok(pending) => pending,
+            Err(error) => {
+                self.file_notice(format!("Could not read pending imports: {error}"), cx);
+                return;
+            }
+        };
+        self.session_import.pending.clear();
+        for mut session in pending {
+            let Some(project) =
+                adapters::match_project(session.workspace.as_deref(), &self.projects)
+            else {
+                self.session_import.pending.push(session);
+                continue;
+            };
+            session.project_id = project;
+            match store.assign_pending_session_import(&session) {
+                Ok(()) => {
+                    if !self.all_sessions.iter().any(|known| known.id == session.id) {
+                        if session.project_id == self.project().id {
+                            self.sessions.push(session.clone());
+                        }
+                        self.all_sessions.push(session);
+                    }
+                }
+                Err(error) => {
+                    crate::logging::warn(&format!("Could not assign imported session: {error}"));
+                    self.session_import.pending.push(session);
+                }
+            }
+        }
+        let locations: Vec<_> = self
+            .all_sessions
+            .iter()
+            .filter(|session| imported_source(&session.id, &session.harness).is_some())
+            .filter_map(|session| {
+                let project =
+                    adapters::match_project(session.workspace.as_deref(), &self.projects)?;
+                (project != session.project_id)
+                    .then(|| (session.id.clone(), project, session.workspace.clone()))
+            })
+            .collect();
+        for (id, project, directory) in locations {
+            if let Err(error) = self.assign_imported_location(&id, &project, directory.as_deref()) {
+                crate::logging::warn(&error);
+            }
+        }
+        cx.notify();
+    }
+
     fn assign_imported_location(
         &mut self,
         id: &str,
@@ -690,7 +796,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn scan_session_import(&mut self, harness: &str, cx: &mut Context<Self>) {
-        if self.session_import.loading {
+        if self.session_import.loading || !supports_scan(harness) {
             return;
         }
         let harness = harness.to_string();
@@ -699,6 +805,7 @@ impl DunlinApp {
         self.session_import.loading = true;
         self.session_import.scanning = Some(harness.clone());
         self.session_import.error = None;
+        self.session_import.notices.remove(&harness);
         self.clear_session_import_preview(cx);
         let progress = self.session_import_progress("Discovering sessions", cx);
         self.file_notice(format!("Scanning {harness} session folders…"), cx);
@@ -721,54 +828,6 @@ impl DunlinApp {
         .detach();
     }
 
-    pub(crate) fn choose_session_import(&mut self, harness: &str, cx: &mut Context<Self>) {
-        if self.session_import.loading {
-            return;
-        }
-        let harness = harness.to_string();
-        let receiver = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: true,
-            prompt: Some(format!("Import {harness} session files (JSON / JSONL)").into()),
-        });
-        let receiver = self.overlay_backdrop.track_native(receiver, cx);
-        self.session_import.generation = self.session_import.generation.wrapping_add(1);
-        let generation = self.session_import.generation;
-        self.session_import.loading = true;
-        self.session_import.scanning = Some(harness.clone());
-        self.session_import.error = None;
-        self.clear_session_import_preview(cx);
-        let progress = self.session_import_progress("Choosing session files", cx);
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = receiver.await else {
-                let _ = this.update(cx, |this, cx| {
-                    if this.session_import.generation == generation {
-                        this.session_import.loading = false;
-                        this.session_import.scanning = None;
-                        this.session_import.progress = None;
-                        cx.notify();
-                    }
-                });
-                return;
-            };
-            let projects = this
-                .read_with(cx, |this, _| this.projects.clone())
-                .unwrap_or_default();
-            let source = harness.clone();
-            let result = cx
-                .background_executor()
-                .spawn(async move { prepare_preview(source, Some(paths), projects, progress) })
-                .await;
-            let _ = this.update(cx, |this, cx| {
-                if this.session_import.generation == generation {
-                    finalize_import(this, result, cx);
-                }
-            });
-        })
-        .detach();
-    }
     fn apply_session_import(&mut self, cx: &mut Context<Self>) {
         if self.session_import.loading {
             return;
@@ -800,14 +859,10 @@ impl DunlinApp {
             if row.duplicate {
                 continue;
             }
-            let Some(project) = self
-                .projects
-                .iter()
-                .find(|p| Some(&p.id) == row.project.as_ref() && !p.is_remote())
-            else {
-                continue;
-            };
-            let mut summary = blank_session(&project.id, &preview.harness, None);
+            let project =
+                adapters::match_project(row.candidate.directory.as_deref(), &self.projects);
+            let mut summary =
+                blank_session(project.as_deref().unwrap_or(""), &preview.harness, None);
             summary.id = imported_id(&preview.harness, &row.candidate.source_id);
             summary.title = row.candidate.title.clone();
             if summary.title == "New session" {
@@ -826,12 +881,17 @@ impl DunlinApp {
             rows.push((summary, row.transcript.clone()));
         }
         let Some(database) = self.store.as_ref().and_then(|store| store.database_path()) else {
+            self.session_import.notices.insert(
+                preview.harness.clone(),
+                "History storage unavailable; nothing imported".into(),
+            );
             self.session_import.error =
                 Some("History storage unavailable; nothing imported".into());
             cx.notify();
             return;
         };
         let staging = preview.staging.clone();
+        let harness = preview.harness.clone();
         self.session_import.scanning = Some(preview.harness.clone());
         self.session_import.generation = self.session_import.generation.wrapping_add(1);
         self.session_import.loading = true;
@@ -861,9 +921,13 @@ impl DunlinApp {
                     }
                 }
                 let imported = applied.sessions.len();
-                let projects: HashSet<_> = this.projects.iter().map(|project| project.id.clone()).collect();
-                for summary in applied.sessions {
-                    if !projects.contains(&summary.project_id) { continue; }
+                 for summary in applied.sessions {
+                     if summary.project_id.is_empty() {
+                         this.session_import.pending.retain(|known| known.id != summary.id);
+                         this.session_import.pending.push(summary);
+                         continue;
+                     }
+                     this.session_import.pending.retain(|known| known.id != summary.id);
                     if summary.project_id == this.project().id {
                         this.sessions.push(summary.clone());
                     }
@@ -882,6 +946,9 @@ impl DunlinApp {
                 }
                         this.clear_session_import_preview(cx);
                 this.session_import.error = applied.error;
+                if let Some(error) = &this.session_import.error {
+                    this.session_import.notices.entry(harness.clone()).or_default().push_str(&format!(" · {error}"));
+                }
                 let message = match (imported, applied.updated.len()) {
                     (0, 0) => "No new sessions to import".into(),
                     (0, updated) => format!("Updated {updated} imported session histories"),
@@ -892,14 +959,16 @@ impl DunlinApp {
                         format!("Imported {imported} and updated {updated} session histories")
                     }
                 };
-                this.file_notice(message, cx);
+                 this.file_notice(message, cx);
+                 this.assign_imported_projects(cx);
                 // Imported histories must feed both the recorded dashboard
                 // counts and the local billing evidence without a manual scan.
                 this.refresh_dashboard_now(cx);
                 this.refresh_billing(cx);
             }
-            Err(error) => {
-                this.session_import.error = Some(error);
+             Err(error) => {
+                 this.session_import.notices.insert(harness, error.clone());
+                 this.session_import.error = Some(error);
             }
                 }
                 cx.notify();
@@ -978,232 +1047,21 @@ fn merge_imported_metrics(existing: &mut [ChatItem], incoming: &[ChatItem]) -> b
     changed
 }
 
-pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let p = palette(cx);
-    let mut body = div().flex().flex_col().gap(px(8.));
-    if this.session_import.loading {
-        let label = this
-            .session_import
-            .progress_label()
-            .unwrap_or_else(|| "Preparing session import…".into());
-        return body
-            .child(
-                div()
-                    .id("session-import-progress")
-                    .aria_label("Session import progress")
-                    .text_color(p.muted_fg)
-                    .child(label),
-            )
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child(
-                if this.session_import.applying {
-                    "Saving in the background. Please wait for the import to finish."
-                } else {
-                    "Reading histories in the background. Source files stay unchanged."
-                },
-            ))
-            .into_any_element();
-    }
-    if let Some(preview) = &this.session_import.preview {
-        body = body.child(format!("Import preview · {} · {} sessions", preview.harness, preview.rows.len()))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Copies histories only. Source files stay unchanged. Assign unmatched sessions or leave them skipped. Updating an imported copy applies the selected project and adds recorded token and diff data without replacing your local follow-up turns."));
-        let list = uniform_list(
-            "session-import-preview",
-            preview.rows.len(),
-            cx.processor(|this, range: std::ops::Range<usize>, _, cx| {
-                let Some(preview) = &this.session_import.preview else {
-                    return Vec::new();
-                };
-                let p = palette(cx);
-                let mut items = Vec::with_capacity(range.len());
-                for i in range {
-                    let row = &preview.rows[i];
-                    let app = cx.entity().downgrade();
-                    let project = this
-                        .projects
-                        .iter()
-                        .find(|p| Some(&p.id) == row.project.as_ref());
-                    let label = if row.update {
-                        format!(
-                            "Update · {}",
-                            project
-                                .map(|p| p.name.as_str())
-                                .unwrap_or("Assign project…")
-                        )
-                    } else if row.duplicate {
-                        "Already imported".to_string()
-                    } else {
-                        project
-                            .map(|p| p.name.clone())
-                            .unwrap_or_else(|| "Assign project…".into())
-                    };
-                    let choose = dunlin_ui::button(format!("import-project-{i}"))
-                        .small()
-                        .label(label)
-                        .disabled(row.duplicate && !row.update)
-                        .dropdown_caret(true)
-                        .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
-                            let Some(entity) = app.upgrade() else {
-                                return menu;
-                            };
-                            let this = entity.read(cx);
-                            for project in this.projects.iter().filter(|p| !p.is_remote()) {
-                                let name = format!("{} · {}", project.name, project.path);
-                                let id = project.id.clone();
-                                let app = app.clone();
-                                menu = menu.item(
-                                    PopupMenuItem::element(move |window, cx| {
-                                        crate::effects::menu_surface(
-                                            div().text_size(px(12.)).child(name.clone()),
-                                            window,
-                                            cx,
-                                        )
-                                    })
-                                    .on_click(
-                                        move |_, _, cx| {
-                                            let _ = app.update(cx, |this, cx| {
-                                                if let Some(row) = this
-                                                    .session_import
-                                                    .preview
-                                                    .as_mut()
-                                                    .and_then(|v| v.rows.get_mut(i))
-                                                {
-                                                    row.project = Some(id.clone());
-                                                }
-                                                cx.notify();
-                                            });
-                                        },
-                                    ),
-                                );
-                            }
-                            menu.scrollable(true).max_h(px(280.))
-                        });
-                    items.push(
-                        div()
-                            .h(px(56.))
-                            .p(px(7.))
-                            .rounded(px(dunlin_ui::radii::ROW))
-                            .border_1()
-                            .border_color(p.border)
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(
-                                dunlin_ui::button(format!("import-select-{i}"))
-                                    .small()
-                                    .label(if row.selected { "✓" } else { "–" })
-                                    .disabled(row.duplicate && !row.update)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        if let Some(row) = this
-                                            .session_import
-                                            .preview
-                                            .as_mut()
-                                            .and_then(|v| v.rows.get_mut(i))
-                                        {
-                                            row.selected = !row.selected;
-                                        }
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(0.))
-                                    .flex()
-                                    .flex_col()
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .text_size(px(12.))
-                                            .child(row.candidate.title.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .text_size(px(10.))
-                                            .text_color(p.muted_fg)
-                                            .child(format!(
-                                                "{} · {} entries",
-                                                row.candidate
-                                                    .directory
-                                                    .as_deref()
-                                                    .unwrap_or("No source directory"),
-                                                row.entries
-                                            )),
-                                    ),
-                            )
-                            .child(choose)
-                            .into_any_element(),
-                    );
-                }
-                items
-            }),
-        )
-        .h(px((preview.rows.len().min(5) * 56) as f32))
-        .w_full();
-        let ready = preview
-            .rows
-            .iter()
-            .filter(|r| {
-                r.selected && (!r.duplicate || r.update) && (r.project.is_some() || r.update)
-            })
-            .count();
-        body = body
-            .child(list)
-            .when(!preview.warnings.is_empty(), |body| {
-                body.child(
-                    div()
-                        .id("session-import-warnings")
-                        .max_h(px(120.))
-                        .overflow_y_scroll()
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.))
-                        .child(format!("{} file warning(s)", preview.warnings.len()))
-                        .children(preview.warnings.iter().map(|w| {
-                            div()
-                                .text_size(px(11.))
-                                .text_color(p.amber)
-                                .child(w.clone())
-                        })),
-                )
-            })
-            .child(
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(
-                        dunlin_ui::button("confirm-session-import")
-                            .small()
-                            .primary()
-                            .label(format!("Apply {ready} selected sessions"))
-                            .disabled(ready == 0)
-                            .on_click(cx.listener(|this, _, _, cx| this.apply_session_import(cx))),
-                    )
-                    .child(
-                        dunlin_ui::button("cancel-session-import")
-                            .small()
-                            .label("Cancel")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.clear_session_import_preview(cx);
-                                cx.notify();
-                            })),
-                    ),
-            );
-    }
-    body.children(
-        this.session_import
-            .error
-            .as_ref()
-            .map(|e| div().text_size(px(12.)).text_color(p.red).child(e.clone())),
-    )
-    .into_any_element()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::harness::{ChatItem, TurnTiming};
     use dunlin_agent::{TokenUsage, ToolCallView};
     use dunlin_domain::{ToolKind, ToolStatus};
+
+    #[test]
+    fn session_import_only_offers_supported_automatic_sources() {
+        for name in crate::harness_discovery::catalog_names().chain(["Custom ACP"]) {
+            assert_eq!(
+                super::supports_scan(name),
+                matches!(name, "OpenCode" | "Claude Code" | "OpenAI Codex")
+            );
+        }
+    }
 
     fn tool(id: &str, additions: u32, deletions: u32) -> ChatItem {
         ChatItem::Tool {
@@ -1359,6 +1217,57 @@ mod tests {
             group_id: None,
             settings: Default::default(),
         }
+    }
+
+    #[test]
+    fn unmatched_histories_survive_restart_and_are_promoted_when_a_project_is_added() {
+        use super::*;
+        let root = tempfile::tempdir().unwrap();
+        let database = root.path().join("dunlin.db");
+        let transcript = root.path().join("transcript.json");
+        std::fs::write(
+            &transcript,
+            serde_json::to_vec(&vec![ChatItem::User {
+                text: "Imported before the project exists".into(),
+                timing: None,
+                at_ms: 0,
+            }])
+            .unwrap(),
+        )
+        .unwrap();
+        let mut summary = blank_session("", "OpenCode", None);
+        summary.id = imported_id("OpenCode", "unmatched");
+        summary.workspace = Some(root.path().to_string_lossy().into());
+        let progress = Mutex::new(Progress::default());
+        apply_histories(
+            &database,
+            &[(summary.clone(), transcript.clone())],
+            &[],
+            &progress,
+        )
+        .unwrap();
+        // Reimport replaces only the unopened staged copy, never creates duplicates.
+        apply_histories(&database, &[(summary.clone(), transcript)], &[], &progress).unwrap();
+        let store = dunlin_storage::Store::open(&database).unwrap();
+        assert!(store.sessions(None).unwrap().is_empty());
+        let pending = store.pending_session_imports().unwrap();
+        assert_eq!(pending.len(), 1);
+        let project = project(root.path());
+        store.upsert_project(&project).unwrap();
+        summary.project_id =
+            adapters::match_project(pending[0].workspace.as_deref(), &[project]).unwrap();
+        store.assign_pending_session_import(&summary).unwrap();
+        assert!(store.pending_session_imports().unwrap().is_empty());
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        let history = store
+            .load_transcript::<Vec<ChatItem>>(&summary.id)
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(&history[0], ChatItem::User { text, .. } if text == "Imported before the project exists")
+        );
+        store.clear_sessions().unwrap();
+        assert!(store.sessions(None).unwrap().is_empty());
     }
 
     #[test]

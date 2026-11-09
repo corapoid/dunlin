@@ -4,8 +4,6 @@
 use crate::app::DunlinApp;
 use dunlin_plugin::{LoadedPack, Source};
 use dunlin_plugin_host::InstalledPlugin;
-use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use sha2::{Digest, Sha256};
@@ -143,17 +141,14 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) {
         self.add_catalog_skill(crate::skills::PLUGIN_BUILDER_SKILL, cx);
-        let target = crate::skills::Target::from_harness(&self.session_harness());
-        if target != crate::skills::Target::Other {
-            self.install_catalog_skill(
-                crate::skills::PLUGIN_BUILDER_SKILL,
-                target,
-                crate::skills::Scope::Global,
-                "",
-                None,
-                cx,
-            );
-        }
+        self.install_catalog_skill(
+            crate::skills::PLUGIN_BUILDER_SKILL,
+            crate::skills::Target::Shared,
+            crate::skills::Scope::Global,
+            "",
+            None,
+            cx,
+        );
         let local_project = !self.projects.is_empty() && !self.project().is_remote();
         if local_project {
             self.new_session(cx);
@@ -544,15 +539,13 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                             div()
                                 .text_size(px(10.))
                                 .text_color(p.muted_fg)
-                                .child(format!(
+                                .flex_1().child(format!(
                                     "Pending governance proposals: {}",
                                     State::pending_proposals()
                                 )),
                         )
                         .child(
-                            dunlin_ui::button("extensions-open-proposals")
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button("extensions-open-proposals")
                                 .label("Open proposals folder")
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     if let Some(directory) = State::proposals_directory()
@@ -570,18 +563,18 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     div()
                         .flex()
                         .flex_wrap()
+                        .items_center()
                         .gap(px(6.))
                         .child(
-                            segment_group(p)
-                                .child(segment_button("extensions-scope-global", "This Mac · global", !this.plugins.scope_project)
+                            dunlin_ui::settings::segments(p)
+                                .child(dunlin_ui::settings::segment("extensions-scope-global", "This Mac · global", !this.plugins.scope_project)
                                     .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = false; cx.notify(); })))
-                                .child(segment_button("extensions-scope-project", format!("Project: {}", project.name), this.plugins.scope_project).max_w(px(260.))
+                                .child(dunlin_ui::settings::segment("extensions-scope-project", format!("Project: {}", project.name), this.plugins.scope_project).max_w(px(260.))
                                     .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = true; cx.notify(); }))),
                         )
+                        .child(div().flex_1())
                         .child(
-                            dunlin_ui::button("extensions-refresh")
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button("extensions-refresh")
                                 .label("Refresh")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.plugins.loaded = false;
@@ -590,9 +583,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 })),
                         )
                         .child(
-                            dunlin_ui::button("extensions-open-folder")
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button("extensions-open-folder")
                                 .label("Open extensions folder")
                                 .on_click(cx.listener(|_, _, _, cx| {
                                     if let Some(directory) = State::directory()
@@ -666,9 +657,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                     )),
                             )
                             .child(
-                                dunlin_ui::button(format!("extension-install:{index}"))
-                                    .primary()
-                                    .small()
+                                dunlin_ui::settings::button(format!("extension-install:{index}"))
                                     .label("Install pack")
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         match this.plugins.install_bundled(&id) {
@@ -718,13 +707,11 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     .child("The plugin-builder skill contains the full manifest v2, sandboxed WASM ABI, knowledge schema, MCP proposal tools, security checklist, build and install steps. Start a guided chat and the agent will interview you one question at a time."),
             )
             .child(
-                dunlin_ui::button("plugins-build-with-skill")
-                    .primary()
-                    .small()
+                div().flex().justify_end().child(dunlin_ui::settings::button("plugins-build-with-skill")
                     .label("Use skills and build plugins")
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.start_plugin_builder_chat(window, cx);
-                    })),
+                    }))),
             ),
     );
     for (index, pack) in this.plugins.packs.iter().enumerate() {
@@ -817,11 +804,11 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .text_color(p.muted_fg)
                         .child(format!("Permissions: {}", permissions(pack))),
                 )
-                .child(dunlin_ui::button(format!("extension-details:{index}")).label(if details { "Hide technical details" } else { "Technical details…" })
+                .child(div().flex().justify_end().child(dunlin_ui::settings::button(format!("extension-details:{index}")).label(if details { "Hide technical details" } else { "Technical details…" })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.settings_ui.extension_details = if details { None } else { Some(details_id.clone()) };
                         cx.notify();
-                    })));
+                    }))));
         if !details {
             content = content.child(item);
             continue;
@@ -864,9 +851,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                     .child(command.clone()),
                             )
                             .child(
-                                dunlin_ui::button(format!("extension-copy-mcp:{index}"))
-                                    .ghost()
-                                    .small()
+                                dunlin_ui::settings::button(format!("extension-copy-mcp:{index}"))
                                     .label("Copy MCP command")
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.write_to_clipboard(ClipboardItem::new_string(
@@ -883,9 +868,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .items_center()
                         .gap(px(6.))
                         .child(
-                            dunlin_ui::button(format!("extension-validate-wasm:{index}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button(format!("extension-validate-wasm:{index}"))
                                 .label("Validate WASM")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     match this.plugins.validate_wasm_by_id(&wasm_id) {

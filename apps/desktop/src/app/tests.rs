@@ -5,11 +5,16 @@ fn stale_terminal_and_run_main_views_migrate_to_chat_instead_of_failing_settings
     let settings: StoredSettings =
         serde_json::from_str(r#"{"view":"Terminal","default_view":"Run"}"#).unwrap();
     assert_eq!(settings.view, MainView::Chat);
-    assert_eq!(settings.default_view, MainView::Chat);
     let settings: StoredSettings =
         serde_json::from_str(r#"{"view":"Graph","default_view":"Trace"}"#).unwrap();
     assert_eq!(settings.view, MainView::Graph);
-    assert_eq!(settings.default_view, MainView::Trace);
+    assert!(
+        serde_json::to_value(&settings)
+            .unwrap()
+            .get("default_view")
+            .is_none(),
+        "retired preferences are ignored, not exported again"
+    );
 }
 
 #[test]
@@ -152,7 +157,6 @@ fn stored_settings_fill_defaults_for_missing_fields() {
     assert_eq!(settings.code_font_family, "Geist Mono");
     assert!(!settings.autosave);
     assert_eq!(settings.view, MainView::Chat);
-    assert_eq!(settings.default_view, MainView::Chat);
     assert_eq!(settings.last_project_id, None);
     assert_eq!(
         settings.opencode_provider.as_deref(),

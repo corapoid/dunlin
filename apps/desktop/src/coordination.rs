@@ -825,6 +825,7 @@ impl DunlinApp {
                 || self.harness.session_metadata_pending
                 || self.harness.model_changing
                 || self.harness.mode_changing
+                || self.harness.config_changing
             {
                 return Err("Target harness configuration is not ready".into());
             }
@@ -1288,12 +1289,15 @@ fn cards_for(
                                 && c.dispatched_run.is_none(),
                             |v| {
                                 v.child(
-                                    button(format!("{surface}:approve-continuation:{approve}"))
-                                        .small()
-                                        .label("Review & approve…")
-                                        .on_click(cx.listener(move |this, _, w, cx| {
+                                    action_button(format!(
+                                        "{surface}:approve-continuation:{approve}"
+                                    ))
+                                    .label("Review & approve…")
+                                    .on_click(cx.listener(
+                                        move |this, _, w, cx| {
                                             this.approve_continuation(approve.clone(), w, cx)
-                                        })),
+                                        },
+                                    )),
                                 )
                             },
                         )
@@ -1301,9 +1305,7 @@ fn cards_for(
                             c.dispatched_run.is_none() && c.scope.authority == "local",
                             |v| {
                                 v.child(
-                                    button(format!("{surface}:edit-continuation:{edit}"))
-                                        .small()
-                                        .ghost()
+                                    action_button(format!("{surface}:edit-continuation:{edit}"))
                                         .label("Change dependencies…")
                                         .on_click(cx.listener(move |this, _, w, cx| {
                                             this.change_continuation_dependencies(
@@ -1316,9 +1318,7 @@ fn cards_for(
                             },
                         )
                         .child(
-                            button(format!("{surface}:cancel-continuation:{cancel}"))
-                                .small()
-                                .ghost()
+                            action_button(format!("{surface}:cancel-continuation:{cancel}"))
                                 .label("Cancel")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.cancel_continuation(&cancel, cx)
@@ -1365,9 +1365,7 @@ pub(crate) fn render(
                 .any(|e| e.path == this.project().path)
         {
             body = body.child(
-                button("coordination-worktree-scope")
-                    .small()
-                    .ghost()
+                action_button("coordination-worktree-scope")
                     .label(if linked {
                         "Disconnect shared worktree coordination…"
                     } else {
@@ -1471,9 +1469,7 @@ pub(crate) fn render(
                 .child(div().text_size(px(12.)).child(m.body.clone()))
                 .when(m.read_ms.is_none(), |v| {
                     v.child(
-                        button(format!("ack-message:{id}"))
-                            .small()
-                            .ghost()
+                        action_button(format!("ack-message:{id}"))
                             .label("Acknowledge")
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.acknowledge_coordination_message(id.clone(), cx);
@@ -1483,9 +1479,7 @@ pub(crate) fn render(
         );
     }
     body = body.child(
-        button("coordination-archive")
-            .small()
-            .ghost()
+        action_button("coordination-archive")
             .label("Archive finished coordination history")
             .on_click(cx.listener(|this, _, _, cx| {
                 this.archive_coordination(cx);

@@ -104,6 +104,25 @@ pub(crate) fn click(window: &mut Window, position: Point<Pixels>, cx: &mut App) 
         cx,
     );
 }
+
+/// Opt-in screenshot of this fixture's own window; never captures the desktop.
+fn capture_preview(window: &Window, path: &std::path::Path) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = HasWindowHandle::window_handle(window).unwrap();
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    let view: &objc2_app_kit::NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
+    let native = view.window().unwrap();
+    assert!(
+        std::process::Command::new("/usr/sbin/screencapture")
+            .args(["-x", "-l", &native.windowNumber().to_string()])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success()
+    );
+}
 fn git(root: &std::path::Path, args: &[&str]) -> String {
     let output = std::process::Command::new("git")
         .arg("-C")
@@ -143,9 +162,12 @@ pub(crate) fn run() {
     git(&root, &["config", "user.email", "fixture@example.invalid"]);
     git(&root, &["config", "commit.gpgsign", "false"]);
     std::fs::write(root.join("file.rs"), "original\n").unwrap();
+    let readme = include_str!("../../../README.md");
+    let start = readme.find("## Start").unwrap();
+    let end = readme[start..].find("## Set up a remote server").unwrap() + start;
     std::fs::write(
         root.join("README.md"),
-        "# Fixture repository\n\nInert README hover preview.\n",
+        format!("{}\n\n{readme}", &readme[start..end]),
     )
     .unwrap();
     git(&root, &["add", "file.rs", "README.md"]);
@@ -200,7 +222,8 @@ pub(crate) fn run() {
             cx.notify();
         });
         cx.spawn(async move |cx| {
-            let started = Instant::now(); let mut stage = 7200; let mut hovered = false;
+            let started = Instant::now(); let mut stage = 7200; let mut preview_clicked = false;
+            let mut preview_frames = 0;
             let mut plus_pressed = None::<Instant>;
             let mut selector_pressed = None::<Instant>;
             let mut scratch = None::<String>;
@@ -220,17 +243,29 @@ pub(crate) fn run() {
             loop {
                 cx.background_executor().timer(Duration::from_millis(150)).await;
                 let done = cx.update(|cx| {
+                    let visual_preview = std::env::var_os("DUNLIN_PREVIEW_CAPTURE").is_some();
                     BOUNDS.with(|map| map.borrow_mut().as_mut().unwrap().clear());
-                    parent.update(cx, |_, w, cx| { w.refresh(); w.draw(cx).clear(cx); }).unwrap();
+                    parent.update(cx, |_, w, cx| {
+                        w.refresh(); w.draw(cx).clear(cx);
+                        if visual_preview { w.present_debug_frame(); }
+                    }).unwrap();
                     if let Some(child) = owner.read(cx).overlay_window.debug_window() {
-                        child.update(cx, |_, w, cx| { w.refresh(); w.draw(cx).clear(cx); }).unwrap();
+                        child.update(cx, |_, w, cx| {
+                            w.refresh(); w.draw(cx).clear(cx);
+                            if visual_preview { w.present_debug_frame(); }
+                        }).unwrap();
                     }
-                    if stage == 12 && !hovered {
+                    if stage == 12 && !preview_clicked {
                         let position = measured("active-project-row").center();
                         parent.update(cx, |_, window, cx| { window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position, ..Default::default() }), cx); }).unwrap();
-                        hovered = true;
+                        assert!(!BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("project-preview")), "hover must not open project information");
+                        let position = measured("project-info").center();
+                        parent.update(cx, |_, window, cx| { click(window, position, cx); }).unwrap();
+                        preview_clicked = true;
                     }
                     let target = match stage {
+                          15 => Some("composer-options"), 16 => Some("chat-option-reasoning"),
+                           18 => Some("composer-options"), 19 => Some("chat-option-commit-skill"),
                          7900 => Some("ctx-project-group"), 7902 => Some("project-group-none"),
                           7903 => Some("ctx-project-trust"), 7910 => Some("claude-harness-visible"),
                          10000 => Some("delete-cancel"), 10001 => Some("delete-confirm"),
@@ -258,17 +293,41 @@ pub(crate) fn run() {
                             parent.update(cx, |_, window, cx| click(window, position, cx)).unwrap();
                         }
                     }
+                    if stage == 180 {
+                        if std::env::var_os("DUNLIN_PREVIEW_CAPTURE").is_some() {
+                            parent.update(cx, |_, window, _| capture_preview(window, &dir.join("composer-effort.png"))).unwrap();
+                        }
+                        parent.update(cx, |_, window, cx| {
+                            // Attachments, reasoning, then Skills (the third actionable row).
+                            for _ in 0..3 { crate::controls_smoke::key(window, cx, "down"); }
+                            crate::controls_smoke::key(window, cx, "right");
+                        }).unwrap();
+                        stage = 19;
+                        return false;
+                    }
+                    if stage == 21 || stage == 22 {
+                        if !BOUNDS.with(|map| map.borrow().as_ref().unwrap().contains_key("integration-catalog-list")) { return false; }
+                        assert_eq!(measured("integration-catalog-list").size.height, px(330.));
+                        if std::env::var_os("DUNLIN_PREVIEW_CAPTURE").is_some() {
+                            let path = dir.join(if stage == 21 { "integration-catalog.png" } else { "integration-search.png" });
+                            if let Some(child) = owner.read(cx).overlay_window.debug_window() {
+                                child.update(cx, |_, window, _| capture_preview(window, &path)).unwrap();
+                            } else {
+                                parent.update(cx, |_, window, _| capture_preview(window, &path)).unwrap();
+                            }
+                        }
+                    }
                     if stage == 207 && BOUNDS.with(|map| map.borrow().as_ref().unwrap().contains_key("settings-drag-handle")) {
                         settings_before = Some(measured("settings-panel"));
                         let position = measured("settings-drag-handle").center();
                         let child = owner.read(cx).overlay_window.debug_window().unwrap();
                          child.update(cx, |_, window, cx| {
                              assert_painted_corners(window, "settings-panel", true);
-                             assert_painted_corners(window, "settings-content", true);
+                             assert_painted_corners(window, "settings-content", false);
                             let content = measured("settings-content");
                             let page = measured("settings-page");
-                            assert!((page.left() - content.left() - px(8.)).abs() <= px(1.));
-                            assert!((content.right() - page.right() - px(8.)).abs() <= px(1.), "settings must have equal left/right gutters, not a capped left-aligned page");
+                             assert!((page.left() - content.left()).abs() <= px(1.), "the shared page recipe owns the inset, not an extra nested frame");
+                             assert!((content.right() - page.right()).abs() <= px(1.), "settings pages must fill the content column symmetrically");
                             window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { button: MouseButton::Left, position, click_count: 1, ..Default::default() }), cx);
                             let position = position + point(px(20.), px(18.));
                             window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position, pressed_button: Some(MouseButton::Left), ..Default::default() }), cx);
@@ -502,7 +561,7 @@ pub(crate) fn run() {
                          20001 | 20008 => Some("home"),
                          20002 | 20006 => Some("end"),
                          20004 => Some("down"),
-                         20009 => Some("escape"),
+                          13 | 20009 => Some("escape"),
                          _ => None,
                      } {
                          parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, key)).unwrap();
@@ -807,12 +866,73 @@ pub(crate) fn run() {
                              }
                               12 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("project-preview")) => {
                                   assert!(measured("active-project-row").size.height <= px(80.));
-                                 assert!(measured("project-preview").size.width >= px(450.));
+                                  assert!(measured("project-preview").size.width >= px(450.));
+                                  preview_frames += 1;
+                                  if preview_frames < 4 { return false; }
+                                  if std::env::var_os("DUNLIN_PREVIEW_CAPTURE").is_some() {
+                                      capture_preview(window, &dir.join("project-preview.png"));
+                                  }
                                   app.projects[app.selected_project].name = "UI fixture".into(); app.project_list.wrap_names = false;
                                   app.sidebar_width = f32::from(sidebar_width);
-                                 stage = 1;
-                             }
-                             1 => { measured("project-sessions"); app.view = MainView::Graph; stage = 2; }
+                                  stage = 13;
+                              }
+                              13 => {
+                                  stage = 14;
+                              }
+                              14 => {
+                                  assert!(!BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("project-preview")), "Escape must close project information");
+                                  app.reasoning_open = false;
+                                  app.final_answer_only = false;
+                                  stage = 15;
+                              }
+                              15 => { stage = 16; }
+                              16 => { stage = 17; }
+                              17 => {
+                                  assert!(app.reasoning_open, "reasoning must be controlled from Chat options");
+                                  app.harness.config_options = vec![dunlin_agent::SessionOption {
+                                      id: "reasoning-effort".into(), name: "Reasoning effort".into(),
+                                      selector: dunlin_agent::SessionModels {
+                                          config_id: Some("reasoning-effort".into()), current: "high".into(),
+                                          choices: vec![dunlin_agent::ModelChoice { id: "high".into(), name: "High".into(), description: None }],
+                                      },
+                                  }];
+                                  stage = 18;
+                              }
+                              18 => {
+                                  measured("composer-effort");
+                                  assert!(app.harness.config_options[0].selector.label() == "High");
+                                  stage = 180;
+                              }
+                              19 => { stage = 20; }
+                              20 => {
+                                  assert!(app.selected_conversation_skills().contains(&crate::skills::COMMIT_SKILL.to_string()));
+                                  let original = app.session().id.clone();
+                                  app.sessions[app.selected_session].id = "skill-scope-fixture".into();
+                                  assert!(app.selected_conversation_skills().is_empty(), "skills must not leak to another conversation");
+                                  app.sessions[app.selected_session].id = original;
+                                  assert!(app.client_prompt_text("Fixture message").contains("Selected conversation skills"));
+                                  app.toggle_conversation_skill(crate::skills::COMMIT_SKILL, cx);
+                                  assert!(!app.client_prompt_text("Fixture message").contains("Selected conversation skills"));
+                                  app.harness.config_options.clear();
+                                  if std::env::var_os("DUNLIN_CHAT_OPTIONS_ONLY").is_some() {
+                                      assert_eq!(crate::provider_auth::catalog_fixture(app, None, window, cx), 3);
+                                      stage = 21;
+                                      return false;
+                                  }
+                                  stage = 1;
+                              }
+                              21 => {
+                                  assert_eq!(crate::provider_auth::catalog_fixture(app, Some("ANTHROPIC"), window, cx), 1);
+                                  stage = 22;
+                              }
+                              22 => {
+                                  app.close_provider_auth(window, cx);
+                                  std::fs::write(dir.join("PASS"), "PASS: README, composer effort, Skills under +, integration catalog and search\n").unwrap();
+                                  println!("PASS: composer effort/Skills and integration catalog/search native acceptance");
+                                  cx.quit();
+                                  return true;
+                              }
+                              1 => { measured("project-sessions"); app.view = MainView::Graph; stage = 2; }
                               2 => {
                                  let background = measured("graph-background"); let viewport = app.activity.graph_scroll.bounds();
                                  dunlin_ui::surface_test::assert_region_corners(window, background, "graph surfaces");
@@ -1182,12 +1302,16 @@ pub(crate) fn run() {
                                   cx.set_window_appearance(Some(WindowAppearance::Light));
                                    stage = 211;
                                    app.settings_tab = crate::app::SettingsTab::Harnesses;
+                                   app.harness_discovery.push(crate::harness_discovery::Detected {
+                                       name: "Claude Code", cli: Some("/usr/bin/false".into()), adapter: None,
+                                       docs: "https://agentclientprotocol.com/",
+                                   });
                               }
                               211 if !dunlin_ui::theme::is_transitioning(cx) => {
                                   use dunlin_ui::component::ActiveTheme as _;
                                    assert!(!cx.theme().is_dark());
                                     app.overlay_window.debug_window().unwrap()
-                                        .update(cx, |_, window, _| assert_painted_corners(window, "settings-content", true)).unwrap();
+                                        .update(cx, |_, window, _| assert_painted_corners(window, "settings-content", false)).unwrap();
                                     let tint: Rgba = chrome_background(palette(cx), false).into();
                                      assert!((0.8..=0.85).contains(&tint.a) && (tint.r - tint.g).abs() < 0.001 && (tint.g - tint.b).abs() < 0.001);
                                    app.set_appearance(crate::app::Appearance::Dark, window, cx);

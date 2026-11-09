@@ -7,6 +7,15 @@ use unicode_segmentation::UnicodeSegmentation;
 const DURATION: Duration = Duration::from_millis(220);
 const MAX_GRAPHEMES: usize = 96;
 
+#[derive(Default)]
+struct MotionPreference(bool);
+impl Global for MotionPreference {}
+
+/// App-level Reduce Motion also covers labels created inside shared controls.
+pub fn set_motion_preference(reduced: bool, cx: &mut App) {
+    cx.default_global::<MotionPreference>().0 = reduced;
+}
+
 /// A single-line, accessible native text transition. The first value is static.
 /// Keep `id` stable and scope values to their session, repository or account.
 #[derive(IntoElement)]
@@ -219,7 +228,12 @@ fn pieces(line: &ShapedLine) -> Option<Vec<(Pixels, ShapedLine)>> {
 
 impl RenderOnce for MorphText {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let reduced = self.reduce_motion || cx.reduce_motion() || self.value.contains(['\n', '\r']);
+        let reduced = self.reduce_motion
+            || cx.reduce_motion()
+            || cx
+                .try_global::<MotionPreference>()
+                .is_some_and(|preference| preference.0)
+            || self.value.contains(['\n', '\r']);
         let now = Instant::now();
         let state = window.use_keyed_state((self.id.clone(), "morph"), cx, |_, _| {
             Motion::new(self.scope.clone(), self.value.clone(), now)

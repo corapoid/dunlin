@@ -100,6 +100,18 @@ fn config_options(current: &str, mode: &str) -> Vec<SessionConfigOption> {
             .category(SessionConfigOptionCategory::Mode),
         );
     }
+    if std::env::var_os("DUNLIN_MOCK_CONFIG_VARIANTS").is_some() {
+        options.push(SessionConfigOption::select(
+            "reasoning-effort",
+            "Reasoning effort",
+            "medium",
+            vec![
+                SessionConfigSelectOption::new("low", "Low"),
+                SessionConfigSelectOption::new("medium", "Medium"),
+                SessionConfigSelectOption::new("high", "High"),
+            ],
+        ));
+    }
     options
 }
 
@@ -184,6 +196,17 @@ fn main() -> Result<()> {
             .on_receive_request(
                 async |request: SetSessionConfigOptionRequest, responder, _connection: agent_client_protocol::v1::ConnectionTo<agent_client_protocol::Client>| {
                     let selected = request.value.as_value_id().map(ToString::to_string).unwrap_or_default();
+                    if request.config_id.to_string() == "reasoning-effort" {
+                        if !matches!(selected.as_str(), "low" | "medium" | "high") {
+                            return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Unknown mock effort"));
+                        }
+                        let mut options = serde_json::to_value(config_options("mock-a", "build")).unwrap();
+                        for option in options.as_array_mut().unwrap() {
+                            if option["id"] == "reasoning-effort" { option["currentValue"] = serde_json::Value::String(selected.clone()); }
+                        }
+                        let options: Vec<SessionConfigOption> = serde_json::from_value(options).unwrap();
+                        return responder.respond(SetSessionConfigOptionResponse::new(options));
+                    }
                     if request.config_id.to_string() == "agent-mode" {
                         if !matches!(selected.as_str(), "build" | "plan") {
                             return responder.respond_with_error(agent_client_protocol::Error::new(-32602, "Unknown mock mode"));

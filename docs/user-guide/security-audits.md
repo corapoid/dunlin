@@ -6,8 +6,8 @@ Use **Settings → Security Audits** for configuration/project audit actions.
 
 ## Start and review
 
-Install the recommended pinned Cloudflare `security-audit-skill` bundle into the
-selected harness's skill directory. Companion files, schema and license are
+Install the recommended pinned Cloudflare `security-audit-skill` bundle globally
+once, shared across supported harnesses. Companion files, schema and license are
 installed together. **Start audit in chat** creates a dedicated conversation and
 prepares a source-only Phase 1 prompt; it does not run target code itself.
 

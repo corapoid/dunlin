@@ -22,6 +22,55 @@ pub type ModelChoice = SessionChoice;
 pub type SessionModels = SessionSelector;
 pub type SessionModes = SessionSelector;
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SessionOption {
+    pub id: String,
+    pub name: String,
+    pub selector: SessionSelector,
+}
+
+/// Extra advertised select options, e.g. model reasoning effort/variant.
+/// Never synthesize low/medium/high for agents that did not advertise them.
+pub(crate) fn session_options(response: &Value) -> Option<Vec<SessionOption>> {
+    let options = response.get("configOptions")?.as_array()?;
+    Some(
+        options
+            .iter()
+            .filter_map(|option| {
+                let id = option.get("id")?.as_str()?;
+                let category = option.get("category").and_then(Value::as_str).unwrap_or(id);
+                if matches!(category, "model" | "mode") || matches!(id, "model" | "mode") {
+                    return None;
+                }
+                let mut choices = Vec::new();
+                for choice in option.get("options")?.as_array()? {
+                    if let Some(group) = choice.get("options").and_then(Value::as_array) {
+                        choices.extend(group.iter().filter_map(config_choice));
+                    } else if let Some(choice) = config_choice(choice) {
+                        choices.push(choice);
+                    }
+                }
+                if choices.is_empty() {
+                    return None;
+                }
+                Some(SessionOption {
+                    id: id.into(),
+                    name: option
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or(id)
+                        .into(),
+                    selector: SessionSelector {
+                        config_id: Some(id.into()),
+                        current: option.get("currentValue")?.as_str()?.into(),
+                        choices,
+                    },
+                })
+            })
+            .collect(),
+    )
+}
+
 impl SessionSelector {
     pub fn label(&self) -> &str {
         self.choices
@@ -128,6 +177,23 @@ fn config_choice(value: &Value) -> Option<ModelChoice> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn extra_options_use_only_advertised_wire_values() {
+        assert_eq!(session_options(&json!({})), None);
+        assert_eq!(session_options(&json!({"configOptions": []})), Some(vec![]));
+        let options = session_options(&json!({"configOptions": [
+            {"id":"model", "category":"model", "currentValue":"a", "options":[{"value":"a","name":"A"}]},
+            {"id":"reasoning-effort", "name":"Reasoning effort", "currentValue":"normal", "options":[
+                {"group":"Effort", "options":[{"value":"fast","name":"Low"},{"value":"normal","name":"Medium"}]}
+            ]},
+            {"id":"unsupported", "currentValue":true}
+        ]})).unwrap();
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0].selector.current, "normal");
+        assert_eq!(options[0].selector.choices[0].id, "fast");
+        assert_eq!(options[0].selector.label(), "Medium");
+    }
 
     #[test]
     fn reads_flat_and_grouped_models_and_prefers_config_options() {

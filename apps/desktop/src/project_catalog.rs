@@ -1,8 +1,9 @@
 //! Cached, read-only repository metadata and project-list filters.
 use crate::{app::DunlinApp, remote::WorkspaceBackend};
 use dunlin_domain::Project;
+use dunlin_ui::assets::IconName;
 use dunlin_ui::{
-    component::text::TextView, component::tooltip::Tooltip, prelude::FluentBuilder as _, *,
+    component::popover::Popover, component::text::TextView, prelude::FluentBuilder as _, *,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -176,7 +177,7 @@ fn readme(backend: &WorkspaceBackend) -> Option<Readme> {
 
 /// Render a cached README into the same safe HTML subset as the in-app text
 /// view. Markdown supports inline Raw HTML, while a README.html is parsed as
-/// HTML directly. Images are stripped so hovering a repository can never fetch
+/// HTML directly. Images are stripped so opening a repository preview never fetches
 /// a local or remote asset.
 fn readme_html(readme: &Readme) -> String {
     let html = match readme.format {
@@ -413,11 +414,13 @@ pub(crate) fn preview(app: &DunlinApp, project: &Project, cx: &App) -> AnyElemen
         .text_size(px(12.))
         .child(
             div()
+                .flex_shrink_0()
                 .font_weight(FontWeight::MEDIUM)
                 .child(name.to_string()),
         )
         .child(
             div()
+                .flex_shrink_0()
                 .text_size(px(10.))
                 .text_color(p.muted_fg)
                 .child("Cached repository preview · refreshed up to every 10 minutes"),
@@ -442,15 +445,20 @@ pub(crate) fn preview(app: &DunlinApp, project: &Project, cx: &App) -> AnyElemen
         .child(
             div()
                 .id(format!("project-readme-preview:{}", project.id))
-                .max_h(px(320.))
-                .overflow_y_scroll()
-                .overflow_x_hidden()
+                .w_full()
+                .min_h(px(0.))
+                .h(px(320.))
+                .flex_shrink_0()
+                .overflow_hidden()
                 .child(match info.and_then(|d| d.readme.as_ref()) {
                     Some(readme) => TextView::html(
                         format!("project-readme-html:{}", project.id),
                         readme_html(readme),
                     )
-                    .scrollable(false)
+                    .w_full()
+                    .min_w(px(0.))
+                    .h_full()
+                    .scrollable(true)
                     .selectable(true)
                     .text_size(px(12.))
                     .line_height(relative(1.5))
@@ -476,34 +484,49 @@ pub(crate) fn preview(app: &DunlinApp, project: &Project, cx: &App) -> AnyElemen
     panel.into_any_element()
 }
 
-pub(crate) fn attach_preview(
-    row: Stateful<Div>,
+pub(crate) fn preview_button(
     app: &DunlinApp,
     project: &Project,
     cx: &Context<DunlinApp>,
 ) -> AnyElement {
-    if !app.project_list.show_preview {
-        return row.into_any_element();
-    }
     let owner = cx.entity().downgrade();
-    let project = project.id.clone();
-    row.hoverable_tooltip(move |window, cx| {
-        let owner = owner.clone();
-        let id = project.clone();
-        Tooltip::element(move |_, cx| {
-            let Some(owner) = owner.upgrade() else {
-                return div().into_any_element();
-            };
-            let app = owner.read(cx);
-            app.projects
-                .iter()
-                .find(|p| p.id == id)
-                .map(|p| preview(app, p, cx))
-                .unwrap_or_else(|| div().into_any_element())
-        })
-        .build(window, cx)
-    })
-    .into_any_element()
+    let id = project.id.clone();
+    let trigger = icon_button(
+        format!("project-info:{id}"),
+        IconName::Info,
+        "Project information",
+    )
+    .size(px(20.));
+    #[cfg(debug_assertions)]
+    let trigger = trigger
+        .relative()
+        .when(project.id == app.project().id, |trigger| {
+            trigger.children(crate::workspace_ui_smoke::probe("project-info"))
+        });
+    #[cfg(not(debug_assertions))]
+    let _ = app;
+    div()
+        .id(format!("project-info-container:{id}"))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(|_, _, cx| cx.stop_propagation())
+        .child(
+            Popover::new(format!("project-info-popover:{id}"))
+                .anchor(Anchor::TopLeft)
+                .offset(px(6.))
+                .trigger(trigger)
+                .content(move |_, _, cx| {
+                    let Some(owner) = owner.upgrade() else {
+                        return div().into_any_element();
+                    };
+                    let app = owner.read(cx);
+                    app.projects
+                        .iter()
+                        .find(|p| p.id == id)
+                        .map(|p| preview(app, p, cx))
+                        .unwrap_or_else(|| div().into_any_element())
+                }),
+        )
+        .into_any_element()
 }
 
 #[cfg(debug_assertions)]
@@ -629,6 +652,19 @@ mod tests {
         assert!(html.contains("<strong>bold</strong>"));
         assert!(html.contains("href=\"https://example.com\""));
         assert!(!html.contains("<img"), "images must not be rendered");
+    }
+    #[test]
+    fn readme_keeps_multiline_code_tables_and_surrounding_content() {
+        let html = super::readme_html(&super::Readme {
+            source: "<h1>Project</h1>\n\nIntroduction.\n\n```sh\ngit clone example\n  cargo build --release\n```\n\n| Name | Value |\n| --- | --- |\n| Rust | 81% |\n\nAfter the table.\n".into(),
+            format: super::ReadmeFormat::Markdown,
+        });
+        assert!(html.contains("<h1>Project</h1>"));
+        assert!(html.contains("Introduction."));
+        assert!(html.contains("<pre><code class=\"language-sh\">git clone example\n  cargo build --release\n</code></pre>"));
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<td>81%</td>"));
+        assert!(html.contains("After the table."));
     }
     #[test]
     fn html_readme_is_parsed_as_html_and_detects_extensionless_documents() {

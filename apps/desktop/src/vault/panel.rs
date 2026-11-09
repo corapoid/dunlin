@@ -122,8 +122,7 @@ pub(crate) fn render(
                         .child("Stored in Keychain · agent access is optional."),
                 )
                 .child(
-                    dunlin_ui::button("vault-open-settings")
-                        .ghost()
+                    dunlin_ui::settings::button("vault-open-settings")
                         .label("Manage in Settings…")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.settings_open = true;
@@ -188,8 +187,7 @@ pub(crate) fn render(
                         .child("This harness started without vault access. Restart it to attach the credential MCP server."),
                 )
                 .child(
-                    dunlin_ui::button("vault-panel-restart-harness")
-                        .small()
+                    dunlin_ui::settings::button("vault-panel-restart-harness")
                         .label("Restart harness")
                         .on_click(cx.listener(|this, _, window, cx| {
                             let answer = window.prompt(
@@ -251,8 +249,7 @@ pub(crate) fn render(
                 .items_center()
                 .gap(px(5.))
                 .child(
-                    dunlin_ui::button("vault-panel-advanced")
-                        .ghost()
+                    dunlin_ui::settings::button("vault-panel-advanced")
                         .label(if panel.advanced {
                             "Store only"
                         } else {
@@ -301,8 +298,9 @@ pub(crate) fn render(
                         )
                 })
                 .child(
-                    dunlin_ui::button("vault-panel-create")
+                    div()
                         .relative()
+                        .flex()
                         .children({
                             #[cfg(debug_assertions)]
                             {
@@ -313,69 +311,77 @@ pub(crate) fn render(
                                 None::<AnyElement>
                             }
                         })
-                        .primary()
-                        .label(if panel.advanced {
-                            "Create quick key"
-                        } else {
-                            "Save key"
-                        })
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            let panel = &this.vault.ui.panel;
-                            let Some(label) = &panel.label else {
-                                return;
-                            };
-                            let Some(value) = &panel.value else {
-                                return;
-                            };
-                            let Some(host) = &panel.host else {
-                                return;
-                            };
-                            let input = NewSecret {
-                                storage_only: !panel.advanced,
-                                label: label.read(cx).value().trim().to_string(),
-                                description: "Quick credential created from the Secrets panel."
-                                    .into(),
-                                value: value.read(cx).value().to_string(),
-                                hosts: host
-                                    .read(cx)
-                                    .value()
-                                    .split(|character: char| {
-                                        character == ',' || character.is_whitespace()
-                                    })
-                                    .filter(|host| !host.is_empty())
-                                    .map(str::to_string)
-                                    .collect(),
-                                path_prefix: "/".into(),
-                                injection: dunlin_domain::vault::Injection::Header {
-                                    name: "Authorization".into(),
-                                    prefix: "Bearer ".into(),
-                                },
-                                allowed_headers: vec!["Accept".into(), "Content-Type".into()],
-                                ttl_secs: panel.ttl_secs,
-                                allow_writes: panel.allow_writes,
-                                auto_approve: true,
-                                project_ids: vec![this.project().id.clone()],
-                            };
-                            match this.create_vault_secret(input, cx) {
-                                Ok(alias) => {
-                                    this.vault.ui.panel.message = Some(format!("Created {alias}."));
-                                    if let Some(label) = &this.vault.ui.panel.label {
-                                        label.update(cx, |input, cx| {
-                                            input.set_value("", window, cx)
-                                        });
+                        .child(
+                            dunlin_ui::settings::button("vault-panel-create")
+                                .primary()
+                                .label(if panel.advanced {
+                                    "Create quick key"
+                                } else {
+                                    "Save key"
+                                })
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    let panel = &this.vault.ui.panel;
+                                    let Some(label) = &panel.label else {
+                                        return;
+                                    };
+                                    let Some(value) = &panel.value else {
+                                        return;
+                                    };
+                                    let Some(host) = &panel.host else {
+                                        return;
+                                    };
+                                    let input = NewSecret {
+                                        storage_only: !panel.advanced,
+                                        label: label.read(cx).value().trim().to_string(),
+                                        description:
+                                            "Quick credential created from the Secrets panel."
+                                                .into(),
+                                        value: value.read(cx).value().to_string(),
+                                        hosts: host
+                                            .read(cx)
+                                            .value()
+                                            .split(|character: char| {
+                                                character == ',' || character.is_whitespace()
+                                            })
+                                            .filter(|host| !host.is_empty())
+                                            .map(str::to_string)
+                                            .collect(),
+                                        path_prefix: "/".into(),
+                                        injection: dunlin_domain::vault::Injection::Header {
+                                            name: "Authorization".into(),
+                                            prefix: "Bearer ".into(),
+                                        },
+                                        allowed_headers: vec![
+                                            "Accept".into(),
+                                            "Content-Type".into(),
+                                        ],
+                                        ttl_secs: panel.ttl_secs,
+                                        allow_writes: panel.allow_writes,
+                                        auto_approve: true,
+                                        project_ids: vec![this.project().id.clone()],
+                                    };
+                                    match this.create_vault_secret(input, cx) {
+                                        Ok(alias) => {
+                                            this.vault.ui.panel.message =
+                                                Some(format!("Created {alias}."));
+                                            if let Some(label) = &this.vault.ui.panel.label {
+                                                label.update(cx, |input, cx| {
+                                                    input.set_value("", window, cx)
+                                                });
+                                            }
+                                            if let Some(host) = &this.vault.ui.panel.host {
+                                                host.update(cx, |input, cx| {
+                                                    input.set_value("", window, cx)
+                                                });
+                                            }
+                                            // Drop the masked entity so the value is not kept in undo history.
+                                            this.vault.ui.panel.value = None;
+                                        }
+                                        Err(error) => this.vault.ui.panel.message = Some(error),
                                     }
-                                    if let Some(host) = &this.vault.ui.panel.host {
-                                        host.update(cx, |input, cx| {
-                                            input.set_value("", window, cx)
-                                        });
-                                    }
-                                    // Drop the masked entity so the value is not kept in undo history.
-                                    this.vault.ui.panel.value = None;
-                                }
-                                Err(error) => this.vault.ui.panel.message = Some(error),
-                            }
-                            cx.notify();
-                        })),
+                                    cx.notify();
+                                })),
+                        ),
                 ),
         );
     body = body.child(
@@ -451,7 +457,7 @@ pub(crate) fn render(
                         .text_color(if secret.is_expired(now_secs()) { p.red } else { p.muted_fg })
                         .child(remaining(secret.expires_at)),
                 )
-                .child(dunlin_ui::button(format!("vault-panel-revoke-{id}")).ghost().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
+                .child(dunlin_ui::settings::button(format!("vault-panel-revoke-{id}")).danger().outline().label("Revoke").on_click(cx.listener(move |this, _, window, cx| {
                     let answer = window.prompt(PromptLevel::Warning, "Revoke this quick key?", Some("The value is removed from the macOS Keychain immediately. The agent can no longer use it."), &["Cancel", "Revoke"], cx);
                     let answer = this.overlay_backdrop.track_native(answer, cx);
                     let id = id.clone();

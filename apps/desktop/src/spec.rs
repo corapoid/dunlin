@@ -15,7 +15,7 @@ use dunlin_ui::assets::IconName;
 use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::InputState;
 use dunlin_ui::component::text::TextView;
-use dunlin_ui::component::{Icon, Selectable, Sizable};
+use dunlin_ui::component::{Disableable, Icon, Selectable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::tree::FileTree;
@@ -1798,9 +1798,7 @@ fn trace_panel(
                         .child("Traceability · requirement → task → evidence"),
                 )
                 .child(
-                    dunlin_ui::button("trace-expand-all")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("trace-expand-all")
                         .label("Expand all")
                         .on_click(cx.listener(|this, _, _, cx| {
                             if let Some(view) = this.spec.view.as_mut() {
@@ -1819,9 +1817,7 @@ fn trace_panel(
                         })),
                 )
                 .child(
-                    dunlin_ui::button("trace-collapse-all")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("trace-collapse-all")
                         .label("Collapse all")
                         .on_click(cx.listener(|this, _, _, cx| {
                             if let Some(view) = this.spec.view.as_mut() {
@@ -2292,35 +2288,28 @@ fn detail_panel(
                     .flex_wrap()
                     .gap(px(6.))
                     .child(
-                        dunlin_ui::button(format!("spec-open:{path}"))
-                            .small()
+                        dunlin_ui::action_button(format!("spec-open:{path}"))
                             .label("Open")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_artifact(&open_path, window, cx);
                             })),
                     )
                     .child(
-                        dunlin_ui::button(format!("spec-attach:{path}"))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-attach:{path}"))
                             .label("Attach to composer")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.attach_artifact(&attach_path, window, cx);
                             })),
                     )
                     .child(
-                        dunlin_ui::button(format!("spec-approve:{path}"))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-approve:{path}"))
                             .label("Approve…")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.approve_artifact(approve_path.clone(), true, window, cx);
                             })),
                     )
                     .child(
-                        dunlin_ui::button(format!("spec-reject:{path}"))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-reject:{path}"))
                             .label("Reject…")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.approve_artifact(reject_path.clone(), false, window, cx);
@@ -2328,9 +2317,7 @@ fn detail_panel(
                     )
                     .when(approval.is_some(), |row| {
                         row.child(
-                            dunlin_ui::button(format!("spec-clear:{path}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::action_button(format!("spec-clear:{path}"))
                                 .label("Clear decision")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.clear_approval(clear_path.clone(), cx);
@@ -2498,9 +2485,7 @@ fn detail_panel(
                 let mut actions = div().flex().flex_wrap().gap(px(5.)).pl(px(22.));
                 if worktree.is_none() {
                     actions = actions.child(
-                        dunlin_ui::button(format!("spec-worktree:{}", task.id))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-worktree:{}", task.id))
                             .label("Create worktree · gate")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.create_task_worktree(&task_label, &branch_label, window, cx);
@@ -2509,9 +2494,7 @@ fn detail_panel(
                 } else {
                     let attach_id = task_id.clone();
                     actions = actions.child(
-                        dunlin_ui::button(format!("spec-attach-evidence:{}", task.id))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-attach-evidence:{}", task.id))
                             .label("Attach HEAD")
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.attach_head_evidence(attach_id.clone(), cx)
@@ -2520,9 +2503,7 @@ fn detail_panel(
                     let complete_id = task_id.clone();
                     let complete_path = tasks_path.clone();
                     actions = actions.child(
-                        dunlin_ui::button(format!("spec-complete:{}", task.id))
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button(format!("spec-complete:{}", task.id))
                             .label("Complete…")
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.complete_task(complete_id.clone(), complete_path.clone(), cx)
@@ -2666,9 +2647,7 @@ fn detail_panel(
                 .flex_wrap()
                 .gap(px(6.))
                 .child(
-                    dunlin_ui::button("spec-contract-audit")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("spec-contract-audit")
                         .label("Ask agent to audit")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.run_pack_command(
@@ -2680,9 +2659,7 @@ fn detail_panel(
                         })),
                 )
                 .child(
-                    dunlin_ui::button("spec-contract-eval")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("spec-contract-eval")
                         .label("Run manual eval")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.run_pack_command(
@@ -2752,31 +2729,24 @@ fn empty_state(p: &Palette, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .flex()
                 .gap(px(6.))
                 .child(
-                    dunlin_ui::button("spec-empty-intent")
-                        .small()
+                    dunlin_ui::action_button("spec-empty-intent")
                         .label("Capture intent…")
                         .on_click(cx.listener(|this, _, window, cx| this.capture_intent(window, cx))),
                 )
                 .child(
-                    dunlin_ui::button("spec-empty-interview")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("spec-empty-interview")
                         .label("Interview with agent")
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.start_intent_interview(window, cx)
                         })),
                 )
                 .child(
-                    dunlin_ui::button("spec-empty-contract")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("spec-empty-contract")
                         .label("Create agent contract")
                         .on_click(cx.listener(|this, _, window, cx| this.open_agent_contract(window, cx))),
                 )
                 .child(
-                    dunlin_ui::button("spec-empty-refresh")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("spec-empty-refresh")
                         .label("Refresh")
                         .on_click(cx.listener(|this, _, _, cx| this.refresh_spec_workspace(cx))),
                 ),
@@ -2855,16 +2825,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
     header = header
         .child(div().flex_1())
         .child(
-            dunlin_ui::button("spec-next-step")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("spec-next-step")
                 .label("Next step")
                 .on_click(cx.listener(|this, _, window, cx| this.attach_next_step(window, cx))),
         )
         .child(
-            dunlin_ui::button("spec-refresh")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("spec-refresh")
                 .label("Refresh")
                 .on_click(cx.listener(|this, _, _, cx| this.refresh_spec_workspace(cx))),
         )
@@ -2914,24 +2880,19 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .on_click(cx.listener(|this, _, _, cx| this.cycle_spec_persistence(cx))),
         )
         .child(
-            dunlin_ui::button("spec-copy-decisions")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("spec-copy-decisions")
                 .label("Copy decisions")
                 .on_click(cx.listener(|this, _, _, cx| this.copy_decision_log(cx))),
         )
         .child(
-            dunlin_ui::button("spec-intent-interview")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("spec-intent-interview")
                 .label("Interview…")
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.start_intent_interview(window, cx)
-                })),
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.start_intent_interview(window, cx)),
+                ),
         )
         .child(
-            dunlin_ui::button("spec-capture-intent")
-                .small()
+            dunlin_ui::action_button("spec-capture-intent")
                 .label("Capture intent…")
                 .on_click(cx.listener(|this, _, window, cx| this.capture_intent(window, cx))),
         )
@@ -2943,39 +2904,18 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .on_click(cx.listener(|this, _, window, cx| this.open_agent_contract(window, cx))),
         )
         .child(
-            dunlin_ui::button("spec-install-pack-skill")
-                .ghost()
-                .small()
-                .label("Install Spec Kit skill")
+            dunlin_ui::action_button("spec-install-pack-skill")
+                .label("Install Spec Kit skill globally")
+                .disabled(this.skills_ui.busy)
                 .on_click(cx.listener(|this, _, _, cx| {
-                    let target = Target::from_harness(&this.session_harness());
-                    let project = this.project().clone();
-                    if project.is_remote() || !project.trusted {
-                        this.file_notice(
-                            "The Spec Kit skill currently installs into local trusted projects only",
-                            cx,
-                        );
-                        return;
-                    }
                     this.install_catalog_skill(
                         SPEC_KIT_SKILL,
-                        target,
-                        Scope::Project,
-                        &project.id,
-                        Some(std::path::PathBuf::from(&project.path)),
+                        Target::Shared,
+                        Scope::Global,
+                        "",
+                        None,
                         cx,
                     );
-                    if this.skill_installed_for(SPEC_KIT_SKILL, target, &project.id) {
-                        this.set_notice(
-                            "Installed the Spec-driven development skill for the active harness in this project",
-                            cx,
-                        );
-                    } else {
-                        this.file_notice(
-                            "The active harness has no known project skills directory; open Settings → Skills to install the bundled skill manually",
-                            cx,
-                        );
-                    }
                 })),
         )
         .child(

@@ -9,8 +9,22 @@ CLI and choosing an agent mode are separate operations.
 Use **Settings → Agents** to scan, open setup instructions, test a connection,
 choose a default or configure a custom ACP command. Detection does not prove
 authentication or ACP compatibility. **Test connection** opens an empty ACP
-session without sending a prompt. Visibility switches affect selection menus,
+session without sending a prompt. **Show in agent picker** checkboxes affect selection menus,
 not installed software or saved conversations.
+
+Select the radio beside an agent to make it the default for new conversations.
+The checked radio marks the default; unavailable or unverified agents cannot be made
+the default. Existing conversations keep their agent. **Scan again** remains an
+explicit, read-only discovery action.
+
+Detected/configured agents are listed first. Expand **Set up another agent** to
+browse agents that are not installed. **Import history** is available only for
+supported detected CLIs/adapters; it reads local history without starting an ACP
+session. A CLI-only installation can be imported even when its ACP adapter is missing.
+
+The chat harness selector lists only visible agents with a verified, ready
+connection for the current project configuration. Unverified or failed adapters
+stay in Settings → Agents, not as disabled choices in chat.
 
 Common commands from the built-in catalog:
 
@@ -58,6 +72,14 @@ provider selector filters enabled models also advertised by ACP. **Free** is an
 explicit filter for discovered zero-priced models, not a fallback to paid models.
 Unknown pricing is excluded from the free allowlist; limits and availability are
 controlled by the provider.
+
+The provider selector lists connected accounts reported by OpenCode for the
+current project, not every provider in its integration catalog. Expired accounts
+are excluded. Free appears only when zero-priced models have been discovered.
+Use **Connect an integration…** to search the full installation-provided catalog,
+see connected-account counts and advertised sign-in methods, and connect another
+provider. Integrations requiring custom forms or external setup are identified
+without guessing their configuration.
 
 Provider-menu sign-in and **Settings → Agents → OpenCode provider accounts** use
 the verified local OpenCode service. Authentication is persisted by OpenCode, not

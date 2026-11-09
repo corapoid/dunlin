@@ -83,7 +83,7 @@ impl Render for Controls {
             .items_start()
             .gap(px(12.))
             .child(measured(
-                dunlin_ui::button("smoke-action")
+                dunlin_ui::action_button("smoke-action")
                     .label("Action")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.actions += 1;
@@ -92,7 +92,7 @@ impl Render for Controls {
                 self.action_bounds.clone(),
             ))
             .child(measured(
-                dunlin_ui::button("smoke-disabled")
+                dunlin_ui::action_button("smoke-disabled")
                     .label("Disabled")
                     .disabled(true)
                     .on_click(cx.listener(|this, _, _, cx| {

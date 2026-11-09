@@ -125,7 +125,7 @@ pub fn parse(harness: &str, bytes: &[u8]) -> Result<Vec<Candidate>, String> {
     Ok(result)
 }
 
-fn opencode(value: &Value) -> Result<Candidate, String> {
+pub(super) fn opencode(value: &Value) -> Result<Candidate, String> {
     // OpenCode V2 experimental.session.export: {data:{info,messages}}.
     let data = value.get("data").unwrap_or(value);
     let info = &data["info"];
@@ -175,7 +175,7 @@ fn opencode(value: &Value) -> Result<Candidate, String> {
     }
     Ok(Candidate {
         source_id: string(info, "id").ok_or("Missing OpenCode session ID")?,
-        title: string(info, "title").unwrap_or_default(),
+        title: string(info, "title").unwrap_or_else(|| "Imported conversation".into()),
         directory: string(&info["location"], "directory").or_else(|| string(info, "directory")),
         model: model(&info["model"]),
         transcript,

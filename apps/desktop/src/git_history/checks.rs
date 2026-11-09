@@ -397,7 +397,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let running = this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child(if v.project.is_remote() { "Explicit commands run on the relay host with that process's permissions and inherited environment. Not sandboxed. Logs may contain secrets; inspect before sharing. Exit status is recorded, never guessed from text. No automatic test discovery/execution." } else { "Explicit native commands only. Logs may contain secrets: inspect before sharing. Exit status is recorded, never guessed from text. Existing reports do not verify later source changes. No automatic test discovery/execution." })
-        .child(code_input(&s.argv).small().aria_label("Check command arguments")).child(dunlin_ui::button("check-prepare").label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
+        .child(code_input(&s.argv).aria_label("Check command arguments")).child(dunlin_ui::action_button("check-prepare").label("Prepare command preview").disabled(running).on_click(cx.listener(|this,_,_,cx|this.prepare_check(cx))));
     if let Some((_, plan)) = &s.prepared {
         body = body
             .child(format!(
@@ -406,8 +406,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 serde_json::to_string(&plan.argv).unwrap_or_default()
             ))
             .child(
-                dunlin_ui::button("check-confirm")
-                    .small()
+                dunlin_ui::action_button("check-confirm")
                     .label("Review and confirm execution…")
                     .disabled(running)
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_check(w, cx))),
@@ -421,8 +420,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 serde_json::to_string(argv).unwrap_or_default()
             ))
             .child(
-                dunlin_ui::button("check-confirm-remote")
-                    .small()
+                dunlin_ui::action_button("check-confirm-remote")
                     .label("Review and run on relay…")
                     .disabled(running)
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_check(w, cx))),
@@ -430,9 +428,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if !s.reports.is_empty() {
         body = body.child(
-            dunlin_ui::button("check-purge-reports")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("check-purge-reports")
+                .danger()
+                .outline()
                 .label("Delete stored check reports…")
                 .disabled(running)
                 .on_click(cx.listener(|this, _, w, cx| this.purge_check_reports(w, cx))),
@@ -440,9 +438,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     if this.git_history.cancel_check.is_some() {
         body = body.child(
-            dunlin_ui::button("check-cancel")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("check-cancel")
                 .label("Stop active check")
                 .on_click(cx.listener(|this, _, _, cx| this.cancel_check(cx))),
         );
@@ -464,9 +460,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )),
             )
             .child(
-                dunlin_ui::button(format!("check-evidence-{id}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("check-evidence-{id}"))
                     .label("Add report/error to agent draft")
                     .on_click(
                         cx.listener(move |this, _, w, cx| this.check_report_to_draft(&id, w, cx)),

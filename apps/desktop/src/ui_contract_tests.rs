@@ -93,6 +93,7 @@ fn application_controls_use_shared_constructors() {
                 for constructor in [
                     concat!("Button", "::new("),
                     concat!("Checkbox", "::new("),
+                    concat!("Radio", "::new("),
                     concat!("Switch", "::new("),
                     concat!("TabBar", "::new("),
                     concat!("Input", "::new("),
@@ -137,4 +138,112 @@ fn ordinary_forms_keep_the_shared_focus_frame() {
             "{name}: use shared fields, not a static frame that loses focus/disabled styling"
         );
     }
+}
+
+#[test]
+fn audited_settings_and_forms_use_standard_actions_not_quiet_text_buttons() {
+    for (name, source) in [
+        ("credential settings", include_str!("vault/settings.rs")),
+        ("credential panel", include_str!("vault/panel.rs")),
+        ("SSH settings", include_str!("ssh.rs")),
+        ("provider authorization", include_str!("provider_auth.rs")),
+        (
+            "project runtime form",
+            include_str!("project_runtime_settings.rs"),
+        ),
+        ("Git confirmations", include_str!("git_actions.rs")),
+        (
+            "Git mutation actions",
+            include_str!("git_history/mutations.rs"),
+        ),
+        ("Run actions", include_str!("run.rs")),
+        (
+            "Markdown resource form",
+            include_str!("markdown_editor/resources.rs"),
+        ),
+    ] {
+        assert!(
+            !has_constructor(source, "dunlin_ui::button("),
+            "{name}: use action_button for ordinary labeled actions"
+        );
+    }
+    let settings = include_str!("views/settings.rs");
+    for suffix in settings.split("dunlin_ui::button(").skip(1) {
+        assert!(
+            suffix.starts_with("format!(\"settings-tab:"),
+            "only settings navigation may use the quiet base"
+        );
+    }
+    for (name, source) in [
+        ("server administration", include_str!("server_panel.rs")),
+        ("remote connection", include_str!("remote_connection.rs")),
+    ] {
+        assert!(
+            !has_constructor(source, "button("),
+            "{name}: use standard actions, not the quiet base"
+        );
+    }
+}
+
+#[test]
+fn standard_actions_do_not_override_their_size_or_become_ghost_buttons() {
+    fn check(path: &Path) {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                check(&path);
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "rs")
+                || path.file_name().unwrap() == "ui_contract_tests.rs"
+            {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+            for suffix in ["dunlin_ui::action_button(", "dunlin_ui::settings::button("]
+                .into_iter()
+                .flat_map(|constructor| source.split(constructor).skip(1))
+            {
+                let prefix = suffix
+                    .split(".on_click(")
+                    .next()
+                    .unwrap()
+                    .split("\n}")
+                    .next()
+                    .unwrap()
+                    .split(';')
+                    .next()
+                    .unwrap();
+                for legacy in [".small()", ".xsmall()", ".ghost()", ".text()"] {
+                    assert!(
+                        !prefix.contains(legacy),
+                        "{}: standard action overrides its presentation with {legacy}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
+    check(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));
+}
+
+#[test]
+fn settings_surfaces_share_the_recipe_and_agent_visibility_has_a_label() {
+    for (name, source) in [
+        ("settings", include_str!("views/settings.rs")),
+        ("credentials", include_str!("vault/settings.rs")),
+        ("SSH", include_str!("ssh.rs")),
+        ("skills", include_str!("skills.rs")),
+        ("extensions", include_str!("plugins.rs")),
+        ("backup", include_str!("backup.rs")),
+    ] {
+        assert!(
+            !has_constructor(source, "dunlin_ui::action_button("),
+            "{name}: use the shared settings recipe"
+        );
+    }
+    let source = include_str!("views/settings.rs");
+    assert!(!source.contains("dunlin_ui::switch(format!(\"harness-visible:"));
+    assert!(source.contains(".label(\"Show in agent picker\")"));
+    assert!(source.contains("agent_import_visible(name, installed, cli_only)"));
 }

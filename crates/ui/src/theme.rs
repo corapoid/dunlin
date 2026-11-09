@@ -432,7 +432,7 @@ pub fn apply(cx: &mut App) {
         c.primary_hover = p.primary.mix_oklab(p.primary_fg, 0.9);
         c.primary_active = p.primary.mix_oklab(p.primary_fg, 0.8);
         c.primary_foreground = p.primary_fg;
-        c.button = p.card;
+        c.button = p.subtle;
         c.button_hover = p.hover;
         c.button_active = p.accent;
         c.button_foreground = p.fg;
@@ -600,11 +600,44 @@ mod contrast_tests {
     }
 
     #[test]
+    fn semantic_outline_actions_keep_readable_ink_in_every_pointer_state() {
+        for (p, dark) in [(light(), false), (dark(), true)] {
+            for color in [p.red, p.amber, p.green, p.blue] {
+                let ink = if dark {
+                    color
+                } else {
+                    color.mix_oklab(h(0x000000), 0.75)
+                };
+                for (factor, opacity) in [(1., 0.04), (0.9, 0.08), (0.8, 0.12)] {
+                    let tint: Rgba = semantic_button_state(color, factor).into();
+                    let base: Rgba = p.card.into();
+                    let background: Hsla = Rgba {
+                        r: tint.r * opacity + base.r * (1. - opacity),
+                        g: tint.g * opacity + base.g * (1. - opacity),
+                        b: tint.b * opacity + base.b * (1. - opacity),
+                        a: 1.,
+                    }
+                    .into();
+                    assert!(
+                        contrast(ink, background) >= 4.5,
+                        "outline action contrast, dark={dark}, state={factor}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn reading_surfaces_inputs_and_all_filled_button_states_are_legible() {
         for p in [light(), dark()] {
             assert!(contrast(p.fg, p.card) >= 7.);
             assert!(contrast(p.muted_fg, p.card) >= 4.5);
             assert!(contrast(p.border_strong, p.card) >= 3.);
+            for fill in [p.subtle, p.hover, p.accent] {
+                assert!(contrast(p.fg, fill) >= 7., "neutral action contrast");
+            }
+            assert_ne!(p.subtle, p.hover);
+            assert_ne!(p.hover, p.accent);
             for factor in [1., 0.9, 0.8] {
                 assert!(contrast(p.primary.mix_oklab(p.primary_fg, factor), p.primary_fg) >= 4.5);
                 for fill in [p.blue, p.green, p.amber, p.red] {

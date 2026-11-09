@@ -446,6 +446,7 @@ impl DunlinApp {
             || !self.harness.status.is_ready()
             || self.harness.model_changing
             || self.harness.mode_changing
+            || self.harness.config_changing
             || self.mcp_busy()
             || self.harness.session_id.is_none()
         {

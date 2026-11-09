@@ -42,7 +42,7 @@
       "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "cff6377e30f0c857681662e7edc7286bf30f5606033390401b0706d7bd930833",
-      "tree_sha256": "709dafc425ea1ada0b275631f24c718808e48876cec17dba7104d3d2ca414d08",
+      "tree_sha256": "4733291032b90f72607b3c6479cdb7f6636fde37dd8003cbe08bfbdba5e1440c",
       "files": 220,
       "changes": [
         {
@@ -99,6 +99,16 @@
           "path": "src/undo_history.rs",
           "upstream_sha256": "ed5b8f83b9de3d749855d2c9bb06097693c6d9664fb201d7a692801eca4fc1ce",
           "patched_sha256": "103bdf2e6052250840cadb1dcdb7af2d705b48f01f0ec75d45c11bcdd697953d"
+        },
+        {
+          "path": "src/text/format/html.rs",
+          "upstream_sha256": "c67898d5e370cf994d367354b1a542be71b2ef95c91e06db320e97f77c2ce046",
+          "patched_sha256": "ac1a0f2049275815536ba0bd5b94ad41581d0335a922b8bd66dc7d5288dec78e"
+        },
+        {
+          "path": "src/text/node.rs",
+          "upstream_sha256": "cc616d77942c10dd1c9b9910c5a6e1a80b0c9b81a9707cdd939358305a9e750f",
+          "patched_sha256": "a8a86986d92a8ab73f7f4accf33e72107b723608512655cc3fe676f8dccc2975"
         }
       ]
     },
@@ -107,13 +117,18 @@
       "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "45bbfdba0efa392190f2fd446ec311325302eb047d5ce45dc1bcf189cb18f5eb",
-      "tree_sha256": "e9f46a1bca293516b03a75989738d5fa9ea2807fafd2ecf5f186d1ecc41508f9",
+      "tree_sha256": "6d75e0d56c6887fdadaaa56ed91d67ec69c1cf6db93009fbb45f73f0d0170074",
       "files": 285,
       "changes": [
         {
           "path": "Cargo.toml",
           "upstream_sha256": "7666fdfafe3e4f5709c22d0ed9c51fc65a36e4f0e3441c9a5cf832b830720066",
           "patched_sha256": "47e57efd4349adf11f8557e8bb237c52322f7e32acd31810a8f1d4b184c5b79a"
+        },
+        {
+          "path": "src/button/button.rs",
+          "upstream_sha256": "43317999642f8aa5f29aa4edf27ce8882c090f7d45420278e4563e37ceea3112",
+          "patched_sha256": "5fea8abb38b3b1f8dc8385093cc906691d61217342f3e617449914a94b6a41e5"
         },
         {
           "path": "src/highlighter/language_name.rs",
@@ -177,7 +192,7 @@
       "version": "0.3.12",
       "upstream_repository": "https://github.com/zed-industries/zed",
       "registry_archive_sha256": "29db89613527079737f53752eab27fb65c9a7dd94979256c65a0e590c9fd34d8",
-      "tree_sha256": "3cda729c8d7676d1cab5ec8a3f27bbe22786084332c1298c55aa269cc0ec65cb",
+      "tree_sha256": "4b2ca58ded2e340667e23a0b1a42e8f14e663c084771ab25c37d04fd03ec317d",
       "files": 164,
       "changes": [
         {
@@ -203,7 +218,7 @@
         {
           "path": "src/window.rs",
           "upstream_sha256": "9f4891f1e9c323d8d14a0624ce86c436cb9e623a52e8300a9b67ec0119f4aaa5",
-          "patched_sha256": "5a586ed458de8112ef6ef2267171399164419c77908d11856b98c5239e6b43d9"
+          "patched_sha256": "58277d1056e383daac922aef5906a47796d6e5e6c2f61004aa0a17301b69b1c9"
         }
       ]
     },

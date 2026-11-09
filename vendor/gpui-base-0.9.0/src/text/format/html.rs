@@ -11,8 +11,8 @@ use markup5ever_rcdom::{Node, NodeData, RcDom};
 
 use crate::text::document::ParsedDocument;
 use crate::text::node::{
-    self, BlockNode, ImageNode, InlineNode, LinkMark, NodeContext, Paragraph, Table, TableRow,
-    TextMark,
+    self, BlockNode, CodeBlock, ImageNode, InlineNode, LinkMark, NodeContext, Paragraph, Table,
+    TableRow, TextMark,
 };
 
 const BLOCK_ELEMENTS: [&str; 35] = [
@@ -493,6 +493,40 @@ fn parse_node(
                 paragraph.push_break();
                 None
             }
+            // A preformatted block is not an inline-code mark: multiline marks
+            // are laid out as one inline box and can paint as empty backgrounds.
+            local_name!("pre") => {
+                let mut children = vec![];
+                consume_paragraph(&mut children, paragraph);
+                let mut code = HtmlParagraph::default();
+                let mut language = None;
+                for child in node.children.borrow().iter() {
+                    if let NodeData::Element { name, attrs, .. } = &child.data
+                        && name.local == local_name!("code")
+                    {
+                        language = attr_value(attrs, local_name!("class")).and_then(|classes| {
+                            classes.split_whitespace().find_map(|class| {
+                                class.strip_prefix("language-").map(SharedString::from)
+                            })
+                        });
+                    }
+                    parse_paragraph(&mut code, child);
+                }
+                let block = BlockNode::CodeBlock(CodeBlock::new(
+                    code.take().text().into(),
+                    language,
+                    None::<crate::text::node::Span>,
+                ));
+                if children.is_empty() {
+                    Some(block)
+                } else {
+                    children.push(block);
+                    Some(BlockNode::Root {
+                        children,
+                        span: None,
+                    })
+                }
+            }
             local_name!("h1")
             | local_name!("h2")
             | local_name!("h3")
@@ -813,10 +847,10 @@ mod tests {
             ("<pre><!-- note -->\none</pre>", "\none"),
         ] {
             let document = super::parse(html, &mut cx).unwrap();
-            let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
-                panic!("expected one paragraph, got {:?}", document.blocks);
+            let BlockNode::CodeBlock(code) = &document.blocks[0] else {
+                panic!("expected one code block, got {:?}", document.blocks);
             };
-            assert_eq!(paragraph.text(), text, "{html}");
+            assert_eq!(code.code().as_ref(), text, "{html}");
         }
     }
 
@@ -842,11 +876,31 @@ mod tests {
             ("<p><code>one\n   two</code></p>", "one two"),
         ] {
             let document = super::parse(html, &mut cx).unwrap();
-            let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
-                panic!("expected one paragraph, got {:?}", document.blocks);
-            };
-            assert_eq!(paragraph.text(), text, "{html}");
+            match &document.blocks[0] {
+                BlockNode::CodeBlock(code) => assert_eq!(code.code().as_ref(), text, "{html}"),
+                BlockNode::Paragraph(paragraph) if html.starts_with("<p>") => {
+                    assert_eq!(paragraph.text(), text, "{html}");
+                }
+                other => panic!("unexpected block: {other:?}"),
+            }
         }
+    }
+
+    #[test]
+    fn pre_code_keeps_language_and_surrounding_blocks() {
+        let document = super::parse(
+            "<p>Before</p><pre><code class=\"highlight language-sh\">git clone example\n  cargo build\n</code></pre><p>After</p>",
+            &mut NodeContext::default(),
+        ).unwrap();
+        let BlockNode::Root { children, .. } = &document.blocks[0] else {
+            panic!("expected multiple blocks");
+        };
+        assert_eq!(children.len(), 3);
+        let BlockNode::CodeBlock(code) = &children[1] else {
+            panic!("expected a code block");
+        };
+        assert_eq!(code.lang().as_deref(), Some("sh"));
+        assert_eq!(code.code().as_ref(), "git clone example\n  cargo build\n");
     }
 
     #[test]
@@ -907,14 +961,15 @@ mod tests {
         );
     }
 
-    /// The text of the one paragraph `html` parses to.
+    /// The text of the single paragraph or preformatted block.
     fn paragraph_text(html: &str) -> String {
         let mut cx = NodeContext::default();
         let document = super::parse(html, &mut cx).unwrap();
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
-            panic!("expected one paragraph, got {:?}", document.blocks);
-        };
-        paragraph.text()
+        match &document.blocks[0] {
+            BlockNode::Paragraph(paragraph) => paragraph.text(),
+            BlockNode::CodeBlock(code) => code.code().to_string(),
+            other => panic!("expected one text block, got {other:?}"),
+        }
     }
 
     #[test]

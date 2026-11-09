@@ -24,6 +24,14 @@ packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
 | syntect 5.3.0 | Replace bincode dumps with a versioned MessagePack envelope (`DLSYNP01`), bounded reader and explicit compression finalization; compile metadata file loaders only with `yaml-load` or tests |
 | two-face 0.5.2+bat-0.26.1 | Migrate updated bundled syntax, nested lazy-context/theme and license dumps to the new codec |
 
+Additional native-control patches preserve accessible button labels while allowing
+an opt-in animated label renderer and raised/semantic-outline action treatments
+(`gpui-component`). HTML preformatted content becomes a real code block and
+spanless paragraphs retain distinct element identities (`gpui-base`). Native
+visual fixtures can present a manually drawn frame in debug builds (`gpui-pre`).
+Their original-file hashes were checked against the checksum-verified registry
+archives; the complete patched trees are recorded in `provenance.json`.
+
 The application's own resvg is also 0.49. All five packages (`bincode`, `instant`,
 `paste`, `rustybuzz`, `ttf-parser`) are absent from the entire application lockfile
 and explicitly banned in `deny.toml`. `advisories.ignore` remains empty.

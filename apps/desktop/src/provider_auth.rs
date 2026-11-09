@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use dunlin_ui::component::Disableable;
 use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::input::InputState;
-use dunlin_ui::component::{Disableable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
     AnyElement, AppContext, ClipboardItem, Context, Entity, Focusable, InteractiveElement,
@@ -248,6 +248,7 @@ fn browser_url(value: &str) -> bool {
 }
 
 enum Phase {
+    Catalog,
     Loading,
     Ready,
     Waiting(OAuthAttempt),
@@ -268,6 +269,113 @@ pub(crate) struct AuthDialog {
     error: Option<String>,
     // Session-only entity, never included in StoredSettings or transcripts.
     input: Entity<InputState>,
+    catalog: Option<IntegrationCatalog>,
+}
+
+struct IntegrationChoice {
+    id: String,
+    name: String,
+    accounts: usize,
+    methods: String,
+    supported: bool,
+}
+
+impl IntegrationChoice {
+    fn matches(&self, query: &str) -> bool {
+        let text = format!("{} {} {}", self.name, self.id, self.methods).to_lowercase();
+        query
+            .split_whitespace()
+            .all(|word| text.contains(&word.to_lowercase()))
+    }
+}
+
+struct IntegrationCatalog {
+    entries: Vec<IntegrationChoice>,
+    loading: bool,
+    search: Entity<InputState>,
+    _subscription: dunlin_ui::Subscription,
+}
+
+impl AuthDialog {
+    fn catalog(directory: String, window: &mut Window, cx: &mut Context<DunlinApp>) -> Self {
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search integrations…"));
+        let subscription = cx.observe(&search, |_, _, cx| cx.notify());
+        Self {
+            id: uuid::Uuid::now_v7(),
+            name: String::new(),
+            provider_id: String::new(),
+            integration_id: String::new(),
+            directory,
+            service: None,
+            methods: Vec::new(),
+            selected: 0,
+            phase: Phase::Catalog,
+            busy: false,
+            error: None,
+            input: secret_input("Paste your API key", window, cx),
+            catalog: Some(IntegrationCatalog {
+                entries: Vec::new(),
+                loading: true,
+                search,
+                _subscription: subscription,
+            }),
+        }
+    }
+}
+
+fn integration_choices(response: &Value) -> Result<Vec<IntegrationChoice>, String> {
+    let data = response
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Unsupported OpenCode integration catalog".to_string())?;
+    let mut entries = Vec::new();
+    for integration in data {
+        let id = integration
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Integration is missing its identifier".to_string())?;
+        let name = integration
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(id);
+        let accounts = integration
+            .get("connections")
+            .and_then(Value::as_array)
+            .map(|connections| {
+                connections
+                    .iter()
+                    .filter(|connection| crate::providers::connection_ready(connection))
+                    .count()
+            })
+            .unwrap_or(0);
+        let labels: Vec<_> = integration
+            .get("methods")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|method| {
+                method.get("label").and_then(Value::as_str).or_else(|| {
+                    match method.get("type")?.as_str()? {
+                        "key" => Some("API key"),
+                        "oauth" => Some("Browser sign-in"),
+                        "env" => Some("Environment"),
+                        "command" => Some("Command"),
+                        "external" => Some("External setup"),
+                        _ => None,
+                    }
+                })
+            })
+            .collect();
+        entries.push(IntegrationChoice {
+            id: id.into(),
+            name: name.into(),
+            accounts,
+            methods: labels.join(" · "),
+            supported: !methods(integration).is_empty(),
+        });
+    }
+    entries.sort_by_key(|entry| (entry.accounts == 0, entry.name.to_lowercase()));
+    Ok(entries)
 }
 
 fn secret_input(
@@ -283,6 +391,129 @@ fn secret_input(
 }
 
 impl DunlinApp {
+    pub(crate) fn open_provider_catalog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.local_opencode()
+            || self.projects.is_empty()
+            || self.chat_controls_busy()
+            || self
+                .provider_auth
+                .as_ref()
+                .is_some_and(|dialog| dialog.busy || matches!(dialog.phase, Phase::Waiting(_)))
+        {
+            return;
+        }
+        let directory = self.project().path.clone();
+        let dialog = AuthDialog::catalog(directory.clone(), window, cx);
+        let id = dialog.id;
+        self.chat_menu_open = false;
+        self.provider_auth = Some(dialog);
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let service = LocalService::discover(&directory)?;
+                    let response = service.request(
+                        "GET",
+                        &format!(
+                            "/api/integration?location%5Bdirectory%5D={}",
+                            encode(&directory)
+                        ),
+                        None,
+                    )?;
+                    Ok::<_, String>((service, integration_choices(&response)?))
+                })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let Some(dialog) = this.provider_auth.as_mut().filter(|dialog| dialog.id == id)
+                else {
+                    return;
+                };
+                let catalog = dialog.catalog.as_mut().unwrap();
+                catalog.loading = false;
+                match result {
+                    Ok((service, entries)) => {
+                        dialog.service = Some(service);
+                        catalog.entries = entries;
+                    }
+                    Err(error) => dialog.error = Some(error),
+                }
+                catalog
+                    .search
+                    .update(cx, |input, cx| input.focus(window, cx));
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn choose_integration(
+        &mut self,
+        integration_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.local_opencode() || self.chat_controls_busy() {
+            return;
+        }
+        let directory = self.project().path.clone();
+        let Some(dialog) = self.provider_auth.as_mut().filter(|dialog| !dialog.busy) else {
+            return;
+        };
+        if dialog.directory != directory {
+            return;
+        }
+        let Some(entry) = dialog.catalog.as_ref().and_then(|catalog| {
+            catalog
+                .entries
+                .iter()
+                .find(|entry| entry.id == integration_id)
+        }) else {
+            return;
+        };
+        let Some(service) = dialog.service.clone() else {
+            return;
+        };
+        dialog.name = entry.name.clone();
+        dialog.integration_id = entry.id.clone();
+        dialog.provider_id.clear(); // Integration IDs are not model provider IDs.
+        dialog.phase = Phase::Loading;
+        dialog.error = None;
+        dialog.methods.clear();
+        dialog.input = secret_input("Paste your API key", window, cx);
+        let id = uuid::Uuid::now_v7();
+        dialog.id = id;
+        let path = auth_path(&dialog.directory, integration_id, "");
+        let integration_id = integration_id.to_string();
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx.background_executor().spawn(async move {
+                let response = service.request("GET", &path, None)?;
+                let integration = response.get("data").unwrap_or(&response);
+                if integration.get("id").and_then(Value::as_str) != Some(integration_id.as_str()) {
+                    return Err("OpenCode returned a different integration".to_string());
+                }
+                Ok(methods(integration))
+            }).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let Some(dialog) = this.provider_auth.as_mut().filter(|dialog| dialog.id == id) else { return; };
+                dialog.phase = Phase::Ready;
+                match result {
+                    Ok(choices) => {
+                        dialog.methods = choices;
+                        dialog.selected = preferred_method(&dialog.methods);
+                        if dialog.methods.is_empty() { dialog.error = Some("This integration requires provider-specific setup in OpenCode; no supported API key or browser sign-in method was advertised.".into()); }
+                        else if matches!(dialog.methods[dialog.selected].kind, MethodKind::Key) {
+                            dialog.input.update(cx, |input, cx| input.focus(window, cx));
+                        }
+                    }
+                    Err(error) => dialog.error = Some(error),
+                }
+                cx.notify();
+            });
+        }).detach();
+    }
+
     pub(crate) fn connect_provider(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.local_opencode()
             || self.projects.is_empty()
@@ -321,6 +552,7 @@ impl DunlinApp {
             busy: false,
             error: None,
             input: secret_input("Paste your API key", window, cx),
+            catalog: None,
         });
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
@@ -356,9 +588,12 @@ impl DunlinApp {
     }
 
     pub(crate) fn provider_auth_input_focused(&self, window: &Window, cx: &dunlin_ui::App) -> bool {
-        self.provider_auth
-            .as_ref()
-            .is_some_and(|dialog| dialog.input.read(cx).focus_handle(cx).is_focused(window))
+        self.provider_auth.as_ref().is_some_and(|dialog| {
+            dialog.input.read(cx).focus_handle(cx).is_focused(window)
+                || dialog.catalog.as_ref().is_some_and(|catalog| {
+                    catalog.search.read(cx).focus_handle(cx).is_focused(window)
+                })
+        })
     }
 
     pub(crate) fn close_provider_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -407,7 +642,12 @@ impl DunlinApp {
         let Some(dialog) = self.provider_auth.as_ref() else {
             return;
         };
-        if dialog.busy || matches!(dialog.phase, Phase::Loading | Phase::Connected) {
+        if dialog.busy
+            || matches!(
+                dialog.phase,
+                Phase::Catalog | Phase::Loading | Phase::Connected
+            )
+        {
             return;
         }
         let Some(service) = dialog.service.clone() else {
@@ -529,22 +769,24 @@ impl DunlinApp {
         dialog.phase = Phase::Connected;
         dialog.busy = false;
         dialog.error = None;
-        self.provider_catalog.confirm_connection(
-            &dialog.directory,
-            crate::providers::account_provider(&dialog.provider_id),
-            if dialog.provider_id == crate::providers::FREE {
-                "OpenCode Console"
-            } else {
-                &dialog.name
-            },
-            &dialog.integration_id,
-        );
+        if !dialog.provider_id.is_empty() {
+            self.provider_catalog.confirm_connection(
+                &dialog.directory,
+                crate::providers::account_provider(&dialog.provider_id),
+                if dialog.provider_id == crate::providers::FREE {
+                    "OpenCode Console"
+                } else {
+                    &dialog.name
+                },
+                &dialog.integration_id,
+            );
+        }
         self.invalidate_usage();
         if self.local_opencode()
-            && self.provider_auth.as_ref().is_some_and(|dialog| {
-                dialog.directory == self.project().path
-                    && Some(dialog.provider_id.as_str()) == self.selected_provider()
-            })
+            && self
+                .provider_auth
+                .as_ref()
+                .is_some_and(|dialog| dialog.directory == self.project().path)
         {
             self.reload_provider_models(cx);
             self.refresh_usage(cx);
@@ -635,6 +877,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     };
     let ready = matches!(dialog.phase, Phase::Ready);
     let connected = matches!(dialog.phase, Phase::Connected);
+    let choosing = matches!(dialog.phase, Phase::Catalog);
     let key_method = dialog
         .methods
         .get(dialog.selected)
@@ -643,6 +886,85 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .as_ref()
         .is_some_and(|attempt| attempt.mode == "code");
     let mut content = div().flex().flex_col().gap(px(14.));
+    if choosing && let Some(catalog) = &dialog.catalog {
+        let query = catalog.search.read(cx).text().to_string();
+        let mut rows = div()
+            .id("integration-list")
+            .relative()
+            .children({
+                #[cfg(debug_assertions)]
+                {
+                    crate::workspace_ui_smoke::probe("integration-catalog-list")
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    None::<AnyElement>
+                }
+            })
+            .h(px(330.))
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .gap(px(6.));
+        let mut count = 0;
+        for entry in catalog.entries.iter().filter(|entry| entry.matches(&query)) {
+            count += 1;
+            let id = entry.id.clone();
+            rows = rows.child(
+                dunlin_ui::action_button(format!("integration:{}", entry.id))
+                    .w_full()
+                    .min_h(px(52.))
+                    .accessibility_label(format!("Connect {}", entry.name))
+                    .child(
+                        div()
+                            .w_full()
+                            .min_w(px(0.))
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .min_w(px(0.))
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(3.))
+                                    .child(div().truncate().child(entry.name.clone()))
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_size(px(11.))
+                                            .text_color(p.muted_fg)
+                                            .child(if entry.supported {
+                                                entry.methods.clone()
+                                            } else {
+                                                format!("{} · Setup in OpenCode", entry.methods)
+                                            }),
+                                    ),
+                            )
+                            .when(entry.accounts > 0, |row| {
+                                row.child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(p.green)
+                                        .child(format!("Connected · {}", entry.accounts)),
+                                )
+                            }),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.choose_integration(&id, window, cx)
+                    })),
+            );
+        }
+        if catalog.loading {
+            rows = rows.child("Loading integrations from OpenCode…");
+        } else if count == 0 {
+            rows = rows.child("No matching integrations");
+        }
+        content = content
+            .child(dunlin_ui::input(&catalog.search).aria_label("Search OpenCode integrations"))
+            .child(rows);
+    }
     if matches!(dialog.phase, Phase::Loading) {
         content = content.child(
             div()
@@ -654,9 +976,8 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         if dialog.methods.len() > 1 {
             for (index, method) in dialog.methods.iter().enumerate() {
                 content = content.child(
-                    dunlin_ui::button(("auth-method", index))
+                    dunlin_ui::action_button(("auth-method", index))
                         .label(method.label.clone())
-                        .small()
                         .disabled(dialog.busy)
                         .when(index == dialog.selected, |button| button.primary())
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -671,7 +992,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .child(div().text_size(px(12.)).child("API key"))
                 .child(dunlin_ui::input(&dialog.input).aria_label("Provider API key").disabled(dialog.busy))
                 .when(dialog.provider_id == crate::providers::GO, |view| view.child(
-                    dunlin_ui::button("auth-console").ghost().label("Get a Go API key ↗")
+                    dunlin_ui::action_button("auth-console").label("Get a Go API key ↗")
                         .on_click(|_, _, cx| cx.open_url("https://opencode.ai/console/go"))));
         } else if !dialog.methods.is_empty() {
             content = content.child(div().text_color(p.muted_fg).text_size(px(12.)).child("Continue in your browser to authorize your account. Dunlin will detect completion and refresh your models automatically."));
@@ -689,15 +1010,12 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             )
             .child(div().text_size(px(13.)).child(attempt.instructions))
             .child(
-                dunlin_ui::button("auth-open-browser")
+                dunlin_ui::action_button("auth-open-browser")
                     .label("Open sign-in page ↗")
-                    .small()
                     .on_click(move |_, _, cx| cx.open_url(&url)),
             )
             .child(
-                dunlin_ui::button("auth-copy-code")
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button("auth-copy-code")
                     .label("Copy authorization instructions")
                     .on_click(move |_, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(instructions.clone()))
@@ -773,11 +1091,11 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .flex()
                         .flex_col()
                         .gap(px(6.))
-                        .child(
-                            div()
-                                .text_size(px(18.))
-                                .child(format!("Connect {}", dialog.name)),
-                        )
+                        .child(div().text_size(px(18.)).child(if choosing {
+                            "Connect an integration".into()
+                        } else {
+                            format!("Connect {}", dialog.name)
+                        }))
                         .child(
                             div()
                                 .text_size(px(12.))
@@ -791,9 +1109,35 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .flex()
                         .justify_end()
                         .gap(px(8.))
+                        .when(
+                            dialog.catalog.is_some()
+                                && !choosing
+                                && !connected
+                                && !matches!(dialog.phase, Phase::Waiting(_)),
+                            |view| {
+                                view.child(
+                                    dunlin_ui::action_button("auth-back")
+                                        .label("Back")
+                                        .disabled(dialog.busy)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            if let Some(dialog) = this
+                                                .provider_auth
+                                                .as_mut()
+                                                .filter(|dialog| !dialog.busy)
+                                            {
+                                                dialog.id = uuid::Uuid::now_v7();
+                                                dialog.phase = Phase::Catalog;
+                                                dialog.error = None;
+                                                dialog.input =
+                                                    secret_input("Paste your API key", window, cx);
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                            },
+                        )
                         .child(
-                            dunlin_ui::button("auth-cancel")
-                                .ghost()
+                            dunlin_ui::action_button("auth-cancel")
                                 .label(if connected { "Done" } else { "Cancel" })
                                 .disabled(dialog.busy)
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -802,7 +1146,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         )
                         .when((ready && !dialog.methods.is_empty()) || code, |view| {
                             view.child(
-                                dunlin_ui::button("auth-submit")
+                                dunlin_ui::action_button("auth-submit")
                                     .primary()
                                     .label(primary_label)
                                     .disabled(dialog.busy)
@@ -811,25 +1155,107 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                     })),
                             )
                         })
-                        .when(ready && dialog.service.is_none(), |view| {
-                            view.child(
-                                dunlin_ui::button("auth-retry")
-                                    .primary()
-                                    .label("Retry")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.connect_provider(window, cx)
-                                    })),
-                            )
-                        }),
+                        .when(
+                            (ready
+                                || (choosing
+                                    && dialog
+                                        .catalog
+                                        .as_ref()
+                                        .is_some_and(|catalog| !catalog.loading)))
+                                && dialog.service.is_none(),
+                            |view| {
+                                view.child(
+                                    dunlin_ui::action_button("auth-retry")
+                                        .primary()
+                                        .label("Retry")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            if this
+                                                .provider_auth
+                                                .as_ref()
+                                                .is_some_and(|dialog| dialog.catalog.is_some())
+                                            {
+                                                this.open_provider_catalog(window, cx)
+                                            } else {
+                                                this.connect_provider(window, cx)
+                                            }
+                                        })),
+                                )
+                            },
+                        ),
                 ),
         )
         .into_any_element()
+}
+
+/// Inert native fixture. Never discovers a service, sends credentials or calls a provider.
+#[cfg(debug_assertions)]
+pub(crate) fn catalog_fixture(
+    this: &mut DunlinApp,
+    query: Option<&str>,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> usize {
+    if query.is_none() {
+        let mut dialog = AuthDialog::catalog(this.project().path.clone(), window, cx);
+        dialog.service = Some(LocalService {
+            url: "http://127.0.0.1:1".into(),
+            authorization: None,
+            agent: http_agent(),
+        });
+        let catalog = dialog.catalog.as_mut().unwrap();
+        catalog.loading = false;
+        catalog.entries = integration_choices(&json!({"data":[
+            {"id":"anthropic","name":"Anthropic","methods":[{"type":"key"}],"connections":[]},
+            {"id":"github-copilot","name":"GitHub Copilot","methods":[{"type":"oauth","id":"browser","label":"GitHub account"}],"connections":[{"type":"credential"}]},
+            {"id":"openai","name":"OpenAI","methods":[{"type":"oauth","id":"browser","label":"ChatGPT account"},{"type":"key"}],"connections":[]}
+        ]})).unwrap();
+        this.provider_auth = Some(dialog);
+    }
+    let catalog = this
+        .provider_auth
+        .as_ref()
+        .unwrap()
+        .catalog
+        .as_ref()
+        .unwrap();
+    if let Some(query) = query {
+        catalog
+            .search
+            .update(cx, |input, cx| input.set_value(query, window, cx));
+    }
+    let query = catalog.search.read(cx).text().to_string();
+    let count = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.matches(&query))
+        .count();
+    cx.notify();
+    count
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+
+    #[test]
+    fn integration_catalog_is_searchable_and_does_not_confuse_integrations_with_providers() {
+        let choices = integration_choices(&json!({"data":[
+            {"id":"available","name":"Another Provider","methods":[{"type":"key"}],"connections":[]},
+            {"id":"account","name":"Connected Account","methods":[{"type":"oauth","id":"browser","label":"Browser subscription"},{"type":"key"}],"connections":[{"type":"credential"},{"type":"credential","status":{"status":"needs_auth"}}]},
+            {"id":"custom","name":"Custom setup","methods":[{"type":"oauth","id":"tenant","form":[{"key":"tenant","required":true}]}],"connections":[]}
+        ]})).unwrap();
+        assert_eq!(choices.len(), 3);
+        assert_eq!(choices[0].id, "account");
+        assert_eq!(choices[0].accounts, 1);
+        assert!(choices[0].supported);
+        assert!(choices[0].matches("ACCOUNT browser"));
+        assert!(!choices[0].matches("another"));
+        assert!(choices[1].matches("another API"));
+        assert_eq!(choices[1].accounts, 0);
+        assert!(!choices[2].supported);
+        assert!(integration_choices(&json!({"data":null})).is_err());
+    }
 
     #[test]
     fn credentials_only_go_to_local_non_redirecting_service() {

@@ -5,10 +5,7 @@ use crate::{
 };
 use dunlin_domain::Project;
 use dunlin_ui::prelude::FluentBuilder as _;
-use dunlin_ui::{
-    component::{Sizable, button::ButtonVariants},
-    *,
-};
+use dunlin_ui::{component::button::ButtonVariants, *};
 use dunlin_workspace::git::operations::Action;
 
 fn needs_confirmation(action: &Action, status: &str) -> bool {
@@ -195,15 +192,13 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     };
     let destructive = matches!(plan.action, Action::Discard { .. });
     let mut buttons = div().flex().flex_wrap().justify_end().gap(px(7.)).child(
-        dunlin_ui::button("git-action-cancel")
-            .small()
+        dunlin_ui::action_button("git-action-cancel")
             .label("Cancel")
             .on_click(cx.listener(|this, _, window, cx| this.cancel_git_action(window, cx))),
     );
     if let Some(discard) = &pending.discard {
         buttons = buttons.child(
-            dunlin_ui::button("git-action-discard-switch")
-                .small()
+            dunlin_ui::action_button("git-action-discard-switch")
                 .danger()
                 .label(discard.plan.action.label())
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -212,8 +207,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         );
     }
     buttons = buttons.child(
-        dunlin_ui::button("git-action-confirm")
-            .small()
+        dunlin_ui::action_button("git-action-confirm")
             .when(destructive, |b| b.danger())
             .label(plan.action.label())
             .on_click(cx.listener(move |this, _, window, cx| {

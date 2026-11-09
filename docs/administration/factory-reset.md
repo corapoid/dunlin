@@ -19,9 +19,9 @@ After confirmation, Dunlin disconnects adapters and revokes their vault sessions
 stops the broker and drains its in-flight request/cleanup writers off the UI
 thread. It deletes the desktop vault values/policies recorded in storage and
 current/legacy relay tokens from Keychain, removes `window.json`, then clears
-application records (including knowledge/evidence/plugin/SSH metadata) in one
+application records (including pending imported histories and knowledge/evidence/plugin/SSH metadata) in one
 SQLite transaction. Schema/migrations remain usable. Old in-memory history is not
-saved again on exit; restart loads defaults and an empty project list.
+saved again on exit; Dunlin restarts automatically with defaults and an empty project list.
 
 No directory tree is deleted, even with a custom `DUNLIN_DATA_DIR`:
 

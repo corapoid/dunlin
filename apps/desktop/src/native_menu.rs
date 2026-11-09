@@ -2,6 +2,9 @@
 //! only when a project is available, and retain the ordinary safety guards.
 use dunlin_ui::*;
 impl crate::app::DunlinApp {
+    pub(crate) fn shortcut_label(&self, label: &str, keys: &str) -> String {
+        shortcut_label(self.show_shortcut_hints, label, keys)
+    }
     pub(crate) fn dismiss_history_for_menu(&mut self, cx: &mut Context<Self>) -> bool {
         // History is a document tab, not a blocking overlay. Menus may open over
         // it without destroying its state or releasing an in-flight Git lock.
@@ -13,6 +16,29 @@ impl crate::app::DunlinApp {
             return false;
         }
         true
+    }
+}
+
+fn shortcut_label(visible: bool, label: &str, keys: &str) -> String {
+    if visible {
+        format!("{label} · {keys}")
+    } else {
+        label.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn shortcut_hints_follow_the_preference_without_changing_labels() {
+        assert_eq!(
+            super::shortcut_label(true, "New session", "⌘N"),
+            "New session · ⌘N"
+        );
+        assert_eq!(
+            super::shortcut_label(false, "New session", "⌘N"),
+            "New session"
+        );
     }
 }
 actions!(

@@ -2860,7 +2860,7 @@ impl Paragraph {
 
         if self.should_render_inline_flow() {
             return InlineFlow::new(
-                leaf_element_id(fade_key),
+                leaf_element_id(fade_key, Arc::as_ptr(&self.state) as usize),
                 self.inline_flow_items(fade_key, fades, backgrounds, node_cx, cx),
                 node_cx.link_click_handler.clone(),
             )
@@ -3041,7 +3041,7 @@ impl Paragraph {
         }
 
         div()
-            .id(leaf_element_id(fade_key))
+            .id(leaf_element_id(fade_key, Arc::as_ptr(&self.state) as usize))
             .children(child_nodes)
             .into_any_element()
     }
@@ -3238,9 +3238,11 @@ fn block_element_id(kind: &'static str, span: Option<Span>, ix: usize) -> Elemen
 /// The element id of a paragraph that needs one: an inline flow, whose
 /// objects are accessibility nodes, or an image, whose element state is its
 /// animation. The leaf key is unique per paragraph in a parsed Markdown
-/// document; the HTML parser records no spans, so its paragraphs share one.
-fn leaf_element_id(fade_key: Option<TextLeafKey>) -> ElementId {
-    fade_key.map_or_else(|| ElementId::from("p"), ElementId::from)
+/// document. HTML has no source spans: use the retained paragraph identity,
+/// otherwise every inline-code flow shares `p` and overwrites its siblings'
+/// layout/paint state (prose disappears, leaving an empty code background).
+fn leaf_element_id(fade_key: Option<TextLeafKey>, paragraph_identity: usize) -> ElementId {
+    fade_key.map_or_else(|| ("html-p", paragraph_identity).into(), ElementId::from)
 }
 
 /// A link's underline: a hairline in a translucent link color, so a run of
@@ -4472,6 +4474,15 @@ impl BlockNode {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn spanless_html_paragraphs_keep_distinct_retained_element_ids() {
+        let first = super::Paragraph::default();
+        let second = super::Paragraph::default();
+        let clone = first.clone();
+        let id = |paragraph: &super::Paragraph| super::leaf_element_id(None, std::sync::Arc::as_ptr(&paragraph.state) as usize);
+        assert_ne!(id(&first), id(&second));
+        assert_eq!(id(&first), id(&clone));
+    }
     use super::*;
 
     #[test]

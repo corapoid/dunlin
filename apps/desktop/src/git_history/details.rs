@@ -262,9 +262,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .min_h(px(0.))
             .overflow_y_scroll()
             .child(
-                dunlin_ui::button("history-branch-form")
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button("history-branch-form")
                     .label(if view.branch_form_open {
                         "Hide branch form"
                     } else {
@@ -290,8 +288,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .child("Create branch from selected commit")
                         .child(dunlin_ui::input(&view.name).aria_label("New branch name"))
                         .child(
-                            dunlin_ui::button("history-create")
-                                .small()
+                            dunlin_ui::action_button("history-create")
                                 .primary()
                                 .label("Create branch")
                                 .disabled(this.git_history.running || view.loading)

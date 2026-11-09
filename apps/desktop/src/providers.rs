@@ -53,6 +53,20 @@ pub(crate) struct Catalog {
 }
 
 impl Catalog {
+    pub(crate) fn connected_providers(&self, directory: &str) -> Vec<&Provider> {
+        if self.directory != directory || self.error.is_some() {
+            return Vec::new();
+        }
+        self.providers
+            .iter()
+            .filter(|provider| provider.connected)
+            .collect()
+    }
+
+    pub(crate) fn has_free_models(&self, directory: &str) -> bool {
+        self.directory == directory && self.error.is_none() && !self.free_models.is_empty()
+    }
+
     fn is_connected(&self, directory: &str, provider: Option<&str>) -> bool {
         self.directory == directory
             && self.providers.iter().any(|entry| {
@@ -132,7 +146,7 @@ pub(crate) fn model_name<'a>(name: &'a str, provider: Option<&str>) -> &'a str {
         .unwrap_or(name)
 }
 
-fn connection_ready(connection: &serde_json::Value) -> bool {
+pub(crate) fn connection_ready(connection: &serde_json::Value) -> bool {
     matches!(
         connection.get("type").and_then(serde_json::Value::as_str),
         Some("credential" | "env")
@@ -362,7 +376,10 @@ fn parse_catalog(
                 integration_id,
                 id: provider.id,
                 name: provider.name,
-                accounts: connections.len(),
+                accounts: connections
+                    .iter()
+                    .filter(|connection| connection_ready(connection))
+                    .count(),
                 connected: connections.iter().any(connection_ready),
             }
         })
@@ -509,13 +526,15 @@ impl DunlinApp {
         if !self.local_opencode() || self.chat_controls_busy() {
             return;
         }
-        if !matches!(id, GO | FREE)
-            && !self
-                .provider_catalog
-                .providers
+        let catalog = &self.provider_catalog;
+        if !(if id == FREE {
+            catalog.has_free_models(&self.project().path)
+        } else {
+            catalog
+                .connected_providers(&self.project().path)
                 .iter()
                 .any(|provider| provider.id == id)
-        {
+        }) {
             return;
         }
         self.opencode_provider = Some(id.into());
@@ -587,6 +606,42 @@ impl DunlinApp {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn composer_only_lists_connected_providers_in_the_current_location() {
+        let discovered = parse_catalog(json!({"data":[
+            {"id":"paid","name":"Paid","activation":"auto","integrationID":"account"},
+            {"id":"alias","name":"Alias","activation":"enabled","integrationID":"account"},
+            {"id":"expired","name":"Expired","activation":"auto"},
+            {"id":"available","name":"Available","activation":"auto"},
+            {"id":"disabled","name":"Disabled","activation":"disabled","integrationID":"account"}
+        ]}), json!({"data":[]}), json!({"data":[
+            {"id":"account","connections":[{"type":"credential"},{"type":"env"},{"type":"credential","status":{"status":"needs_auth"}}]},
+            {"id":"expired","connections":[{"type":"credential","status":{"status":"needs_auth"}}]}
+        ]})).unwrap();
+        let mut catalog = Catalog {
+            directory: "/project".into(),
+            providers: discovered.providers,
+            ..Default::default()
+        };
+        let connected = catalog.connected_providers("/project");
+        assert_eq!(
+            connected
+                .iter()
+                .map(|provider| provider.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alias", "paid"]
+        );
+        assert!(connected.iter().all(|provider| provider.accounts == 2));
+        assert!(catalog.connected_providers("/another-project").is_empty());
+        assert!(!catalog.has_free_models("/project"));
+        catalog.free_models.insert("opencode/free".into());
+        assert!(catalog.has_free_models("/project"));
+        assert!(!catalog.has_free_models("/another-project"));
+        catalog.error = Some("Refresh failed".into());
+        assert!(catalog.connected_providers("/project").is_empty());
+        assert!(!catalog.has_free_models("/project"));
+    }
 
     fn choice(id: &str) -> ModelChoice {
         ModelChoice {
@@ -747,7 +802,7 @@ mod tests {
             json!({"data":[]}),
             json!({"data":[{"id":"console","connections":[{"type":"credential","status":{"status":"needs_auth","message":"expired"}}]}]}),
         ).unwrap();
-        assert_eq!(providers[0].accounts, 1);
+        assert_eq!(providers[0].accounts, 0);
         assert!(!providers[0].connected);
     }
 

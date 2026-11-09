@@ -6,8 +6,6 @@
 use crate::app::DunlinApp;
 use dunlin_terminal::Exit;
 use dunlin_ui::component::Disableable;
-use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::prelude::FluentBuilder as _;
 
 use dunlin_ui::*;
@@ -536,9 +534,7 @@ pub(crate) fn render(
                     .child("Dependencies"),
             )
             .child(
-                dunlin_ui::button("run-refresh")
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button("run-refresh")
                     .label(if this.run.loading {
                         "Checking…"
                     } else {
@@ -581,8 +577,7 @@ pub(crate) fn render(
                 )
                 .when(!dependency.installed, |row| {
                     row.child(
-                        dunlin_ui::button(format!("install-dependency:{}", candidate.id))
-                            .small()
+                        dunlin_ui::action_button(format!("install-dependency:{}", candidate.id))
                             .label("Install dependency")
                             .disabled(
                                 remote
@@ -727,28 +722,26 @@ pub(crate) fn render(
                                                 ),
                                         )
                                         .child(
-                                            dunlin_ui::button(format!("run-copy:{}", candidate.id))
-                                                .ghost()
-                                                .small()
-                                                .label("Copy")
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    cx.write_to_clipboard(
-                                                        ClipboardItem::new_string(
-                                                            copy_candidate.command_line(),
-                                                        ),
-                                                    );
-                                                    this.set_notice(
-                                                        "Copied command; nothing was run",
-                                                        cx,
-                                                    );
-                                                })),
+                                            dunlin_ui::action_button(format!(
+                                                "run-copy:{}",
+                                                candidate.id
+                                            ))
+                                            .label("Copy")
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    copy_candidate.command_line(),
+                                                ));
+                                                this.set_notice(
+                                                    "Copied command; nothing was run",
+                                                    cx,
+                                                );
+                                            })),
                                         )
                                         .child(
-                                            dunlin_ui::button(format!(
+                                            dunlin_ui::action_button(format!(
                                                 "run-start:{}",
                                                 candidate.id
                                             ))
-                                            .small()
                                             .label("Run…")
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 this.start_run(window, run_candidate.clone(), cx)
@@ -839,17 +832,13 @@ pub(crate) fn render(
                         ),
                 )
                 .child(
-                    dunlin_ui::button(format!("run-stop:{}", record.id))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("run-stop:{}", record.id))
                         .label("Stop")
                         .disabled(remote || !running)
                         .on_click(cx.listener(move |this, _, _, cx| this.stop_run(&stop, cx))),
                 )
                 .child(
-                    dunlin_ui::button(format!("run-rerun:{}", record.id))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("run-rerun:{}", record.id))
                         .label("Rerun…")
                         .disabled(remote || running)
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -933,8 +922,7 @@ fn render_installation(
                 )
                 .when(phase == InstallPhase::Failed, |header| {
                     header.child(
-                        dunlin_ui::button("install-back")
-                            .small()
+                        dunlin_ui::action_button("install-back")
                             .label("Back to Run")
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.dismiss_dependency_install(&project, cx)
@@ -943,9 +931,7 @@ fn render_installation(
                 })
                 .when(phase == InstallPhase::Running, |header| {
                     header.child(
-                        dunlin_ui::button("install-stop")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("install-stop")
                             .label("Stop")
                             .on_click(
                                 cx.listener(move |this, _, _, cx| this.stop_run(&record, cx)),

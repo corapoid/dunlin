@@ -317,7 +317,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .ghost()
                         .small()
                         .icon(assets::IconName::Save)
-                        .tooltip("Save · ⌘S")
+                        .tooltip(this.shortcut_label("Save", "⌘S"))
                         .accessibility_label("Save Markdown")
                         .disabled(!this.editor_dirty || !editable(this, tab))
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -329,7 +329,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .ghost()
                         .small()
                         .icon(assets::IconName::X)
-                        .tooltip("Close")
+                        .tooltip(this.shortcut_label("Close", "Esc"))
                         .accessibility_label("Close Markdown")
                         .on_click(cx.listener(|this, _, _, cx| this.request_close_inspector(cx))),
                 ),
@@ -375,11 +375,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .text_color(p.muted_fg)
                 .border_t_1()
                 .border_color(p.border)
-                .child(if mode == Mode::Visual {
-                    "Visual editing · ⌘S to save"
-                } else {
-                    "Markdown source · ⌘S to save"
-                }),
+                .child(this.shortcut_label(
+                    if mode == Mode::Visual {
+                        "Visual editing"
+                    } else {
+                        "Markdown source"
+                    },
+                    "⌘S to save",
+                )),
         )
         .into_any_element()
 }

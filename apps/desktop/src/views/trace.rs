@@ -959,7 +959,7 @@ fn span_detail(
             .items_center()
             .gap(px(5.))
             .child(
-                dunlin_ui::button("span-open-chat")
+                dunlin_ui::action_button("span-open-chat")
                     .primary()
                     .icon(IconName::MessageSquare)
                     .label("Open in chat")
@@ -969,7 +969,7 @@ fn span_detail(
                     })),
             )
             .child(
-                dunlin_ui::button("span-copy-json")
+                dunlin_ui::action_button("span-copy-json")
                     .icon(IconName::Copy)
                     .label("Copy JSON")
                     .accessibility_label("Copy span JSON")

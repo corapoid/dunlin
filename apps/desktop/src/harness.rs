@@ -166,6 +166,8 @@ pub(crate) struct QueuedPrompt {
     pub id: u64,
     pub text: String,
     pub created_at_ms: u64,
+    pub skill_context: String,
+    pub skill_ids: Vec<String>,
 }
 
 impl HarnessUsage {
@@ -199,7 +201,7 @@ pub(crate) fn status_label(
     if state.local_session_loading {
         return ("Loading session…", IconName::LoaderCircle);
     }
-    if state.mode_changing || state.model_changing {
+    if state.mode_changing || state.model_changing || state.config_changing {
         return ("Updating agent…", IconName::LoaderCircle);
     }
     match state.status {
@@ -270,6 +272,8 @@ pub(crate) struct HarnessState {
     pub modes: Option<dunlin_agent::SessionModes>,
     pub model_changing: bool,
     pub mode_changing: bool,
+    pub config_options: Vec<dunlin_agent::SessionOption>,
+    pub config_changing: bool,
     pub missing_command: Option<String>,
     pub local_session_loading: bool,
     pub session_metadata_pending: bool,
@@ -302,6 +306,8 @@ impl Default for HarnessState {
             modes: None,
             model_changing: false,
             mode_changing: false,
+            config_options: Vec::new(),
+            config_changing: false,
             missing_command: None,
             local_session_loading: false,
             session_metadata_pending: false,
@@ -444,6 +450,8 @@ impl HarnessState {
             id: self.next_prompt_id,
             text,
             created_at_ms: now_ms(),
+            skill_context: String::new(),
+            skill_ids: Vec::new(),
         };
         self.pending_prompts.push_back(prompt.clone());
         prompt
@@ -664,6 +672,8 @@ impl DunlinApp {
         self.harness.session_id = config.resume_session_id.clone();
         self.harness.models = None;
         self.harness.modes = None;
+        self.harness.config_options.clear();
+        self.harness.config_changing = false;
         self.harness.mode_changing = false;
         self.harness.model_changing = false;
         let harness = AcpHarness::spawn(config);
@@ -716,6 +726,8 @@ impl DunlinApp {
         self.harness.connected_harness = None;
         self.harness.models = None;
         self.harness.modes = None;
+        self.harness.config_options.clear();
+        self.harness.config_changing = false;
         self.harness.mode_changing = false;
         self.harness.model_changing = false;
         self.harness.local_session_loading = false;
@@ -923,6 +935,7 @@ impl DunlinApp {
             && !self.harness.session_metadata_pending
             && !self.harness.model_changing
             && !self.harness.mode_changing
+            && !self.harness.config_changing
             && !self.mcp_busy()
             && (!self.local_opencode()
                 || self
@@ -1172,6 +1185,20 @@ impl DunlinApp {
                 self.apply_modes(state);
                 self.harness.session_metadata_pending = false;
             }
+            HarnessEvent::ConfigOptions {
+                session_id,
+                options,
+            } if self.is_current_session(&session_id) => {
+                self.harness.config_options = options;
+                self.harness.config_changing = false;
+            }
+            HarnessEvent::ConfigOptionChangeFailed {
+                session_id,
+                message,
+            } if self.is_current_session(&session_id) => {
+                self.harness.config_changing = false;
+                self.harness.push_error(message);
+            }
             HarnessEvent::ModelChangeFailed { message, .. } => {
                 self.harness.model_changing = false;
                 self.harness.push_error(message);
@@ -1283,6 +1310,7 @@ impl DunlinApp {
             || self.harness.session_metadata_pending
             || self.harness.model_changing
             || self.harness.mode_changing
+            || self.harness.config_changing
         {
             self.set_notice(
                 "Wait for the session or model to finish loading before sending",
@@ -1343,6 +1371,9 @@ impl DunlinApp {
         let Some(prompt) = self.harness.remove_queued_prompt(id) else {
             return;
         };
+        self.conversation_skills
+            .insert(self.session().id.clone(), prompt.skill_ids);
+        self.persist_settings(cx);
         self.composer.update(cx, |state, cx| {
             state.set_value(prompt.text, window, cx);
             state.focus(window, cx);
@@ -1397,6 +1428,7 @@ impl DunlinApp {
             || self.harness.session_metadata_pending
             || self.harness.model_changing
             || self.harness.mode_changing
+            || self.harness.config_changing
         {
             self.set_notice(
                 "Wait for the session or model to finish loading before sending",
@@ -1405,10 +1437,22 @@ impl DunlinApp {
             return false;
         }
         let title = session_title(&text);
+        let skill_context = match self.conversation_skill_context() {
+            Ok(context) => context,
+            Err(error) => {
+                self.set_notice(error, cx);
+                return false;
+            }
+        };
+        let skill_ids = self.selected_conversation_skills().to_vec();
         self.remember_dashboard_project(cx);
         let summary = session_summary(&text);
         let was_running = self.harness.running;
         let queued = self.harness.enqueue_prompt(text.clone());
+        if let Some(pending) = self.harness.pending_prompts.back_mut() {
+            pending.skill_context = skill_context;
+            pending.skill_ids = skill_ids;
+        }
         self.chat_visible_items = crate::app::CHAT_WINDOW;
         self.chat_scroll.jump_to_latest();
         self.harness.transcript.push(ChatItem::User {
@@ -1603,6 +1647,8 @@ impl DunlinApp {
         self.harness.models = None;
         self.harness.modes = None;
         self.harness.mode_changing = false;
+        self.harness.config_changing = false;
+        self.harness.config_options.clear();
         self.harness.model_changing = false;
         self.harness.local_session_loading = false;
         self.harness.session_metadata_pending = false;
@@ -1668,6 +1714,8 @@ impl DunlinApp {
         self.harness.models = None;
         self.harness.modes = None;
         self.harness.mode_changing = false;
+        self.harness.config_changing = false;
+        self.harness.config_options.clear();
         self.harness.model_changing = false;
         if let Some(harness) = self.harness.harness.as_ref() {
             if let Some(id) = existing {
@@ -1704,6 +1752,7 @@ impl DunlinApp {
             || self.harness.session_metadata_pending
             || self.harness.model_changing
             || self.harness.mode_changing
+            || self.harness.config_changing
             || self.harness.pending_prompts.is_empty()
             || self.mcp_busy()
         {
@@ -1734,7 +1783,7 @@ impl DunlinApp {
             return;
         }
         let text = prompt.text;
-        let wire_text = self.client_prompt_text(&text);
+        let wire_text = self.client_prompt_text_with_skills(&text, &prompt.skill_context);
         let title = session_title(&text);
         self.update_active_session(|session| {
             if session.title == "New session" {
@@ -1818,12 +1867,20 @@ impl DunlinApp {
     /// Shared by dispatch and the inspector; harness-owned system/history context
     /// is intentionally not invented by the client.
     pub(crate) fn client_prompt_text(&self, text: &str) -> String {
+        self.client_prompt_text_with_skills(
+            text,
+            &self.conversation_skill_context().unwrap_or_default(),
+        )
+    }
+
+    fn client_prompt_text_with_skills(&self, text: &str, skills: &str) -> String {
         let mut text = self
             .group_contexts
             .get(&self.session().id)
             .map(|context| context.prompt(text))
             .unwrap_or_else(|| text.to_owned());
         text.push_str(&self.coordination_prompt_context());
+        text.push_str(skills);
         text
     }
 
@@ -1961,6 +2018,25 @@ impl DunlinApp {
                     if !self.harness.pending_prompts.is_empty() {
                         self.dispatch_pending_prompt(cx);
                     }
+                }
+            }
+            HarnessEvent::ConfigOptions {
+                session_id,
+                options,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.config_options = options;
+                    self.harness.config_changing = false;
+                    self.dispatch_pending_prompt(cx);
+                }
+            }
+            HarnessEvent::ConfigOptionChangeFailed {
+                session_id,
+                message,
+            } => {
+                if self.is_current_session(&session_id) {
+                    self.harness.config_changing = false;
+                    self.notice = Some(message);
                 }
             }
             HarnessEvent::ModeChangeFailed {
@@ -2117,6 +2193,7 @@ impl DunlinApp {
                 self.harness.model_changing = false;
                 self.harness.modes = None;
                 self.harness.mode_changing = false;
+                self.harness.config_options.clear();
                 self.harness.local_session_loading = false;
                 self.harness.harness = None;
                 if let Some(session) = self.harness.vault_session.take() {
@@ -2199,7 +2276,14 @@ impl DunlinApp {
                     at_ms: now_ms(),
                 });
             }
-            HarnessUpdate::Configuration { models, modes } => {
+            HarnessUpdate::Configuration {
+                models,
+                modes,
+                options,
+            } => {
+                if let Some(options) = options {
+                    self.harness.config_options = options;
+                }
                 if models.is_some() {
                     self.apply_models(models);
                 }
@@ -2320,7 +2404,39 @@ impl DunlinApp {
             || self.harness.local_session_loading
             || self.harness.model_changing
             || self.harness.mode_changing
+            || self.harness.config_changing
             || self.remote_sessions_loading
+    }
+
+    pub(crate) fn select_config_option(&mut self, id: &str, value: &str, cx: &mut Context<Self>) {
+        if self.chat_controls_busy() {
+            return;
+        }
+        let Some(option) = self
+            .harness
+            .config_options
+            .iter()
+            .find(|option| option.id == id)
+        else {
+            return;
+        };
+        if option.selector.current == value
+            || !option
+                .selector
+                .choices
+                .iter()
+                .any(|choice| choice.id == value)
+        {
+            return;
+        }
+        if let (Some(harness), Some(session)) = (&self.harness.harness, &self.harness.session_id) {
+            if harness.set_config_option(session.clone(), id.to_owned(), value.to_owned()) {
+                self.harness.config_changing = true;
+            } else {
+                self.notice = Some("The harness is disconnected".into());
+            }
+        }
+        cx.notify();
     }
 
     fn apply_modes(&mut self, mut state: Option<dunlin_agent::SessionModes>) {
@@ -3182,6 +3298,22 @@ mod tests {
         let long = session_summary(&"a".repeat(300));
         assert_eq!(long.chars().count(), 181);
         assert!(long.ends_with('…'));
+    }
+
+    #[test]
+    fn queued_skill_instructions_are_owned_snapshots() {
+        let mut state = HarnessState::default();
+        state.enqueue_prompt("first".into());
+        let mut instructions = "Reviewed skill revision 1".to_string();
+        state.pending_prompts.back_mut().unwrap().skill_context = instructions.clone();
+        state.pending_prompts.back_mut().unwrap().skill_ids = vec!["skill-a".into()];
+        instructions.replace_range(.., "Reviewed skill revision 2");
+        state.enqueue_prompt("second".into());
+        let prompts = state.queued_prompts();
+        assert_eq!(prompts[0].skill_context, "Reviewed skill revision 1");
+        assert_eq!(prompts[0].skill_ids, vec!["skill-a"]);
+        assert!(prompts[1].skill_context.is_empty());
+        assert!(prompts[1].skill_ids.is_empty());
     }
 
     #[test]

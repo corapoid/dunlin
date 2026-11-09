@@ -64,7 +64,7 @@ fn handle(
         }
         HarnessEvent::Update { update, .. } => match update {
             HarnessUpdate::UserMessage(text) => println!("[user] {text}"),
-            HarnessUpdate::Configuration { models, modes } => {
+            HarnessUpdate::Configuration { models, modes, .. } => {
                 println!("[configuration] models={models:?} modes={modes:?}")
             }
             HarnessUpdate::AgentMessage(text) => {
@@ -134,9 +134,11 @@ fn handle(
         }
         HarnessEvent::SessionLoadFailed { message, .. }
         | HarnessEvent::ModelChangeFailed { message, .. }
+        | HarnessEvent::ConfigOptionChangeFailed { message, .. }
         | HarnessEvent::ModeChangeFailed { message, .. } => eprintln!("[error] {message}"),
         HarnessEvent::Models { state, .. } => println!("[models] {state:?}"),
         HarnessEvent::Modes { state, .. } => println!("[modes] {state:?}"),
+        HarnessEvent::ConfigOptions { options, .. } => println!("[options] {options:?}"),
         HarnessEvent::Exited { reason } => {
             eprintln!("\n[exited] {reason}");
             if !*saw_session {

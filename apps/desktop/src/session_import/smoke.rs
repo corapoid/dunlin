@@ -71,7 +71,6 @@ pub(crate) fn run() {
     other.id = "other-project".into();
     other.name = "Other repository".into();
     other.path = other_path.to_string_lossy().into();
-    store.upsert_project(&other).unwrap();
     drop(store);
     // SAFETY: main invokes the fixture before starting application/worker threads.
     unsafe {
@@ -100,7 +99,9 @@ pub(crate) fn run() {
         let owner = owner.unwrap();
         owner.update(cx, |app, cx| {
             let project = app.projects.iter().position(|p| p.id == "fixture-project").unwrap();
-            app.select_project(project, cx);
+             app.select_project(project, cx);
+             app.settings_open = true;
+             app.settings_tab = crate::app::SettingsTab::Harnesses;
             app.scan_session_import("Claude Code", cx);
             assert!(app.session_import.loading);
             assert!(app.session_import.progress.is_some());
@@ -118,36 +119,35 @@ pub(crate) fn run() {
                     window.update(cx, |_, window, cx| { window.refresh(); window.draw(cx).clear(cx); }).unwrap();
                     frames += 1;
                     owner.update(cx, |app, cx| {
-                        if app.session_import.loading {
-                            assert!(app.session_import.progress.is_some());
-                            return;
-                        }
-                        match stage {
-                            0 | 2 => {
-                                let preview = app.session_import.preview.as_ref().unwrap();
-                                assert_eq!(preview.rows.len(), 700);
-                                assert_eq!(preview.warnings.len(), 1);
-                                assert!(preview.rows.iter().all(|row| row.candidate.transcript.is_empty()
-                                    && row.project.as_deref() == Some(if row.candidate.source_id == "fixture-699" { "other-project" } else { "fixture-project" })));
-                                assert_eq!(preview.rows.iter().filter(|row| row.update).count(), if stage == 0 { 0 } else { 700 });
-                                staging = Some(preview.staging.path().to_path_buf());
-                                app.apply_session_import(cx);
-                                assert!(app.session_import.applying);
-                                assert!(app.session_import.progress.as_ref().unwrap().lock().unwrap().label().contains("Importing sessions"));
-                                stage += 1;
-                            }
-                            1 | 3 => {
-                                assert!(!app.session_import.applying);
-                                assert!(app.session_import.preview.is_none());
-                                assert!(app.session_import.error.is_none());
-                                assert_eq!(app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).count(), 700);
+                         if app.session_import.loading {
+                             assert!(app.session_import.progress.is_some());
+                             if let Some(preview) = &app.session_import.preview {
+                                 staging = Some(preview.staging.path().to_path_buf());
+                             }
+                             return;
+                         }
+                         match stage {
+                             0 | 1 => {
+                                 assert!(!app.session_import.applying);
+                                 assert!(app.session_import.preview.is_none());
+                                 assert!(app.session_import.error.is_none());
+                                 if stage == 0 {
+                                     assert_eq!(app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).count(), 699);
+                                     assert_eq!(app.session_import.pending.len(), 1);
+                                     assert!(!app.session_import.notices["Claude Code"].is_empty());
+                                     app.store.as_ref().unwrap().upsert_project(&other).unwrap();
+                                     app.projects.push(other.clone());
+                                     app.assign_imported_projects(cx);
+                                     assert!(app.session_import.pending.is_empty());
+                                 }
+                                 assert_eq!(app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).count(), 700);
                                 let histories: Vec<_> = app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).collect();
                                 assert!(histories.iter().all(|s| s.workspace.is_some() && app.session_visible(s)));
                                 assert_eq!(histories.iter().filter(|s| app.session_scope(s) == Some(crate::session_list::Scope::Project)).count(), 699);
                                 assert_eq!(histories.iter().filter(|s| s.project_id == "other-project" && app.session_scope(s).is_none()).count(), 1);
                                 let store = app.store.as_ref().unwrap();
                                 assert_eq!(store.sessions(None).unwrap().iter().filter(|s| s.id.starts_with("import-")).count(), 700);
-                                if stage == 1 {
+                                 if stage == 0 {
                                     let id = imported_id("Claude Code", "fixture-0");
                                     let before = store.load_transcript::<Vec<ChatItem>>(&id).unwrap().unwrap();
                                     let selected = app.session().id.clone();
@@ -169,14 +169,19 @@ pub(crate) fn run() {
                                         source_id: "fixture-0".into(), title: "No directory".into(), directory: None,
                                         model: "Auto".into(), transcript: vec![ChatItem::User { text: "Hello".into(), timing: None, at_ms: 0 }], at_ms: 0,
                                     }, &app.projects).unwrap();
-                                    finalize_import(app, Ok(preview), cx);
-                                    let row = &app.session_import.preview.as_ref().unwrap().rows[0];
+                                     finalize_import(app, Ok(preview), cx);
+                                     let row = &app.session_import.preview.as_ref().unwrap().rows[0];
                                     assert!(row.update);
                                     assert_eq!(row.project.as_deref(), Some("fixture-project"));
-                                    app.clear_session_import_preview(cx);
-                                }
-                                stage += 1;
-                            }
+                                 }
+                                 stage += 1;
+                             }
+                             2 => {
+                                 assert!(app.session_import.preview.is_none());
+                                 assert!(app.session_import.error.is_none());
+                                 assert_eq!(app.all_sessions.iter().filter(|s| s.id.starts_with("import-")).count(), 700);
+                                 stage = 3;
+                             }
                             _ => {}
                         }
                     });
@@ -184,11 +189,11 @@ pub(crate) fn run() {
                         // Normal Quit is blocked while the background transaction is running.
                         cx.dispatch_action(&crate::app::Quit);
                     }
-                    if stage == 4 && !staging.as_ref().unwrap().exists() {
+                     if stage == 3 && staging.as_ref().is_none_or(|path| !path.exists()) {
                         assert!(frames >= 4);
                         assert_eq!(std::fs::read_dir(&source).unwrap().count(), 701);
-                        std::fs::write(dir.join("PASS"), "700-session native preview/progress, background atomic import, duplicate reimport, temporary cleanup and guarded Quit passed\n").unwrap();
-                        println!("PASS: 700-session native import UI, progress and background writes, duplicate reimport, cache cleanup, source preservation and Quit");
+                         std::fs::write(dir.join("PASS"), "700-session automatic import, late project assignment, per-harness progress, duplicate reimport, temporary cleanup and guarded Quit passed\n").unwrap();
+                         println!("PASS: automatic import, late project assignment, per-harness progress, duplicate reimport, cache cleanup, source preservation and Quit");
                         cx.dispatch_action(&crate::app::Quit);
                         return true;
                     }
@@ -205,7 +210,7 @@ struct ImportView {
     _changes: Subscription,
 }
 impl Render for ImportView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.app.update(cx, |app, cx| {
             let p = palette(cx);
             div()
@@ -215,7 +220,7 @@ impl Render for ImportView {
                 .text_color(p.fg)
                 .font_family(dunlin_ui::theme::ui_font())
                 .track_focus(&app.focus_handle)
-                .child(super::render(app, cx))
+                .child(crate::views::settings::render(app, window, cx))
         })
     }
 }

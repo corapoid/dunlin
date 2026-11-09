@@ -57,30 +57,37 @@ impl DunlinApp {
 
         for (section, icon_name, count, has_badge) in items {
             let active = self.section == section && !self.settings_open;
-            let mut button =
-                navigation_button(("rail", section as usize), icon_name, section.label())
-                    .relative()
-                    .size(px(36.))
-                    .selected(active)
-                    .toggled(active)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.section = section;
-                        if section != SidebarSection::Dashboard {
-                            this.sidebar_collapsed = false;
-                        }
-                        this.settings_open = false;
-                        if section == SidebarSection::Files {
-                            this.focus_explorer(window, cx);
-                        }
-                        if section == SidebarSection::SourceControl {
-                            this.open_git_history(window, cx);
-                            if !this.git_loading {
-                                this.refresh_git_status(cx);
-                            }
-                        }
-                        this.persist_settings(cx);
-                        cx.notify();
-                    }));
+            let mut button = navigation_button(
+                ("rail", section as usize),
+                icon_name,
+                match section {
+                    SidebarSection::Search => self.shortcut_label(section.label(), "⌘⇧F"),
+                    SidebarSection::SourceControl => self.shortcut_label(section.label(), "⌘⌥G"),
+                    _ => section.label().into(),
+                },
+            )
+            .relative()
+            .size(px(36.))
+            .selected(active)
+            .toggled(active)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.section = section;
+                if section != SidebarSection::Dashboard {
+                    this.sidebar_collapsed = false;
+                }
+                this.settings_open = false;
+                if section == SidebarSection::Files {
+                    this.focus_explorer(window, cx);
+                }
+                if section == SidebarSection::SourceControl {
+                    this.open_git_history(window, cx);
+                    if !this.git_loading {
+                        this.refresh_git_status(cx);
+                    }
+                }
+                this.persist_settings(cx);
+                cx.notify();
+            }));
             #[cfg(debug_assertions)]
             if section == SidebarSection::Projects {
                 button = button.children(crate::workspace_ui_smoke::probe("rail-projects"));
@@ -103,24 +110,28 @@ impl DunlinApp {
 
         rail.child(div().flex_1())
             .child(
-                navigation_button("rail-settings", IconName::Settings, "Settings · ⌘,")
-                    .relative()
-                    .size(px(36.))
-                    .selected(self.settings_open)
-                    .toggled(self.settings_open)
-                    .children({
-                        #[cfg(debug_assertions)]
-                        {
-                            crate::workspace_ui_smoke::probe("rail-settings")
-                        }
-                        #[cfg(not(debug_assertions))]
-                        {
-                            None::<AnyElement>
-                        }
-                    })
-                    .on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(crate::native_menu::Settings), cx)
-                    }),
+                navigation_button(
+                    "rail-settings",
+                    IconName::Settings,
+                    self.shortcut_label("Settings", "⌘,"),
+                )
+                .relative()
+                .size(px(36.))
+                .selected(self.settings_open)
+                .toggled(self.settings_open)
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        crate::workspace_ui_smoke::probe("rail-settings")
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
+                .on_click(|_, window, cx| {
+                    window.dispatch_action(Box::new(crate::native_menu::Settings), cx)
+                }),
             )
             .into_any_element()
     }
@@ -1015,15 +1026,15 @@ impl DunlinApp {
                             .gap(px(7.))
                             .child(crate::gui_probe::target(
                                 "editor-cancel",
-                                dunlin_ui::button("editor-cancel").label("Cancel").on_click(
-                                    cx.listener(|this, _, _, cx| {
+                                dunlin_ui::action_button("editor-cancel")
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
                                         this.cancel_pending_editor(cx);
-                                    }),
-                                ),
+                                    })),
                             ))
                             .child(crate::gui_probe::target(
                                 "editor-discard",
-                                dunlin_ui::button("editor-discard")
+                                dunlin_ui::action_button("editor-discard")
                                     .danger()
                                     .outline()
                                     .label("Discard")
@@ -1033,7 +1044,7 @@ impl DunlinApp {
                             ))
                             .child(crate::gui_probe::target(
                                 "editor-save",
-                                dunlin_ui::button("editor-save")
+                                dunlin_ui::action_button("editor-save")
                                     .primary()
                                     .label("Save")
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1171,7 +1182,7 @@ impl DunlinApp {
                                     ),
                             )
                             .child(
-                                dunlin_ui::button("diff-open-file")
+                                dunlin_ui::action_button("diff-open-file")
                                     .icon(IconName::ExternalLink)
                                     .label("Open file")
                                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -1460,7 +1471,7 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("new-file-cancel")
+                                dunlin_ui::action_button("new-file-cancel")
                                     .label("Cancel")
                                     .disabled(self.explorer.busy)
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -1472,7 +1483,7 @@ impl DunlinApp {
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("new-file-create")
+                                dunlin_ui::action_button("new-file-create")
                                     .primary()
                                     .disabled(self.explorer.busy)
                                     .label(if self.explorer.busy {
@@ -1573,19 +1584,19 @@ impl DunlinApp {
                             .justify_end()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("conflict-cancel").label("Cancel")
+                                dunlin_ui::action_button("conflict-cancel").label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.cancel_editor_conflict(cx);
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("conflict-reload").label("Reload")
+                                dunlin_ui::action_button("conflict-reload").label("Reload")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.reload_editor_conflict(window, cx);
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("conflict-overwrite").warning().label("Overwrite")
+                                dunlin_ui::action_button("conflict-overwrite").warning().label("Overwrite")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.overwrite_editor_conflict(window, cx);
                                     })),
@@ -1782,7 +1793,7 @@ impl DunlinApp {
                             .items_center()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("project-settings-reset").danger().outline().label("Reset overrides").disabled(saving)
+                                dunlin_ui::action_button("project-settings-reset").danger().outline().label("Reset overrides").disabled(saving)
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.request_reset_project_settings(index, window, cx);
                                     })),
@@ -1790,7 +1801,7 @@ impl DunlinApp {
                             .child(div().flex_1())
                             .when(index == self.selected_project, |this| {
                                 this.child(
-                                     dunlin_ui::button("project-settings-new-session").label("New conversation")
+                                     dunlin_ui::action_button("project-settings-new-session").label("New conversation")
                                           .on_click(cx.listener(|this, _, _, cx| {
                                              if this.project_runtime_draft.is_some() {
                                                  this.set_notice("Save or cancel model and environment changes before starting a conversation", cx);
@@ -1806,7 +1817,7 @@ impl DunlinApp {
                                 )
                             })
                             .child(
-                                dunlin_ui::button("project-settings-done").primary().label("Done")
+                                dunlin_ui::action_button("project-settings-done").primary().label("Done")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.request_close_project_settings(window, cx);
                                     })),
@@ -2188,7 +2199,7 @@ impl DunlinApp {
                     .child(message),
             )
             .child(
-                dunlin_ui::button("toast-action")
+                dunlin_ui::action_button("toast-action")
                     .primary()
                     .label(action_label)
                     .on_click(cx.listener(|this, _, _, cx| this.apply_toast(cx))),
@@ -2287,7 +2298,7 @@ impl DunlinApp {
                             .gap(px(7.))
                             .when_some(delete_id, |this, id| {
                                 this.child(
-                                    dunlin_ui::button("group-delete")
+                                    dunlin_ui::action_button("group-delete")
                                         .danger()
                                         .outline()
                                         .label("Delete group")
@@ -2297,13 +2308,15 @@ impl DunlinApp {
                                 )
                             })
                             .child(div().flex_1())
-                            .child(dunlin_ui::button("group-cancel").label("Cancel").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.cancel_group_prompt(cx);
-                                }),
-                            ))
                             .child(
-                                dunlin_ui::button("group-save")
+                                dunlin_ui::action_button("group-cancel")
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.cancel_group_prompt(cx);
+                                    })),
+                            )
+                            .child(
+                                dunlin_ui::action_button("group-save")
                                     .primary()
                                     .label(if editing.is_some() {
                                         "Save"
@@ -2445,7 +2458,7 @@ impl DunlinApp {
                             .flex_wrap()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::button("delete-cancel")
+                                dunlin_ui::action_button("delete-cancel")
                                     .relative()
                                     .label("Cancel")
                                     .children({
@@ -2461,7 +2474,7 @@ impl DunlinApp {
                                     .on_click(cx.listener(|this, _, _, cx| this.cancel_delete(cx))),
                             )
                             .child(
-                                dunlin_ui::button("delete-confirm")
+                                dunlin_ui::action_button("delete-confirm")
                                     .relative()
                                     .danger()
                                     .label(action)
@@ -2769,6 +2782,7 @@ impl DunlinApp {
                 let panel = self.bottom_panel;
                 let active = panel == crate::app::BottomPanel::Terminal;
                 segment_button("statusbar-terminal", "Terminal", active)
+                    .tooltip(self.shortcut_label("Toggle terminal panel", "⌘J"))
                     .with_size(dunlin_ui::component::Size::Medium)
                     .h(px(28.))
                     .accessibility_label("Toggle terminal panel")
@@ -2780,6 +2794,7 @@ impl DunlinApp {
             .child({
                 let active = self.bottom_panel == crate::app::BottomPanel::Run;
                 segment_button("statusbar-run", "Run", active)
+                    .tooltip(self.shortcut_label("Toggle run panel", "⌘⇧J"))
                     .with_size(dunlin_ui::component::Size::Medium)
                     .h(px(28.))
                     .accessibility_label("Toggle Run panel")
@@ -3017,7 +3032,7 @@ impl DunlinApp {
                                 ),
                             ))
                             .child(
-                                dunlin_ui::button("project-group-cancel")
+                                dunlin_ui::action_button("project-group-cancel")
                                     .label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.project_group_editor = None;
@@ -3194,7 +3209,7 @@ fn onboarding_primary_button(
     label: impl Into<SharedString>,
     _p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id).primary().large().label(label)
+    dunlin_ui::action_button(id).primary().large().label(label)
 }
 
 fn onboarding_secondary_button(
@@ -3202,7 +3217,7 @@ fn onboarding_secondary_button(
     label: impl Into<SharedString>,
     _p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id).label(label)
+    dunlin_ui::action_button(id).label(label)
 }
 
 fn onboarding_text_button(
@@ -3210,5 +3225,5 @@ fn onboarding_text_button(
     label: impl Into<SharedString>,
     _p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id).ghost().label(label)
+    dunlin_ui::action_button(id).label(label)
 }

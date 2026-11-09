@@ -2,9 +2,10 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
     Selectable, Sizable,
-    button::{Button, ButtonVariants},
+    button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     input::{Input, InputState, Textarea, TextareaState},
+    radio::Radio,
     switch::Switch,
     tab::{Tab, TabBar},
 };
@@ -43,7 +44,8 @@ pub fn composer_input(state: &Entity<TextareaState>) -> Textarea {
     textarea(state).appearance(false).bordered(false)
 }
 
-/// Standard action. Use the kit's semantic variants, sizes and loading state.
+/// Quiet base for navigation, status controls and compound surfaces.
+/// Ordinary form/settings actions use `action_button`, not this constructor.
 pub fn button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
         .ghost()
@@ -55,6 +57,14 @@ pub fn button(id: impl Into<ElementId>) -> Button {
                 cx.stop_propagation();
             }
         })
+}
+
+/// Standard labeled action, kept separate from navigation and status chips.
+pub fn action_button(id: impl Into<ElementId>) -> Button {
+    button(id)
+        .with_variant(ButtonVariant::Default)
+        .raised(true)
+        .label_renderer(|label| crate::MorphText::new("button-label", label).into_any_element())
 }
 
 /// A toolbar action always has an accessible name, even without visible text.
@@ -106,6 +116,10 @@ pub fn checkbox(
         .checked(checked)
 }
 
+pub fn radio(id: impl Into<ElementId>, label: impl Into<SharedString>, checked: bool) -> Radio {
+    Radio::new(id).accessibility_label(label).checked(checked)
+}
+
 pub fn document_tabs(id: impl Into<ElementId>) -> TabBar {
     // shortcut: kit tabs rely on app navigation shortcuts; adopt roving focus when the kit supports it.
     TabBar::new(id)
@@ -139,6 +153,7 @@ pub fn navigation_button(
 ) -> Button {
     let label = label.into();
     button(id)
+        .ghost()
         .size(px(36.))
         .px(px(0.))
         .accessibility_label(label.clone())

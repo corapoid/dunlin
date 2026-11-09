@@ -2,7 +2,7 @@
 use dunlin_domain::{ProjectSettings, parse_project_environment};
 use dunlin_ui::{
     component::{
-        Disableable, Sizable,
+        Disableable,
         button::ButtonVariants,
         input::{Editor, EditorState, InputState},
     },
@@ -400,15 +400,14 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
                     )),
             )
             .child(
-                dunlin_ui::button("edit-project-runtime")
-                    .small()
+                dunlin_ui::action_button("edit-project-runtime")
                     .label("Model & environment…")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.edit_project_runtime_settings(index, window, cx)
                     })),
             )
             .when(!project.is_remote() && index == this.selected_project && resolved.default_model(&this.session_harness()).is_some(), |view| view
-                .child(dunlin_ui::button("apply-project-model").label("Apply saved model to current session")
+                .child(dunlin_ui::action_button("apply-project-model").label("Apply saved model to current session")
                     .disabled(this.chat_controls_busy() || !this.harness.status.is_ready())
                     .on_click(cx.listener(|this, _, _, cx| this.apply_saved_project_model(cx))))
                 .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(format!("For {}: {}. ACP change only; no prompt or restart. Other conversations stay unchanged.", this.session_harness(), resolved.default_model(&this.session_harness()).unwrap_or_default()))))
@@ -425,7 +424,7 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
     div().flex().flex_col().gap(px(8.))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child(format!("Default model · {} · new conversations only; blank = inherit", draft.harness)))
         .child(dunlin_ui::input(&draft.model).aria_label("Project default model").disabled(draft.saving))
-        .when_some(current, |view, model| view.child(dunlin_ui::button("project-use-current-model").label("Use current session model").disabled(draft.saving)
+        .when_some(current, |view, model| view.child(dunlin_ui::action_button("project-use-current-model").label("Use current session model").disabled(draft.saving)
             .on_click(cx.listener(move |this, _, window, cx| {
                 if let Some(draft) = &this.project_runtime_draft {
                     draft.model.update(cx, |s, cx| s.set_value(model.clone(), window, cx));
@@ -440,8 +439,8 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
         }))
         .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
         .child(div().flex().gap(px(6.))
-            .child(dunlin_ui::button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model & environment" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
-            .child(dunlin_ui::button("cancel-project-runtime").label("Cancel edit").disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
+            .child(dunlin_ui::action_button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model & environment" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
+            .child(dunlin_ui::action_button("cancel-project-runtime").label("Cancel edit").disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
         .into_any_element()
 }
 

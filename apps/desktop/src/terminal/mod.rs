@@ -1891,8 +1891,7 @@ pub(crate) fn render(
                 "No terminal tab. Open a local shell to begin."
             })
             .child(
-                dunlin_ui::button("terminal-empty-new")
-                    .small()
+                dunlin_ui::action_button("terminal-empty-new")
                     .label("New terminal")
                     .on_click(cx.listener(|this, _, _, cx| {
                         if let Err(error) = this.open_terminal_tab(cx) {

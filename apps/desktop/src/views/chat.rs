@@ -133,8 +133,7 @@ fn trust_notice(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<AnyElem
                             ),
                     )
                     .child(
-                        dunlin_ui::button("trust-project-banner")
-                            .small()
+                        dunlin_ui::action_button("trust-project-banner")
                             .label("Trust project")
                             .on_click(cx.listener(|this, _, _, cx| this.toggle_project_trust(cx))),
                     ),
@@ -159,27 +158,17 @@ fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<A
             .child(div().text_size(px(11.5)).font_family(dunlin_ui::theme::code_font()).child(command.clone()))
             .child(div().flex().flex_wrap().gap(px(8.))
                 .when(can_use_opencode, |view| view.child(
-                    dunlin_ui::button("missing-adapter-opencode").primary().label("Start with OpenCode")
+                    dunlin_ui::action_button("missing-adapter-opencode").primary().label("Start with OpenCode")
                         .on_click(cx.listener(|this, _, _, cx| this.select_chat_harness("OpenCode", cx)))))
-                .child(dunlin_ui::button("missing-adapter-settings").ghost().label("Harness settings")
+                .child(dunlin_ui::action_button("missing-adapter-settings").label("Harness settings")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.settings_open = true;
                         this.settings_tab = SettingsTab::Harnesses;
                         cx.notify();
                     })))
-                .child(dunlin_ui::button("missing-adapter-retry").ghost().label("Check again")
+                .child(dunlin_ui::action_button("missing-adapter-retry").label("Check again")
                     .on_click(cx.listener(|this, _, _, cx| this.connect_harness(cx)))))
     ).into_any_element())
-}
-
-pub(crate) fn reasoning_toggle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    segment_button("reasoning-toggle", "Reasoning", this.reasoning_open)
-        .icon(IconName::Brain)
-        .on_click(cx.listener(|this, _, _, cx| {
-            this.reasoning_open = !this.reasoning_open;
-            cx.notify();
-        }))
-        .into_any_element()
 }
 
 fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -1455,7 +1444,7 @@ fn permission_card(
             let primary = option.kind == PermissionKind::AllowOnce;
             buttons = buttons.child(crate::gui_probe::target(
                 format!("permission-{}", option.id),
-                dunlin_ui::button(format!("permission:{request_id}:{}", option.id))
+                dunlin_ui::action_button(format!("permission:{request_id}:{}", option.id))
                     .label(option.label.clone())
                     .when(primary, |button| button.primary())
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -1639,9 +1628,7 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .rounded_t(px(SurfaceGeometry::COMPOSER.inner_radius()))
                 .when(this.git_history.cancel_check.is_some(), |bar| {
                     bar.child(
-                        dunlin_ui::button("composer-stop-check")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("composer-stop-check")
                             .label("Stop check")
                             .on_click(cx.listener(|this, _, _, cx| this.cancel_check(cx))),
                     )
@@ -1686,14 +1673,9 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                 .flex_wrap()
                 .items_center()
                 .gap(px(3.))
+                .child(chat_controls::options(this, cx))
                 .child(mode)
-                .child(attachment_button(
-                    IconName::Paperclip,
-                    "Attach",
-                    cx,
-                    |this, window, cx| this.attach_files(window, cx),
-                ))
-                .child(chat_controls::mcp(this, cx))
+                .children(chat_controls::model_options(this, cx))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1717,6 +1699,11 @@ fn composer(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinAp
                                     "Send prompt"
                                 },
                             )
+                            .tooltip(if running {
+                                "Stop response".into()
+                            } else {
+                                this.shortcut_label("Send prompt", "Enter")
+                            })
                             .primary()
                             .when(running, |button| button.info())
                             .disabled(!running && !has_text)
@@ -1894,7 +1881,7 @@ fn queue_panel(
                 .child(div().flex_1())
                 .child(crate::gui_probe::target(
                     "queue-clear",
-                    dunlin_ui::button("queue-clear")
+                    dunlin_ui::action_button("queue-clear")
                         .danger()
                         .outline()
                         .label("Clear")
@@ -1912,22 +1899,6 @@ fn queue_panel(
                 ),
         )
         .child(rows)
-        .into_any_element()
-}
-
-fn attachment_button(
-    icon_name: IconName,
-    label: &str,
-    cx: &mut Context<DunlinApp>,
-    action: fn(&mut DunlinApp, &mut Window, &mut Context<DunlinApp>),
-) -> AnyElement {
-    dunlin_ui::button(format!("composer-action:{label}"))
-        .ghost()
-        .icon(icon_name)
-        .label(label.to_owned())
-        .on_click(cx.listener(move |this, _, window, cx| {
-            action(this, window, cx);
-        }))
         .into_any_element()
 }
 

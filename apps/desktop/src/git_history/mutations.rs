@@ -326,9 +326,7 @@ fn action_button(
     disabled: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Button {
-    dunlin_ui::button(id)
-        .ghost()
-        .small()
+    dunlin_ui::action_button(id)
         .label(label)
         .disabled(disabled)
         .on_click(
@@ -585,8 +583,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                             .flex()
                             .gap(px(6.))
                             .child(
-                                dunlin_ui::button("git-operation-confirm")
-                                    .small()
+                                dunlin_ui::action_button("git-operation-confirm")
                                     .label("Review and confirm…")
                                     .disabled(busy)
                                     .on_click(cx.listener(|this, _, w, cx| {
@@ -594,9 +591,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                     })),
                             )
                             .child(
-                                dunlin_ui::button("git-operation-cancel")
-                                    .ghost()
-                                    .small()
+                                dunlin_ui::action_button("git-operation-cancel")
                                     .label("Cancel")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         if let Some(v) = &mut this.git_history.view {

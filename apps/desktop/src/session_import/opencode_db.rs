@@ -1,6 +1,6 @@
 //! Read-only import of OpenCode's local session database.
 //!
-//! Only `session`, `message` and `part` rows are read. Credentials, blobs,
+//! Only V1/V2 session, message and part rows are read. Credentials, blobs,
 //! snapshots and the writable OpenCode state are never touched.
 
 use super::adapters::Candidate;
@@ -59,23 +59,80 @@ pub(super) fn visit(
     .map_err(|_| "OpenCode database is locked or unavailable".to_string())?;
     let _ = connection.busy_timeout(std::time::Duration::from_secs(2));
     let v2 = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM session_v2 WHERE parent_id IS NULL)",
-            [],
-            |row| row.get::<_, bool>(0),
-        )
-        .unwrap_or(false);
-    if v2
-        && connection
-            .prepare("SELECT type, data FROM session_message LIMIT 0")
-            .is_ok()
-    {
-        let (warnings, emitted) = load_v2(&connection, filter, candidate, progress)?;
-        if emitted > 0 || connection.prepare("SELECT 1 FROM session LIMIT 0").is_err() {
-            return Ok(warnings);
+        .prepare("SELECT 1 FROM session_v2 LIMIT 0")
+        .is_ok();
+    let v1 = connection.prepare("SELECT 1 FROM session LIMIT 0").is_ok();
+    let mut emitted = HashSet::new();
+    let mut warnings = Vec::new();
+    let mut unreadable = HashSet::new();
+    if v2 {
+        let mut visitor_error = None;
+        let result = load_v2(
+            &connection,
+            filter,
+            &mut |row| {
+                emitted.insert(row.source_id.clone());
+                candidate(row).inspect_err(|error| visitor_error = Some(error.clone()))
+            },
+            progress,
+        );
+        if let Some(error) = visitor_error {
+            return Err(error);
+        }
+        match result {
+            Ok((notes, empty)) => {
+                warnings.extend(notes);
+                unreadable = empty;
+            }
+            Err(error) if v1 => warnings.push(error),
+            Err(error) => return Err(error),
         }
     }
-    load_v1(&connection, filter, candidate, progress)
+    // Migrated databases retain V1 histories, sometimes with an empty V2 shell
+    // under the same ID. Prefer readable V2, then fall back per session, not DB.
+    if v1 {
+        let mut missing = HashSet::new();
+        let mut statement = connection
+            .prepare("SELECT id FROM session")
+            .map_err(|e| e.to_string())?;
+        for id in statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+        {
+            let id = id.map_err(|e| e.to_string())?;
+            if !emitted.contains(&id) && filter.is_none_or(|ids| ids.contains(&id)) {
+                missing.insert(id);
+            }
+        }
+        let mut visitor_error = None;
+        let result = load_v1(
+            &connection,
+            Some(&missing),
+            &mut |row| {
+                unreadable.remove(&row.source_id);
+                candidate(row).inspect_err(|error| visitor_error = Some(error.clone()))
+            },
+            progress,
+        );
+        if let Some(error) = visitor_error {
+            return Err(error);
+        }
+        match result {
+            Ok(notes) => warnings.extend(notes),
+            Err(error) if !emitted.is_empty() => warnings.push(error),
+            Err(error) => return Err(error),
+        }
+    }
+    if !v1 && !v2 {
+        return Err("OpenCode session schema is not recognized".into());
+    }
+    if !unreadable.is_empty() {
+        warnings.push(format!(
+            "{} empty OpenCode sessions have no readable history in either format",
+            unreadable.len()
+        ));
+    }
+    Ok(warnings)
 }
 
 fn load_v2(
@@ -83,7 +140,7 @@ fn load_v2(
     filter: Option<&HashSet<String>>,
     candidate: &mut dyn FnMut(Candidate) -> Result<(), String>,
     progress: &mut dyn FnMut(usize, usize),
-) -> Result<(Vec<String>, usize), String> {
+) -> Result<(Vec<String>, HashSet<String>), String> {
     let mut warnings = Vec::new();
     let mut session_statement = connection
         .prepare(
@@ -113,8 +170,7 @@ fn load_v2(
 
     let total = sessions.len();
     progress(0, total);
-    let mut skipped = 0usize;
-    let mut emitted = 0usize;
+    let mut skipped = HashSet::new();
     for (index, (id, title, directory, model, updated)) in sessions.into_iter().enumerate() {
         progress(index + 1, total);
         let mut message_statement = match connection.prepare(
@@ -157,7 +213,11 @@ fn load_v2(
                 "user" => {
                     finish_turn(&mut transcript, &mut turn, &mut usage);
                     let mut user_index = None;
-                    if let Some(text) = data["text"].as_str().filter(|text| !text.trim().is_empty())
+                    let text = data["text"].as_str().unwrap_or_default();
+                    if !text.trim().is_empty()
+                        || data["files"]
+                            .as_array()
+                            .is_some_and(|files| !files.is_empty())
                     {
                         let mut content = truncate(text, 32 * 1024);
                         if let Some(files) =
@@ -225,12 +285,26 @@ fn load_v2(
                         transcript.push(text_item("error", error, at));
                     }
                 }
+                "system" | "synthetic" => {
+                    if let Some(text) = data["text"].as_str().filter(|text| !text.trim().is_empty())
+                    {
+                        transcript.push(text_item("record", text, at));
+                    }
+                }
+                "compaction" => {
+                    if let Some(text) = data["summary"]
+                        .as_str()
+                        .filter(|text| !text.trim().is_empty())
+                    {
+                        transcript.push(text_item("record", text, at));
+                    }
+                }
                 _ => {}
             }
         }
         finish_turn(&mut transcript, &mut turn, &mut usage);
         if transcript.is_empty() {
-            skipped += 1;
+            skipped.insert(id);
             continue;
         }
         let title = title
@@ -255,14 +329,8 @@ fn load_v2(
             transcript,
             at_ms: ms(Some(updated)),
         })?;
-        emitted += 1;
     }
-    if skipped > 0 {
-        warnings.push(format!(
-            "Skipped {skipped} OpenCode sessions without readable text or tool history"
-        ));
-    }
-    Ok((warnings, emitted))
+    Ok((warnings, skipped))
 }
 
 fn load_v1(
@@ -272,19 +340,28 @@ fn load_v1(
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<Vec<String>, String> {
     let mut warnings = Vec::new();
+    // Early V1 databases have no session-level model column.
+    let model = if connection
+        .prepare("SELECT model FROM session LIMIT 0")
+        .is_ok()
+    {
+        "model"
+    } else {
+        "NULL"
+    };
     let mut session_statement = connection
-        .prepare(
-            "SELECT id, title, directory, model, time_updated
+        .prepare(&format!(
+            "SELECT id, title, directory, {model}, time_updated
              FROM session
              WHERE parent_id IS NULL
-             ORDER BY time_updated DESC",
-        )
+             ORDER BY time_updated DESC"
+        ))
         .or_else(|_| {
-            connection.prepare(
-                "SELECT id, title, directory, model, time_updated
+            connection.prepare(&format!(
+                "SELECT id, title, directory, {model}, time_updated
                  FROM session
-                 ORDER BY time_updated DESC",
-            )
+                  ORDER BY time_updated DESC"
+            ))
         })
         .map_err(|_| "OpenCode session schema is not recognized".to_string())?;
     let sessions = session_statement
@@ -307,7 +384,7 @@ fn load_v1(
 
     let total = sessions.len();
     progress(0, total);
-    for (index, (id, title, directory, model, updated)) in sessions.into_iter().enumerate() {
+    for (index, (id, title, directory, mut model, updated)) in sessions.into_iter().enumerate() {
         progress(index + 1, total);
         let mut messages = match connection.prepare(
             "SELECT id, data FROM message
@@ -369,15 +446,15 @@ fn load_v1(
                 continue;
             };
             let role = data["role"].as_str().unwrap_or("assistant");
+            if let Some(name) = data["modelID"].as_str() {
+                model = Some(serde_json::json!({"id": name}).to_string());
+            }
             let at = ms(data.pointer("/time/created").and_then(Value::as_i64));
             if role == "user" {
                 finish_turn(&mut transcript, &mut turn, &mut usage);
             }
             let before_len = transcript.len();
-            let Some(message_parts) = parts.get(&row.0) else {
-                continue;
-            };
-            for part in message_parts {
+            for part in parts.get(&row.0).into_iter().flatten() {
                 let kind = part["type"].as_str().unwrap_or_default();
                 match kind {
                     "text" => {
@@ -748,6 +825,11 @@ fn model_name(model: Option<&str>) -> String {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
+        .or_else(|| {
+            model
+                .filter(|model| !model.trim().is_empty() && !model.starts_with('{'))
+                .map(str::to_owned)
+        })
         .unwrap_or_else(|| "Auto".into())
 }
 
@@ -768,6 +850,47 @@ mod tests {
     use crate::harness::ChatItem;
     use rusqlite::Connection;
     use std::collections::HashSet;
+
+    #[test]
+    fn mixed_database_imports_both_versions_with_per_session_fallback_and_no_duplicates() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("opencode.db");
+        let connection = Connection::open(&path).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE session_v2 (id TEXT, title TEXT, directory TEXT, model TEXT, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE session_message (session_id TEXT, type TEXT, seq INTEGER, data TEXT);
+             CREATE TABLE session (id TEXT, title TEXT, directory TEXT, parent_id TEXT, time_updated INTEGER);
+             CREATE TABLE message (id TEXT, session_id TEXT, data TEXT, time_created INTEGER);
+             CREATE TABLE part (message_id TEXT, session_id TEXT, id TEXT, data TEXT, time_created INTEGER);
+             INSERT INTO session_v2 VALUES ('shared', 'V2', '/repo', NULL, NULL, 3), ('shell', 'Migrated', '/repo', NULL, NULL, 2);
+             INSERT INTO session_message VALUES ('shared', 'user', 1, '{\"text\":\"new history\"}');
+             INSERT INTO session VALUES ('shared', 'Old', '/repo', NULL, 1), ('shell', 'Fallback', '/repo', NULL, 1), ('legacy', 'Legacy', '/repo', NULL, 1);
+             INSERT INTO message VALUES ('m1', 'shared', '{\"role\":\"user\"}', 1), ('m2', 'shell', '{\"role\":\"user\"}', 1), ('m3', 'legacy', '{\"role\":\"assistant\",\"modelID\":\"old-model\"}', 1);
+             INSERT INTO part VALUES ('m1', 'shared', 'p1', '{\"type\":\"text\",\"text\":\"old history\"}', 1), ('m2', 'shell', 'p2', '{\"type\":\"text\",\"text\":\"recovered\"}', 1), ('m3', 'legacy', 'p3', '{\"type\":\"text\",\"text\":\"legacy history\"}', 1);"
+        ).unwrap();
+        let (sessions, warnings) = load(&path).unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(sessions.len(), 3);
+        let shared = sessions.iter().find(|s| s.source_id == "shared").unwrap();
+        assert!(
+            matches!(&shared.transcript[0], ChatItem::User { text, .. } if text == "new history")
+        );
+        let fallback = sessions.iter().find(|s| s.source_id == "shell").unwrap();
+        assert!(
+            matches!(&fallback.transcript[0], ChatItem::User { text, .. } if text == "recovered")
+        );
+        assert_eq!(
+            sessions
+                .iter()
+                .find(|s| s.source_id == "legacy")
+                .unwrap()
+                .model,
+            "old-model"
+        );
+        let (selected, _) = load_selected(&path, &HashSet::from(["shell".into()])).unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].source_id, "shell");
+    }
 
     #[test]
     fn both_database_schemas_read_all_sessions_including_old_selected_histories() {
@@ -872,7 +995,11 @@ mod tests {
              INSERT INTO part VALUES ('message', 'legacy', 'part', '{\"type\":\"text\",\"text\":\"hello\"}', 1);"
         ).unwrap();
         let (sessions, warnings) = load(&path).unwrap();
-        assert!(warnings.is_empty());
+        assert_eq!(
+            warnings.len(),
+            1,
+            "only the genuinely empty shell is reported"
+        );
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].source_id, "legacy");
     }

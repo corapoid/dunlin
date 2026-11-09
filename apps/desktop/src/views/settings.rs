@@ -1,7 +1,7 @@
 //! Settings sheet. Everything that changes how Dunlin connects to a harness,
 //! asks for permissions or measures usage lives here.
 
-use dunlin_domain::{MainView, UsageSource};
+use dunlin_domain::UsageSource;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Icon;
 use dunlin_ui::component::button::{Button, ButtonVariants};
@@ -110,7 +110,7 @@ pub(crate) fn render(
     );
 
     let panel = SurfaceGeometry::SETTINGS
-        .paint(p.subtle, p.border_strong)
+        .paint(dunlin_ui::settings::Tokens::new(p).sidebar, p.border)
         .id("settings-panel")
         .absolute()
         .left(px(left))
@@ -143,6 +143,8 @@ pub(crate) fn render(
         .child(
             SurfaceGeometry::SETTINGS_CONTENT
                 .paint(p.bg, p.border)
+                .rounded_tl(px(dunlin_ui::radii::SQUARE))
+                .rounded_bl(px(dunlin_ui::radii::SQUARE))
                 .relative()
                 .children({
                     #[cfg(debug_assertions)]
@@ -158,7 +160,6 @@ pub(crate) fn render(
                 .min_w(px(0.))
                 .flex()
                 .flex_col()
-                .m(px(8.))
                 .overflow_hidden()
                 .child(settings_header(this, cx))
                 .child(
@@ -167,25 +168,28 @@ pub(crate) fn render(
                         .flex_1()
                         .min_h(px(0.))
                         .overflow_y_scroll()
-                        .child(settings_page(match tab {
-                            SettingsTab::General => general(this, window, cx),
-                            SettingsTab::Design => design(this, window, cx),
-                            SettingsTab::Sidebar => sidebar_settings(this, cx),
-                            SettingsTab::Chat => chat_settings(this, cx),
-                            SettingsTab::Harnesses => harnesses(this, cx),
-                            SettingsTab::Skills => crate::skills::render(this, cx),
-                            SettingsTab::Security => security(this, window, cx),
-                            SettingsTab::Secrets => {
-                                crate::vault::settings::render(this, window, cx)
-                            }
-                            SettingsTab::Extensions => crate::plugins::render(this, cx),
-                            SettingsTab::Permissions => permissions(this, cx),
-                            SettingsTab::Remote => remote_settings(this, cx),
-                            SettingsTab::Editor => editor(this, cx),
-                            SettingsTab::Usage => usage(this, cx),
-                            SettingsTab::Data => data::render(this, window, cx),
-                            SettingsTab::Advanced => advanced(this, cx),
-                        })),
+                        .child(settings_page(
+                            match tab {
+                                SettingsTab::General => general(this, window, cx),
+                                SettingsTab::Design => design(this, window, cx),
+                                SettingsTab::Sidebar => sidebar_settings(this, cx),
+                                SettingsTab::Chat => chat_settings(this, cx),
+                                SettingsTab::Harnesses => harnesses(this, cx),
+                                SettingsTab::Skills => crate::skills::render(this, cx),
+                                SettingsTab::Security => security(this, window, cx),
+                                SettingsTab::Secrets => {
+                                    crate::vault::settings::render(this, window, cx)
+                                }
+                                SettingsTab::Extensions => crate::plugins::render(this, cx),
+                                SettingsTab::Permissions => permissions(this, cx),
+                                SettingsTab::Remote => remote_settings(this, cx),
+                                SettingsTab::Editor => editor(this, cx),
+                                SettingsTab::Usage => usage(this, cx),
+                                SettingsTab::Data => data::render(this, window, cx),
+                                SettingsTab::Advanced => advanced(this, cx),
+                            },
+                            tab,
+                        )),
                 ),
         );
 
@@ -258,7 +262,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .flex()
         .flex_col()
         .gap(px(2.))
-        .px(px(8.))
+        .px(px(12.))
         .pb(px(12.));
     let mut found = false;
     for (group, tabs) in navigation::GROUPS {
@@ -274,8 +278,8 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         list = list.child(
             div()
                 .flex_shrink_0()
-                .pt(px(12.))
-                .pb(px(5.))
+                .pt(px(8.))
+                .pb(px(4.))
                 .px(px(10.))
                 .text_size(px(11.))
                 .font_weight(FontWeight::SEMIBOLD)
@@ -286,7 +290,8 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             list = list.child(
                 dunlin_ui::button(format!("settings-tab:{}", tab.label()))
                     .w_full()
-                    .h(px(30.))
+                    .h(px(32.))
+                    .rounded(px(dunlin_ui::settings::Tokens::CONTROL_RADIUS))
                     .flex_shrink_0()
                     .justify_start()
                     .px(px(10.))
@@ -295,13 +300,13 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                             .w_full()
                             .flex()
                             .items_center()
-                            .gap(px(8.))
-                            .child(Icon::new(tab.icon()).size(px(14.)))
+                            .gap(px(10.))
+                            .child(Icon::new(tab.icon()).size(px(15.)))
                             .child(
                                 div()
                                     .min_w(px(0.))
                                     .truncate()
-                                    .text_size(px(12.))
+                                    .text_size(px(dunlin_ui::settings::Tokens::BODY_SIZE))
                                     .child(tab.label()),
                             ),
                     )
@@ -324,7 +329,7 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         );
     }
     div()
-        .w(px(222.))
+        .w(px(dunlin_ui::settings::Tokens::NAV_WIDTH))
         .min_h(px(0.))
         .overflow_hidden()
         .flex_shrink_0()
@@ -333,36 +338,29 @@ fn settings_nav(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .flex_col()
         .child(
             div()
-                .h(px(56.))
+                .h(px(64.))
                 .flex_shrink_0()
                 .px(px(18.))
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .child(Icon::new(IconName::Settings2).size(px(16.)))
                 .child(
                     div()
-                        .text_size(px(14.))
+                        .text_size(px(17.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .child("Settings"),
                 ),
         )
         .child(
             div().px(px(12.)).pb(px(8.)).flex_shrink_0().child(
-                search_input(search, "Search all settings")
+                dunlin_ui::settings::search(search, "Search all settings", p)
+                    .when(this.show_shortcut_hints, |input| {
+                        input.suffix(div().text_size(px(10.)).text_color(p.muted_fg).child("⌘F"))
+                    })
                     .with_size(dunlin_ui::component::Size::Medium),
             ),
         )
         .child(list)
-        .child(
-            dunlin_ui::settings::description(
-                "Local by default. Remote actions run on your selected server.",
-                p,
-            )
-            .text_size(px(11.))
-            .p(px(14.))
-            .flex_shrink_0(),
-        )
         .into_any_element()
 }
 
@@ -463,12 +461,12 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 None::<AnyElement>
             }
         })
-        .min_h(px(74.))
+        .min_h(px(100.))
         .flex_shrink_0()
         .px(px(32.))
         .flex()
         .items_center()
-        .gap(px(8.))
+        .gap(px(16.))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(|this, event: &MouseDownEvent, _, cx| {
@@ -482,32 +480,19 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
                 .min_w(px(0.))
                 .flex()
                 .flex_col()
-                .gap(px(2.))
+                .gap(px(7.))
                 .child(
                     div()
-                        .text_size(px(13.5))
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_size(px(dunlin_ui::settings::Tokens::TITLE_SIZE))
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(p.fg)
                         .child(title),
                 )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(p.muted_fg)
-                        .child(subtitle),
-                )
-                .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(
-                    if this.settings_tab == SettingsTab::Remote {
-                        "Paired hosts · server changes are explicit"
-                    } else if this.settings_tab == SettingsTab::Security {
-                        "This Mac · audits use the selected project"
-                    } else {
-                        "This Mac · preferences save immediately; forms have Save / Cancel"
-                    },
-                )),
+                .child(dunlin_ui::settings::description(subtitle, p)),
         )
         .child(
             icon_button("settings-close", IconName::X, "Close settings")
+                .tooltip(this.shortcut_label("Close settings", "⌘W / Esc"))
                 .children({
                     #[cfg(debug_assertions)]
                     {
@@ -530,7 +515,6 @@ fn settings_header(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
 
 fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
-    let view = this.default_view;
 
     let mut startup = segment_group(&p);
     for (dashboard, label) in [(true, "Dashboard"), (false, "Last project")] {
@@ -550,27 +534,10 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
         );
     }
 
-    let mut views = segment_group(&p);
-    for candidate in MainView::ALL {
-        views = views.child(
-            segment(
-                format!("startup-view:{}", candidate.label()),
-                candidate.label(),
-                candidate == view,
-                &p,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.default_view = candidate;
-                this.persist_settings(cx);
-                cx.notify();
-            })),
-        );
-    }
-
     let body = dunlin_ui::settings::page()
         .child(section_label("Startup", &p))
         .child(
-            settings_card(&p)
+            dunlin_ui::settings::group()
                 .child(setting_row(
                     "Startup destination",
                     "Choose Dashboard or your last project. Conversation history is preserved.",
@@ -589,18 +556,11 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
                         &p,
                     ),
                     &p,
-                ))
-                .child(divider(&p))
-                .child(setting_row(
-                    "Default view",
-                    "Where a new session opens.",
-                    views.into_any_element(),
-                    &p,
                 )),
         )
         .child(section_label("Notifications", &p))
         .child(
-            settings_card(&p)
+            dunlin_ui::settings::group()
                 .child(setting_row(
                     "Desktop notifications",
                     "Show a macOS notification when a turn finishes or a permission is waiting.",
@@ -629,6 +589,7 @@ fn general(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinAp
                 .child(
                     div()
                         .flex_1()
+                        .min_w(px(0.))
                         .text_size(px(11.0))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
@@ -656,17 +617,15 @@ fn design(this: &mut DunlinApp, window: &mut Window, cx: &mut Context<DunlinApp>
     }
     dunlin_ui::settings::page()
                 .child(section_label("Theme", &p))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(12.))
+                .child(setting_row("Appearance", "Use the system appearance or choose a light or dark interface.",
+                    segment_group(&p)
                         .child(theme_card(crate::app::Appearance::System, this.appearance, window, cx, &p))
                         .child(theme_card(crate::app::Appearance::Light, this.appearance, window, cx, &p))
-                        .child(theme_card(crate::app::Appearance::Dark, this.appearance, window, cx, &p)),
-                )
+                        .child(theme_card(crate::app::Appearance::Dark, this.appearance, window, cx, &p))
+                        .into_any_element(), &p))
                 .child(section_label("Interface", &p))
                 .child(
-                    settings_card(&p)
+                    dunlin_ui::settings::group()
                         .child(setting_row(
                             "UI font",
                              "Used by application controls. Code typography is in Editor & Terminal.",
@@ -752,7 +711,7 @@ fn sidebar_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEle
     }
     dunlin_ui::settings::page()
                 .child(section_label("Dashboard", &p))
-                .child(settings_card(&p)
+                .child(dunlin_ui::settings::group()
                     .child(setting_row("Live agents", "Show working, waiting and connecting agents.",
                         toggle_switch("dashboard-agents", this.dashboard_settings.show_agents,
                             |this| this.dashboard_settings.show_agents = !this.dashboard_settings.show_agents, cx, &p), &p))
@@ -762,7 +721,7 @@ fn sidebar_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEle
                             |this| this.dashboard_settings.show_activity = !this.dashboard_settings.show_activity, cx, &p), &p)))
                 .child(section_label("Project list", &p))
                 .child(
-                    settings_card(&p)
+                    dunlin_ui::settings::group()
                         .child(setting_row(
                             "Show branch names",
                             "Show branch and local-change status in Comfortable. Your preference is kept in Compact.",
@@ -791,8 +750,8 @@ fn sidebar_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEle
                         .child(setting_row("Wrap project names", "Wrap long names in Comfortable. Compact keeps one-line names without changing this preference.",
                             toggle_switch("project-wrap-names", this.project_list.wrap_names, |this| this.project_list.wrap_names = !this.project_list.wrap_names, cx, &p), &p))
                         .child(divider(&p))
-                        .child(setting_row("Project hover preview", "Show repository name, primary language, storage size, topics and an inert README preview on hover.",
-                            toggle_switch("project-hover-preview", this.project_list.show_preview, |this| this.project_list.show_preview = !this.project_list.show_preview, cx, &p), &p))
+                        .child(setting_row("Project information", "Show an info button in the upper-right corner of each project. Click it to see repository metadata and a scrollable README preview.",
+                            toggle_switch("project-info-preview", this.project_list.show_preview, |this| this.project_list.show_preview = !this.project_list.show_preview, cx, &p), &p))
                         .child(divider(&p))
                         .child(setting_row(
                             "Sort",
@@ -812,20 +771,11 @@ fn sidebar_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEle
                         )),
                 )
                 .child(section_label("Explorer", &p))
-                .child(settings_card(&p).child(setting_row("Show file sizes",
+                .child(dunlin_ui::settings::group().child(setting_row("Show file sizes",
                     "Show sizes in Explorer tooltips, project totals and Dashboard tiles.",
                     toggle_switch("show-file-sizes", this.show_file_sizes,
                         |this| this.show_file_sizes = !this.show_file_sizes, cx, &p), &p)))
                 .child(crate::project_import::settings(this, cx))
-                .child(section_label("Project and group defaults", &p))
-                .child(dunlin_ui::settings::notice("Global defaults → parent groups → nested groups → project. Project and group settings show the source of each effective value. Model and environment defaults do not restart running agents.", p))
-                .child(dunlin_ui::settings::actions()
-                    .child(settings_button("workspace-project-settings", "Project settings…", false, &p)
-                        .disabled(this.projects.is_empty())
-                        .on_click(cx.listener(|this, _, _, cx| this.open_project_settings(this.selected_project, cx))))
-                    .when_some(this.project().group_id.clone(), |row, id| row.child(
-                        settings_button("workspace-group-settings", "Group settings…", false, &p)
-                            .on_click(cx.listener(move |this, _, window, cx| this.open_group_settings(&id, window, cx))))))
                 .into_any_element()
 }
 
@@ -882,8 +832,8 @@ fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             |this| this.final_answer_only = !this.final_answer_only,
         ),
     ];
-    let mut behavior = settings_card(&p);
-    let mut appearance = settings_card(&p);
+    let mut behavior = dunlin_ui::settings::group();
+    let mut appearance = dunlin_ui::settings::group();
     for (index, (title, description, id, value, action)) in controls.into_iter().enumerate() {
         let row = setting_row(
             title,
@@ -916,144 +866,51 @@ fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 fn theme_card(
     appearance: crate::app::Appearance,
     current: crate::app::Appearance,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<DunlinApp>,
-    p: &Palette,
+    _p: &Palette,
 ) -> AnyElement {
     let selected = appearance == current;
-    let preview = if appearance.mode(window.appearance()).is_dark() {
-        dunlin_ui::theme::dark()
-    } else {
-        dunlin_ui::theme::light()
-    };
     let label = match appearance {
         crate::app::Appearance::System => "System",
         crate::app::Appearance::Light => "Light",
         crate::app::Appearance::Dark => "Dark",
     };
 
-    choice_card(
-        format!("theme-card-{label}"),
-        format!("{label} appearance"),
-        selected,
-        *p,
-    )
-    .h(px(106.))
-    .p(px(0.))
-    .flex_col()
-    .flex_1()
-    .min_w(px(0.))
-    .overflow_hidden()
-    .on_click(cx.listener(move |this, _, window, cx| {
-        this.set_appearance(appearance, window, cx);
-        // Refreshing every window during an appearance change must not
-        // hand key-window status back to the application behind Settings.
-        window.activate_window();
-        this.persist_settings(cx);
-        cx.notify();
-    }))
-    .child(
-        div()
-            .w_full()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .w_full()
-                    .h(px(72.))
-                    .rounded_t(px(SurfaceGeometry::CHOICE_CARD.inner_radius()))
-                    .bg(preview.bg)
-                    .flex()
-                    .child(
-                        div()
-                            .w(px(40.))
-                            .h_full()
-                            .rounded_tl(px(SurfaceGeometry::CHOICE_CARD.inner_radius()))
-                            .bg(preview.panel)
-                            .border_r_1()
-                            .border_color(preview.border)
-                            .p(px(6.))
-                            .flex()
-                            .flex_col()
-                            .gap(px(4.))
-                            .children((0..5).map(|index| {
-                                div()
-                                    .h(px(3.))
-                                    .w(if index == 0 {
-                                        relative(0.75)
-                                    } else {
-                                        relative(0.55)
-                                    })
-                                    .rounded_full()
-                                    .bg(if index == 0 {
-                                        preview.fg
-                                    } else {
-                                        preview.muted_fg.opacity(0.5)
-                                    })
-                                    .into_any_element()
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .p(px(8.))
-                            .flex()
-                            .flex_col()
-                            .gap(px(5.))
-                            .child(
-                                div()
-                                    .h(px(5.))
-                                    .w(relative(0.55))
-                                    .rounded_full()
-                                    .bg(preview.fg.opacity(0.8)),
-                            )
-                            .child(
-                                div()
-                                    .h(px(18.))
-                                    .w_full()
-                                    .rounded(px(dunlin_ui::radii::CODE))
-                                    .bg(preview.muted),
-                            )
-                            .child(
-                                div()
-                                    .h(px(5.))
-                                    .w(relative(0.72))
-                                    .rounded_full()
-                                    .bg(preview.muted_fg.opacity(0.55)),
-                            ),
-                    ),
-            )
-            .child(
-                div()
-                    .w_full()
-                    .h(px(32.))
-                    .px(px(9.))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(
-                        Icon::new(match appearance {
-                            crate::app::Appearance::System => IconName::Monitor,
-                            crate::app::Appearance::Dark => IconName::Moon,
-                            crate::app::Appearance::Light => IconName::Sun,
-                        })
-                        .size(px(12.))
-                        .text_color(p.muted_fg),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(p.fg)
-                            .child(label),
-                    )
-                    .child(div().flex_1())
-                    .when(selected, |this| {
-                        this.child(Icon::new(IconName::Check).size(px(12.)).text_color(p.fg))
-                    }),
-            ),
-    )
-    .into_any_element()
+    dunlin_ui::settings::segment(format!("theme-card-{label}"), label, selected)
+        .accessibility_label(format!("{label} appearance"))
+        .icon(match appearance {
+            crate::app::Appearance::System => IconName::Monitor,
+            crate::app::Appearance::Light => IconName::Sun,
+            crate::app::Appearance::Dark => IconName::Moon,
+        })
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.set_appearance(appearance, window, cx);
+            // Refreshing every window during an appearance change must not
+            // hand key-window status back to the application behind Settings.
+            window.activate_window();
+            this.persist_settings(cx);
+            cx.notify();
+        }))
+        .into_any_element()
+}
+
+/// Local history readers do not require ACP verification, but absent agents
+/// must never get a nonfunctional import action in the setup catalog.
+fn agent_import_visible(name: &str, adapter: bool, cli_only: bool) -> bool {
+    crate::session_import::supports_scan(name) && (adapter || cli_only)
+}
+
+#[test]
+fn history_actions_only_appear_for_detected_supported_agents() {
+    for name in ["OpenCode", "Claude Code", "OpenAI Codex"] {
+        assert!(!agent_import_visible(name, false, false));
+        assert!(agent_import_visible(name, true, false));
+        assert!(agent_import_visible(name, false, true));
+    }
+    for name in ["Gemini CLI", "Custom ACP", "Cursor"] {
+        assert!(!agent_import_visible(name, true, true));
+    }
 }
 
 fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
@@ -1067,8 +924,11 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .chain(std::iter::once(("Custom ACP", custom_command)))
         .collect::<Vec<_>>();
 
-    let mut list = settings_card(&p);
-    for (index, (name, command)) in entries.iter().enumerate() {
+    let mut list = dunlin_ui::settings::group();
+    let mut available_list = dunlin_ui::settings::group();
+    let mut detected_count = 0;
+    let mut available_count = 0;
+    for (name, command) in &entries {
         let selected = current == *name;
         let detected = discovery.iter().find(|entry| entry.name == *name);
         let installed = detected
@@ -1078,8 +938,11 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         let docs = crate::harness_discovery::catalog_docs(name)
             .or_else(|| detected.map(|entry| entry.docs));
         let live_status = this.harness_check_status(name).or_else(|| {
-            (!this.project().is_remote() && this.session_harness() == *name)
-                .then_some(&this.harness.status)
+            (installed
+                && !this.project().is_remote()
+                && this.session_harness() == *name
+                && !matches!(this.harness.status, crate::harness::HarnessStatus::Offline))
+            .then_some(&this.harness.status)
         });
         let unavailable = this.harness_unavailable_reason(name);
         let selectable = unavailable.is_none();
@@ -1104,7 +967,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             None if cli_only => ("Adapter needed", p.amber),
             None => ("Not installed", p.muted_fg),
         };
-        let name_owned = name.to_string();
+        let default_name = name.to_string();
         let import_name = name.to_string();
         let test_name = name.to_string();
         let install_name = name.to_string();
@@ -1122,19 +985,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         cx.stop_propagation();
                         this.test_harness_connection(&test_name, cx);
                     }))
-            ).child(settings_button(
-                format!("import-sessions:{name}"),
-                "Import sessions…",
-                false,
-                &p,
             )
-            .disabled(this.session_import.loading)
-            .on_click(cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                if !this.session_import.loading {
-                    this.scan_session_import(&import_name, cx);
-                }
-            })))
             .into_any_element()
         } else if docs.is_some() {
             settings_button(format!("install-harness:{name}"), "Set up…", false, &p)
@@ -1161,109 +1012,87 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         } else {
             action
         };
+        let detected_locally = installed
+            || cli_only
+            || selected
+            || (*name == "Custom ACP"
+                && !this.custom_harness_command.trim().is_empty()
+                && this.custom_harness_command.trim() != "your-agent --acp");
         let row = div()
             .id(format!("harness-row:{name}"))
-            .h(px(54.))
-            .px(px(14.))
+            .min_h(px(68.))
+            .py(px(12.))
             .flex()
+            .flex_wrap()
             .items_center()
             .gap(px(10.))
-            .when(index > 0, |this| this.border_t_1().border_color(p.border))
-             .child(settings_button(format!("harness-default:{name}"), if selected { "Default" } else { "Use" }, false, &p)
-                 .relative()
+             .child(div().relative().flex_shrink_0()
+                 .child(dunlin_ui::radio(format!("harness-default:{name}"), format!("Use {name} as the default local agent"), selected)
+                  .min_w(px(28.)).min_h(px(28.)).flex_shrink_0().justify_center().items_center()
+                  .disabled(!selectable)
+                  .tooltip(unavailable.clone().unwrap_or_else(|| "Default for new conversations; project and group settings can override it".into()))
+                  .on_change(cx.listener(move |this, checked, _, cx| {
+                      cx.stop_propagation();
+                      if *checked && this.harness_unavailable_reason(&default_name).is_none() {
+                          this.default_harness = default_name.clone(); this.persist_settings(cx); cx.notify();
+                      }
+                  })))
                  .children({
                      #[cfg(debug_assertions)]
                      { if *name == "Claude Code" { crate::workspace_ui_smoke::probe("claude-harness-default") } else { None } }
                      #[cfg(not(debug_assertions))]
                      { None::<AnyElement> }
-                 })
-                .disabled(!selectable).selected(selected).toggled(selected)
-                .accessibility_label(format!("Use {name} as the default local agent"))
-                .on_click(cx.listener({ let name = name_owned.clone(); move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    if this.harness_unavailable_reason(&name).is_none() {
-                        this.default_harness = name.clone(); this.persist_settings(cx); cx.notify();
-                    }
-                }})))
+                 }))
             .child(
                 div()
-                    .size(px(28.))
+                    .size(px(32.))
                     .flex_shrink_0()
                     .rounded(px(dunlin_ui::radii::CONTROL))
-                    .bg(p.muted)
+                    .bg(p.subtle)
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(
-                        Icon::new(if *name == "Custom ACP" {
-                            IconName::Terminal
-                        } else {
-                            IconName::Bot
-                        })
-                        .size(px(13.5))
-                        .text_color(p.muted_fg),
-                    ),
+                    .child(crate::harness_brand::logo(name, 20., p.fg)),
             )
             .child(
                 div()
                     .flex_1()
-                    .min_w(px(0.))
+                    .min_w(px(140.))
                     .flex()
-                    .items_center()
-                    .gap(px(7.))
+                    .flex_col()
+                    .gap(px(5.))
                     .child(
                         div()
                             .min_w(px(0.))
                             .truncate()
-                            .text_size(px(12.5))
+                            .text_size(px(dunlin_ui::settings::Tokens::BODY_SIZE))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(p.fg)
                             .child(name.to_string()),
                     )
-                    .when(selected, |this| this.child(settings_chip("Default", &p))),
-            )
-            .when(!scanning, |row| {
-                row.child(
+                    .child(
                     div()
-                        .w(px(102.))
-                        .flex_shrink_0()
                         .flex()
                         .items_center()
                         .gap(px(5.))
                         .child(dot(status_color, 5.0))
                         .child(
                             div()
-                                .text_size(px(10.5))
+                                .text_size(px(dunlin_ui::settings::Tokens::CAPTION_SIZE))
                                 .text_color(p.muted_fg)
                                 .child(status),
                         ),
-                )
-            })
+                ),
+            )
             .child(
                 div()
-                    .when(!scanning, |view| view.w(px(238.)))
-                    .when(scanning, |view| view.flex_1().min_w(px(0.)))
                     .flex_shrink_0()
                     .flex()
                     .justify_end()
-                    .child(if scanning {
-                        div()
-                            .min_w(px(0.))
-                            .truncate()
-                            .text_size(px(11.))
-                            .text_color(p.muted_fg)
-                            .child(
-                                this.session_import
-                                    .progress_label()
-                                    .unwrap_or_else(|| "Scanning…".into()),
-                            )
-                            .into_any_element()
-                    } else {
-                        action
-                    }),
+                    .child(action),
             )
-            .child(
-                div().relative()
+            ;
+        let visibility = div().relative()
                 .children({
                     #[cfg(debug_assertions)]
                     {
@@ -1278,38 +1107,76 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         None::<AnyElement>
                     }
                 })
-                .child(dunlin_ui::switch(format!("harness-visible:{name}"), format!("Show {name} in agent choices"), visible)
-                .tooltip("Show in agent choices; existing conversations and defaults are unchanged")
+                .child(dunlin_ui::checkbox(format!("harness-visible:{name}"), format!("Show {name} in agent picker"), visible)
+                .label("Show in agent picker")
+                .tooltip("Only changes the agent picker; does not install, connect or change the default")
                 .on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
                     this.toggle_harness_visibility(&visibility_name, cx);
-                }))),
-            )
-            .when(selectable, |row| row.cursor_pointer())
-            .tooltip(move |window, cx| {
-                dunlin_ui::component::tooltip::Tooltip::new(
-                    unavailable
-                        .clone()
-                        .unwrap_or_else(|| "Use as the default for new conversations".into()),
+                })));
+        let imported = this
+            .all_sessions
+            .iter()
+            .filter(|session| {
+                session.harness == *name
+                    && crate::session_import::imported_source(&session.id, name).is_some()
+            })
+            .count();
+        let pending = this
+            .session_import
+            .pending
+            .iter()
+            .filter(|session| session.harness == *name)
+            .count();
+        let import_status = if scanning {
+            this.session_import
+                .progress_label()
+                .unwrap_or_else(|| "Importing…".into())
+        } else {
+            if pending == 0 {
+                format!("{imported} sessions imported")
+            } else {
+                format!(
+                    "{} sessions imported · {pending} awaiting project",
+                    imported + pending
                 )
-                .build(window, cx)
-            })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if this.harness_unavailable_reason(&name_owned).is_some() {
-                    return;
-                }
-                this.default_harness = name_owned.clone();
-                this.persist_settings(cx);
-                this.set_notice(
-                    format!("Default harness · {name_owned} · applies to new conversations"),
-                    cx,
-                );
-            }));
-        list = list
-            .when(this.harness_setup.as_deref() == Some(*name), |list| {
-                list.child(harness_setup(this, name, cx, &p))
-            })
-            .child(row);
+            }
+        };
+        let automatic = agent_import_visible(name, installed, cli_only);
+        let second = div().pb(px(16.)).pl(px(42.)).flex().flex_col().gap(px(10.))
+            .child(div().flex().flex_wrap().items_center().gap(px(12.))
+                .child(visibility)
+                .child(div().flex_1())
+                .when(automatic, |row| row.child(settings_button(format!("import-sessions:{name}"), if scanning { "Importing…" } else if imported + pending > 0 { "Reimport history" } else { "Import history" }, false, &p)
+                    .disabled(this.session_import.loading)
+                    .tooltip("Copy histories without changing source files or running an agent; projects are matched automatically by directory")
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                         this.scan_session_import(&import_name, cx);
+                      })))))
+            .when(automatic && (scanning || imported + pending > 0), |view| view.child(
+                dunlin_ui::settings::description(import_status, p)))
+            .when_some(this.session_import.notices.get(*name).filter(|note| !note.is_empty()).cloned(), |view, note| {
+                view.child(div().text_size(px(10.5)).text_color(p.amber).child(note))
+            });
+        let row = div()
+            .child(row)
+            .when(detected_locally, |row| row.child(second))
+            .when(this.harness_setup.as_deref() == Some(*name), |row| {
+                row.child(harness_setup(this, name, cx, &p))
+            });
+        if detected_locally {
+            if detected_count > 0 {
+                list = list.child(divider(&p));
+            }
+            list = list.child(row);
+            detected_count += 1;
+        } else if *name != "Custom ACP" {
+            if available_count > 0 {
+                available_list = available_list.child(divider(&p));
+            }
+            available_list = available_list.child(row);
+            available_count += 1;
+        }
     }
 
     let body = dunlin_ui::settings::page()
@@ -1318,15 +1185,17 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 settings_button("agents-manage-server", "Manage server…", false, &p)
                     .on_click(cx.listener(move |this, _, window, cx| this.manage_server(&remote.host_id, window, cx)))
                     .into_any_element(), &p))))
-        .child(dunlin_ui::settings::notice(format!("Default local agent: {}. Group and project overrides take precedence for new conversations; existing conversations keep their agent.", current), p))
         .child(
             div()
                 .flex()
                 .items_center()
-                .child(section_label("Local ACP agents", &p))
+                .child(section_label("Local agents", &p))
                 .child(div().flex_1())
                 .child(
                     settings_button("rescan-harnesses", if this.harness_scanning { "Scanning…" } else { "Scan again" }, false, &p)
+                    .icon(IconName::RefreshCw)
+                    .loading(this.harness_scanning)
+                    .disabled(this.harness_scanning)
                     .relative().children({
                         #[cfg(debug_assertions)]
                         { crate::workspace_ui_smoke::probe("rescan-harnesses") }
@@ -1340,57 +1209,37 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         .when_some(this.harness_setup_notice.clone(), |body, notice| {
             body.child(div().text_size(px(11.)).text_color(p.muted_fg).child(notice))
         })
+        .when(!this.project().is_remote() && !this.project().trusted, |body| body.child(
+            dunlin_ui::settings::description("Connection tests require a trusted local project. Setup instructions and read-only history imports remain available.", p)))
         .child(
             div()
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("Adapters connect agents using ACP. Nothing is installed or authorized automatically. Test connection opens an empty session without a prompt. Verified adapters can be selected; visibility switches affect selection lists only."),
+                .child("Default for new conversations. Test a connection before selecting an agent; projects and groups can override this choice."),
         )
         .child(list)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .child(
-                    settings_text_button("browse-acp-agents", "Browse all ACP agents", p.fg, &p)
-                        .on_click(|_, _, cx| {
-                            cx.open_url("https://agentclientprotocol.com/get-started/agents");
-                        }),
-                )
-                .child(
-                    Icon::new(IconName::ExternalLink)
-                        .size(px(11.))
-                        .text_color(p.muted_fg),
-                ),
-        )
+        .when(detected_count == 0, |body| body.child(dunlin_ui::settings::notice(
+            "No local agents detected. Set up an agent below, then scan again. Nothing is installed or started automatically.", p)))
+        .child(dunlin_ui::settings::actions().child(settings_button("available-agents", if this.settings_ui.available_agents { format!("Hide available agents ({available_count})") } else { format!("Set up another agent ({available_count})") }, false, &p)
+            .self_start()
+            .relative().children({
+                #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("available-agents") }
+                #[cfg(not(debug_assertions))] { None::<AnyElement> }
+            })
+            .icon(if this.settings_ui.available_agents { IconName::ChevronUp } else { IconName::ChevronDown })
+            .on_click(cx.listener(|this, _, _, cx| { this.settings_ui.available_agents = !this.settings_ui.available_agents; cx.notify(); })))
+            .child(settings_button("browse-acp-agents", "Browse ACP catalog", false, &p)
+                .icon(IconName::ExternalLink)
+                .on_click(|_, _, cx| cx.open_url("https://agentclientprotocol.com/get-started/agents"))))
+        .when(this.settings_ui.available_agents, |body| body.child(available_list))
         .child(
             div()
                 .text_size(px(11.0))
                 .line_height(relative(1.45))
                 .text_color(p.muted_fg)
-                .child("Import sessions scans the standard Claude Code and Codex session folders and reads OpenCode's local session database read-only, then shows a preview. Portable dunlin.session.v1 JSON is still available separately. Histories are copied, not resumed."),
+                .child("Import copies local histories without changing source files or resuming agents. Sessions are automatically assigned by directory, including when a matching project is added later. Reimport enriches existing copies without replacing local follow-up turns."),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .child(
-                    settings_text_button(
-                        "import-session-portable",
-                        "Import a portable file…",
-                        p.muted_fg,
-                        &p,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let harness = this.default_harness.clone();
-                        this.choose_session_import(&harness, cx);
-                    })),
-                ),
-        )
-        .child(crate::session_import::render(this, cx))
         .when(this.local_opencode(), |body| {
             body.child(section_label("OpenCode provider accounts", &p))
                 .child(super::chat_controls::provider_accounts(this, cx))
@@ -1403,7 +1252,8 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .flex_col()
                 .gap(px(9.))
                 .child(
-                    code_input(&this.custom_command_input)
+                    dunlin_ui::settings::input(&this.custom_command_input, p)
+                        .font_family(dunlin_ui::theme::code_font())
                         .aria_label("Custom ACP command")
                         .prefix(Icon::new(IconName::Terminal).size(px(12.))),
                 )
@@ -1762,7 +1612,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let body = dunlin_ui::settings::page()
         .child(section_label("Typography", &p))
         .child(
-            settings_card(&p)
+            dunlin_ui::settings::group()
                 .child(setting_row(
                     "Code font",
                     "Monospaced face for files, traces and diffs.",
@@ -1778,7 +1628,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 )),
         )
         .child(section_label("Editing behavior", &p))
-        .child(settings_card(&p)
+        .child(dunlin_ui::settings::group()
                 .child(setting_row(
                     "Word wrap",
                     "Wrap long lines in the lightweight editor.",
@@ -1820,7 +1670,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         )
         .child(section_label("Terminal", &p))
         .child(
-            settings_card(&p)
+            dunlin_ui::settings::group()
                 .child(setting_row(
                     "Shell integration",
                     "Enable command and working-directory tracking for zsh/bash. Disable if your custom prompt behaves incorrectly. Applies to new terminals.",
@@ -2828,6 +2678,7 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     div()
                         .flex()
                         .flex_wrap()
+                        .justify_end()
                         .gap(px(8.))
                         .child(
                             settings_button("qa-run", "Run diagnostics", false, &p).on_click(
@@ -2946,7 +2797,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
             .child(section_label("Paired servers", &p))
             .child(div().flex_1())
             .child(
-                dunlin_ui::button("settings-connect-server")
+                dunlin_ui::settings::button("settings-connect-server")
                     .primary()
                     .label("Connect to server…")
                     .on_click(
@@ -3188,10 +3039,9 @@ impl DunlinApp {
     }
 }
 
-fn settings_page(content: AnyElement) -> AnyElement {
+fn settings_page(content: AnyElement, _tab: SettingsTab) -> AnyElement {
     div()
         .w_full()
-        .px(px(8.))
         .flex()
         .child(
             div()
@@ -3207,6 +3057,16 @@ fn settings_page(content: AnyElement) -> AnyElement {
                     }
                 })
                 .w_full()
+                .children({
+                    #[cfg(debug_assertions)]
+                    {
+                        Some(smoke::page_marker(_tab))
+                    }
+                    #[cfg(not(debug_assertions))]
+                    {
+                        None::<AnyElement>
+                    }
+                })
                 .child(content),
         )
         .into_any_element()
@@ -3217,7 +3077,7 @@ fn section_label(label: &str, p: &Palette) -> AnyElement {
 }
 
 fn settings_card(p: &Palette) -> Div {
-    dunlin_ui::settings::card(*p)
+    dunlin_ui::settings::card(*p).px(px(18.))
 }
 
 fn settings_chip(label: impl Into<SharedString>, p: &Palette) -> Div {
@@ -3240,7 +3100,7 @@ fn risk_chip(p: &Palette) -> Div {
 }
 
 fn segment_group(p: &Palette) -> Div {
-    dunlin_ui::segment_group(*p)
+    dunlin_ui::settings::segments(*p)
 }
 
 fn segment(
@@ -3249,7 +3109,7 @@ fn segment(
     active: bool,
     _p: &Palette,
 ) -> Button {
-    segment_button(id, label, active)
+    dunlin_ui::settings::segment(id, label, active)
 }
 
 fn settings_button(
@@ -3258,7 +3118,7 @@ fn settings_button(
     primary: bool,
     _p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id)
+    dunlin_ui::settings::button(id)
         .label(label)
         .when(primary, |button| button.primary())
 }
@@ -3269,8 +3129,7 @@ fn settings_text_button(
     color: Hsla,
     p: &Palette,
 ) -> Button {
-    dunlin_ui::button(id)
-        .ghost()
+    dunlin_ui::settings::button(id)
         .label(label)
         .when(color == p.red, |button| button.danger().outline())
         .when(color == p.amber, |button| button.warning().outline())
@@ -3313,7 +3172,9 @@ fn notification_permission_row(
 }
 
 fn setting_row(title: &str, description: &str, control: AnyElement, p: &Palette) -> AnyElement {
-    dunlin_ui::settings::row(title, description, control, *p).into_any_element()
+    dunlin_ui::settings::row(title, description, control, *p)
+        .px(px(0.))
+        .into_any_element()
 }
 
 fn divider(p: &Palette) -> AnyElement {
@@ -3339,7 +3200,7 @@ fn toggle_switch(
         "project-language" => "Show primary language",
         "project-topics" => "Show repository topics",
         "project-wrap-names" => "Wrap project names",
-        "project-hover-preview" => "Project hover preview",
+        "project-info-preview" => "Project information",
         "stream-responses" => "Stream responses",
         "chat-timestamps" => "Message times",
         "chat-duration" => "Agent turn duration",
@@ -3359,6 +3220,7 @@ fn toggle_switch(
     dunlin_ui::switch(id, label, value)
         .on_click(cx.listener(move |this, _, window, cx| {
             action(this);
+            dunlin_ui::set_motion_preference(this.reduce_motion, cx);
             this.apply_editor_preferences(window, cx);
             this.persist_settings(cx);
             cx.notify();
@@ -3373,7 +3235,7 @@ fn font_picker(this: &DunlinApp, code: bool, cx: &mut Context<DunlinApp>) -> Any
         this.ui_font_family.clone()
     };
     let app = cx.entity().downgrade();
-    dunlin_ui::button(if code {
+    dunlin_ui::settings::button(if code {
         "code-font-picker"
     } else {
         "ui-font-picker"

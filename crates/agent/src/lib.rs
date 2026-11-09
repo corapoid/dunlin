@@ -38,8 +38,8 @@ pub fn relay_tls_config(pem: &[u8]) -> Result<Arc<rustls::ClientConfig>, String>
             .with_no_client_auth(),
     ))
 }
-pub use models::{ModelChoice, SessionModels, SessionModes};
-use models::{session_models, session_modes};
+pub use models::{ModelChoice, SessionModels, SessionModes, SessionOption};
+use models::{session_models, session_modes, session_options};
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::v1::ConnectionTo;
@@ -297,6 +297,8 @@ pub enum HarnessUpdate {
     Configuration {
         models: Option<SessionModels>,
         modes: Option<SessionModes>,
+        #[serde(default)]
+        options: Option<Vec<SessionOption>>,
     },
 }
 
@@ -340,6 +342,14 @@ pub enum HarnessEvent {
         state: Option<SessionModes>,
     },
     ModeChangeFailed {
+        session_id: String,
+        message: String,
+    },
+    ConfigOptions {
+        session_id: String,
+        options: Vec<SessionOption>,
+    },
+    ConfigOptionChangeFailed {
         session_id: String,
         message: String,
     },
@@ -394,6 +404,11 @@ pub enum HarnessCommand {
         session_id: String,
         config_id: Option<String>,
         mode_id: String,
+    },
+    SetConfigOption {
+        session_id: String,
+        config_id: String,
+        value: String,
     },
     RespondPermission {
         request_id: String,
@@ -552,6 +567,14 @@ impl AcpHarness {
             session_id,
             config_id,
             mode_id,
+        })
+    }
+
+    pub fn set_config_option(&self, session_id: String, config_id: String, value: String) -> bool {
+        self.send(HarnessCommand::SetConfigOption {
+            session_id,
+            config_id,
+            value,
         })
     }
 
@@ -903,6 +926,9 @@ async fn run(
                             match result {
                                 Ok(response) => {
                                     // Older agents return an empty object on success.
+                                    let _ = foreground_events.send(HarnessEvent::ConfigOptions {
+                                        session_id: session_id.clone(), options: session_options(&response).unwrap_or_default(),
+                                    }).await;
                                     let state = session_models(&response).unwrap_or(SessionModels {
                                         config_id, current: model_id, choices: Vec::new(),
                                     });
@@ -936,6 +962,9 @@ async fn run(
                             }.await;
                             match result {
                                 Ok(response) => {
+                                    if let Some(options) = session_options(&response) {
+                                        let _ = foreground_events.send(HarnessEvent::ConfigOptions { session_id: session_id.clone(), options }).await;
+                                    }
                                     if let Some(models) = session_models(&response) {
                                         let _ = foreground_events.send(HarnessEvent::Models { session_id: session_id.clone(), state: Some(models) }).await;
                                     }
@@ -948,6 +977,36 @@ async fn run(
                                     let _ = foreground_events.send(HarnessEvent::ModeChangeFailed {
                                         session_id, message: format!("Could not change mode: {error}"),
                                     }).await;
+                                }
+                            }
+                        }
+                        HarnessCommand::SetConfigOption { session_id, config_id, value } => {
+                            let result = async {
+                                if active_session.as_ref().map(ToString::to_string).as_deref() != Some(&session_id) {
+                                    return Err(AcpError::new(-32602, "Session is no longer active"));
+                                }
+                                let request = UntypedMessage::new("session/set_config_option", serde_json::json!({
+                                    "sessionId": session_id, "configId": config_id, "value": value,
+                                }))?;
+                                let response = connection.send_request(request).block_task().await?;
+                                let options = session_options(&response).ok_or_else(|| AcpError::new(-32603, "Harness did not confirm configuration options"))?;
+                                if !options.iter().any(|option| option.id == config_id && option.selector.current == value) {
+                                    return Err(AcpError::new(-32603, "Harness did not accept the selected option"));
+                                }
+                                Ok((response, options))
+                            }.await;
+                            match result {
+                                Ok((response, options)) => {
+                                    if let Some(state) = session_models(&response) {
+                                        let _ = foreground_events.send(HarnessEvent::Models { session_id: session_id.clone(), state: Some(state) }).await;
+                                    }
+                                    if let Some(state) = session_modes(&response) {
+                                        let _ = foreground_events.send(HarnessEvent::Modes { session_id: session_id.clone(), state: Some(state) }).await;
+                                    }
+                                    let _ = foreground_events.send(HarnessEvent::ConfigOptions { session_id, options }).await;
+                                }
+                                Err(error) => {
+                                    let _ = foreground_events.send(HarnessEvent::ConfigOptionChangeFailed { session_id, message: format!("Could not change model option: {error}") }).await;
                                 }
                             }
                         }
@@ -1062,6 +1121,7 @@ async fn open_session(
         .ok_or_else(|| AcpError::new(-32603, "The harness did not return a session id"))?;
     let mut models = session_models(&response);
     let mut modes = session_modes(&response);
+    let mut options = session_options(&response).unwrap_or_default();
     if existing.is_none()
         && let Some(preferred) = default_model
     {
@@ -1100,6 +1160,7 @@ async fn open_session(
             }
             models = Some(selected);
             modes = session_modes(&changed).or(modes);
+            options = session_options(&changed).unwrap_or_default();
         }
     }
     let event = if existing.is_some() {
@@ -1116,6 +1177,12 @@ async fn open_session(
         .send(HarnessEvent::Models {
             session_id: id.clone(),
             state: models,
+        })
+        .await;
+    let _ = events
+        .send(HarnessEvent::ConfigOptions {
+            session_id: id.clone(),
+            options,
         })
         .await;
     let _ = events
@@ -1178,10 +1245,12 @@ fn map_session_update(update: &SessionUpdate) -> Option<HarnessUpdate> {
                 .map(|value| HarnessUpdate::Configuration {
                     models: session_models(&value),
                     modes: session_modes(&value),
+                    options: session_options(&value),
                 })
         }
         SessionUpdate::CurrentModeUpdate(update) => Some(HarnessUpdate::Configuration {
             models: None,
+            options: None,
             modes: Some(SessionModes {
                 config_id: None,
                 current: update.current_mode_id.to_string(),
@@ -1631,6 +1700,7 @@ mod tests {
             HarnessUpdate::Configuration {
                 models: Some(models),
                 modes: Some(modes),
+                ..
             } => {
                 assert_eq!(models.current, "a");
                 assert_eq!(modes.current, "plan");
@@ -1644,6 +1714,7 @@ mod tests {
             HarnessUpdate::Configuration {
                 models: None,
                 modes: Some(modes),
+                ..
             } => assert_eq!(modes.current, "build"),
             other => panic!("unexpected mode notification: {other:?}"),
         }

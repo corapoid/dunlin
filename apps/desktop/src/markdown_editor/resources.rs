@@ -2,7 +2,7 @@
 use super::{Mode, document::Document, editable};
 use crate::app::DunlinApp;
 use dunlin_ui::{
-    component::{Disableable, Sizable, button::ButtonVariants, input::InputState},
+    component::{Disableable, input::InputState},
     prelude::FluentBuilder as _,
     *,
 };
@@ -603,9 +603,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                     .flex()
                     .gap(px(6.))
                     .child(
-                        dunlin_ui::button("markdown-resource-apply")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("markdown-resource-apply")
                             .label("Apply")
                             .disabled(stale || !editable(this, tab))
                             .on_click(
@@ -613,9 +611,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                             ),
                     )
                     .child(
-                        dunlin_ui::button("markdown-resource-open")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("markdown-resource-open")
                             .label(if pending {
                                 "Loading…"
                             } else if d.target.image {
@@ -629,9 +625,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<An
                             ),
                     )
                     .child(
-                        dunlin_ui::button("markdown-resource-cancel")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("markdown-resource-cancel")
                             .label("Close")
                             .on_click(cx.listener(|this, _, _, cx| this.close_visual_resource(cx))),
                     ),

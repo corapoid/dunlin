@@ -29,7 +29,7 @@ pub(super) fn render(
                     .into_any_element(), &p))
             .child(divider(&p))
             .child(setting_row("Reset Dunlin to factory defaults",
-                "Remove local settings, projects, groups, history and saved credentials, then close Dunlin. Repository files and installed agents stay.",
+                "Remove local settings, projects, groups, history and saved credentials, then restart Dunlin. Repository files and installed agents stay.",
                 settings_text_button("factory-reset", "Reset…", p.red, &p)
                     .on_click(cx.listener(|this, _, window, cx| this.request_factory_reset(window, cx)))
                     .into_any_element(), &p)))

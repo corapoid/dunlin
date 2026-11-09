@@ -3,7 +3,6 @@ use crate::{app::DunlinApp, harness::ChatItem};
 use chrono::{Days, Local, NaiveDate, TimeZone, Timelike};
 use dunlin_domain::{Project, SidebarSection};
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::Sizable;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use serde::{Deserialize, Serialize};
@@ -516,8 +515,7 @@ fn recent_project_tiles(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> An
                                 )),
                         )
                         .child(
-                            dunlin_ui::button(format!("dashboard-open:{open_id}"))
-                                .small()
+                            dunlin_ui::action_button(format!("dashboard-open:{open_id}"))
                                 .label("Open")
                                 .icon(IconName::ChevronRight)
                                 .on_click(cx.listener(move |this, _, _, cx| {

@@ -540,7 +540,7 @@ impl DunlinApp {
 }
 
 fn button(id: &'static str, label: impl Into<SharedString>, enabled: bool) -> Button {
-    dunlin_ui::button(id).label(label).disabled(!enabled)
+    dunlin_ui::action_button(id).label(label).disabled(!enabled)
 }
 
 pub(crate) fn render(
@@ -925,7 +925,7 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .child(div().font_weight(FontWeight::MEDIUM).child("GitHub CLI"))
                 .child(div().text_size(px(11.)).text_color(color).child(message))
                 .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Authenticate outside Dunlin: gh auth login --hostname github.com. Dunlin never reads or stores your token.")))
-            .child(button("settings-refresh-gh", if this.project_import.checking_cli { "Checking…" } else { "Check again" }, !this.project_import.checking_cli)
+            .child(dunlin_ui::settings::button("settings-refresh-gh").label(if this.project_import.checking_cli { "Checking…" } else { "Check again" }).disabled(this.project_import.checking_cli)
                 .on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))));
     let gitlab_status = this.project_import.gitlab_cli.as_ref();
     card = card.child(div().px(px(14.)).py(px(12.)).border_t_1().border_color(p.border)
@@ -936,7 +936,7 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                 .child(gitlab_status.map(|s| s.message.clone()).unwrap_or_else(|| "Checking GitLab CLI…".into())))
             .child(div().text_size(px(11.)).text_color(p.muted_fg)
                 .child("Authenticate outside Dunlin: glab auth login --hostname gitlab.com. Tokens stay in glab.")))
-        .child(button("settings-refresh-glab", "Check again", !this.project_import.checking_cli)
+        .child(dunlin_ui::settings::button("settings-refresh-glab").label("Check again").disabled(this.project_import.checking_cli)
             .on_click(cx.listener(|this, _, _, cx| this.refresh_hosting_accounts(cx)))));
     for (index, root) in this.watched_project_folders.clone().into_iter().enumerate() {
         card = card.child(
@@ -956,8 +956,7 @@ pub(crate) fn settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> Any
                         .child(format!("Tracking · {}", root.display())),
                 )
                 .child(
-                    dunlin_ui::button(format!("stop-tracking-root:{index}"))
-                        .small()
+                    dunlin_ui::settings::button(format!("stop-tracking-root:{index}"))
                         .label("Stop tracking")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.watched_project_folders.retain(|path| path != &root);

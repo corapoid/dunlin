@@ -675,7 +675,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let busy = s.loading || this.git_history.running;
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Capture BEFORE a task. Review is an observed diff, not agent authorship. Unsaved buffers, ignored files and Git index/refs are NOT backed up. Baseline HEAD objects must remain available. Local snapshots may contain secrets; never published automatically.")
-        .child(compact_input(&s.label).aria_label("Checkpoint label")).child(dunlin_ui::button("capture-task-checkpoint").label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
+        .child(input(&s.label).aria_label("Checkpoint label")).child(dunlin_ui::action_button("capture-task-checkpoint").label("Capture saved-file baseline").disabled(busy).on_click(cx.listener(|this,_,_,cx|this.capture_checkpoint(cx))));
     for point in &s.checkpoints {
         let id = point.id.clone();
         let delete = id.clone();
@@ -689,9 +689,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     point.label, point.created_ms, point.head
                 ))
                 .child(
-                    dunlin_ui::button(format!("review-checkpoint-{id}"))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("review-checkpoint-{id}"))
                         .label("Review changes")
                         .disabled(busy)
                         .on_click(
@@ -699,9 +697,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         ),
                 )
                 .child(
-                    dunlin_ui::button(format!("delete-checkpoint-{delete}"))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("delete-checkpoint-{delete}"))
+                        .danger()
+                        .outline()
                         .label("Delete baseline…")
                         .disabled(busy)
                         .on_click(cx.listener(move |this, _, w, cx| {
@@ -733,9 +731,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         })),
                 )
                 .child(
-                    dunlin_ui::button(format!("task-restore-{restore}"))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("task-restore-{restore}"))
                         .label("Preview restore…")
                         .disabled(busy)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -759,17 +755,14 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .child(compact_input(&s.line).aria_label("Review line number"))
             .child(compact_input(&s.comment).aria_label("Review comment"))
             .child(
-                dunlin_ui::button("task-review-comment")
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button("task-review-comment")
                     .label("Add file/line review to agent draft")
                     .on_click(cx.listener(|this, _, w, cx| this.review_to_draft(w, cx))),
             );
     }
     if s.pending.is_some() {
         body = body.child(
-            dunlin_ui::button("task-restore-confirm")
-                .small()
+            dunlin_ui::action_button("task-restore-confirm")
                 .label("Confirm this one-file restore…")
                 .disabled(busy)
                 .on_click(cx.listener(|this, _, w, cx| this.restore_checkpoint_file(w, cx))),

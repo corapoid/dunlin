@@ -1,7 +1,7 @@
 //! Custom window title bar: brand, project breadcrumb, primary view switcher
 //! and the quiet utility cluster on the right.
 
-use dunlin_domain::{MainView, SidebarSection};
+use dunlin_domain::SidebarSection;
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::{Disableable, Icon, TitleBar, button::ButtonVariants};
 use dunlin_ui::prelude::FluentBuilder as _;
@@ -157,6 +157,7 @@ pub(crate) fn render(
             dunlin_ui::button("title-git-history")
                 .ghost()
                 .label("History")
+                .tooltip(this.shortcut_label("Branch graph & history", "⌘⌥G"))
                 .on_click(cx.listener(|this, _, window, cx| this.show_git_history(window, cx))),
         );
     }
@@ -202,12 +203,6 @@ pub(crate) fn render(
         .justify_end()
         .gap(px(6.))
         .child(super::host_control::render(this, cx))
-        .when(agent, |bar| {
-            bar.when(
-                this.view == MainView::Chat && !this.final_answer_only,
-                |bar| bar.child(super::chat::reasoning_toggle(this, cx)),
-            )
-        })
         .child(crate::user_profile::render(this, cx));
 
     TitleBar::new()

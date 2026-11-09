@@ -4,6 +4,7 @@ use crate::{
     remote::RemoteHost,
 };
 use dunlin_http as ureq;
+use dunlin_ui::settings::button as action_button;
 use dunlin_ui::{
     component::{Disableable, button::ButtonVariants as _, input::InputState},
     *,
@@ -757,7 +758,8 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             ),
         )
         .child(
-            button("copy-relay-installer")
+            action_button("copy-relay-installer")
+                .self_end()
                 .label("Copy server installation command")
                 .on_click(|_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(INSTALL.into()))
@@ -769,17 +771,17 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .flex_wrap()
                 .gap(px(8.))
                 .child(
-                    button("tailscale-install")
+                    action_button("tailscale-install")
                         .label("Install Tailscale on this Mac…")
                         .on_click(|_, _, cx| cx.open_url("https://tailscale.com/download/mac")),
                 )
                 .child(
-                    button("tailscale-login")
+                    action_button("tailscale-login")
                         .label("Open Tailscale / sign in…")
                         .on_click(|_, _, cx| cx.open_url("tailscale://")),
                 )
                 .child(
-                    button("tailscale-status")
+                    action_button("tailscale-status")
                         .label("Check Tailscale")
                         .on_click(cx.listener(|this, _, _, cx| this.check_tailscale(cx))),
                 ),
@@ -808,7 +810,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .flex()
             .gap(px(8.))
             .child(
-                button("server-refresh")
+                action_button("server-refresh")
                     .label(if this.server_panel.loading {
                         "Connecting…"
                     } else {
@@ -818,7 +820,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     .on_click(cx.listener(|this, _, _, cx| this.refresh_server(cx))),
             )
             .child(
-                button("server-open-project")
+                action_button("server-open-project")
                     .label("Open server project…")
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.open_remote_picker_for(&id, cx)),
@@ -854,7 +856,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             .disabled(busy),
                     )
                     .child(
-                        button("server-rename")
+                        action_button("server-rename")
                             .label("Rename server")
                             .disabled(busy)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -893,7 +895,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         if selected { " · Default" } else { "" }
                     )))
                     .child(
-                        button(format!("server-default:{id}"))
+                        action_button(format!("server-default:{id}"))
                             .label("Use by default")
                             .disabled(!admin || busy || !harness.installed)
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -901,7 +903,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             })),
                     )
                     .child(
-                        button(format!("server-install:{install}"))
+                        action_button(format!("server-install:{install}"))
                             .label(if harness.installed {
                                 "Update"
                             } else {
@@ -913,7 +915,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             })),
                     )
                     .child(
-                        button(format!("server-agent-login:{setup}"))
+                        action_button(format!("server-agent-login:{setup}"))
                             .label("Authorize…")
                             .disabled(!admin || busy || !harness.installed)
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -935,7 +937,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                     .gap(px(8.))
                     .child(div().flex_1().child(label))
                     .child(
-                        button(format!("server-login:{provider}"))
+                        action_button(format!("server-login:{provider}"))
                             .label("Authorize on server…")
                             .disabled(!admin || busy)
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -943,7 +945,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                             })),
                     )
                     .child(
-                        button(format!("server-status:{provider}"))
+                        action_button(format!("server-status:{provider}"))
                             .label("Check account")
                             .disabled(!admin || busy)
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -964,7 +966,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         .flex()
                         .gap(px(8.))
                         .child(
-                            button("server-clone-github")
+                            action_button("server-clone-github")
                                 .label("Clone from GitHub")
                                 .disabled(!admin || busy)
                                 .on_click(
@@ -974,7 +976,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                 ),
                         )
                         .child(
-                            button("server-clone-gitlab")
+                            action_button("server-clone-gitlab")
                                 .label("Clone from GitLab")
                                 .disabled(!admin || busy)
                                 .on_click(
@@ -991,13 +993,13 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .flex_wrap()
                 .gap(px(8.))
                 .child(
-                    button("server-copy-preview")
+                    action_button("server-copy-preview")
                         .label("Copy local project…")
                         .disabled(!admin || busy)
                         .on_click(cx.listener(|this, _, _, cx| this.choose_server_copy(cx))),
                 )
                 .child(
-                    button("server-copy-history")
+                    action_button("server-copy-history")
                         .label(if this.server_panel.history {
                             "Git history: included"
                         } else {
@@ -1012,7 +1014,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         })),
                 )
                 .child(
-                    button("server-copy-ignored")
+                    action_button("server-copy-ignored")
                         .label(if this.server_panel.include_ignored {
                             "Ignored files: included"
                         } else {
@@ -1047,7 +1049,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .collect::<Vec<_>>()
             .join("\n");
         body = body.child(
-            button("server-copy-file-list")
+            action_button("server-copy-file-list")
                 .label("Copy full file list for review")
                 .on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(file_list.clone()))
@@ -1063,7 +1065,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             ));
         }
         body = body.child(
-            button("server-copy-confirm")
+            action_button("server-copy-confirm")
                 .primary()
                 .label("Copy reviewed project to server")
                 .disabled(busy)
@@ -1078,7 +1080,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             .map(|s| s.clone())
             .unwrap_or_default();
         body = body.child(progress).child(
-            button("server-copy-cancel")
+            action_button("server-copy-cancel")
                 .label("Cancel transfer")
                 .on_click(move |_, _, _| cancel.store(true, Ordering::Relaxed)),
         );
@@ -1100,7 +1102,7 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
         }
         let output = job.output.clone();
         body = body.child(
-            button("server-job-copy-output")
+            action_button("server-job-copy-output")
                 .label("Copy verification code / output")
                 .on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(output.clone()))
@@ -1113,14 +1115,14 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 "https://gitlab.com/oauth/device"
             };
             body = body.child(
-                button("server-open-auth")
+                action_button("server-open-auth")
                     .label("Open verification page")
                     .on_click(move |_, _, cx| cx.open_url(url)),
             );
         }
         if !job.id.is_empty() && (!job.finished || !job.success) {
             body = body.child(
-                button("server-job-cancel")
+                action_button("server-job-cancel")
                     .label("Cancel server action")
                     .on_click(cx.listener(|this, _, _, cx| this.cancel_server_job(cx))),
             );

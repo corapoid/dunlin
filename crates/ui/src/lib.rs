@@ -12,7 +12,7 @@ mod widgets;
 pub use controls::*;
 pub use gpui_kit::component;
 pub use gpui_kit::*;
-pub use morph_text::MorphText;
+pub use morph_text::{MorphText, set_motion_preference};
 #[cfg(debug_assertions)]
 pub use prompts::debug_confirmation_answer;
 pub use surfaces::{SurfaceEdges, SurfaceGeometry, progress_bar, radii, segmented_bar};

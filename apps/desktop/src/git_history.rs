@@ -949,9 +949,7 @@ fn browser(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         })),
                 )
                 .child(
-                    dunlin_ui::button("history-refresh")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("history-refresh")
                         .label("Refresh")
                         .disabled(view.loading || this.git_history.running)
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -1064,9 +1062,7 @@ fn browser(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                     .child(list)
                                     .when(view.limit < 2000 && view.rows.len() == view.limit, |panel| {
                                         panel.child(
-                                            dunlin_ui::button("history-more")
-                                                .ghost()
-                                                .small()
+                                            dunlin_ui::action_button("history-more")
                                                 .label("Load more commits")
                                                 .disabled(view.loading || this.git_history.running)
                                                 .on_click(cx.listener(|this, _, _, cx| {

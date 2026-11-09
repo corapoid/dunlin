@@ -9,7 +9,6 @@ use crate::app::DunlinApp;
 use dunlin_ui::{
     component::{
         ActiveTheme, Disableable, Sizable,
-        button::ButtonVariants,
         input::{
             Backspace, Delete, Editor, EditorState, Enter, IndentInline, InputEvent, OutdentInline,
             Redo, TextDecoration, TextDecorationCollection, Undo,
@@ -1409,10 +1408,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     }
     root.child(
         div().flex().gap(px(4.)).child(
-            dunlin_ui::button("visual-add-paragraph")
-                .ghost()
-                .small()
-                .rounded(px(dunlin_ui::radii::CODE))
+            dunlin_ui::action_button("visual-add-paragraph")
                 .label("+ Paragraph")
                 .disabled(!editable(this, tab))
                 .on_click(

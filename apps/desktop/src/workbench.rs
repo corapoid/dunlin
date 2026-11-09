@@ -7,7 +7,7 @@ use crate::{
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
 use dunlin_ui::component::{
-    Icon, Sizable,
+    Icon,
     button::ButtonVariants,
     input::{EditorState, InputEvent},
 };
@@ -46,8 +46,7 @@ pub(crate) fn empty_workspace(cx: &mut Context<DunlinApp>) -> AnyElement {
                 .child("A little space for your next idea"),
         )
         .child(
-            dunlin_ui::button("reopen-chat-tab")
-                .ghost()
+            dunlin_ui::action_button("reopen-chat-tab")
                 .label("Open Chat")
                 .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx))),
         )
@@ -373,9 +372,7 @@ impl DunlinApp {
                 })
                 .when(is_text, |banner| {
                     banner.child(
-                        dunlin_ui::button("review-retained-git-buffer")
-                            .ghost()
-                            .small()
+                        dunlin_ui::action_button("review-retained-git-buffer")
                             .label("Review…")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.editor_conflict =
@@ -1088,6 +1085,12 @@ impl DunlinApp {
                                 session.title
                             ),
                         )
+                        .when(current, |button| {
+                            button.tooltip(self.shortcut_label(
+                                "Close active session tab without stopping its agent",
+                                "⌘W",
+                            ))
+                        })
                         .relative()
                         .when(current, |button| {
                             button.children(tab_probe("close-chat-tab"))
@@ -1247,6 +1250,9 @@ impl DunlinApp {
                     .on_click(cx.listener(|this, _, window, cx| this.open_git_history(window, cx)))
                     .suffix(
                         icon_button("close-git-history-tab", IconName::X, "Close Git history")
+                            .when(self.git_history.is_active_for(self.project()), |button| {
+                                button.tooltip(self.shortcut_label("Close Git history", "⌘W"))
+                            })
                             .relative()
                             .children(tab_probe("close-git-history-tab"))
                             .size(px(24.))

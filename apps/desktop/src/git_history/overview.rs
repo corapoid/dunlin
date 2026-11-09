@@ -195,9 +195,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             ));
             let path = tree.path.clone();
             let mut actions = div().flex().gap(px(4.)).child(
-                dunlin_ui::button(format!("worktree-copy-{path}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("worktree-copy-{path}"))
                     .label(if view.project.is_remote() {
                         "Copy server path"
                     } else {
@@ -210,9 +208,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             if !view.project.is_remote() && !tree.bare && tree.prunable.is_none() {
                 let path = tree.path.clone();
                 actions = actions.child(
-                    dunlin_ui::button(format!("worktree-open-{path}"))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("worktree-open-{path}"))
                         .label("Open as project…")
                         .disabled(this.git_history.running)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -231,7 +227,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 if let Some(view) = &mut this.git_history.view { view.overview.visible = false; }
                 cx.notify();
             })))
-            .child(dunlin_ui::button("inventory-refresh").label("Refresh state").disabled(state.loading || this.git_history.running)
+            .child(dunlin_ui::action_button("inventory-refresh").label("Refresh state").disabled(state.loading || this.git_history.running)
                 .on_click(cx.listener(|this, _, _, cx| this.load_git_overview(cx))))
             .child(dunlin_ui::button("inventory-close").label("Close tab").on_click(cx.listener(|this, _, window, cx| {
                 this.close_git_history(cx); this.focus_handle.focus(window, cx);

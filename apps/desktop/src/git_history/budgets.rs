@@ -260,7 +260,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let mut body=div().p(px(12.)).flex().flex_col().gap(px(8.)).text_size(px(12.))
         .child("Durable client-request/time budgets. Reported USD is optional and can be unknown; it is not a guaranteed provider billing cap. Queued/retried client sends share the ledger; opaque harness child work is not falsely priced at zero.")
         .child(compact_input(&s.label).aria_label("Budget label")).child(compact_input(&s.requests).aria_label("Request limit")).child(compact_input(&s.seconds).aria_label("Time limit in seconds")).child(compact_input(&s.usd).aria_label("Reported USD limit"))
-        .child(dunlin_ui::button("budget-arm").label("Review and approve session limits…").on_click(cx.listener(|this,_,w,cx|this.arm_session_budget(w,cx))));
+        .child(dunlin_ui::action_button("budget-arm").label("Review and approve session limits…").on_click(cx.listener(|this,_,w,cx|this.arm_session_budget(w,cx))));
     if let Some(e) = &this.task_budgets.error {
         body = body.child(div().text_color(p.red).child(e.clone()));
     }
@@ -294,27 +294,21 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )),
             )
             .child(
-                dunlin_ui::button(format!("budget-stop-{id}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("budget-stop-{id}"))
                     .label("Stop assigned work…")
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.change_task_budget(id.clone(), false, w, cx)
                     })),
             )
             .child(
-                dunlin_ui::button(format!("budget-release-{release}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("budget-release-{release}"))
                     .label("Release limits…")
                     .on_click(cx.listener(move |this, _, w, cx| {
                         this.change_task_budget(release.clone(), true, w, cx)
                     })),
             );
         body = body.child(
-            dunlin_ui::button(format!("budget-forget-{forget}"))
-                .ghost()
-                .small()
+            dunlin_ui::action_button(format!("budget-forget-{forget}"))
                 .label("Forget released history…")
                 .disabled(task.stopped.as_deref() != Some("Released by user"))
                 .on_click(cx.listener(move |this, _, w, cx| {

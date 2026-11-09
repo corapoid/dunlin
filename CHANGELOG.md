@@ -6,6 +6,25 @@ All notable changes to Dunlin are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Refined Settings with spacious preference rows, capsule controls, a quieter
+  two-column shell and shared palette-driven styling tokens, keeping the menu
+  sections intact. Agent setup is a separate disclosure; history import only
+  appears for detected supported agents, and picker visibility is explicitly labeled.
+
+- Matched ordinary action colors to both themes, with distinct hover/pressed states,
+  readable semantic outlines and consistent medium-sized actions across credentials,
+  SSH/server settings, authorization and project/group forms, dialogs and workspace
+  tools. Added native pointer-state paint checks and full settings-page captures.
+
+- Standardized action buttons with raised neutral surfaces and animated labels,
+  normal settings heights and right-aligned provider, skill and extension actions.
+  Kept navigation, tags and status controls separate so action fills and shadows
+  do not override their appearance or text contrast.
+- Skills now install once globally with shared discovery links for OpenCode,
+  Claude Code and Codex; explicit updates safely migrate unchanged managed copies.
+
 ## [0.2.0] — Unreleased
 
 ### Changed

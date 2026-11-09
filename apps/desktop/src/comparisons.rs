@@ -623,6 +623,7 @@ impl DunlinApp {
                     || runtime.session_id.is_none()
                     || runtime.model_changing
                     || runtime.mode_changing
+                    || runtime.config_changing
                 {
                     continue;
                 }

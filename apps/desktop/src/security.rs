@@ -228,7 +228,7 @@ fn action(
     label: impl Into<SharedString>,
     _p: Palette,
 ) -> dunlin_ui::component::button::Button {
-    dunlin_ui::button(id).label(label)
+    dunlin_ui::settings::button(id).label(label)
 }
 
 fn card(p: &Palette) -> Div {
@@ -2055,9 +2055,7 @@ pub(crate) fn render(
     }
 
     this.ensure_security_runs(cx);
-    let project = this.project().clone();
     let target = current_target(this);
-    let in_library = this.skill_in_library(CLOUDFLARE_SKILL);
     let installed = skill_installed(this, target);
     let codex_installed =
         crate::harness::command_available(&crate::harness::harness_command("OpenAI Codex", ""));
@@ -2066,7 +2064,6 @@ pub(crate) fn render(
     let project_scope = project_scope(this);
     let message = this.skills_ui.message.clone();
     let busy = this.skills_ui.busy;
-    let project_id = project.id.clone();
 
     // Settings owns the page padding, title and single scroll container.
     let mut content = div().w_full().min_w(px(0.)).flex().flex_col().gap(px(20.));
@@ -2134,8 +2131,6 @@ pub(crate) fn render(
                 .child(badge(
                     if installed {
                         "Installed"
-                    } else if in_library {
-                        "In library"
                     } else {
                         "Not installed"
                     },
@@ -2155,85 +2150,16 @@ pub(crate) fn render(
                 .child("Dunlin installs files only. It does not execute the skill's scripts, grant harness permissions or change provider settings. Without an OS-enforced sandbox, audits must stay source-only. The harness's normal permission prompts still apply."),
         );
 
-    let mut buttons = div().flex().flex_wrap().gap(px(6.));
-    if !in_library {
-        let id = CLOUDFLARE_SKILL.to_string();
-        buttons = buttons.child(action("security-add-skill", "Add to library", p).on_click(
-            cx.listener(move |this, _, _, cx| {
-                let _ = this.add_catalog_skill(&id, cx);
-            }),
-        ));
-    }
+    let mut buttons = div().flex().flex_wrap().justify_end().gap(px(8.));
     if !installed {
         let id = CLOUDFLARE_SKILL.to_string();
-        let project_for_install = project_id.clone();
         buttons = buttons.child(
-            action(
-                "security-install-global",
-                format!("Install for {}", target.label()),
-                p,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.install_catalog_skill(
-                    &id,
-                    target,
-                    Scope::Global,
-                    &project_for_install,
-                    None,
-                    cx,
-                );
-            })),
-        );
-        if target != Target::Other
-            && let Some((project_id, _)) = project_scope.clone()
-        {
-            let id = CLOUDFLARE_SKILL.to_string();
-            buttons = buttons.child(
-                action(
-                    "security-install-project",
-                    format!("Install in project · {}", target.label()),
-                    p,
-                )
+            action("security-install-global", "Install globally", p)
+                .disabled(busy)
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.install_catalog_skill(&id, target, Scope::Project, &project_id, None, cx);
+                    this.install_catalog_skill(&id, Target::Shared, Scope::Global, "", None, cx);
                 })),
-            );
-        }
-        if target == Target::Other {
-            let id = CLOUDFLARE_SKILL.to_string();
-            buttons = buttons.child(
-                action("security-install-custom", "Choose harness folder…", p).on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        let selected = cx.prompt_for_paths(PathPromptOptions {
-                            files: false,
-                            directories: true,
-                            multiple: false,
-                            prompt: Some("Choose the harness's skills directory".into()),
-                        });
-                        let selected = this.overlay_backdrop.track_native(selected, cx);
-                        let id = id.clone();
-                        cx.spawn(async move |this, cx| {
-                            if let Ok(Ok(Some(paths))) = selected.await
-                                && let Some(path) = paths.into_iter().next()
-                            {
-                                let _ = this.update(cx, |this, cx| {
-                                    let project = this.project().id.clone();
-                                    this.install_catalog_skill(
-                                        &id,
-                                        Target::Other,
-                                        Scope::Global,
-                                        &project,
-                                        Some(path),
-                                        cx,
-                                    );
-                                });
-                            }
-                        })
-                        .detach();
-                    }),
-                ),
-            );
-        }
+        );
     } else {
         buttons = buttons.child(
             action("security-start-audit", "Start audit in chat", p)

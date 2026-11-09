@@ -173,7 +173,6 @@ pub(crate) struct StoredSettings {
     #[serde(default)]
     pub appearance: Option<Appearance>,
     pub view: MainView,
-    pub default_view: MainView,
     pub section: SidebarSection,
     pub sidebar_collapsed: bool,
     pub notifications_enabled: bool,
@@ -195,6 +194,7 @@ pub(crate) struct StoredSettings {
     pub account_usage_collapsed: bool,
     pub dashboard_settings: crate::dashboard::Settings,
     pub skills: Vec<crate::skills::Skill>,
+    pub conversation_skills: HashMap<String, Vec<String>>,
     #[serde(default = "default_security_enabled")]
     pub security_enabled: bool,
     #[serde(default)]
@@ -295,7 +295,6 @@ impl Default for StoredSettings {
             dark: true,
             appearance: Some(Appearance::System),
             view: MainView::Chat,
-            default_view: MainView::Chat,
             section: SidebarSection::Files,
             sidebar_collapsed: false,
             last_project_id: None,
@@ -314,6 +313,7 @@ impl Default for StoredSettings {
             account_usage_collapsed: false,
             dashboard_settings: Default::default(),
             skills: crate::skills::defaults(),
+            conversation_skills: HashMap::new(),
             security_enabled: true,
             security_triage: Vec::new(),
             vault_enabled: true,
@@ -573,7 +573,6 @@ pub(crate) struct DunlinApp {
     pub view: MainView,
     pub view_epoch: u64,
     pub navigation: navigation::History,
-    pub default_view: MainView,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
     pub local_import_running: bool,
@@ -623,6 +622,7 @@ pub(crate) struct DunlinApp {
     pub mcp_operations: std::collections::HashSet<String>,
     pub dashboard: crate::dashboard::State,
     pub skills: Vec<crate::skills::Skill>,
+    pub conversation_skills: HashMap<String, Vec<String>>,
     pub security_enabled: bool,
     pub skills_ui: crate::skills::Ui,
     pub skills_import_url: Entity<InputState>,
@@ -1169,7 +1169,6 @@ impl DunlinApp {
             view: stored.view,
             view_epoch: 0,
             navigation: Default::default(),
-            default_view: stored.default_view,
             section: if stored.dashboard_settings.start_at_dashboard {
                 SidebarSection::Dashboard
             } else if stored.section == SidebarSection::Dashboard
@@ -1232,6 +1231,7 @@ impl DunlinApp {
             mcp_operations: Default::default(),
             dashboard: Default::default(),
             skills: stored.skills.clone(),
+            conversation_skills: stored.conversation_skills.clone(),
             security_enabled: stored.security_enabled,
             skills_ui: Default::default(),
             skills_import_url,
@@ -1432,6 +1432,7 @@ impl DunlinApp {
         };
 
         cx.set_window_appearance(app.appearance.native());
+        dunlin_ui::set_motion_preference(app.reduce_motion, cx);
         dunlin_ui::theme::set_mode(
             app.appearance.mode(cx.window_appearance()),
             Some(window),
@@ -1533,6 +1534,7 @@ impl DunlinApp {
         {
             app.connect_harness(cx);
         }
+        app.assign_imported_projects(cx);
         app.restart_file_watcher();
         app.refresh_project_icons(cx);
         if !restored_project && !app.projects.is_empty() {
@@ -1871,6 +1873,10 @@ impl DunlinApp {
             let pending_id = existing.id.clone();
             if let Some(context) = self.group_contexts.remove(&pending_id) {
                 self.group_contexts.insert(session_id.to_string(), context);
+            }
+            if let Some(skills) = self.conversation_skills.remove(&pending_id) {
+                self.conversation_skills
+                    .insert(session_id.to_string(), skills);
             }
             existing.id = session_id.to_string();
             existing.acp_session_id = Some(session_id.to_string());
@@ -3623,6 +3629,7 @@ impl DunlinApp {
             return;
         }
         self.projects.push(project.clone());
+        self.assign_imported_projects(cx);
         let index = self.projects.len() - 1;
         self.select_project_internal(index, true, cx);
         if self.sessions.is_empty() {
@@ -3705,7 +3712,7 @@ impl DunlinApp {
                 self.notice = Some("Connect to the relay to start a session".into());
             }
 
-            self.set_view(self.default_view, cx);
+            self.set_view(MainView::Chat, cx);
             self.ensure_usage(cx);
             cx.notify();
             return;
@@ -3731,7 +3738,7 @@ impl DunlinApp {
             self.connect_harness(cx);
         }
 
-        self.set_view(self.default_view, cx);
+        self.set_view(MainView::Chat, cx);
         self.selected_node = None;
         self.selected_span = None;
         self.notice = Some("Created a new session".into());
@@ -3775,8 +3782,15 @@ impl DunlinApp {
 
     /// Ask for confirmation before clearing all conversations.
     pub(crate) fn request_clear_history(&mut self, cx: &mut Context<Self>) {
+        if self.session_import.loading {
+            self.set_notice(
+                "Wait for the session import to finish before clearing history",
+                cx,
+            );
+            return;
+        }
         self.pending_delete = Some(PendingDelete::History {
-            count: self.all_sessions.len(),
+            count: self.all_sessions.len() + self.session_import.pending.len(),
         });
         cx.notify();
     }
@@ -3811,7 +3825,7 @@ impl DunlinApp {
     }
 
     fn clear_history(&mut self, cx: &mut Context<Self>) {
-        if self.all_sessions.is_empty() {
+        if self.all_sessions.is_empty() && self.session_import.pending.is_empty() {
             self.set_notice("No conversation history to clear", cx);
             return;
         }
@@ -3838,11 +3852,18 @@ impl DunlinApp {
         self.forget_all_transcripts();
         self.group_contexts.clear();
         self.all_sessions.clear();
+        self.session_import.pending.clear();
+        self.session_import.notices.clear();
         self.sessions.clear();
         self.selected_span = None;
         self.selected_node = None;
         self.expanded_tool = None;
 
+        if self.projects.is_empty() {
+            self.harness.transcript.clear();
+            self.set_notice("Cleared conversation history", cx);
+            return;
+        }
         let project_id = self.project().id.clone();
         let branch = self.project().branch.clone();
         let session = blank_session(&project_id, &self.effective_harness(), branch);
@@ -3915,6 +3936,7 @@ impl DunlinApp {
         }
         self.all_sessions.retain(|session| session.id != id);
         self.group_contexts.remove(id);
+        self.conversation_skills.remove(id);
         self.forget_transcript(id);
         let Some(index) = index else {
             self.notice = Some("Deleted session".into());
@@ -4050,6 +4072,7 @@ impl DunlinApp {
         self.all_sessions.retain(|session| session.project_id != id);
         for session_id in &removed_sessions {
             self.group_contexts.remove(session_id);
+            self.conversation_skills.remove(session_id);
             self.forget_transcript(session_id);
         }
         self.project_group_editor = None;
@@ -5868,7 +5891,6 @@ impl DunlinApp {
             dark: cx.theme().is_dark(),
             appearance: Some(self.appearance),
             view: self.view,
-            default_view: self.default_view,
             section: self.section,
             last_project_id: self
                 .projects
@@ -5893,6 +5915,7 @@ impl DunlinApp {
             account_usage_collapsed: self.account_usage_collapsed,
             dashboard_settings: self.dashboard_settings.clone(),
             skills: self.skills.clone(),
+            conversation_skills: self.conversation_skills.clone(),
             security_enabled: self.security_enabled,
             security_triage: self.security.triage.clone(),
             vault_enabled: self.vault.requested_enabled,

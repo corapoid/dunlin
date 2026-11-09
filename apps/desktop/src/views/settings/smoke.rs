@@ -3,10 +3,48 @@ use super::*;
 use crate::app::{Appearance, StoredSettings, UiDensity};
 use dunlin_ui::component::TitleBar;
 use std::{
+    cell::Cell,
     fs,
     path::PathBuf,
     time::{Duration, Instant},
 };
+
+thread_local! {
+    static PAINTED_PAGE: Cell<Option<SettingsTab>> = const { Cell::new(None) };
+}
+
+pub(super) fn page_marker(tab: SettingsTab) -> AnyElement {
+    canvas(
+        |_, _, _| (),
+        move |_, _, _, _| PAINTED_PAGE.with(|page| page.set(Some(tab))),
+    )
+    .absolute()
+    .inset_0()
+    .size_full()
+    .into_any_element()
+}
+
+/// Opt-in visual evidence from the real settings window, using fixture data only.
+/// Never captures the desktop or automates screen-recording consent.
+fn capture(window: &Window, path: &std::path::Path) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = HasWindowHandle::window_handle(window).unwrap();
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return;
+    };
+    // The fixture owns this NSView on the AppKit main thread.
+    let view: &objc2_app_kit::NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
+    let native = view.window().unwrap();
+    let result = std::process::Command::new("/usr/sbin/screencapture")
+        .args(["-x", "-l", &native.windowNumber().to_string()])
+        .arg(path)
+        .status()
+        .expect("capture fixture settings window");
+    assert!(
+        result.success(),
+        "Window capture unavailable; no TCC consent was automated"
+    );
+}
 
 pub(crate) fn run() {
     let dir = PathBuf::from(
@@ -30,8 +68,14 @@ pub(crate) fn run() {
         .save_setting(
             "app",
             &StoredSettings {
-                default_harness: "Custom ACP".into(),
+                default_harness: if std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some() {
+                    "OpenCode"
+                } else {
+                    "Custom ACP"
+                }
+                .into(),
                 opencode_provider: None,
+                custom_harness_command: String::new(),
                 auto_connect: false,
                 restore_session: false,
                 vault_enabled: false,
@@ -85,20 +129,26 @@ pub(crate) fn run() {
             let pages: Vec<_> = navigation::GROUPS.iter().flat_map(|(_, pages)| pages.iter().copied()).collect();
              let mut index = 0;
              let mut matrix_prepared = false;
+             let mut visual_scrolled = false;
+              let mut credential_phase = 0;
+              let mut agent_catalog = false;
             let total = pages.len() * 8;
             let mut stage = 0;
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 let done = cx.update(|cx| {
                     assert!(started.elapsed() < Duration::from_secs(90), "settings smoke stalled: page {index}, stage {stage}");
-                    parent.update(cx, |_, window, cx| { window.refresh(); window.draw(cx).clear(cx); }).unwrap();
+                    let visual = std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some();
+                    if visual { cx.activate(true); }
+                    parent.update(cx, |_, window, cx| { window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
                     let Some(child) = owner.read(cx).overlay_window.debug_window() else { return false; };
-                    child.update(cx, |_, window, cx| { window.refresh(); window.draw(cx).clear(cx); }).unwrap();
+                    child.update(cx, |_, window, cx| { if visual { window.activate_window(); } window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
                      if index < total {
                          if matrix_prepared {
+                         if visual && !PAINTED_PAGE.with(|page| page.get() == Some(pages[index % pages.len()])) { return false; }
                          child.update(cx, |_, window, _| {
                              crate::workspace_ui_smoke::assert_painted_corners(window, "settings-panel", true);
-                             crate::workspace_ui_smoke::assert_painted_corners(window, "settings-content", true);
+                             crate::workspace_ui_smoke::assert_painted_corners(window, "settings-content", false);
                              dunlin_ui::surface_test::assert_region_corners(window,
                                  crate::workspace_ui_smoke::measured("settings-content"),
                                  &format!("settings page {:?}", pages[index % pages.len()]));
@@ -110,7 +160,67 @@ pub(crate) fn run() {
                         let page = crate::workspace_ui_smoke::measured("settings-page");
                         let content = crate::workspace_ui_smoke::measured("settings-content");
                          assert!(page.size.width <= content.size.width, "{:?} must fit the content width", owner.read(cx).settings_tab);
-                         assert_eq!(owner.read(cx).settings_tab, pages[index % pages.len()]);
+                          assert_eq!(owner.read(cx).settings_tab, pages[index % pages.len()]);
+                          if pages[index % pages.len()] == SettingsTab::Harnesses {
+                              let radio = crate::workspace_ui_smoke::measured("claude-harness-default");
+                              assert!(radio.size.width >= px(28.) && radio.size.height >= px(28.), "default-agent radios need a usable click target");
+                              if owner.read(cx).local_opencode() {
+                                  let provider = crate::workspace_ui_smoke::measured("settings-provider-selector");
+                                  assert!(provider.size.height >= px(36.), "settings must not reuse the tiny composer provider trigger");
+                                  assert!(provider.size.width >= px(200.));
+                              }
+                          }
+                          if std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some()
+                               && matches!(index / pages.len(), 4 | 5) {
+                               let suffix = if pages[index % pages.len()] == SettingsTab::Secrets {
+                                   match credential_phase { 1 => "-hover", 2 => "-pressed", 3 => "-released", 4 => "-form", _ => "" }
+                                } else if visual_scrolled { "-bottom" } else if agent_catalog { "-catalog" } else { "" };
+                               let path = dir.join(format!("settings-{:?}-{}{}.png", pages[index % pages.len()], index / pages.len(), suffix));
+                                child.update(cx, |_, window, _| capture(window, &path)).unwrap();
+                                if pages[index % pages.len()] == SettingsTab::Harnesses && !agent_catalog && !visual_scrolled {
+                                    child.update(cx, |_, window, cx| {
+                                        crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("available-agents").center(), cx);
+                                    }).unwrap();
+                                    assert!(owner.read(cx).settings_ui.available_agents, "setup catalog must open on click");
+                                    agent_catalog = true;
+                                    return false;
+                                }
+                                if agent_catalog && !visual_scrolled {
+                                    owner.update(cx, |app, cx| { app.settings_ui.available_agents = false; cx.notify(); });
+                                    agent_catalog = false;
+                                }
+                               if pages[index % pages.len()] == SettingsTab::Secrets {
+                                   child.update(cx, |_, window, cx| {
+                                       let button = crate::workspace_ui_smoke::measured("vault-refresh");
+                                       match credential_phase {
+                                           0 => { window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: button.center(), ..Default::default() }), cx); }
+                                           1 => { window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { position: button.center(), button: MouseButton::Left, click_count: 1, ..Default::default() }), cx); }
+                                           2 => {
+                                               let outside = point(content.left() + px(4.), content.top() + px(4.));
+                                               window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: outside, pressed_button: Some(MouseButton::Left), ..Default::default() }), cx);
+                                               window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { position: outside, button: MouseButton::Left, click_count: 1, ..Default::default() }), cx);
+                                           }
+                                           3 => { owner.update(cx, |app, cx| app.new_vault_draft(window, cx)); }
+                                           4 => { owner.update(cx, |app, cx| { app.vault.ui.draft = None; cx.notify(); }); }
+                                           _ => unreachable!(),
+                                       }
+                                   }).unwrap();
+                                   if credential_phase < 4 { credential_phase += 1; return false; }
+                                   credential_phase = 0;
+                               }
+                              if !visual_scrolled && matches!(pages[index % pages.len()], SettingsTab::Harnesses | SettingsTab::Extensions) {
+                                  child.update(cx, |_, window, cx| {
+                                      window.dispatch_event(PlatformInput::Scroll(ScrollEvent {
+                                          position: content.center(),
+                                          delta: ScrollDelta::Pixels(point(px(0.), px(-10000.))),
+                                          ..Default::default()
+                                      }), cx);
+                                  }).unwrap();
+                                  visual_scrolled = true;
+                                  return false;
+                              }
+                              visual_scrolled = false;
+                          }
                          index += 1;
                          matrix_prepared = false;
                          return false;
@@ -126,7 +236,16 @@ pub(crate) fn run() {
                                     app.set_appearance(if variant % 2 == 0 { Appearance::Light } else { Appearance::Dark }, window, cx);
                                     app.set_ui_density(if variant % 4 < 2 { UiDensity::Comfortable } else { UiDensity::Compact }, cx);
                                 }
-                                app.settings_tab = tab;
+                                 app.settings_tab = tab;
+                                 if tab == SettingsTab::Harnesses {
+                                     // Deterministic detected/CLI-only/absent cases, never executed.
+                                     app.harness_discovery = crate::harness_discovery::SPECS.iter().map(|spec| crate::harness_discovery::Detected {
+                                         name: spec.name,
+                                         cli: matches!(spec.name, "OpenCode" | "Claude Code").then(|| "/usr/bin/false".into()),
+                                         adapter: (spec.name == "OpenCode").then(|| "/usr/bin/false".into()),
+                                         docs: spec.docs,
+                                     }).collect();
+                                 }
                                 app.settings_ui.audits = tab == SettingsTab::Security && variant % 2 == 1;
                                 app.settings_ui.usage_report = tab == SettingsTab::Usage && variant % 2 == 1;
                                 cx.notify();

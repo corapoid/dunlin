@@ -31,7 +31,6 @@ macro_rules! preferences {
             chat_duration,
             chat_logo,
             appearance,
-            default_view,
             notifications_enabled,
             show_shortcut_hints,
             show_file_sizes,

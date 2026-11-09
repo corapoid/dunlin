@@ -20,7 +20,7 @@ pub(super) fn button(this: &DunlinApp, pane: usize, cx: &mut Context<DunlinApp>)
             icon_button(
                 format!("new-chat-tab:{pane}"),
                 IconName::Plus,
-                "New tab · click for Chat, hold for choices",
+                this.shortcut_label("New tab · click for Chat, hold for choices", "⌘N"),
             )
             .size(px(28.))
             .on_mouse_down(

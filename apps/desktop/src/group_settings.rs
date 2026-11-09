@@ -493,7 +493,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         icons = icons.child(button);
     }
     icons = icons.child(
-        dunlin_ui::button("group-icon-custom")
+        dunlin_ui::action_button("group-icon-custom")
             .label(
                 if draft
                     .settings
@@ -571,7 +571,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             this.permission_mode,
         )
     });
-    let save = dunlin_ui::button("save-group-settings")
+    let save = dunlin_ui::action_button("save-group-settings")
         .primary()
         .label("Save group settings")
         .on_click(cx.listener(|this, _, _, cx| this.save_group_settings(cx)));
@@ -608,13 +608,13 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .child(match preview { Ok(resolved) => render_sources(this, &resolved, cx), Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element() })
             .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error))))
             .child(div().p(px(16.)).border_t_1().border_color(p.border).flex_shrink_0().flex().flex_wrap().gap(px(7.))
-                .child(dunlin_ui::button("reset-group-defaults").label("Reset to inherited").on_click(cx.listener(|this, _, window, cx| this.reset_group_draft(window, cx))))
-                .child(dunlin_ui::button("group-clear").label(if this.group_cleanup.busy { "Inspecting…" } else { "Clear…" })
+                .child(dunlin_ui::action_button("reset-group-defaults").label("Reset to inherited").on_click(cx.listener(|this, _, window, cx| this.reset_group_draft(window, cx))))
+                .child(dunlin_ui::action_button("group-clear").label(if this.group_cleanup.busy { "Inspecting…" } else { "Clear…" })
                     .disabled(this.group_cleanup.busy)
                     .tooltip("Review ignored dependency/cache folders, then move them to Trash. Never removes source or tracked files.")
                     .on_click(cx.listener(move |this, _, window, cx| this.preview_group_cleanup(cleanup_group.clone(), window, cx))))
                 .child(div().flex_1())
-                .child(dunlin_ui::button("cancel-group-settings").label("Cancel").on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx))))
+                .child(dunlin_ui::action_button("cancel-group-settings").label("Cancel").on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx))))
                 .child(save)))
         .into_any_element()
 }

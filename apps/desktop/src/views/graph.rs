@@ -222,7 +222,7 @@ pub(crate) fn render(
         )
         .child(div().flex_1())
         .child(
-            dunlin_ui::button("graph-export-svg")
+            dunlin_ui::action_button("graph-export-svg")
                 .icon(IconName::Download)
                 .label("Save SVG")
                 .accessibility_label("Save graph as SVG")
@@ -1027,7 +1027,7 @@ fn node_detail(
                 .children(node.tools.iter().map(|kind| tool_chip(*kind, p)))
                 .child(div().flex_1())
                 .child(
-                    dunlin_ui::button("open-node-session")
+                    dunlin_ui::action_button("open-node-session")
                         .icon(IconName::ArrowUpRight)
                         .label("Transcript")
                         .accessibility_label("Open the live transcript for this node")

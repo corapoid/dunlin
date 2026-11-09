@@ -149,12 +149,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             .child(field("Remote working directory (optional)", this.terminal.ssh_path.as_ref().unwrap(), p, busy))
             .child(div().flex().items_end().gap(px(8.))
                 .child(field("Private key file (optional)", this.remote_connection.identity.as_ref().unwrap(), p, busy).flex_1())
-                .child(button("connection-key").self_end().label("Choose key…").disabled(busy)
-                    .relative().children({
+                .child(div().relative().flex().self_end().children({
                         #[cfg(debug_assertions)] { crate::workspace_ui_smoke::probe("ssh-key-button") }
                         #[cfg(not(debug_assertions))] { None::<AnyElement> }
                     })
-                    .on_click(cx.listener(|this, _, window, cx| this.choose_ssh_identity(window, cx)))))
+                    .child(action_button("connection-key").label("Choose key…").disabled(busy)
+                    .on_click(cx.listener(|this, _, window, cx| this.choose_ssh_identity(window, cx))))))
             .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Uses OpenSSH, its agent and host verification. Passphrases/passwords are entered in the terminal and are never stored. SSH opens a terminal; remote agents and projects require a Dunlin relay."));
     } else {
         body = body.child(field("Endpoint · HTTPS relay URL", &this.remote_url_input, p, busy))
@@ -172,7 +172,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .justify_end()
                 .gap(px(8.))
                 .child(
-                    button("connection-cancel")
+                    action_button("connection-cancel")
                         .label("Cancel")
                         .disabled(busy)
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -180,7 +180,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         })),
                 )
                 .child(
-                    button("connection-connect")
+                    action_button("connection-connect")
                         .relative()
                         .children(crate::gui_probe::marker("remote-e2e-connect"))
                         .primary()

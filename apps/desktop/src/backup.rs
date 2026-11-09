@@ -60,7 +60,7 @@ fn destination(value: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 fn button(id: &'static str, label: &str, enabled: bool) -> Button {
-    dunlin_ui::button(id)
+    dunlin_ui::settings::button(id)
         .label(label.to_owned())
         .disabled(!enabled)
 }
@@ -350,7 +350,8 @@ impl DunlinApp {
                     let imported_settings = settings.is_some();
                     let saved = settings.as_ref().map(serde_json::to_value).transpose().map_err(|e| e.to_string())?;
                     this.store.as_ref().ok_or("Local storage unavailable; nothing imported")?.import_catalog(&groups, &projects, saved.as_ref()).map_err(|e| e.to_string())?;
-                    let count = projects.len(); this.project_groups.extend(groups); this.projects.extend(projects);
+                     let count = projects.len(); this.project_groups.extend(groups); this.projects.extend(projects);
+                     this.assign_imported_projects(cx);
                     if let Some(settings) = settings {
                         macro_rules! apply_one {
                             (appearance) => { this.set_appearance(settings.appearance.unwrap_or(Appearance::System), window, cx); };
@@ -418,7 +419,8 @@ impl DunlinApp {
                 match result { Ok(Ok(())) => completed += 1, Ok(Err(e)) => errors.push(e), Err(_) => return }
             }
             let _ = this.update(cx, |this, cx| {
-                this.backup.cloning = false;
+                 this.backup.cloning = false;
+                 this.assign_imported_projects(cx);
                 let mut message = format!("Downloaded {completed}/{count} repositories. Trust each project before running an agent.");
                 if let Some(first) = errors.first() { message.push_str(&format!(" {} failed: {first}. Failed projects keep their download icon.", errors.len())); }
                 this.backup.message = Some(message.clone()); this.file_notice(message, cx);
@@ -468,21 +470,22 @@ pub(crate) fn settings(
         .child(dunlin_ui::settings::section("Portable preferences and project structure", p))
         .child(dunlin_ui::settings::description("Export selected preferences and repository/group organization. This is not a full backup of conversations or credentials.", p))
         .child(button("backup-details", if this.settings_ui.backup_details { "Hide export details" } else { "What is included?" }, true)
+            .self_end()
             .on_click(cx.listener(|this, _, _, cx| { this.settings_ui.backup_details = !this.settings_ui.backup_details; cx.notify(); })))
         .when(this.settings_ui.backup_details, |view| view.child(dunlin_ui::settings::notice("Includes portable preferences and nested groups with GitHub.com / GitLab.com URLs only. Excludes local paths, sessions, trust, permissions, commands, environment variables, credentials, relay configuration, remote projects, unsupported repositories, project/group runtime overrides and custom icons.", p)))
         .child(div().flex().gap(px(8.))
             .child(dunlin_ui::checkbox("backup-settings", "Settings", this.backup.include_settings).label("Settings").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_settings = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); })))
             .child(dunlin_ui::checkbox("backup-projects", "Project structure", this.backup.include_projects).label("Project structure").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_projects = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); }))))
-        .child(div().flex().gap(px(8.))
+        .child(div().flex().flex_wrap().justify_end().gap(px(8.))
             .child(button("backup-export-file", "Export to JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.prepare_backup_export(false, cx))))
             .child(button("backup-import-file", "Import JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.read_backup(false, cx)))))
-        .child(dunlin_ui::settings::field("Backup repository URL", dunlin_ui::input(this.backup.repository.as_ref().unwrap()).aria_label("Backup repository URL").disabled(busy), p))
+        .child(dunlin_ui::settings::field("Backup repository URL", dunlin_ui::settings::input(this.backup.repository.as_ref().unwrap(), p).aria_label("Backup repository URL").disabled(busy), p))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Repository export creates/updates dunlin-backup.json with a commit on the default branch using gh/glab. Use an initialized private repository: repository names and preferences may be sensitive. Import reads that file; it does not execute code."))
-        .child(div().flex().gap(px(8.))
+        .child(div().flex().flex_wrap().justify_end().gap(px(8.))
             .child(button("backup-export-repo", "Export to repository…", !busy).on_click(cx.listener(|this, _, _, cx| this.prepare_backup_export(true, cx))))
             .child(button("backup-import-repo", "Import from repository…", !busy).on_click(cx.listener(|this, _, _, cx| this.read_backup(true, cx)))))
         .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Download folder for imported projects · <host>/<owner or group>/<repo>. Nothing is cloned during import."))
-        .child(div().flex().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(dunlin_ui::input(this.backup.destination.as_ref().unwrap()).aria_label("Download folder for imported projects").disabled(busy)))
+        .child(div().flex().gap(px(8.)).child(div().flex_1().min_w(px(0.)).child(dunlin_ui::settings::input(this.backup.destination.as_ref().unwrap(), p).aria_label("Download folder for imported projects").disabled(busy)))
             .child(button("backup-folder", "Browse…", !busy).on_click(cx.listener(|this, _, window, cx| {
                 let paths = cx.prompt_for_paths(PathPromptOptions { files:false, directories:true, multiple:false, prompt:Some("Choose repository download folder".into()) });
                 let paths = this.overlay_backdrop.track_native(paths, cx);

@@ -7,7 +7,7 @@ use std::path::Path;
 
 pub(crate) const TITLE: &str = "Warning: reset Dunlin to factory defaults?";
 // shortcut: other instances must be closed; add a shared data-directory lock for multi-instance reset.
-pub(crate) const WARNING: &str = "This permanently deletes Dunlin's settings, added projects and groups, conversation history, harness configuration, relay pairings and credentials saved in Dunlin's vault. This cannot be undone.\n\nRepository files, installed agents, external account logins, extensions on disk and diagnostic logs are not deleted. Dunlin will close; open it again to start with default settings.\n\nClose every other Dunlin instance before continuing, or it may save old data again.\n\nDo you want to continue?";
+pub(crate) const WARNING: &str = "This permanently deletes Dunlin's settings, added projects and groups, conversation history, harness configuration, relay pairings and credentials saved in Dunlin's vault. This cannot be undone.\n\nRepository files, installed agents, external account logins, extensions on disk and diagnostic logs are not deleted. Dunlin will restart automatically with default settings.\n\nClose every other Dunlin instance before continuing, or it may save old data again.\n\nDo you want to continue?";
 pub(crate) const ANSWERS: &[&str] = &["No", "Yes, reset Dunlin"];
 
 fn confirmed(answer: Option<usize>) -> bool {
@@ -133,7 +133,7 @@ impl DunlinApp {
                 Ok(()) => {
                     // Leaving store detached also prevents Drop from saving old history.
                     drop(store);
-                    cx.quit();
+                    cx.restart();
                 }
                 Err(error) => {
                     this.store = Some(store);
@@ -167,6 +167,7 @@ mod tests {
         assert!(TITLE.starts_with("Warning:"));
         assert!(WARNING.contains("cannot be undone"));
         assert!(WARNING.contains("Repository files"));
+        assert!(WARNING.contains("restart automatically"));
         assert!(!confirmed(None));
         assert!(!confirmed(Some(0)));
         assert!(!confirmed(Some(2)));

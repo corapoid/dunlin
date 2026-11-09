@@ -160,9 +160,7 @@ pub(crate) fn render(
                 })),
         )
         .child(
-            dunlin_ui::button("knowledge-refresh")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("knowledge-refresh")
                 .label("Refresh")
                 .on_click(cx.listener(|this, _, _, cx| this.refresh_knowledge(cx))),
         );
@@ -831,9 +829,7 @@ fn artifacts_view(
                         .child("Evidence artifacts"),
                 )
                 .child(
-                    dunlin_ui::button("artifact-save-clipboard")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("artifact-save-clipboard")
                         .label("Save clipboard")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.save_clipboard_artifact(cx);
@@ -1036,9 +1032,7 @@ fn artifact_detail(
                         .child(format!("Share link: {url} · expires {expires}")),
                 )
                 .child(
-                    dunlin_ui::button("artifact-copy-share")
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button("artifact-copy-share")
                         .label("Copy link")
                         .on_click(cx.listener(move |_, _, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(url.clone()));
@@ -1052,8 +1046,7 @@ fn artifact_detail(
         .items_center()
         .gap(px(6.))
         .child(
-            dunlin_ui::button("artifact-share")
-                .small()
+            dunlin_ui::action_button("artifact-share")
                 .label(if remote {
                     "Share 7 days"
                 } else {
@@ -1065,9 +1058,7 @@ fn artifact_detail(
                 })),
         )
         .child(
-            dunlin_ui::button("artifact-revoke")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("artifact-revoke")
                 .label("Revoke")
                 .disabled(!remote)
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -1075,9 +1066,7 @@ fn artifact_detail(
                 })),
         )
         .child(
-            dunlin_ui::button("artifact-load-preview")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("artifact-load-preview")
                 .label("Load preview")
                 .disabled(!remote)
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -1085,18 +1074,16 @@ fn artifact_detail(
                 })),
         )
         .child(
-            dunlin_ui::button("artifact-use-evidence")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("artifact-use-evidence")
                 .label("Use as evidence")
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.link_artifact_as_evidence(&evidence_id, cx);
                 })),
         )
         .child(
-            dunlin_ui::button("artifact-delete")
-                .ghost()
-                .small()
+            dunlin_ui::action_button("artifact-delete")
+                .danger()
+                .outline()
                 .label("Delete")
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.delete_artifact(&delete_id, cx);
@@ -1595,8 +1582,7 @@ fn proposals_view(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                         ),
                 )
                 .child(
-                    dunlin_ui::button(format!("knowledge-accept:{index}"))
-                        .small()
+                    dunlin_ui::action_button(format!("knowledge-accept:{index}"))
                         .label("Accept")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             match accept_proposal(this, &accept_path) {
@@ -1611,9 +1597,7 @@ fn proposals_view(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
                         })),
                 )
                 .child(
-                    dunlin_ui::button(format!("knowledge-reject:{index}"))
-                        .ghost()
-                        .small()
+                    dunlin_ui::action_button(format!("knowledge-reject:{index}"))
                         .label("Reject")
                         .on_click(cx.listener(move |this, _, _, cx| {
                             match reject_proposal(&reject_path) {

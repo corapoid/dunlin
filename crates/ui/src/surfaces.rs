@@ -46,7 +46,7 @@ impl SurfaceGeometry {
     pub const CARD: Self = Self::new(radii::CARD, 0.);
     pub const DIALOG: Self = Self::new(radii::CARD, 1.);
     pub const SETTINGS: Self = Self::new(radii::MODAL, 1.);
-    pub const SETTINGS_CONTENT: Self = Self::new(radii::WORKSPACE, 0.);
+    pub const SETTINGS_CONTENT: Self = Self::new(radii::MODAL - 1., 0.);
     pub const SETTINGS_CARD: Self = Self::new(radii::CARD, 1.);
     pub const CHOICE_CARD: Self = Self::new(radii::CARD, 1.);
     pub const AUTH_DIALOG: Self = Self::new(radii::AUTH_DIALOG, 1.);

@@ -11,6 +11,7 @@ pub(crate) struct State {
     pub credential_details: Option<String>,
     pub extension_details: Option<String>,
     pub backup_details: bool,
+    pub available_agents: bool,
     pub project_focus: Option<FocusHandle>,
 }
 
@@ -61,7 +62,7 @@ impl SettingsTab {
             Self::Chat => "Response behavior and message appearance.",
             Self::Editor => "Code typography, editing and terminal integration.",
             Self::Harnesses => "Local ACP agents, provider accounts and connection defaults.",
-            Self::Skills => "Instruction library and explicit global or project installations.",
+            Self::Skills => "Install skills once globally and share them across harnesses.",
             Self::Extensions => "Methodology packs and optional sandboxed WASM validators.",
             Self::Permissions => "Agent approval policy and separate macOS permissions.",
             Self::Secrets => "Keychain storage, scoped agent access and credential policies.",
@@ -82,7 +83,7 @@ impl SettingsTab {
                 "design appearance theme system light dark font interface density comfortable compact reduce motion animation shortcut hints keyboard accessibility"
             }
             Self::Sidebar => {
-                "sidebar workspace dashboard live agents activity heatmap explorer file sizes project list branch language topics wrap hover preview sort width import github gitlab gh glab cli tracked watched folder"
+                "sidebar workspace dashboard live agents activity heatmap explorer file sizes project list branch language topics wrap information info preview sort width import github gitlab gh glab cli tracked watched folder"
             }
             Self::Chat => {
                 "chat stream responses timestamps message times duration logo reasoning thinking final answer only"
@@ -126,11 +127,11 @@ impl SettingsTab {
     pub(crate) fn matches_search(self, query: &str) -> bool {
         let names = match self {
             Self::General => {
-                "Startup destination Restore the last session Default view Desktop notifications Notification permission"
+                "Startup destination Restore the last session Desktop notifications Notification permission"
             }
             Self::Design => "UI font Interface density Show keyboard shortcut hints Reduce motion",
             Self::Sidebar => {
-                "Live agents Activity Show branch names Show primary language Show repository topics Wrap project names Project hover preview Sort Width Show file sizes Project and group defaults Project discovery Git hosting"
+                "Live agents Activity Show branch names Show primary language Show repository topics Wrap project names Project information Sort Width Show file sizes Project discovery Git hosting"
             }
             Self::Chat => {
                 "Stream responses Message times Agent turn duration Response logo Show reasoning by default Final answer only"
@@ -139,10 +140,10 @@ impl SettingsTab {
                 "Code font Font size Word wrap Autosave File minimap Inline blame Shell integration"
             }
             Self::Harnesses => {
-                "Default local agent Test connection Scan again Use by default Show in choices Custom ACP command Auto-connect Connect automatically Restart on crash Provider accounts Import sessions"
+                "Local agents Default agent Test connection Scan again Default for new conversations Show in choices Custom ACP command Auto-connect Connect automatically Restart on crash Provider accounts Import sessions"
             }
             Self::Skills => {
-                "Available skills Add to library Add skill Scan harness folders Import from GitHub Import folder Your library Project copies"
+                "Available skills Installed skills Install globally Add skill Scan harness folders Import from GitHub Import folder Project copies"
             }
             Self::Extensions => {
                 "Spec & intent tools Built-in workspace tools Extension packs Methodology packs Technical details Enable Disable"

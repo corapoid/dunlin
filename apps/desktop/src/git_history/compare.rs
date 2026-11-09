@@ -859,8 +859,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .child(compact_input(&s.seconds).aria_label("Comparison time limit in seconds"))
         .child(compact_input(&s.requests).aria_label("Comparison request limit"))
         .child(
-            dunlin_ui::button("compare-prepare")
-                .small()
+            dunlin_ui::action_button("compare-prepare")
                 .label("Prepare identical worktrees…")
                 .disabled(busy)
                 .on_click(cx.listener(|this, _, _, cx| this.prepare_comparison(cx))),
@@ -875,8 +874,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 paths.get(1).map(String::as_str).unwrap_or("unknown"),
             ))
             .child(
-                dunlin_ui::button("compare-create")
-                    .small()
+                dunlin_ui::action_button("compare-create")
                     .label("Confirm worktree creation…")
                     .disabled(busy)
                     .on_click(cx.listener(|this, _, w, cx| this.confirm_comparison_trees(w, cx))),
@@ -912,8 +910,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )),
             )
             .child(
-                dunlin_ui::button(format!("compare-start-{start}"))
-                    .small()
+                dunlin_ui::action_button(format!("compare-start-{start}"))
                     .label("Authorize A + B agent requests…")
                     .disabled(
                         busy || run.started_ms.is_some()
@@ -925,18 +922,14 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     })),
             )
             .child(
-                dunlin_ui::button(format!("compare-inspect-{inspect}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("compare-inspect-{inspect}"))
                     .label("Refresh A/B changes")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.inspect_comparison(inspect.clone(), cx)
                     })),
             )
             .child(
-                dunlin_ui::button(format!("compare-check-{check}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("compare-check-{check}"))
                     .label("Run identical checks in A/B…")
                     .disabled(busy || run.sides.len() != 2)
                     .on_click(cx.listener(move |this, _, w, cx| {
@@ -945,9 +938,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             );
         body =
             body.child(
-                dunlin_ui::button(format!("compare-forget-{forget}"))
-                    .ghost()
-                    .small()
+                dunlin_ui::action_button(format!("compare-forget-{forget}"))
                     .label("Forget record and logs (keep trees)…")
                     .disabled(busy || this.comparisons.active.contains(&run.id))
                     .on_click(cx.listener(move |this, _, w, cx| {
@@ -984,7 +975,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             let select = run.id.clone();
             body=body.child(format!("{} · {} / requested {} / observed {} · {} · {:?}",if i==0{"A"}else{"B"},side.choice.harness,side.choice.model,side.actual_model.as_deref().unwrap_or("unknown"),side.status,side.error))
             .child(dunlin_ui::button(format!("compare-open-{}-{i}",run.id)).ghost().label("Open side project/session").on_click(cx.listener(move|this,_,_,cx|{if let Some(index)=this.projects.iter().position(|p|p.id==project){this.select_project_internal(index,false,cx);if this.project().id==project&&let Some(index)=this.sessions.iter().position(|s|s.id==session){let auto=this.auto_connect;this.auto_connect=false;this.select_session(index,cx);this.auto_connect=auto;}}})))
-            .child(dunlin_ui::button(format!("compare-prefer-{}-{i}",run.id)).ghost().label(if i==0{"Prefer A (no merge)"}else{"Prefer B (no merge)"}).on_click(cx.listener(move|this,_,w,cx|{let target=select.clone();let receiver=w.prompt(PromptLevel::Warning,"Record preferred solution?",Some("Records a local human decision only. No files are copied, merged, committed, pushed or deleted. Inspect diffs and test evidence independently."),&["Cancel","Record preference"],cx);let receiver=this.overlay_backdrop.track_native(receiver,cx);cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let _=this.update(cx,|this,cx|{if let Some(r)=this.comparisons.runs.iter_mut().find(|r|r.id==target){r.preferred=Some(i);if let Err(e)=this.save_comparisons(){this.file_notice(e,cx);}}cx.notify();});}).detach();})));
+            .child(dunlin_ui::action_button(format!("compare-prefer-{}-{i}",run.id)).label(if i==0{"Prefer A (no merge)"}else{"Prefer B (no merge)"}).on_click(cx.listener(move|this,_,w,cx|{let target=select.clone();let receiver=w.prompt(PromptLevel::Warning,"Record preferred solution?",Some("Records a local human decision only. No files are copied, merged, committed, pushed or deleted. Inspect diffs and test evidence independently."),&["Cancel","Record preference"],cx);let receiver=this.overlay_backdrop.track_native(receiver,cx);cx.spawn(async move|this,cx|{if receiver.await!=Ok(1){return;}let _=this.update(cx,|this,cx|{if let Some(r)=this.comparisons.runs.iter_mut().find(|r|r.id==target){r.preferred=Some(i);if let Err(e)=this.save_comparisons(){this.file_notice(e,cx);}}cx.notify();});}).detach();})));
         }
         if run.reports.is_empty() {
             body = body.child("Checks not run/unknown; no passing result assumed.");

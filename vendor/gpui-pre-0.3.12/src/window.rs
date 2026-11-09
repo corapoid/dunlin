@@ -3113,6 +3113,13 @@ impl Window {
         self.rendered_frame.scene.quads.clone()
     }
 
+    /// Present a frame drawn manually by a native visual fixture. `draw` alone
+    /// updates layout/paint evidence but does not update the visible window.
+    #[cfg(debug_assertions)]
+    pub fn present_debug_frame(&mut self) {
+        self.present();
+    }
+
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {

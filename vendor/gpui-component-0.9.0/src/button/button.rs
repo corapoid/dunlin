@@ -192,6 +192,8 @@ pub struct Button {
     base: gpui_base::Button,
     icon: Option<ButtonIcon>,
     label: Option<SharedString>,
+    label_renderer: Option<Rc<dyn Fn(SharedString) -> AnyElement>>,
+    raised: bool,
     /// The announced name, when the visible content is not it.
     accessibility_label: Option<SharedString>,
     children: Vec<AnyElement>,
@@ -248,6 +250,8 @@ impl Button {
             base: gpui_base::Button::new(id),
             icon: None,
             label: None,
+            label_renderer: None,
+            raised: false,
             accessibility_label: None,
             children: Vec::new(),
             disabled: false,
@@ -374,6 +378,18 @@ impl Button {
     /// Set label to the Button, if no label is set, the button will be in Icon Button mode.
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    /// Customize visible text without losing the button's accessible name.
+    pub fn label_renderer(mut self, render: impl Fn(SharedString) -> AnyElement + 'static) -> Self {
+        self.label_renderer = Some(Rc::new(render));
+        self
+    }
+
+    /// Subtle raised treatment for filled actions; never applied to ghost rows.
+    pub fn raised(mut self, raised: bool) -> Self {
+        self.raised = raised;
         self
     }
 
@@ -632,8 +648,26 @@ impl RenderOnce for Button {
         let mut base = self.base;
         let children = self.children;
         let instance_style = base.style().clone();
-        let normal_style = style.normal(self.outline, cx);
+        let mut normal_style = style.normal(self.outline, cx);
+        let action_outline = self.raised && self.outline;
+        if action_outline {
+            normal_style = style.action_outline(normal_style, ButtonStyleState::Normal, cx);
+        }
+        let raised = self.raised
+            && !self.outline
+            && matches!(
+                style,
+                ButtonVariant::Default | ButtonVariant::Primary | ButtonVariant::Secondary
+            );
+        if raised {
+            normal_style.border = normal_style.fg.opacity(0.22);
+        }
         let selected_style = style.selected(self.outline, cx);
+        let selected_style = if action_outline {
+            style.action_outline(selected_style, ButtonStyleState::Active, cx)
+        } else {
+            selected_style
+        };
         let disabled_style = style.disabled(self.outline, cx);
         let icon_size = self.icon_size.unwrap_or_else(|| match self.size {
             Size::Size(v) => Size::Size(v * 0.75),
@@ -680,6 +714,24 @@ impl RenderOnce for Button {
                 !disabled && cx.theme().shadow && normal_style.shadow,
                 |this| this.shadow_xs(),
             )
+            .when(raised && !disabled, |this| {
+                this.shadow(vec![
+                    gpui::BoxShadow {
+                        inset: false,
+                        color: gpui::black().opacity(0.22),
+                        offset: gpui::point(gpui::px(0.), gpui::px(1.)),
+                        blur_radius: gpui::px(2.),
+                        spread_radius: gpui::px(0.),
+                    },
+                    gpui::BoxShadow {
+                        inset: true,
+                        color: gpui::white().opacity(if cx.theme().is_dark() { 0.06 } else { 0.5 }),
+                        offset: gpui::point(gpui::px(0.), gpui::px(1.)),
+                        blur_radius: gpui::px(0.),
+                        spread_radius: gpui::px(0.),
+                    },
+                ])
+            })
             .when(!style.no_padding(), |this| {
                 if self.label.is_none() && children.is_empty() {
                     // Icon Button
@@ -721,12 +773,15 @@ impl RenderOnce for Button {
             .when(self.border_corners.bottom_right, |this| {
                 this.rounded_br(rounding)
             })
-            .when(self.variant.is_default() || self.outline, |this| {
-                this.when(self.border_edges.left, |this| this.border_l_1())
-                    .when(self.border_edges.right, |this| this.border_r_1())
-                    .when(self.border_edges.top, |this| this.border_t_1())
-                    .when(self.border_edges.bottom, |this| this.border_b_1())
-            })
+            .when(
+                self.variant.is_default() || self.outline || raised,
+                |this| {
+                    this.when(self.border_edges.left, |this| this.border_l_1())
+                        .when(self.border_edges.right, |this| this.border_r_1())
+                        .when(self.border_edges.top, |this| this.border_t_1())
+                        .when(self.border_edges.bottom, |this| this.border_b_1())
+                },
+            )
             .when(!self.disabled && !selected, |this| {
                 this.border_color(normal_style.border)
                     .bg(normal_style.bg)
@@ -737,9 +792,20 @@ impl RenderOnce for Button {
                     .when(interactive, |this| {
                         this.active(|this| {
                             let active_style = style.active(self.outline, cx);
-                            this.bg(active_style.bg)
-                                .border_color(active_style.border)
-                                .text_color(active_style.fg)
+                            let active_style = if action_outline {
+                                style.action_outline(active_style, ButtonStyleState::Active, cx)
+                            } else {
+                                active_style
+                            };
+                            let this = this
+                                .bg(active_style.bg)
+                                .border_color(if raised {
+                                    normal_style.border
+                                } else {
+                                    active_style.border
+                                })
+                                .text_color(active_style.fg);
+                            if raised { this.shadow_none() } else { this }
                         })
                         .when_some(hover_group, |this, group| {
                             let idle_bg = style.hovered(self.outline, cx).bg.opacity(0.5);
@@ -756,8 +822,17 @@ impl RenderOnce for Button {
                     return this;
                 }
                 let hover_style = style.hovered(self.outline, cx);
+                let hover_style = if action_outline {
+                    style.action_outline(hover_style, ButtonStyleState::Hovered, cx)
+                } else {
+                    hover_style
+                };
                 this.bg(hover_style.bg)
-                    .border_color(hover_style.border)
+                    .border_color(if raised {
+                        normal_style.border
+                    } else {
+                        hover_style.border
+                    })
                     .text_color(hover_style.fg)
             })
             .line_height(relative(1.25))
@@ -794,13 +869,17 @@ impl RenderOnce for Button {
                 )
             })
             .when_some(self.label, |this, label| {
-                this.child(
+                let label = if let Some(render) = self.label_renderer {
+                    render(label)
+                } else {
                     div()
                         .min_w_0()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .child(label),
-                )
+                        .child(label)
+                        .into_any_element()
+                };
+                this.child(label)
             })
             .children(children)
             .when(self.dropdown_caret, |this| {
@@ -939,6 +1018,34 @@ enum ButtonStyleState {
 }
 
 impl ButtonVariant {
+    /// Application opt-in: keep semantic outline actions readable when pressed.
+    /// Standalone kit buttons and their theme-token behavior remain unchanged.
+    fn action_outline(
+        &self,
+        mut style: ButtonVariantStyle,
+        state: ButtonStyleState,
+        cx: &App,
+    ) -> ButtonVariantStyle {
+        if matches!(
+            self,
+            Self::Danger | Self::Warning | Self::Success | Self::Info
+        ) {
+            style.bg = style.bg.opacity(match state {
+                ButtonStyleState::Active => 0.3,
+                _ => 0.4,
+            });
+            if !cx.theme().is_dark() {
+                style.fg = style.fg.mix_oklab(gpui::black(), 0.75);
+            }
+            style.border = style.fg.opacity(match state {
+                ButtonStyleState::Normal => 0.35,
+                ButtonStyleState::Hovered => 0.5,
+                ButtonStyleState::Active => 0.65,
+            });
+        }
+        style
+    }
+
     fn outline_background(&self, state: ButtonStyleState, cx: &mut App) -> Background {
         match (self, state) {
             (Self::Default, ButtonStyleState::Normal) => cx.theme().input_background().into(),

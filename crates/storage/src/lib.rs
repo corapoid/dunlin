@@ -191,6 +191,7 @@ impl Store {
              DELETE FROM secret_grants;
              DELETE FROM secret_recipes;
              DELETE FROM secrets;
+             DELETE FROM pending_session_imports;
              DELETE FROM transcripts;
              DELETE FROM sessions;
              DELETE FROM projects;
@@ -690,6 +691,15 @@ impl Store {
             )?;
             transaction.commit()?;
         }
+        if version < 19 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS pending_session_imports (
+                    id TEXT PRIMARY KEY, summary TEXT NOT NULL, transcript TEXT NOT NULL
+                 ); PRAGMA user_version = 19;",
+            )?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -967,6 +977,59 @@ impl Store {
         Ok(())
     }
 
+    /// Imported histories without a matching project remain durable but cannot
+    /// be opened or run until a local project is explicitly added.
+    pub fn pending_session_imports(&self) -> Result<Vec<SessionSummary>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT summary FROM pending_session_imports")?;
+        statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .map(|row| Ok(serde_json::from_str(&row?)?))
+            .collect()
+    }
+
+    pub fn save_pending_session_import<T: Serialize>(
+        &self,
+        session: &SessionSummary,
+        transcript: &T,
+    ) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO pending_session_imports (id, summary, transcript) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET summary = excluded.summary, transcript = excluded.transcript",
+            params![session.id, serde_json::to_string(session)?, serde_json::to_string(transcript)?],
+        )?;
+        Ok(())
+    }
+
+    /// Promote a pending copy atomically; an existing conversation is never overwritten.
+    pub fn assign_pending_session_import(&self, session: &SessionSummary) -> Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let transcript: String = transaction.query_row(
+            "SELECT transcript FROM pending_session_imports WHERE id = ?1",
+            [&session.id],
+            |row| row.get(0),
+        )?;
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
+            [&session.id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            self.upsert_session(session)?;
+            transaction.execute(
+                "INSERT INTO transcripts (session_id, payload) VALUES (?1, ?2)",
+                params![session.id, transcript],
+            )?;
+        }
+        transaction.execute(
+            "DELETE FROM pending_session_imports WHERE id = ?1",
+            [&session.id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     /// Update only the recorded location, preserving conversation metadata and turns.
     pub fn update_session_location(
         &self,
@@ -995,6 +1058,7 @@ impl Store {
     }
 
     /// Stream histories through one transaction, retaining only one transcript at a time.
+    /// An empty project ID stages a history until a matching project is added.
     pub fn import_session_stream<T: Serialize>(
         &self,
         rows: impl IntoIterator<Item = Result<(SessionSummary, T)>>,
@@ -1009,9 +1073,21 @@ impl Store {
                 [&session.id],
                 |r| r.get(0),
             )?;
+            if session.project_id.is_empty() {
+                if !exists {
+                    self.save_pending_session_import(&session, &transcript)?;
+                    inserted.push(session.id.clone());
+                }
+                progress(index + 1);
+                continue;
+            }
             if !exists {
                 self.upsert_session(&session)?;
                 self.save_transcript(&session.id, &transcript)?;
+                transaction.execute(
+                    "DELETE FROM pending_session_imports WHERE id = ?1",
+                    [&session.id],
+                )?;
                 inserted.push(session.id.clone());
             }
             progress(index + 1);
@@ -1102,7 +1178,10 @@ impl Store {
 
     /// Remove every conversation. Projects and settings stay.
     pub fn clear_sessions(&self) -> Result<()> {
-        self.connection.execute("DELETE FROM sessions", [])?;
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("DELETE FROM pending_session_imports", [])?;
+        transaction.execute("DELETE FROM sessions", [])?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -2403,6 +2482,61 @@ mod tests {
         );
     }
 
+    #[test]
+    fn pending_imports_are_durable_deduplicated_and_promoted_atomically() {
+        let path = std::env::temp_dir().join(format!("dunlin-pending-{}.db", std::process::id()));
+        let store = Store::open(&path).unwrap();
+        let mut pending = session();
+        pending.project_id.clear();
+        pending.workspace = Some("/repo".into());
+        store
+            .import_sessions(&[(pending.clone(), vec!["history"])])
+            .unwrap();
+        store
+            .import_sessions(&[(pending.clone(), vec!["history"])])
+            .unwrap();
+        assert!(store.sessions(None).unwrap().is_empty());
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.pending_session_imports().unwrap().len(), 1);
+        pending.project_id = "dunlin".into();
+        assert!(store.assign_pending_session_import(&pending).is_err());
+        assert_eq!(store.pending_session_imports().unwrap().len(), 1);
+        store.upsert_project(&project()).unwrap();
+        store.assign_pending_session_import(&pending).unwrap();
+        assert!(store.pending_session_imports().unwrap().is_empty());
+        assert_eq!(store.sessions(None).unwrap().len(), 1);
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&pending.id)
+                .unwrap()
+                .unwrap(),
+            ["history"]
+        );
+        // A stale staged copy cannot replace subsequent local turns.
+        store
+            .save_transcript(&pending.id, &vec!["local follow-up"])
+            .unwrap();
+        store
+            .save_pending_session_import(&pending, &vec!["stale source"])
+            .unwrap();
+        store.assign_pending_session_import(&pending).unwrap();
+        assert_eq!(
+            store
+                .load_transcript::<Vec<String>>(&pending.id)
+                .unwrap()
+                .unwrap(),
+            ["local follow-up"]
+        );
+        store
+            .save_pending_session_import(&pending, &vec!["pending"])
+            .unwrap();
+        store.clear_sessions().unwrap();
+        assert!(store.pending_session_imports().unwrap().is_empty());
+        drop(store);
+        std::fs::remove_file(path).unwrap();
+    }
+
     fn seed_factory_reset(store: &Store) {
         store
             .upsert_project_group(&group("reset-group", None))
@@ -2413,6 +2547,12 @@ mod tests {
         store.upsert_project(&project).unwrap();
         store.upsert_session(&session()).unwrap();
         store.save_transcript("ses-1", &vec!["history"]).unwrap();
+        let mut pending = session();
+        pending.id = "pending-reset".into();
+        pending.project_id.clear();
+        store
+            .save_pending_session_import(&pending, &vec!["unassigned history"])
+            .unwrap();
         store.save_setting("app", &"custom settings").unwrap();
         store
             .replace_artifact_index("dunlin", &[indexed_artifact("spec.md")])
@@ -2471,7 +2611,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             tables.len(),
-            21,
+            22,
             "include new app tables in reset and this fixture"
         );
         for table in &tables {
@@ -2517,6 +2657,7 @@ mod tests {
             )
             .unwrap();
         assert!(store.factory_reset().is_err());
+        assert_eq!(store.pending_session_imports().unwrap().len(), 1);
         assert_eq!(store.projects().unwrap().len(), 1);
         assert_eq!(store.sessions(None).unwrap().len(), 1);
         assert_eq!(store.project_groups().unwrap().len(), 1);
@@ -3063,7 +3204,7 @@ mod tests {
                 .connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            18
+            19
         );
     }
 
@@ -3610,7 +3751,7 @@ mod tests {
     #[test]
     fn reports_schema_version_and_quick_check_for_release_qa() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.schema_version().unwrap(), 18);
+        assert_eq!(store.schema_version().unwrap(), 19);
         assert_eq!(store.quick_check().unwrap(), "ok");
     }
 

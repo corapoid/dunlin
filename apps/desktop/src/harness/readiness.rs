@@ -21,6 +21,7 @@ impl HarnessState {
         self.session_metadata_pending = false;
         self.model_changing = false;
         self.mode_changing = false;
+        self.config_changing = false;
     }
 }
 
@@ -36,6 +37,13 @@ fn unavailable_reason(status: Option<&HarnessStatus>) -> Option<String> {
 }
 
 impl DunlinApp {
+    pub(crate) fn ready_chat_harness_names(&self) -> Vec<String> {
+        self.visible_harness_names()
+            .into_iter()
+            .filter(|name| self.harness_unavailable_reason(name).is_none())
+            .collect()
+    }
+
     pub(super) fn local_harness_config(&self, name: &str) -> Result<HarnessConfig, String> {
         let project = self.project();
         if project.is_remote() || !project.trusted {

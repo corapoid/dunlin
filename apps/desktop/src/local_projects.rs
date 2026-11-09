@@ -205,6 +205,7 @@ impl DunlinApp {
             added += 1;
         }
         this.repo_summaries.invalidate();
+        this.assign_imported_projects(cx);
         // Do not interrupt the current project/buffers while adding a
         // collection. The normal single-project selection guard stays.
         if activate_import(

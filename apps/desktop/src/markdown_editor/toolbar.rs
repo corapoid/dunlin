@@ -169,9 +169,9 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .text_color(p.muted_fg)
         .border_b_1()
         .border_color(p.border);
-    for (redo, icon, hint) in [
-        (false, IconName::Undo2, "Undo · ⌘Z"),
-        (true, IconName::Redo2, "Redo · ⇧⌘Z"),
+    for (redo, icon, label, keys) in [
+        (false, IconName::Undo2, "Undo", "⌘Z"),
+        (true, IconName::Redo2, "Redo", "⇧⌘Z"),
     ] {
         tools = tools.child(
             icon_button(
@@ -181,7 +181,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     "markdown-undo"
                 },
                 icon,
-                hint,
+                this.shortcut_label(label, keys),
             )
             .disabled(disabled)
             .on_click(cx.listener(move |this, _, window, cx| {

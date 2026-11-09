@@ -174,6 +174,12 @@ pub(crate) fn harness_event(context: &str, event: &HarnessEvent) {
         }
         HarnessEvent::Models { session_id, .. } => format!("session models · {session_id}"),
         HarnessEvent::Modes { session_id, .. } => format!("session modes · {session_id}"),
+        HarnessEvent::ConfigOptions { session_id, .. } => {
+            format!("session configuration options · {session_id}")
+        }
+        HarnessEvent::ConfigOptionChangeFailed { message, .. } => {
+            format!("configuration change failed · {message}")
+        }
         HarnessEvent::ModeChangeFailed { message, .. } => format!("mode change failed · {message}"),
         HarnessEvent::ModelChangeFailed { message, .. } => {
             format!("model change failed · {message}")
@@ -204,6 +210,7 @@ pub(crate) fn harness_event(context: &str, event: &HarnessEvent) {
             | HarnessEvent::SessionLoadFailed { .. }
             | HarnessEvent::ModeChangeFailed { .. }
             | HarnessEvent::ModelChangeFailed { .. }
+            | HarnessEvent::ConfigOptionChangeFailed { .. }
     ) {
         error(&summary);
     } else {

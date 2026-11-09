@@ -2,8 +2,6 @@
 
 use crate::app::DunlinApp;
 use dunlin_domain::SshHost;
-use dunlin_ui::component::Sizable;
-use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use std::path::PathBuf;
@@ -26,18 +24,17 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
         .child(
             div()
                 .flex()
+                .flex_wrap()
+                .justify_end()
                 .items_center()
                 .gap(px(6.))
                 .child(
-                    dunlin_ui::button("ssh-import-config")
-                        .small()
+                    dunlin_ui::settings::button("ssh-import-config")
                         .label("Import ~/.ssh/config")
                         .on_click(cx.listener(|this, _, _, cx| this.import_ssh_hosts(cx))),
                 )
                 .child(
-                    dunlin_ui::button("ssh-refresh")
-                        .ghost()
-                        .small()
+                    dunlin_ui::settings::button("ssh-refresh")
                         .label("Refresh")
                         .on_click(cx.listener(|this, _, _, cx| this.reload_ssh_hosts(cx))),
                 ),
@@ -63,12 +60,14 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
                 .child(
                     div()
                         .flex()
+                        .flex_wrap()
+                        .justify_end()
                         .items_center()
                         .gap(px(7.))
                         .child(
                             div()
                                 .flex_1()
-                                .min_w(px(0.))
+                                .min_w(px(180.))
                                 .child(
                                     div()
                                         .text_size(px(11.5))
@@ -88,35 +87,28 @@ pub(crate) fn settings_section(this: &mut DunlinApp, cx: &mut Context<DunlinApp>
                                 ),
                         )
                         .child(
-                            dunlin_ui::button(format!("ssh-test:{test_id}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button(format!("ssh-test:{test_id}"))
                                 .label("Test")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.test_ssh_host(&test_id, cx);
                                 })),
                         )
                         .child(
-                            dunlin_ui::button(format!("ssh-bootstrap:{bootstrap_id}"))
-                                .small()
+                            dunlin_ui::settings::button(format!("ssh-bootstrap:{bootstrap_id}"))
                                 .label("Bootstrap relay")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.bootstrap_ssh_host(&bootstrap_id, cx);
                                 })),
                         )
                         .child(
-                            dunlin_ui::button(format!("ssh-tunnel:{tunnel_id}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button(format!("ssh-tunnel:{tunnel_id}"))
                                 .label("Tunnel")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.open_ssh_tunnel(&tunnel_id, cx);
                                 })),
                         )
                         .child(
-                            dunlin_ui::button(format!("ssh-remove:{remove_id}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::settings::button(format!("ssh-remove:{remove_id}"))
                                 .label("Remove")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.remove_ssh_host(&remove_id, cx);

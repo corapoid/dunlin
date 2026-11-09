@@ -374,8 +374,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         .child(compact_input(&s.name).aria_label("Subtask branch name"))
         .child(compact_input(&s.revision).aria_label("Subtask base revision"))
         .child(
-            dunlin_ui::button("subtask-create")
-                .small()
+            dunlin_ui::action_button("subtask-create")
                 .primary()
                 .label(if s.busy {
                     "Working…"
@@ -464,9 +463,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .flex()
                         .gap(px(6.))
                         .child(
-                            dunlin_ui::button(format!("subtask-open-{open}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::action_button(format!("subtask-open-{open}"))
                                 .label("Open as project")
                                 .disabled(!exists || view.project.is_remote())
                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -474,9 +471,7 @@ pub(super) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                 })),
                         )
                         .child(
-                            dunlin_ui::button(format!("subtask-remove-{remove}"))
-                                .ghost()
-                                .small()
+                            dunlin_ui::action_button(format!("subtask-remove-{remove}"))
                                 .label("Remove worktree…")
                                 .disabled(s.busy || this.git_history.running)
                                 .on_click(cx.listener(move |this, _, window, cx| {

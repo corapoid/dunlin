@@ -11,6 +11,56 @@ fn config() -> HarnessConfig {
 }
 
 #[test]
+fn reasoning_options_roundtrip_and_reject_unknown_or_wrong_session_values() {
+    let mut config = config();
+    config
+        .process_env
+        .insert("DUNLIN_MOCK_CONFIG_VARIANTS".into(), "1".into());
+    let harness = AcpHarness::spawn(config);
+    let id = loop {
+        match next(&harness) {
+            HarnessEvent::ConfigOptions {
+                session_id,
+                options,
+            } => {
+                assert_eq!(options.len(), 1);
+                assert_eq!(options[0].selector.current, "medium");
+                break session_id;
+            }
+            HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    };
+    assert!(harness.set_config_option(id.clone(), "reasoning-effort".into(), "high".into()));
+    loop {
+        match next(&harness) {
+            HarnessEvent::ConfigOptions {
+                session_id,
+                options,
+            } => {
+                assert_eq!(session_id, id);
+                assert_eq!(options[0].selector.current, "high");
+                break;
+            }
+            HarnessEvent::ConfigOptionChangeFailed { message, .. }
+            | HarnessEvent::Error { message } => panic!("{message}"),
+            _ => {}
+        }
+    }
+    for (session, value) in [(id.as_str(), "invented"), ("wrong-session", "low")] {
+        assert!(harness.set_config_option(session.into(), "reasoning-effort".into(), value.into()));
+        loop {
+            match next(&harness) {
+                HarnessEvent::ConfigOptionChangeFailed { .. } => break,
+                HarnessEvent::ConfigOptions { .. } => panic!("invalid selection was accepted"),
+                HarnessEvent::Error { message } => panic!("{message}"),
+                _ => {}
+            }
+        }
+    }
+}
+
+#[test]
 fn approved_continuation_identity_crosses_acp_as_metadata_without_changing_text() {
     let mut config = config();
     config.process_env.insert(
@@ -348,7 +398,7 @@ fn next(harness: &AcpHarness) -> HarnessEvent {
 fn next_model_change(harness: &AcpHarness) -> HarnessEvent {
     loop {
         match next(harness) {
-            HarnessEvent::Modes { .. } => continue,
+            HarnessEvent::Modes { .. } | HarnessEvent::ConfigOptions { .. } => continue,
             event => return event,
         }
     }
