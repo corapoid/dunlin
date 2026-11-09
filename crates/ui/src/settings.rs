@@ -196,8 +196,10 @@ mod tests {
             assert_eq!(t.secondary, p.muted_fg);
             assert_ne!(t.field, t.surface);
         }
-        assert!(Tokens::CONTROL_HEIGHT >= 32.);
-        assert!(Tokens::TITLE_SIZE > Tokens::BODY_SIZE);
-        assert!(Tokens::BODY_SIZE > Tokens::CAPTION_SIZE);
+        const {
+            assert!(Tokens::CONTROL_HEIGHT >= 32.);
+            assert!(Tokens::TITLE_SIZE > Tokens::BODY_SIZE);
+            assert!(Tokens::BODY_SIZE > Tokens::CAPTION_SIZE);
+        }
     }
 }

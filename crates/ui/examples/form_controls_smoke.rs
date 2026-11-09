@@ -295,7 +295,7 @@ fn main() {
                             owner.update(cx, |forms, _| forms.initial_action_size = Some(initial));
                             click(window, cx, &probe);
                         }
-                        3 | 4 | 5 => {
+                        3..=5 => {
                             let forms = owner.read(cx);
                             let current = forms.dynamic_bounds.get().unwrap().size;
                             let initial = forms.initial_action_size.unwrap();
