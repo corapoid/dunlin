@@ -1,5 +1,4 @@
-// Optional browser-only verification. No native app, agent or repository writes.
-// Requires an externally installed Playwright and its Chromium/WebKit browser.
+// Browser composition/parity smoke only. Does not exercise native operations.
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -10,45 +9,52 @@ const browser = await playwright[engine].launch({
   headless: true,
   executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined,
 });
-const context = await browser.newContext({
-  viewport: { width: 1440, height: 1000 },
-});
-const page = await context.newPage();
+const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = [];
-const externalRequests = [];
+const network = [];
 page.on("pageerror", (error) => errors.push(error.message));
 page.on("console", (message) => {
   if (message.type() === "error") errors.push(message.text());
 });
 page.on("request", (request) => {
-  if (/^https?:/.test(request.url())) externalRequests.push(request.url());
+  if (/^https?:/.test(request.url())) network.push(request.url());
 });
+const evidence = process.env.DUNLIN_UI_CONCEPT_EVIDENCE;
 const url = new URL(
   "../docs/development/ui-concepts/quiet-workspace.html",
   import.meta.url,
 ).href;
-const evidence = process.env.DUNLIN_UI_CONCEPT_EVIDENCE;
 const visible = async (selector) =>
-  assert.equal(await page.locator(selector).isVisible(), true, selector);
-const panel = async (name) => {
-  for (const candidate of ["work", "changes", "activity"]) {
-    assert.equal(
-      await page.locator(`#view-${candidate}`).isVisible(),
-      candidate === name,
-    );
-  }
+  assert.equal(
+    await page.locator(selector).first().isVisible(),
+    true,
+    selector,
+  );
+const openCoverage = async () => {
+  await page.locator("#show-coverage").click();
+  await visible("#coverage-dialog[open]");
+};
+const closeDialog = async () => {
+  if (await page.locator("dialog[open]").count())
+    await page.keyboard.press("Escape");
 };
 
 try {
   await page.goto(url);
-  await panel("work");
-  assert.equal(
-    await page.locator("#conversation-title").textContent(),
-    "Refine the workspace",
-  );
+  await visible(".primary-pane");
+  await visible(".agent-pane");
+  await visible("#dock");
+  assert.equal(await page.locator("#document-tabs [role=tab]").count(), 2);
   assert.equal(await page.locator(".send-button").isDisabled(), true);
+  const inventory = await page.evaluate(() => window.DUNLIN_CAPABILITIES);
+  const settings = await page.evaluate(() => window.DUNLIN_SETTINGS);
+  assert.equal(settings.length, 15);
+  assert.equal(
+    new Set(inventory.map((item) => item.id)).size,
+    inventory.length,
+  );
+  assert.ok(inventory.length >= 48, "Do not silently drop capability families");
 
-  // Capture the unmodified design, not the messages used for security testing.
   if (evidence) {
     await mkdir(resolve(evidence), { recursive: true });
     for (const theme of ["light", "dark"]) {
@@ -66,95 +72,185 @@ try {
       await page.screenshot({
         path: resolve(evidence, `quiet-workspace-${engine}-${theme}.png`),
         fullPage: true,
-        // Keep captures faithful to the settled page, including native controls.
-        animations: "allow",
         caret: "initial",
+        animations: "allow",
       });
     }
     await page.locator("#theme").selectOption("light");
   }
 
-  // Drafts belong to individual conversations and projects.
+  // Workbench state: canonical demo buffers outlive navigation and project changes.
+  await page.locator("#edit-buffer").click();
+  const buffer =
+    "pub struct RetainedBuffer;\n// <script>window.injected=true</script>";
+  await page.locator("#code-buffer").fill(buffer);
+  await page.locator('.project-tools [data-route="git"]').click();
+  await visible("#stage-file");
+  await page.locator("#stage-file").click();
+  await page.locator('[data-git-tab="history"]').click();
+  await page.locator('[data-git-tab="worktrees"]').click();
+  await page.locator('[data-git-tab="state"]').click();
+  await page.locator('[data-document="editor"]').click();
+  assert.equal(await page.locator("#code-buffer").inputValue(), buffer);
+  await page.locator("#edit-buffer").click();
+  assert.equal(await page.locator("#code-preview script").count(), 0);
+  assert.equal(await page.evaluate(() => window.injected), undefined);
+
   await page.locator("#prompt").fill("Dunlin draft");
+  await page.locator("#mode-select").selectOption("Plan");
   await page.locator("#choose-project").click();
-  await page.locator('[data-project="relay"]').click();
+  await page.locator('#project-options [data-project="relay"]').click();
   assert.equal(await page.locator("#prompt").inputValue(), "");
+  assert.equal(await page.locator("#mode-select").inputValue(), "Build");
   await page.locator("#prompt").fill("Relay draft");
   await page.locator("#choose-project").click();
-  await page.locator('[data-project="dunlin"]').click();
+  await page.locator('#project-options [data-project="dunlin"]').click();
   assert.equal(await page.locator("#prompt").inputValue(), "Dunlin draft");
-  await page.locator(".conversation-link").nth(1).click();
+  assert.equal(await page.locator("#mode-select").inputValue(), "Plan");
+  await page.locator("#edit-buffer").click();
+  assert.equal(await page.locator("#code-buffer").inputValue(), buffer);
+  await page.locator('[data-nav="sessions"]').click();
+  await page.locator('[data-session="1"]').click();
   assert.equal(await page.locator("#prompt").inputValue(), "");
-  await page.locator(".conversation-link").first().click();
+  await page.locator('[data-session="0"]').click();
   assert.equal(await page.locator("#prompt").inputValue(), "Dunlin draft");
 
-  // Untrusted demo messages are text, not markup, and no agent is called.
-  const text =
-    '<img src="https://example.invalid/never" onerror="window.injected=true">';
-  await page.locator("#prompt").fill(text);
+  const untrusted =
+    '<img src="https://example.invalid/no-request" onerror="window.injected=true">';
+  await page.locator("#prompt").fill(untrusted);
   await page.locator(".send-button").click();
-  assert.equal(await page.locator(".user-message").last().textContent(), text);
-  assert.equal(await page.locator("#transcript img").count(), 0);
-  assert.equal(await page.evaluate(() => window.injected), undefined);
-  assert.equal(await page.locator("#prompt").inputValue(), "");
-
-  await page.locator("#toggle-inspector").click();
-  await visible("#inspector");
-  await page.locator("#detail-context").focus();
+  assert.equal(
+    await page.locator(".message.user").last().textContent(),
+    untrusted,
+  );
+  assert.equal(await page.locator("#agent-content img").count(), 0);
+  await page.locator('[data-lens="chat"]').focus();
   await page.keyboard.press("ArrowRight");
-  await visible("#inspector-files");
-  await page.locator('[data-open-file="1"]').click();
-  await panel("changes");
-  assert.equal(
-    await page.locator("#diff-filename").textContent(),
-    "src/palette.rs",
+  await visible(".graph-flow");
+  await page.keyboard.press("ArrowRight");
+  await visible(".trace-row");
+  await page.locator('[data-lens="chat"]').click();
+  await visible("#composer");
+
+  // All mapped routes must open real composition surfaces, not dead menu rows.
+  await openCoverage();
+  assert.equal(await page.locator(".coverage-row").count(), inventory.length);
+  await closeDialog();
+  for (const route of new Set(inventory.map((item) => item.route))) {
+    await openCoverage();
+    const item = inventory.find((item) => item.route === route);
+    await page.locator(`[data-coverage-id="${item.id}"] button`).click();
+    if (route.startsWith("settings:")) {
+      await visible("#settings-dialog[open]");
+      assert.equal(
+        await page
+          .locator(`[data-settings="${route.split(":")[1]}"]`)
+          .getAttribute("aria-current"),
+        "page",
+      );
+      await closeDialog();
+    } else if (["projects", "files", "sessions"].includes(route)) {
+      assert.equal(
+        await page
+          .locator(`[data-nav="${route}"]`)
+          .getAttribute("aria-selected"),
+        "true",
+      );
+    } else if (["chat", "graph", "trace"].includes(route)) {
+      assert.equal(
+        await page
+          .locator(`[data-lens="${route}"]`)
+          .getAttribute("aria-selected"),
+        "true",
+      );
+    } else if (["terminal", "run", "agents", "checks"].includes(route)) {
+      assert.equal(
+        await page
+          .locator(`[data-dock="${route}"]`)
+          .getAttribute("aria-selected"),
+        "true",
+      );
+    } else if (["context", "budget"].includes(route)) {
+      await visible("#inspector");
+      await page.locator("#close-inspector").click();
+    } else {
+      assert.equal(
+        await page
+          .locator(`[data-document="${route}"]`)
+          .getAttribute("aria-selected"),
+        "true",
+      );
+    }
+  }
+
+  await page.locator("#open-settings").click();
+  for (const item of settings) {
+    await page.locator(`[data-settings="${item.id}"]`).click();
+    assert.equal(
+      await page.locator("#settings-content h3").textContent(),
+      item.label,
+    );
+  }
+  await page.locator("#settings-search").fill("keychain");
+  assert.equal(await page.locator("#settings-navigation button").count(), 1);
+  await closeDialog();
+
+  await page.locator('.project-tools [data-route="knowledge"]').click();
+  await page.locator('[data-knowledge-tab="relations"]').click();
+  await page.locator('[data-knowledge-tab="proposals"]').click();
+  await page.locator("#accept-proposal").click();
+  assert.match(
+    await page.locator("#proposal-state").textContent(),
+    /no file written/,
   );
-  await page.locator("#mark-reviewed").click();
-  assert.equal(
-    await page.locator("#review-progress").textContent(),
-    "1 of 3 files reviewed",
-  );
-  await page.locator("#mark-reviewed").click();
-  assert.equal(
-    await page.locator("#review-progress").textContent(),
-    "0 of 3 files reviewed",
-  );
-  await page.locator("#draft-commit").click();
-  await visible("#commit-dialog[open]");
-  await page.keyboard.press("Escape");
+  await page.locator('.project-tools [data-route="spec"]').click();
+  await page.locator('[data-spec-tab="trace"]').click();
+  await page.locator('[data-spec-tab="contract"]').click();
+  await page.locator('[data-dock="terminal"]').click();
+  await page.locator("#split-terminal").click();
+  assert.equal(await page.locator(".terminal-panes > div").count(), 2);
+  await page.locator('[data-dock="agents"]').click();
+  await page.locator(".dock-card-row button").last().click();
+  await visible("#workflow-dialog[open]");
+  await closeDialog();
   assert.equal(
     await page
-      .locator("#draft-commit")
+      .locator(".dock-card-row button")
+      .last()
       .evaluate((el) => el === document.activeElement),
     true,
   );
-  await page.locator("#close-inspector").click();
-  assert.equal(await page.locator("#inspector").isVisible(), false);
 
-  // Roving keyboard focus follows the selected destination.
-  await page.locator("#tab-changes").focus();
-  await page.keyboard.press("ArrowRight");
-  await panel("activity");
-  assert.equal(
-    await page.locator("#tab-activity").getAttribute("tabindex"),
-    "0",
+  // Host selection selects a separate project; local settings do not retarget.
+  await page.locator("#choose-host").click();
+  await page.locator('#workflow-content [data-project="server"]').click();
+  assert.equal(await page.locator("#host-name").textContent(), "Studio relay");
+  assert.match(
+    await page.locator("#scope-status").textContent(),
+    /\/srv\/api-service/,
   );
-  await page.locator(".timeline summary").first().click();
-  assert.equal(
-    await page.locator(".timeline details").first().getAttribute("open"),
-    "",
+  await page.locator("#open-settings").click();
+  await page.locator('[data-settings="credentials"]').click();
+  await page.locator("#settings-content [data-preview]").first().click();
+  assert.match(
+    await page.locator(".workflow-scope").textContent(),
+    /This Mac — application settings/,
   );
+  await closeDialog();
+  await closeDialog();
+  await page.locator("#choose-project").click();
+  await page.locator('#project-options [data-project="dunlin"]').click();
 
   await page.locator("#open-commands").click();
-  await page.locator("#command-query").fill("palette.rs");
-  assert.equal(await page.locator("#command-results button").count(), 1);
+  await page.locator("#command-query").fill("Task dispatch budgets");
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
-  await panel("changes");
-  await page.locator("#open-commands").click();
-  await page.locator("#command-query").fill("no-such-command-123");
-  assert.equal(await page.locator("#command-results button").count(), 0);
+  await visible("#inspector");
   await page.keyboard.press("Escape");
+  await page.locator("#open-commands").click();
+  await page.locator("#command-query").fill("not-a-real-command-123");
+  assert.equal(await page.locator("#command-results button").count(), 0);
+  await closeDialog();
   assert.equal(
     await page
       .locator("#open-commands")
@@ -162,14 +258,6 @@ try {
     true,
   );
 
-  await page.locator("#new-conversation").click();
-  await panel("work");
-  assert.equal(await page.locator("#transcript").textContent(), "");
-  await page.locator("#open-settings").click();
-  assert.equal(await page.locator(".settings-groups > div").count(), 6);
-  await page.keyboard.press("Escape");
-
-  // System preference and app preference are additive, not competing switches.
   await page.locator("#reduce-motion").check();
   assert.equal(
     await page
@@ -179,11 +267,10 @@ try {
   );
   await page.locator("#reduce-motion").uncheck();
   await page.emulateMedia({ reducedMotion: "reduce" });
-  assert.equal(
-    await page
-      .locator(".workspace-body")
-      .evaluate((el) => getComputedStyle(el).transitionDuration),
-    "0s",
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector(".workspace-body"))
+        .transitionDuration === "0s",
   );
   await page.emulateMedia({
     reducedMotion: "no-preference",
@@ -196,7 +283,6 @@ try {
   await page.waitForFunction(
     () => document.documentElement.dataset.theme === "dark",
   );
-  assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
   await page.locator("#glass").uncheck();
   assert.equal(
     await page
@@ -204,17 +290,10 @@ try {
       .evaluate((el) => getComputedStyle(el).backdropFilter),
     "none",
   );
-  assert.match(
-    await page
-      .locator(".app-window")
-      .evaluate((el) => getComputedStyle(el).backgroundColor),
-    /^rgb\(/,
-  );
-  await page.locator("#glass").check();
 
-  // No horizontal page overflow; drawers remain keyboard-dismissible.
   for (const [width, height] of [
-    [1440, 1000],
+    [1600, 1000],
+    [1440, 900],
     [1100, 760],
     [800, 600],
     [390, 844],
@@ -230,9 +309,9 @@ try {
     );
     await page.locator("#toggle-inspector").click();
     await visible("#inspector");
-    if (width <= 860)
+    if (width <= 1350)
       assert.equal(
-        await page.locator(".work-area").evaluate((el) => el.inert),
+        await page.locator(".workbench").evaluate((el) => el.inert),
         true,
       );
     await page.keyboard.press("Escape");
@@ -250,14 +329,10 @@ try {
       );
     }
   }
-  assert.deepEqual(
-    externalRequests,
-    [],
-    "The prototype must not make network requests",
-  );
   assert.deepEqual(errors, [], "Browser console errors");
+  assert.deepEqual(network, [], "External requests");
   console.log(
-    `PASS (${engine}): navigation, project/session drafts, safe demo messages, file review, dialogs/focus, keyboard tabs, appearance/accessibility preferences, five viewport sizes, no network or console errors.`,
+    `PASS (${engine}): ${inventory.length} capability families, all mapped routes and 15 settings pages; independent drafts/buffers, Chat/Graph/Trace, dock/splits, rich workspaces, host boundaries, safe messages, focus/keyboard, preferences, six viewport sizes. No network or native operations.`,
   );
 } finally {
   await browser.close();

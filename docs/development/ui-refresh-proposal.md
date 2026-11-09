@@ -1,267 +1,354 @@
-# Quiet Workspace — UI direction
+# Full Workbench — feature-preserving UI refresh
 
-**Design proposal, not a shipped interface.** Prepared 2026-11-09. The native
-application is unchanged by this proposal. This is a task-first information
-architecture, not a rearrangement or critique of the existing menus.
+**Design proposal, revision 2 — not the shipped native interface.** Prepared
+2026-11-09. No production layout, native menu or application capability is changed
+by this document or its browser prototype.
 
-## Try the concept
+## Correction to the first direction
 
-Open the [interactive prototype](ui-concepts/quiet-workspace.html) locally:
+The first “Quiet Workspace” study was too narrow. It presented a conversation
+application with three destinations rather than the full Dunlin IDE. Large empty
+reading areas and a small context panel did not account for the actual product's
+projects/groups, independent document panes, repository tools, specifications,
+knowledge, security, coordination and server administration.
+
+**That reduction is rejected.** Simpler presentation must not mean a simpler
+product, fewer tools, a chat-first replacement or hiding every advanced workflow
+inside a palette. Revision 2 starts from the existing functional scope, without
+copying or using the current menu arrangement as its information architecture.
+
+## Open the full-workbench prototype
 
 ```sh
 open docs/development/ui-concepts/quiet-workspace.html
 ```
 
-No build, dependencies, network requests, telemetry, agent calls or repository
-operations. All conversations, changes and activity are **sample data**. The
-browser approximates the composition and motion; CSS blur is not native Apple
-glass, and this is not a proposal to embed a browser in Dunlin.
+[Interactive study](ui-concepts/quiet-workspace.html) ·
+[Machine-readable preservation inventory](ui-concepts/workbench-capabilities.js)
 
-Try Work / Changes / Activity, switching projects and conversations, the context
-inspector, file review, a new conversation, the command palette, theme, glass and
-Reduce Motion. `⌘K` / `Ctrl+K` opens commands; Escape closes dialogs. Reload resets
-everything. Project switching keeps separate demo conversation drafts.
+The original filename is retained so existing links open the corrected study.
+The default view now shows **project/group navigation, an editor next to an agent,
+independent document tabs and a terminal dock** — not a chat landing page.
 
-Optional browser smoke checks use an externally installed Playwright (not a
-runtime or application dependency): `node scripts/ui-concept-smoke.mjs`, also
-with `--webkit`. If it is installed outside the repository, set
-`PLAYWRIGHT_MODULE` to its absolute `index.mjs` path. Optional
-`PLAYWRIGHT_EXECUTABLE_PATH` selects an existing browser executable, and
-`DUNLIN_UI_CONCEPT_EVIDENCE` names a directory for light/dark browser captures.
+All content is illustrative. No agent, terminal, Git command, remote connection,
+filesystem write, credential access or provider request is performed. A workflow
+preview demonstrates placement and boundaries, not an implemented operation. The
+actual application already implements the capabilities described in the linked
+user guides; this study does not reimplement their backends in JavaScript.
 
 ### Light and dark previews
 
-Browser captures of the design study, not screenshots of the native application:
+Browser composition studies, **not native application screenshots**:
 
-![Light concept: translucent project navigator, three task destinations and an opaque conversation surface](ui-concepts/quiet-workspace-chromium-light.png)
+![Full-workbench light study: project/group navigator, Rust editor, agent conversation and tools dock](ui-concepts/quiet-workspace-chromium-light.png)
 
-![Dark concept: graphite reading surface with the same navigation hierarchy](ui-concepts/quiet-workspace-chromium-dark.png)
+![Full-workbench dark study with the same capabilities and document hierarchy](ui-concepts/quiet-workspace-chromium-dark.png)
 
-## The idea
+## Non-negotiable design contract
 
-**One project. One place to work. Details when needed.**
+1. **Dunlin stays a native agent IDE.** Rust/GPUI and the existing AppKit bridges;
+   no browser runtime and no SwiftUI rewrite.
+2. **Do not delete capabilities to make the screenshot calmer.** Every family in
+   the preservation matrix below needs a concrete, discoverable home.
+3. **Keep independent work visible together.** Two document panes, agent sessions,
+   files and the tools dock remain separate surfaces with retained state.
+4. **Do not force the whole product into Work / Changes / Activity.** Chat, Graph
+   and Trace are explicit conversation lenses. Git, Knowledge, Spec and Security
+   remain workspaces/documents in their own right.
+5. **Preserve scope and safety contracts.** Local/relay/SSH, group/project/session,
+   saved/unsaved and evidence/claim must stay distinguishable.
+6. **Refresh presentation, not semantics.** Existing data, actions, shortcuts,
+   defaults, drafts, histories, confirmations and capability checks migrate before
+   replacing any old surface. A design proposal is not permission to remove them.
 
-The workspace should feel like a thoughtful Mac document application, not an
-administration console. A quiet, translucent navigation layer surrounds an opaque
-reading surface. Blue identifies the next action, not every interactive element.
-Depth communicates hierarchy; motion explains a change of state.
-
-### Organize around three jobs
-
-| Job | Place | What belongs here |
-| --- | --- | --- |
-| Build with an agent | **Work** | Conversations, document/editor tabs, approvals, composer; optional terminal dock |
-| Understand and accept changes | **Changes** | Diff review, staging, commit draft, history, branches and worktrees |
-| Understand what happened | **Activity** | Real run events, requests and tools, with Graph / Trace as detail lenses |
-
-These are peer destinations within a project, not three apps or three copies of
-the same session. Returning to Work restores its document, scroll position and
-draft. Activity may show a real pending approval badge; it never invents progress.
-
-### Window anatomy
+## New window composition
 
 ```text
-┌ traffic lights · sidebar     Search / commands            host · inspector ┐
-│ Project ▾             │ Work · Changes · Activity                          │
-│ New conversation      ├──────────────────────────────┬─────────────────────┤
-│                       │                              │ Context (optional)  │
-│ Pinned conversations  │ Current conversation /       │ Files · Plan        │
-│ Recent conversations  │ document / review            │                     │
-│                       │                              │ Scope, agent, model │
-│                       │                              │ Attached resources  │
-│                       │                              │                     │
-│ Settings              │ Composer / task actions       │                     │
-└───────────────────────┴──────────────────────────────┴─────────────────────┘
+┌ macOS title bar · project ▾ · branch · quick open · named host ▾ · inspector ┐
+│ Navigator           │ Document pane A          │ Document pane B           │
+│ Projects / Files /  │ workbench.rs · notes.md  │ agent session tabs        │
+│ Sessions            ├─────────────────────────┤ Chat / Graph / Trace      │
+│                     │                         │ Context Review Checks     │
+│ Groups & projects   │ Editor / Markdown /     │ Budget Compare Impact     │
+│ Local & remote      │ Git / Knowledge / Spec  │                           │
+│ Worktrees           │ Security / Artifacts    │ Transcript / tool cards   │
+│ Separate chat spaces│                         │ approvals / plans / queue │
+│                     │                         │                           │
+│ Project workspaces  │                         │ Agent · model · mode      │
+│ Git · Knowledge     │                         │ Composer · permissions    │
+│ Spec · Artifacts    ├─────────────────────────┴───────────────────────────┤
+│ Security            │ Tools dock: Terminal / Run / Agents / Checks       │
+│ Settings · Servers  │ Session tabs · splits · output · reports / inbox    │
+└─────────────────────┴─────────────────────────────────────────────────────┘
 ```
 
-- **Project navigator, 232–272 pt:** a project switcher, an explicit New
-  conversation action, pinned/recent conversations and search. No permanent
-  catalog of every feature. The project switcher offers collections, local and
-  remote projects, and explicit add/import actions. Selecting a project never
-  silently installs, clones or changes a running session's environment.
-- **Unified toolbar, 52–56 pt:** genuine macOS traffic lights and window dragging;
-  sidebar toggle, command/search entry, selected host and inspector toggle.
-  Project and host remain distinguishable. A remote hostname is always visible
-  before sending a prompt, approving a tool or mutating Git.
-- **Main surface:** conversation/document content gets the width. Start with one
-  document pane; split deliberately, preserving Dunlin's existing two-pane work.
-  No metrics dashboard between opening a project and doing work.
-- **Context inspector, 280–320 pt, closed by default:** Context / Files / Plan.
-  Scope, agent and model; attached resources; workspace files and plan details.
-  Inline links reveal the relevant inspector tab rather than opening another
-  permanent navigation rail. Status is still understandable when it is closed.
-- **Terminal:** an opt-in bottom dock with its own tabs/splits, not a fourth
-  primary destination. Errors can link directly to the relevant output.
+The diagram shows a useful starting arrangement, not fixed content types for the
+two panes. The native implementation must keep the current general-purpose pane
+model: files, conversations and supported document tabs can be opened, moved and
+closed independently. The browser study illustrates an editor/agent pairing; it
+does not implement the native tab-drag/buffer/PTY lifecycle.
 
-## Navigation and menus
+### 1. Unified native toolbar
 
-Keep the **system menu bar** native. It is the complete, searchable keyboard
-command surface, not a duplicate sidebar. Proposed groups:
+Keep genuine macOS traffic lights, window dragging, keyboard focus and menus.
+Expose project, branch/worktree, quick open and **named execution host** without
+turning the title bar into a row of every application tool. Opening a host manager
+does not retarget a live conversation. Selecting a remote project does not convert
+local preferences or the Mac's Keychain into remote settings.
+
+### 2. One navigator with three explicit lenses
+
+- **Projects:** local/remote projects, collections, nested groups, worktrees and
+  separate scratch chat spaces. Pin/sort/group/trust/default actions remain
+  available, with an explicit action button as well as contextual menus.
+- **Files:** the selected project's tree, filter/search, file operations and
+  preview entry points. This is a useful first-class explorer, not an attachment
+  list in the agent inspector.
+- **Sessions:** history in the selected scope, new conversations, search,
+  supported import and explicit standalone-chat creation. General, project and
+  scratch histories are not merged to simplify the list.
+
+A compact **Project workspaces** area gives labelled, persistent access to Source
+Control, Knowledge, Intent & Specifications, Artifacts & Evidence and Security
+Audits. Optional features respect their existing enablement settings; hidden
+contributions never delete their stored documents or evidence.
+
+### 3. Real document workbench
+
+Use restrained per-pane tab strips and one-pixel pane boundaries. Keep canonical
+file buffers, undo and dirty indicators independent of conversation runtimes and
+drafts. A split is explicit and reversible; closing one pane does not close an
+unrelated session, discard a buffer or stop a terminal. Preserve reading zoom,
+preview/save behavior, two-pane navigation and existing close/save guards.
+
+Git and other rich workspaces open as **document surfaces**, not tiny inspector
+cards. A user can give one the full document area, or keep an agent beside it.
+Do not replace the native Git graph, Spec cockpit or Knowledge relations with a
+short summary just because the summary fits a narrow panel.
+
+### 4. Full agent workspace
+
+Keep **Chat / Graph / Trace** visibly named and directly switchable. Preserve
+reasoning, tool evidence, approval cards, plans, retries, queued prompts,
+background/parked sessions, model/configuration options and session history.
+
+The existing **Context / Review / Checks / Budget / Compare / Impact** tool family
+is directly reachable above the conversation, not removed or reduced to a single
+generic information card. Context and limits can use a contextual inspector;
+review, comparison and impact need appropriately sized workbench documents.
+
+The composer keeps agent, advertised model/mode options, permissions, resources,
+conversation skills and advertised MCP controls. Unsupported configuration stays
+unsupported; the redesign does not invent modes or change execution policy.
+
+### 5. Tools dock, not disposable console output
+
+**Terminal / Run / Agents / Checks** have labelled dock tabs. Terminal sessions,
+splits, search, selection, shell integration, local/relay/SSH origins and dock
+placement/resizing survive presentation changes. Closing the dock hides its view;
+closing a terminal session retains its existing process-lifecycle semantics.
+
+Run retains static manifest discovery and exact-command confirmation. Agents
+retains observed peers, queue distinctions, reports, inbox, tasks and exact
+deferred-turn approval. It is not a new autonomous agent factory or task-DAG
+executor. Check output, diagnostics, exit/failure/cancellation and freshness stay
+inspectable rather than becoming a green status dot.
+
+### 6. Inspector for context, not a place to hide the application
+
+Use an on-demand 276–320 pt context surface for scope, effective sources,
+decision notes, selected items and budget details. It is **additional** to the
+workbench, not a replacement for Explorer, Git, Spec, Knowledge, audits or server
+administration. Project/group/session settings display their inheritance sources.
+
+### Menus and discoverability
+
+Keep a complete **native system menu bar**, without making it the only route to
+specialized functionality. Proposed responsibilities, not a copy of today's menu:
 
 | Menu | Responsibility |
 | --- | --- |
-| Dunlin | About, Settings (`⌘,`), Services, Hide, Quit |
-| File | Open/add project, new conversation/document, save, close |
-| Edit | Undo/redo, text editing, Find |
-| View | Work / Changes / Activity, sidebar, inspector, terminal, split and zoom |
-| Conversation | Advertised agent/session options, context, stop/resume, history |
-| Git | Review, staging, commit, branches/worktrees and history; scope-aware confirmations |
-| Window / Help | Standard window management, documentation and command discovery |
+| Dunlin | About, Settings, Services, Hide and Quit |
+| File | Open/add project, new document/conversation, save and guarded close |
+| Edit | Undo/redo, selection, clipboard and Find |
+| View | Navigator lenses, document panes, Chat/Graph/Trace, inspector, dock and reading zoom |
+| Project | Project/group defaults and trust; repository changes/history/branches/worktrees and explicit Git operations |
+| Conversation | Verified agent/session options, context/resources, queue, stop/resume and history |
+| Tools | Terminal, Run, Agents, Checks; Knowledge/Spec/Security/Artifacts workspaces; named server administration |
+| Window / Help | Standard window behavior, documentation and searchable commands |
 
-This is a proposed taxonomy; shortcut conflicts and localization require a native
-audit before implementation. Disabled commands explain missing prerequisites.
+The labelled navigator, conversation tool row and dock expose frequent commands
+directly; the palette accelerates them but is not their only entry point. Item
+context menus contain item actions, not unrelated global tools. New-document
+choices have an explicit menu button, not a required long press. Native shortcut
+and localization audits must preserve existing access and resolve conflicts
+before changing bindings. Disabled commands name their missing prerequisite and
+selected scope; simplified wording never skips a confirmation or merges distinct
+operations such as creating a branch and checking it out.
 
-The command palette searches **commands, projects, conversations and files** in
-separate result groups. Every command has another discoverable route. Do not hide
-core workflows behind right-click or icon-only overflow. Context menus contain
-actions for the clicked item, not global application settings.
+## Preservation matrix
 
-### Settings are a separate place
+This is a map of **existing capability families**, not a new feature backlog.
+The [prototype inventory](ui-concepts/workbench-capabilities.js) drives its
+searchable **Capabilities** map; each record opens an identified route and links
+to a current guide. Mapped does not mean a native redesign is implemented or that
+every leaf command is already represented by a fully working browser control.
 
-Use a standard Settings window, not the main workspace's persistent navigation.
-Proposed task groups: **General**, **Appearance & Accessibility**, **Agents &
-Accounts**, **Connections**, **Extensions & Skills**, **Privacy & Data**. Search
-finds both new names and older terminology. Native security approvals, Keychain,
-relay ownership and explicit installation boundaries remain intact.
-
-Project configuration belongs to **Project Settings**, reached from the project
-switcher or Context, with a visible inheritance/source label. Global settings,
-project overrides and conversation options must never look interchangeable.
-
-## Visual system
-
-| Element | Direction |
-| --- | --- |
-| Typography | System UI font, 12–14 pt controls, 14–16 pt reading; system monospaced code font |
-| Spacing | 4 pt base; 8 / 12 / 16 / 24 / 32 pt rhythm; generous section gaps, compact related rows |
-| Surfaces | Three levels: material navigation, opaque document, raised transient panel |
-| Color | Cool mineral neutrals, one system-blue accent; semantic colors only for meaningful state |
-| Shape | 8 pt controls, 12 pt grouped content, 16 pt transient panels; capsules only for short selectors |
-| Dividers | Hairlines at pane boundaries, not borders around every row or paragraph |
-| Actions | One obvious primary action per task; quiet navigation, readable secondary actions |
-| Icons | Consistent optical weight; labels for destinations, accessible names for toolbar icons |
-
-Light mode is the first-class reference, with an equally deliberate graphite dark
-mode. Avoid translucent text, glow, excessive nested cards and dashboard gradients
-inside the document. The prototype's outside background is presentation only.
-
-## Apple components and materials
-
-Remain **Rust + GPUI**, using the existing AppKit bridges rather than a SwiftUI
-rewrite. The platform already provides useful integration points:
-
-- [Native effects](../../apps/desktop/src/effects/backdrop.rs): runtime-checked
-  `NSGlassEffectView` on macOS 26+, with `NSVisualEffectView` fallback for the
-  macOS 15 baseline. Reuse the capability checks and native geometry lifecycle;
-  do not instantiate a new-OS class unconditionally.
-- [Platform preferences](../../apps/desktop/src/platform.rs): the macOS Reduce
-  Transparency query; GPUI/application Reduce Motion remains additive.
-- System title bar, traffic lights, menus, open/save panels, contextual menus,
-  clipboard and text-editing conventions stay genuinely native.
-- Use system symbols through supported Apple APIs where appropriate and licensed;
-  retain bundled-icon fallbacks. The prototype uses simple original line icons,
-  not redistributed SF Symbols artwork or font files.
-
-**Material budget:** navigation and transient overlays only. Code, diffs,
-transcripts, form fields and approval details have opaque reading surfaces. Do
-not blur the content being reviewed, layer several glass panes, or turn a
-permission request into a decorative, low-contrast floating pill.
-
-When transparency is reduced, replace the material with an opaque semantic
-surface, not just a lower blur radius. Inactive windows use subdued native
-materials without dimming document text. Increased contrast and bright/dark
-wallpapers need real native acceptance; a browser approximation cannot prove it.
-
-## Motion that carries meaning
-
-| Transition | Treatment | Duration |
+| Existing capability | Concrete home in the refreshed UI | Current contract |
 | --- | --- | --- |
-| Hover / press / focus | Color and edge; no moving label | 90–120 ms |
-| Destination change | Short opacity entrance; no full-window slide | 140 ms |
-| Inspector / navigator | Coordinated reveal; retain document scroll and selection | 180–220 ms |
-| Palette / popover | Opacity + at most 6 pt travel | 160 ms |
-| Plan / tool disclosure | Bounded reveal; preserve transcript scroll anchor | 160–180 ms |
-| Completion / new event | One state transition, no confetti or perpetual pulse | 120 ms |
+| Dashboard, activity, recent project visits | Overview document | [Workspace](../user-guide/workspace.md) |
+| Local/remote projects, collection/import, watched folders | Projects navigator + Add/import | [Project import](../user-guide/project-import.md) |
+| Nested groups, pin/sort, trust and inherited runtime defaults | Projects + explicit project/group settings | [Workspace](../user-guide/workspace.md), [runtime defaults](../reference/project-runtime-settings.md) |
+| Recoverable generated-folder cleanup | Projects → Cleanup preview | [Workspace](../user-guide/workspace.md) |
+| Standalone chats and scratch roots | Distinct Chat spaces section + Sessions | [Standalone chats](../user-guide/standalone-chat-and-worktrees.md) |
+| Explorer, file/folder mutations, filter/search | Files navigator + Project Search document | [Workspace](../user-guide/workspace.md) |
+| Editing, save/undo, two panes, independent tab state, zoom | Document panes and per-pane controls | [Tab lifecycle](../user-guide/session-tabs-and-ui-preferences.md) |
+| Code, minimap/blame and image/PDF previews | Editor / preview documents | [Editor](../user-guide/editor.md) |
+| Visual/raw Markdown, blocks/tables/fences | Markdown document, same backing buffer | [Markdown](../user-guide/markdown-editor.md) |
+| Conversation history and supported imports | Sessions + Agents settings | [Session import](../user-guide/session-import.md) |
+| ACP readiness, accounts, default/visible adapters | Agents settings; scope-aware composer | [Agents](../user-guide/agents-and-models.md) |
+| Model/mode/configuration, reasoning/tools, queue/retry/park | Conversation pane and composer | [Conversations](../user-guide/conversations.md) |
+| Graph and Trace, recorded session usage | Explicit conversation lenses | [Conversations](../user-guide/conversations.md), [usage](../user-guide/usage.md) |
+| Conversation resources, skills, MCP exclusions | Composer context menu + Context | [Skills](../user-guide/skills.md), [conversations](../user-guide/conversations.md) |
+| Context envelope and revisioned decision memory | Context inspector | [Agent workbench](../user-guide/agent-workbench.md) |
+| Checkpoints, saved-file baseline and guarded restore | Task Review document | [Agent workbench](../user-guide/agent-workbench.md) |
+| Exact-command checks and diagnostics | Checks dock + reviewed command preview | [Agent workbench](../user-guide/agent-workbench.md) |
+| Task request/time/USD gates; stop/release/forget | Budget inspector | [Agent workbench](../user-guide/agent-workbench.md) |
+| A/B detached worktrees and separate agent approvals | Comparison document | [Agent workbench](../user-guide/agent-workbench.md) |
+| Rust reference/dependent/candidate-test impact | Impact document | [Agent workbench](../user-guide/agent-workbench.md) |
+| Observed peers, reports, messages, tasks, dependencies | Agents dock and scoped details | [Coordination](../user-guide/agent-coordination.md) |
+| Exact deferred-turn review/approve/cancel, inbox acknowledgment | Agents dock → specific review | [Coordination](../user-guide/agent-coordination.md) |
+| Stage/unstage, diff, commit/amend, pull/push, AI commits | Source Control → Changes | [Git](../user-guide/git.md), [AI commits](../user-guide/skills.md#ai-assisted-commits) |
+| Branch graph/history/parents, refs and patches | Source Control → Graph & history | [Git history](../user-guide/git-history.md) |
+| Stash, worktrees, conflict/sequencer operations | Source Control → Worktrees / State | [Git operations](../user-guide/git-operations-and-blame.md) |
+| Registered subtask worktrees, create/open/remove | Source Control → Worktrees; Projects links | [Worktrees](../user-guide/standalone-chat-and-worktrees.md) |
+| Knowledge objects, relations, canonical Markdown | Knowledge document | [Knowledge](../user-guide/knowledge.md) |
+| Pending knowledge writes and accept/reject | Knowledge → Proposals | [Knowledge](../user-guide/knowledge.md) |
+| Intent inbox/capture, Spec phases, questions, gates/drift | Intent & Specifications document | [Spec](../user-guide/spec-workspace.md) |
+| Requirement/task/worktree/session evidence and completion | Specifications → Traceability / Tasks | [Spec](../user-guide/spec-workspace.md) |
+| Agent contract, hash-bound decisions and heuristic audit | Specifications → Agent contract | [Spec](../user-guide/spec-workspace.md) |
+| Artifact capture, local/remote preview/export/share/revoke | Artifacts & Evidence document | [Artifacts](../user-guide/artifacts.md) |
+| Audit readers, findings, coverage, triage and exports | Security Audits document | [Security audits](../user-guide/security-audits.md) |
+| Separately confirmed sandboxed local check | Security Audits → explicit workflow | [Security audits](../user-guide/security-audits.md) |
+| Stored/use-only keys, policy/HTTP/CLI recipes/activity | Credentials settings and bounded approval | [Credentials](../user-guide/credentials.md) |
+| Agent approval boundaries and macOS TCC | Permissions settings; inline exact approvals | [Settings](../user-guide/settings.md) |
+| Local/relay/SSH terminal, tabs/splits/shell integration | Terminal dock (and supported document tabs) | [Terminal](../user-guide/terminal-and-run.md) |
+| Static tasks, reviewed argv/cwd/env, output/cancel | Run dock | [Run](../user-guide/terminal-and-run.md) |
+| Relay pairing/grants/leases, host accounts/tools, clone/copy | Named host → Server Administration | [Relay](../administration/relay-setup.md) |
+| SSH hosts, passphrases, host keys, bootstrap/tunnels | Server Administration + Remote & SSH | [SSH](../administration/ssh.md) |
+| Session usage, account limits, attribution/billing, sync | Trace, status entry and Usage & Limits | [Usage](../user-guide/usage.md) |
+| Shared skill installation, companions, updates and scopes | Skills settings + conversation attachments | [Skills](../user-guide/skills.md) |
+| WASM packs, capabilities, explicit install/enable, builder | Extensions settings + contributed workspaces | [Plugins](plugins.md) |
+| Settings/project export/import, recovery, diagnostics/logs | Data & Backup / Diagnostics & About | [Settings](../user-guide/settings.md) |
 
-Use the shared GPUI motion primitives. Start at rest, coalesce rapid updates,
-cancel on close and stop requesting frames when settled. Do not animate streamed
-paragraphs, code glyphs or entire transcript reflows. Avoid animating blur radii.
-State changes are immediate even while their visual transition settles.
+**All 15 settings pages remain accounted for:** General, Appearance, Workspace,
+Chat, Editor & Terminal, Agents, Skills, Extensions, Permissions, Credentials,
+Security Audits, Remote & SSH, Usage & Limits, Data & Backup, Diagnostics & About.
+The prototype searches and opens all 15. They are not collapsed into six
+nonfunctional category descriptions. Search aliases, source labels, Save/Cancel,
+dirty-form guards and immediate-save preferences need native parity before a
+rollout, even if the final grouping changes.
 
-**Reduce Motion = application preference OR system preference.** Remove travel,
-spring, scale and nonessential fades; communicate state with text and shape.
-**Reduce Transparency** is independent. Both preferences work in both themes.
-No continuous animation is needed in an idle window.
+Do **not** add removed PR/Actions integration, autonomous worker orchestration,
+scheduled automations, global transcript FTS or generic native plugin UI to make
+the prototype appear comprehensive. These are not current supported capabilities;
+see [product boundaries](../project/status.md).
 
-## Important interaction states
+## Visual refresh: lighter, not emptier
 
-- **First launch / empty project:** Open project and Start conversation are the
-  primary actions. Explain missing agent setup without a fake sample conversation.
-- **Unavailable agent:** preserve draft; name the missing dependency; offer setup
-  or another verified agent. Do not show a disabled, unlabelled Send arrow.
-- **Agent working:** Stop is visible; queued prompts are distinguishable from
-  submitted ones. Navigating elsewhere does not cancel work.
-- **Approval:** show exact action, target host/root, requested scope and bounded
-  allow/deny options inline. Never authorize through a decorative toast.
-- **Remote disconnected:** persistent scoped status, no local fallback, no claim
-  that an unconfirmed write succeeded. Keep drafts and existing read-only content.
-- **Empty changes / unknown metrics:** explain the empty state; unknown is not
-  zero. Errors remain selectable/copyable with a concrete recovery action.
-- **Git:** reviewing is read-only; staging, commit and push remain separate,
-  explicit operations. Do not silently stage everything through a simplified UI.
-- **Long projects/history:** virtualized lists and bounded rendering; search and
-  recent items must work without expanding the whole project tree.
+- Preserve a productive information density: 12–13 pt navigation, 13–15 pt
+  conversation reading, readable system-monospace code. Avoid the first study's
+  oversized promotional heading and large empty chat canvas.
+- Use a 4 pt spacing rhythm, 8–12 pt related-control gaps and 16–24 pt section
+  separation. Differentiate document, navigation and transient surfaces without
+  surrounding every line with a card.
+- Give both themes deliberate semantic tokens. Reserve system blue for focus,
+  selection and the next meaningful action. Preserve text/shape alongside status
+  colors. Unknown data remains explicit.
+- Keep tab titles, filenames, roots and agent identity stable. Do not animate or
+  morph technical text while a user is reading/editing it.
 
-## Adaptive layout and accessibility
+## Apple materials and components
 
-At wide sizes, keep the document comfortable rather than stretching prose across
-the display. Around 1100 pt, close the inspector unless explicitly opened; at
-smaller sizes, it becomes a dismissible sheet. Around 860 pt, the navigator becomes
-a temporary drawer. At 800 × 600, prioritize the document and composer, with all
-destinations still labelled and reachable. The browser demo also adapts below
-these sizes for review; this does not change the native minimum window size.
+Reuse [the AppKit effects bridge](../../apps/desktop/src/effects/backdrop.rs):
+runtime-checked `NSGlassEffectView` on macOS 26+, `NSVisualEffectView` fallback on
+the supported macOS 15 baseline. Keep native title bars, menus, dialogs, open/save
+panels, clipboard and text conventions; supported Apple symbol APIs can coexist
+with bundled-icon fallbacks. Do not redistribute SF Symbols fonts/artwork.
 
-All controls need keyboard access, visible focus, VoiceOver names and appropriate
-roles. No hover-only actions. Closing a drawer/dialog restores focus to its
-trigger; an obscured or hidden pane is not in the accessibility tree. Respect
-reading zoom and long localized names. Body text targets 4.5:1 contrast and
-essential UI boundaries 3:1 against the composited surface, not just its RGBA token.
+**Material budget:** title bar/navigation and transient overlays. Code, diffs,
+terminal text, transcripts, controls and approval details stay opaque. No
+wallpaper shining through code or multiple stacked blur layers. A browser blur is
+only a composition approximation; it does not demonstrate native Liquid Glass.
 
-## Acceptance before a native rollout
+Respect the [platform Reduce Transparency preference](../../apps/desktop/src/platform.rs)
+with opaque semantic surfaces. Inactive-window material, bright/dark wallpapers,
+increased contrast and actual native hit-testing need platform acceptance.
 
-This document is a design decision candidate, **not a second roadmap**. If this
-direction is accepted, track intended implementation in the existing
-[roadmap](../project/roadmap.md), delivering independently reviewable slices:
+## Motion, adaptive layout and accessibility
 
-1. Navigation/state model with existing actions and data, behind a temporary flag.
-2. Opaque layout and keyboard/VoiceOver behavior before adding materials.
-3. Reuse the AppKit material bridge, then add bounded shared motion.
-4. Migrate every destination; preserve deep links, drafts, two-pane documents,
-   terminal splits, project/group inheritance and local/remote boundaries.
+Use 90–120 ms hover/press transitions, 140 ms document entrances, 160 ms popovers
+and 180–220 ms pane reveals. Preserve scroll anchors, selected files, active
+sessions and keyboard focus. No perpetual pulse, animated code glyphs, streaming
+paragraph reflow or blur-radius animation. Start at rest and stop requesting
+frames after a transition settles.
 
-Before removing a flag, verify: light/dark × transparency on/off × motion on/off;
-macOS 15 fallback and macOS 26+ glass; inactive windows and varied wallpapers;
-800 × 600 / 1100 × 760 / 1440 × 900; reading zoom and long labels; keyboard-only
-and VoiceOver; approvals, remote disconnect/reconnect and large histories. Compare
-idle CPU, launch time and memory against the maintained performance baseline.
+System **OR** application Reduce Motion disables nonessential movement. Reduce
+Transparency is independent. Both work in both themes. Text, not animation, must
+communicate pending approvals, stale evidence and execution state.
 
-Prototype browser checks validate only the demo's interactions and adaptive
-layout. They are not native visual acceptance, a performance measurement or proof
-of an implemented AppKit component.
+At wide sizes, show the editor/agent pairing and dock. Below useful split widths,
+switch between the retained panes rather than squeezing two unusable columns;
+keep an explicit Agent action and document tabs. At narrow sizes, navigation and
+inspector become dismissible drawers. All major workspaces and dock tools remain
+reachable. The demo supports smaller browser sizes for review; it does not change
+the native minimum window size.
 
-Verified locally on 2026-11-09 in Chromium and WebKit: destination/inspector
-navigation, isolated project/conversation drafts, safe text-only demo messages,
-read-only file review, dialog focus restoration, keyboard tabs, theme/material/
-motion preferences and five viewport sizes (1440, 1100, 800, 390 and 320 px wide).
-Both runs completed without external requests or browser console errors. Native
-VoiceOver, material rendering and physical-input acceptance remain unverified.
+Require keyboard access, labelled controls, roving tab focus, correct hidden/inert
+panes, focus restoration, reading zoom, long localized names and VoiceOver.
+Native parity also includes IME, file/terminal selections, per-pane focus and
+command shortcut conflicts. Browser checks cannot establish those native results.
+
+## Evaluation and implementation boundary
+
+The inventory is a **parity gate**, not a competing roadmap. If the visual
+direction is accepted, implementation belongs in the existing
+[roadmap](../project/roadmap.md), in reviewable native slices:
+
+1. Retain the current state/action models; test a presentation shell behind a flag.
+2. Migrate navigation, panes and dock without dropping a row of the matrix.
+3. Migrate rich workspaces and all settings forms with their exact scope/guards.
+4. Apply AppKit materials and bounded shared motion only after functional parity.
+5. Compare native light/dark, motion/transparency variants, small/wide windows,
+   keyboard/VoiceOver, remote loss/reconnect, large histories and existing
+   [performance baselines](../quality/performance.md).
+
+### Browser verification
+
+`node scripts/ui-concept-smoke.mjs` (also `--webkit`) uses an externally installed
+Playwright, not an application dependency. `PLAYWRIGHT_MODULE` can identify its
+absolute `index.mjs`; `PLAYWRIGHT_EXECUTABLE_PATH` can select an existing browser.
+Optional `DUNLIN_UI_CONCEPT_EVIDENCE` names a capture directory.
+
+The smoke validates the prototype's route inventory, all settings pages,
+project/session drafts, retained demo editor buffers, conversation lenses, dock,
+Git/Knowledge/Spec routes, local/remote scope labels, safe message rendering,
+keyboard/dialog behavior, preference toggles and adaptive layout. It does not
+execute or validate the native application's operational workflows. Native
+materials, drag/drop, PTYs, real agents/servers, TCC and physical-input/VoiceOver
+acceptance remain unverified by this proposal.
+
+Revision 2 browser runs passed locally on 2026-11-09 in Chromium and WebKit,
+including all mapped routes and 15 settings pages at six viewport sizes. Both
+runs completed without external requests or browser console errors. This is
+prototype evidence only, not a fresh native application acceptance run.
 
 ## Apple references
 
-- [Materials](https://developer.apple.com/design/human-interface-guidelines/materials)
-- [Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars)
-- [Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)
-- [Motion](https://developer.apple.com/design/human-interface-guidelines/motion)
-- [Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+[Materials](https://developer.apple.com/design/human-interface-guidelines/materials) ·
+[Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars) ·
+[Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars) ·
+[Motion](https://developer.apple.com/design/human-interface-guidelines/motion) ·
+[Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)
 
 [Development index](README.md)
