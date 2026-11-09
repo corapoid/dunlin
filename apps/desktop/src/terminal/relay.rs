@@ -20,7 +20,7 @@ const HEARTBEAT: Duration = Duration::from_secs(30);
 
 /// Start a relay PTY. Connection failures are reported through the normal
 /// `Exit` channel so the tab UI has one lifecycle path.
-pub(super) fn connect(
+pub(crate) fn connect(
     workspace: &RemoteWorkspace,
     rows: u16,
     cols: u16,
@@ -131,11 +131,21 @@ async fn run(
     input: async_channel::Receiver<Vec<u8>>,
     control: async_channel::Receiver<Control>,
 ) -> Result<(), String> {
-    let (socket, _) =
-        tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async(request))
-            .await
-            .map_err(|_| "The relay terminal handshake timed out".to_string())?
-            .map_err(|error| format!("Could not open the relay terminal: {error}"))?;
+    #[allow(unused_mut)]
+    let mut connector = None;
+    #[cfg(debug_assertions)]
+    if let Some(pem) = crate::remote_e2e::TLS_CA.get() {
+        connector = Some(tokio_tungstenite::Connector::Rustls(
+            dunlin_agent::relay_tls_config(pem)?,
+        ));
+    }
+    let (socket, _) = tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        tokio_tungstenite::connect_async_tls_with_config(request, None, false, connector),
+    )
+    .await
+    .map_err(|_| "The relay terminal handshake timed out".to_string())?
+    .map_err(|error| format!("Could not open the relay terminal: {error}"))?;
     let (mut sink, mut stream) = socket.split();
     let mut heartbeat = tokio::time::interval(HEARTBEAT);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);

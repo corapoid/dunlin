@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 mod layout;
-mod relay;
+pub(crate) mod relay;
 
 use layout::{Axis, SplitNode};
 

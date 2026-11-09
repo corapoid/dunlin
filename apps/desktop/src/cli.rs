@@ -139,6 +139,14 @@ pub(crate) fn validate(args: &[OsString], debug: bool) -> Result<(), &'static st
             Err("Unexpected extra arguments")
         };
     }
+    // Manual deployed-host acceptance is intentionally NOT in native_smokes().
+    if debug && flag == "--remote-e2e" {
+        return if args.len() == 1 {
+            Ok(())
+        } else {
+            Err("Remote acceptance reads a private manifest from stdin")
+        };
+    }
     if debug && flag == "--list-native-smokes" {
         return if args.len() == 1 {
             Ok(())

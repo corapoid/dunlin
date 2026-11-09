@@ -71,6 +71,19 @@ impl AgentBuilder {
         self
     }
 
+    /// Explicit per-agent CA for private relays. No system trust changes and no
+    /// disabling of certificate or hostname verification.
+    pub fn root_certificate_pem(mut self, pem: &[u8]) -> Result<Self, String> {
+        let certificate = ureq::tls::Certificate::from_pem(pem)
+            .map_err(|_| "Invalid relay CA PEM".to_string())?;
+        self.config = self.config.tls_config(
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::Specific(vec![certificate].into()))
+                .build(),
+        );
+        Ok(self)
+    }
+
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.config = self.config.timeout_global(Some(timeout));
         self

@@ -4,6 +4,7 @@
 //!   remote_smoke <relay-url> <device-token> <project-id> <remote-cwd> [prompt]
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use dunlin_agent::{AcpHarness, HarnessConfig, HarnessEvent};
 
@@ -29,7 +30,17 @@ fn main() {
     let events = harness.events();
     let mut started = false;
     let mut prompted = false;
-    while let Ok(event) = events.recv_blocking() {
+    let deadline = Instant::now() + Duration::from_secs(180);
+    let mut completed = false;
+    while Instant::now() < deadline {
+        let event = match events.try_recv() {
+            Ok(event) => event,
+            Err(async_channel::TryRecvError::Empty) => {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            Err(_) => break,
+        };
         println!("{event:?}");
         match event {
             HarnessEvent::Ready { .. } if !started => {
@@ -48,10 +59,20 @@ fn main() {
                 let option = options.first().map(|option| option.id.clone());
                 harness.respond_permission(request_id, option);
             }
-            HarnessEvent::PromptFinished { .. } => break,
+            HarnessEvent::PromptFinished { .. } => {
+                completed = prompted;
+                break;
+            }
             HarnessEvent::Exited { .. } | HarnessEvent::Error { .. } => break,
             _ => {}
         }
     }
     harness.shutdown();
+    if !completed {
+        eprintln!(
+            "FAIL: remote ACP exited, failed, or exceeded its deadline before prompt completion"
+        );
+        std::process::exit(1);
+    }
+    println!("PASS: remote ACP prompt completed");
 }

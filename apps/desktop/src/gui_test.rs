@@ -153,6 +153,7 @@ pub(crate) fn run_with_timeout(
                     _ => None,
                 };
                 if let Some(reason) = failure {
+                    crate::remote_e2e::ui::capture_failure(window);
                     let app = owner.read(cx);
                     let evidence = serde_json::json!({"scenario":scenario,"step":step.name,"reason":reason,"notice":app.notice,"running":app.harness.running,"status":format!("{:?}",app.harness.status),"editor_dirty":app.editor_dirty,"pending_editor":app.pending_editor.is_some(),"queue":app.harness.queued_prompts().len(),"transcript":app.harness.transcript,"targets":crate::gui_probe::snapshot()});
                     std::fs::write(directory.join("failure.json"), serde_json::to_vec_pretty(&evidence).unwrap()).unwrap();

@@ -6,6 +6,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+manual-acceptance = []
+
+[[bin]]
+name = "vault_acceptance"
+path = "src/bin/vault_acceptance.rs"
+required-features = ["manual-acceptance"]
+test = false
+
 [dependencies]
 hex.workspace = true
 dunlin-domain.workspace = true

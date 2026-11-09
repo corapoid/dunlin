@@ -3239,6 +3239,8 @@ impl DunlinApp {
                 .background_executor()
                 .spawn(async move {
                     let pair = remote::pair(&url_for_task, &code, "Dunlin on macOS")?;
+                    #[cfg(debug_assertions)]
+                    crate::remote_e2e::ui::journal_keychain(&host_id_for_task)?;
                     remote::save_token(&host_id_for_task, &pair.token)?;
                     Ok::<_, String>((pair, host_id_for_task))
                 })

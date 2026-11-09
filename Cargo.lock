@@ -1588,6 +1588,7 @@ dependencies = [
  "async-io",
  "dunlin-domain",
  "futures-util",
+ "rustls",
  "serde",
  "serde_json",
  "similar 3.2.1",

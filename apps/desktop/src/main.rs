@@ -61,6 +61,8 @@ mod providers;
 mod qa;
 mod remote;
 mod remote_connection;
+#[cfg(debug_assertions)]
+mod remote_e2e;
 mod run;
 #[cfg(debug_assertions)]
 mod save_smoke;
@@ -99,6 +101,10 @@ fn main() {
     if let Err(error) = cli::validate(&args, cfg!(debug_assertions)) {
         eprintln!("{error}");
         std::process::exit(2);
+    }
+    #[cfg(debug_assertions)]
+    if args.first().is_some_and(|arg| arg == "--remote-e2e") {
+        std::process::exit(remote_e2e::run());
     }
     if args
         .first()

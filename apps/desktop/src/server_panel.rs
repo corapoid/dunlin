@@ -88,10 +88,7 @@ fn raw(
     path: &str,
     body: Option<&impl Serialize>,
 ) -> Result<ureq::Response, String> {
-    let agent = ureq::AgentBuilder::new()
-        .try_proxy_from_env(false)
-        .redirects(0)
-        .build();
+    let agent = crate::remote::http_agent();
     raw_with_agent(&agent, host, token, method, path, body)
 }
 

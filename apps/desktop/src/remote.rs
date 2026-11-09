@@ -149,10 +149,20 @@ pub(crate) struct RemoteSessionInfo {
 /// keeps pairing codes, bearer tokens and prompts off the wire.
 use dunlin_http as ureq;
 
-fn http_agent() -> ureq::Agent {
+pub(crate) fn http_agent() -> ureq::Agent {
     // A relay bearer token must never be forwarded through an environment
     // proxy by accident.
-    ureq::AgentBuilder::new().try_proxy_from_env(false).build()
+    let builder = ureq::AgentBuilder::new()
+        .try_proxy_from_env(false)
+        .redirects(0);
+    #[cfg(debug_assertions)]
+    let builder = match crate::remote_e2e::TLS_CA.get() {
+        Some(pem) => builder
+            .root_certificate_pem(pem)
+            .expect("validated manual relay CA"),
+        None => builder,
+    };
+    builder.build()
 }
 
 pub(crate) fn validate_relay_url(url: &str) -> Result<Url, String> {

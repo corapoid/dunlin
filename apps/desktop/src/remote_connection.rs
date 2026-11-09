@@ -81,6 +81,11 @@ fn field(label: &'static str, state: &Entity<InputState>, p: Palette, busy: bool
         div()
             .relative()
             .child(dunlin_ui::input(state).aria_label(label).disabled(busy))
+            .children(crate::gui_probe::marker(match label {
+                "Endpoint · HTTPS relay URL" => "remote-e2e-url",
+                "Login key · one-time relay pairing code" => "remote-e2e-code",
+                _ => "remote-e2e-other-input",
+            }))
             .children({
                 #[cfg(debug_assertions)]
                 {
@@ -176,6 +181,8 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 )
                 .child(
                     button("connection-connect")
+                        .relative()
+                        .children(crate::gui_probe::marker("remote-e2e-connect"))
                         .primary()
                         .label(if busy { "Connecting…" } else { "Connect" })
                         .disabled(busy)

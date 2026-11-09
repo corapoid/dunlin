@@ -18,7 +18,26 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
+pub mod acceptance;
 mod models;
+/// Build a verified TLS client with only the explicitly supplied private CA.
+pub fn relay_tls_config(pem: &[u8]) -> Result<Arc<rustls::ClientConfig>, String> {
+    use rustls::pki_types::{CertificateDer, pem::PemObject};
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in CertificateDer::pem_slice_iter(pem) {
+        roots
+            .add(cert.map_err(|_| "Invalid relay CA")?)
+            .map_err(|_| "Invalid relay CA")?;
+    }
+    if roots.is_empty() {
+        return Err("Empty relay CA".into());
+    }
+    Ok(Arc::new(
+        rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth(),
+    ))
+}
 pub use models::{ModelChoice, SessionModels, SessionModes};
 use models::{session_models, session_modes};
 
@@ -39,7 +58,6 @@ use async_channel::{Receiver, Sender};
 use dunlin_domain::{ToolKind, ToolStatus};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
@@ -109,6 +127,9 @@ pub struct HarnessConfig {
     pub mcp_servers: Vec<McpServerConfig>,
     /// Optional local diagnostics. Protocol payloads must be filtered by the sink.
     pub diagnostics: Option<DiagnosticSink>,
+    /// Explicit additional trust anchor; certificate/name verification remains on.
+    /// Manual acceptance supplies this per connection, never via global trust.
+    pub tls_root_pem: Option<Vec<u8>>,
 }
 
 pub type DiagnosticSink = Arc<dyn Fn(&str, &str) + Send + Sync>;
@@ -127,6 +148,7 @@ impl HarnessConfig {
             additional_directories: Vec::new(),
             mcp_servers: Vec::new(),
             diagnostics: None,
+            tls_root_pem: None,
         }
     }
 
@@ -161,6 +183,7 @@ impl HarnessConfig {
             additional_directories: Vec::new(),
             mcp_servers: Vec::new(),
             diagnostics: None,
+            tls_root_pem: None,
         }
     }
 
@@ -633,7 +656,11 @@ async fn run(
             token,
             project_id,
             roots,
-        } => Transport::Remote(WsTransport::new(url, token, project_id, roots.clone())?),
+        } => {
+            let mut transport = WsTransport::new(url, token, project_id, roots.clone())?;
+            transport.tls_root_pem = config.tls_root_pem.clone();
+            Transport::Remote(transport)
+        }
     };
     let pending: PendingPermissions = Arc::new(Mutex::new(HashMap::new()));
 
@@ -1399,6 +1426,7 @@ impl ConnectTo<Client> for Transport {
 /// ACP over a WebSocket text-frame transport.
 struct WsTransport {
     request: tokio_tungstenite::tungstenite::http::Request<()>,
+    tls_root_pem: Option<Vec<u8>>,
 }
 
 impl WsTransport {
@@ -1483,15 +1511,28 @@ impl WsTransport {
             HeaderValue::from_str(&format!("Bearer {token}"))
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?,
         );
-        Ok(Self { request })
+        Ok(Self {
+            request,
+            tls_root_pem: None,
+        })
     }
 }
 
 impl ConnectTo<Client> for WsTransport {
     async fn connect_to(self, client: impl ConnectTo<Agent>) -> AcpResult<()> {
-        let (socket, _) = connect_async(self.request).await.map_err(|error| {
-            AcpError::new(-32603, format!("Could not connect to the relay: {error}"))
-        })?;
+        let connector = if let Some(pem) = &self.tls_root_pem {
+            Some(tokio_tungstenite::Connector::Rustls(
+                relay_tls_config(pem).map_err(|error| AcpError::new(-32603, error))?,
+            ))
+        } else {
+            None
+        };
+        let (socket, _) =
+            tokio_tungstenite::connect_async_tls_with_config(self.request, None, false, connector)
+                .await
+                .map_err(|error| {
+                    AcpError::new(-32603, format!("Could not connect to the relay: {error}"))
+                })?;
         let (write, read) = socket.split();
         let sink = write
             .with(|line: String| async move {

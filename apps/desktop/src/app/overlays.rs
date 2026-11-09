@@ -1260,6 +1260,11 @@ impl DunlinApp {
                         format!("remote-project:{}", info.id),
                         format!("Add remote project {}", info.name),
                     )
+                    .relative()
+                    .children(crate::gui_probe::marker_named(format!(
+                        "remote-project:{}",
+                        info.id
+                    )))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.add_remote_project(&host, &info_for_click, cx);
                     }))

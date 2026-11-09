@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 agent-client-protocol = { version = "5.0.0", features = ["process", "stdio", "unstable_end_turn_token_usage"] }
 async-channel = "2"
 async-io = "2"

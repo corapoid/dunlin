@@ -1,0 +1,29 @@
+# Manual remote acceptance only. No host mounts, agent, or automatic forwarding.
+vmType: vz
+arch: aarch64
+images:
+  - location: https://cloud.debian.org/images/cloud/trixie/20261001-2618/debian-13-genericcloud-arm64-20261001-2618.qcow2
+    arch: aarch64
+    digest: sha512:d8470b8c6c38fead046c794b5800a5a7b96672d5bcf543cc230ceb0c4b8ace05ed341a0c8928045422243fde26b2f1f2f58e99244c65709ffda2e3d4b674dd5a
+cpus: 2
+memory: 4GiB
+disk: 16GiB
+mounts: []
+containerd:
+  system: false
+  user: false
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+portForwards:
+  - guestPortRange: [1, 65535]
+    ignore: true
+propagateProxyEnv: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -eu
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y --no-install-recommends python3 git curl ca-certificates openssl openssh-server bubblewrap dbus-user-session libsecret-tools gnome-keyring build-essential pkg-config libssl-dev nodejs npm iproute2

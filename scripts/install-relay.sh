@@ -69,6 +69,10 @@ fi
 VERSION=${TAG#v}
 ASSET="dunlin-relay-$VERSION-$OS-$ARCH.tar.gz"
 BASE="https://github.com/$REPOSITORY/releases/download/$TAG"
+if [[ -n "${DUNLIN_RELEASE_BASE_URL:-}" ]]; then
+  [[ "$DUNLIN_RELEASE_BASE_URL" == https://* && "$DUNLIN_RELEASE_BASE_URL" != *[@?#[:space:]]* ]] || fail 'Release mirror must be an HTTPS URL without credentials, query or fragment.'
+  BASE="${DUNLIN_RELEASE_BASE_URL%/}"
+fi
 fetch "$BASE/$ASSET" "$TMP/$ASSET"
 fetch "$BASE/RELAY-SHA256SUMS" "$TMP/SHA256SUMS"
 verify "$TMP/$ASSET" "$ASSET" "$TMP/SHA256SUMS"
