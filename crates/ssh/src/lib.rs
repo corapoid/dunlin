@@ -6,6 +6,7 @@
 //! passphrase storage, relay bootstrap and a loopback-only tunnel.
 
 pub mod keychain;
+mod platform;
 pub mod service;
 
 pub use service::{

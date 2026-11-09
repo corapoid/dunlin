@@ -1,6 +1,7 @@
+use crate::platform::validate as validate_relay_platform;
 use dunlin_domain::SshHost;
 use sha2::{Digest, Sha256};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -18,6 +19,29 @@ pub struct ResolvedHost {
 pub struct BootstrapResult {
     pub pairing_code: String,
     pub tunnel: Tunnel,
+}
+
+/// Per-connection OpenSSH configuration. This avoids changing HOME, global
+/// known_hosts, or process-wide environment when using an isolated host profile.
+#[derive(Clone, Default)]
+pub struct ConnectionOptions {
+    pub config_file: Option<PathBuf>,
+    pub control_socket: Option<PathBuf>,
+}
+
+fn configured_command(program: &str, options: &ConnectionOptions) -> Command {
+    let mut command = Command::new(program);
+    if let Some(path) = &options.config_file {
+        command.arg("-F").arg(path);
+    }
+    command
+}
+
+fn connection_control(host: &SshHost, options: &ConnectionOptions) -> Result<PathBuf, String> {
+    if let Some(path) = &options.control_socket {
+        return Ok(path.clone());
+    }
+    control_path(host)
 }
 
 pub struct Tunnel {
@@ -144,11 +168,19 @@ fn control_dir() -> Result<PathBuf, String> {
 }
 
 pub fn ensure_master(host: &SshHost, askpass: Option<&Path>) -> Result<(), String> {
-    if check_master(host) {
+    ensure_master_with_options(host, askpass, &ConnectionOptions::default())
+}
+
+pub fn ensure_master_with_options(
+    host: &SshHost,
+    askpass: Option<&Path>,
+    options: &ConnectionOptions,
+) -> Result<(), String> {
+    if check_master_with_options(host, options) {
         return Ok(());
     }
-    let control = control_path(host)?;
-    let mut command = Command::new(ssh_program());
+    let control = connection_control(host, options)?;
+    let mut command = configured_command(ssh_program(), options);
     command.args(master_args(host, &control, askpass.is_none()));
     command.args(["--", &host.target, "true"]);
     configure_askpass(&mut command, host, askpass);
@@ -166,10 +198,14 @@ pub fn ensure_master(host: &SshHost, askpass: Option<&Path>) -> Result<(), Strin
 }
 
 pub fn check_master(host: &SshHost) -> bool {
-    let Ok(control) = control_path(host) else {
+    check_master_with_options(host, &ConnectionOptions::default())
+}
+
+pub fn check_master_with_options(host: &SshHost, options: &ConnectionOptions) -> bool {
+    let Ok(control) = connection_control(host, options) else {
         return false;
     };
-    Command::new(ssh_program())
+    configured_command(ssh_program(), options)
         .args([
             "-O",
             "check",
@@ -185,8 +221,12 @@ pub fn check_master(host: &SshHost) -> bool {
 }
 
 pub fn exit_master(host: &SshHost) {
-    if let Ok(control) = control_path(host) {
-        let _ = Command::new(ssh_program())
+    exit_master_with_options(host, &ConnectionOptions::default());
+}
+
+pub fn exit_master_with_options(host: &SshHost, options: &ConnectionOptions) {
+    if let Ok(control) = connection_control(host, options) {
+        let _ = configured_command(ssh_program(), options)
             .args([
                 "-O",
                 "exit",
@@ -206,17 +246,34 @@ pub fn bootstrap(
     relay_binary: &Path,
     askpass: Option<&Path>,
 ) -> Result<BootstrapResult, String> {
+    bootstrap_with_options(host, relay_binary, askpass, &ConnectionOptions::default())
+}
+
+pub fn bootstrap_with_options(
+    host: &SshHost,
+    relay_binary: &Path,
+    askpass: Option<&Path>,
+    options: &ConnectionOptions,
+) -> Result<BootstrapResult, String> {
     if !relay_binary.is_file() {
         return Err("The dunlin-relay binary is unavailable".into());
     }
-    ensure_master(host, askpass)?;
-    let control = control_path(host)?;
-    let remote_binary = "$HOME/.dunlin/bin/dunlin-relay";
+    ensure_master_with_options(host, askpass, options)?;
+    let control = connection_control(host, options)?;
+    let platform = run_remote(host, &control, "uname -s; uname -m", askpass, options)?;
+    if !platform.status.success() {
+        return Err("Could not detect remote OS/architecture".into());
+    }
+    validate_relay_platform(relay_binary, &String::from_utf8_lossy(&platform.stdout))?;
+    // Modern scp uses SFTP: $HOME is a literal path there, not a shell variable.
+    // A relative destination is resolved under the authenticated user's home.
+    let remote_binary = ".dunlin/bin/dunlin-relay.new";
     let mkdir = run_remote(
         host,
         &control,
         "mkdir -p \"$HOME/.dunlin/bin\" && chmod 700 \"$HOME/.dunlin\"",
         askpass,
+        options,
     )?;
     if !mkdir.status.success() {
         return Err(format!(
@@ -224,7 +281,7 @@ pub fn bootstrap(
             command_error("ssh", &mkdir.stderr)
         ));
     }
-    let upload = Command::new(scp_program())
+    let upload = configured_command(scp_program(), options)
         .args([
             "-q",
             "-o",
@@ -245,28 +302,82 @@ pub fn bootstrap(
         std::fs::read(relay_binary).map_err(|e| e.to_string())?,
     ));
     let script = bootstrap_script(host, &local_hash);
-    let result = run_remote_script(host, &control, &script, askpass)?;
+    let result = run_remote_script(host, &control, &script, askpass, options)?;
     if !result.status.success() {
         return Err(format!(
             "Remote relay bootstrap failed: {}",
             command_error("ssh", &result.stderr)
         ));
     }
-    let pairing_code = pair(host, &host.user, askpass)?;
-    let tunnel = start_tunnel(host, askpass)?;
+    let pairing_code = pair_with_options(host, "admin", askpass, options)?;
+    let tunnel = start_tunnel_with_options(host, askpass, options)?;
+    wait_for_relay(tunnel.local_port)?;
     Ok(BootstrapResult {
         pairing_code,
         tunnel,
     })
 }
 
+/// Select a locally reviewed artifact for the actual target, not the client OS.
+/// This never downloads or falls back to an incompatible executable.
+pub fn select_relay_binary(
+    host: &SshHost,
+    candidates: &[PathBuf],
+    askpass: Option<&Path>,
+) -> Result<PathBuf, String> {
+    let options = ConnectionOptions::default();
+    ensure_master_with_options(host, askpass, &options)?;
+    let control = connection_control(host, &options)?;
+    let platform = run_remote(host, &control, "uname -s; uname -m", askpass, &options)?;
+    if !platform.status.success() {
+        return Err("Could not detect remote OS/architecture".into());
+    }
+    let platform = String::from_utf8_lossy(&platform.stdout);
+    candidates.iter().find(|path| path.is_file() && validate_relay_platform(path, &platform).is_ok()).cloned()
+        .ok_or_else(|| format!("No reviewed relay binary matches {}. Extract the target artifact under dist/relay/<platform>/dunlin-relay.", platform.trim().replace('\n', "/")))
+}
+
+fn wait_for_relay(port: u16) -> Result<(), String> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        let address = std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port));
+        if let Ok(mut socket) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) {
+            let _ = socket.set_read_timeout(Some(Duration::from_millis(500)));
+            let _ = socket.set_write_timeout(Some(Duration::from_millis(500)));
+            if socket
+                .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .is_ok()
+            {
+                let mut response = String::new();
+                if socket.take(4096).read_to_string(&mut response).is_ok()
+                    && response.starts_with("HTTP/1.1 200")
+                    && response.trim_end().ends_with("ok")
+                {
+                    return Ok(());
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err("Remote relay service did not become healthy after bootstrap".into())
+}
+
 pub fn pair(host: &SshHost, user: &str, askpass: Option<&Path>) -> Result<String, String> {
-    let control = control_path(host)?;
+    pair_with_options(host, user, askpass, &ConnectionOptions::default())
+}
+
+pub fn pair_with_options(
+    host: &SshHost,
+    user: &str,
+    askpass: Option<&Path>,
+    options: &ConnectionOptions,
+) -> Result<String, String> {
+    let control = connection_control(host, options)?;
     let command = format!(
         "\"$HOME/.dunlin/bin/dunlin-relay\" pair {} --ttl 15",
         shell_quote(user)
     );
-    let output = run_remote(host, &control, &command, askpass)?;
+    let output = run_remote(host, &control, &command, askpass, options)?;
     if !output.status.success() {
         return Err(format!(
             "Could not create a relay pairing code: {}",
@@ -278,9 +389,22 @@ pub fn pair(host: &SshHost, user: &str, askpass: Option<&Path>) -> Result<String
 }
 
 pub fn start_tunnel(host: &SshHost, askpass: Option<&Path>) -> Result<Tunnel, String> {
-    ensure_master(host, askpass)?;
-    let control = control_path(host)?;
+    start_tunnel_with_options(host, askpass, &ConnectionOptions::default())
+}
+
+pub fn start_tunnel_with_options(
+    host: &SshHost,
+    askpass: Option<&Path>,
+    options: &ConnectionOptions,
+) -> Result<Tunnel, String> {
+    ensure_master_with_options(host, askpass, options)?;
+    let control = connection_control(host, options)?;
     let local_port = if host.local_port != 0 {
+        // A successful TCP connect to somebody else's listener is not tunnel
+        // readiness. Reject a pre-existing listener before spawning OpenSSH.
+        let reservation = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, host.local_port))
+            .map_err(|_| "The requested SSH tunnel port is already in use".to_string())?;
+        drop(reservation);
         host.local_port
     } else {
         free_loopback_port()?
@@ -290,7 +414,7 @@ pub fn start_tunnel(host: &SshHost, askpass: Option<&Path>) -> Result<Tunnel, St
     } else {
         host.relay_port
     };
-    let mut command = Command::new(ssh_program());
+    let mut command = configured_command(ssh_program(), options);
     command.args([
         "-N",
         "-o",
@@ -374,8 +498,9 @@ fn run_remote(
     control: &Path,
     command: &str,
     askpass: Option<&Path>,
+    options: &ConnectionOptions,
 ) -> Result<std::process::Output, String> {
-    let mut process = Command::new(ssh_program());
+    let mut process = configured_command(ssh_program(), options);
     process.args([
         "-o",
         &format!("ControlPath={}", control.display()),
@@ -394,8 +519,9 @@ fn run_remote_script(
     control: &Path,
     script: &str,
     askpass: Option<&Path>,
+    options: &ConnectionOptions,
 ) -> Result<std::process::Output, String> {
-    let mut process = Command::new(ssh_program());
+    let mut process = configured_command(ssh_program(), options);
     process.args([
         "-o",
         &format!("ControlPath={}", control.display()),
@@ -429,11 +555,12 @@ fn bootstrap_script(host: &SshHost, expected_hash: &str) -> String {
     format!(
         r#"set -eu
 BIN="$HOME/.dunlin/bin/dunlin-relay"
-chmod 700 "$BIN"
+NEW="$BIN.new"
+chmod 700 "$NEW"
 if command -v shasum >/dev/null 2>&1; then
-  ACTUAL=$(shasum -a 256 "$BIN" | awk '{{print $1}}')
+  ACTUAL=$(shasum -a 256 "$NEW" | awk '{{print $1}}')
 elif command -v sha256sum >/dev/null 2>&1; then
-  ACTUAL=$(sha256sum "$BIN" | awk '{{print $1}}')
+  ACTUAL=$(sha256sum "$NEW" | awk '{{print $1}}')
 else
   echo "No SHA-256 tool on the host" >&2
   exit 1
@@ -442,6 +569,13 @@ if [ "$ACTUAL" != "{expected_hash}" ]; then
   echo "dunlin-relay checksum mismatch" >&2
   exit 1
 fi
+mv -f "$NEW" "$BIN"
+if [ "$(uname -s)" = "Darwin" ]; then
+  DB="$HOME/Library/Application Support/Dunlin/relay.db"
+else
+  DB="$HOME/.local/share/dunlin/relay.db"
+fi
+if [ ! -e "$DB" ]; then "$BIN" init --db "$DB" >/dev/null; fi
 if [ "$(uname -s)" = "Darwin" ]; then
   PLIST="$HOME/Library/LaunchAgents/dev.dunlin.relay.plist"
   mkdir -p "$HOME/Library/LaunchAgents"
@@ -471,6 +605,7 @@ WantedBy=default.target
 EOF
   systemctl --user daemon-reload
   systemctl --user enable --now dunlin-relay.service
+  systemctl --user restart dunlin-relay.service
 fi
 "#
     )

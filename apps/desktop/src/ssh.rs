@@ -238,13 +238,14 @@ impl DunlinApp {
         let Some(host) = self.ssh_hosts.iter().find(|host| host.id == id).cloned() else {
             return;
         };
-        let Some(binary) = relay_binary_path() else {
+        let candidates = relay_binary_candidates();
+        if !candidates.iter().any(|path| path.is_file()) {
             self.set_notice(
                 "Place a matching dunlin-relay binary in dist/ or target/release before bootstrapping",
                 cx,
             );
             return;
-        };
+        }
         let askpass = askpass_path();
         let id = id.to_string();
         self.ssh_status
@@ -253,6 +254,11 @@ impl DunlinApp {
             let result = cx
                 .background_executor()
                 .spawn(async move {
+                    let binary = dunlin_ssh::service::select_relay_binary(
+                        &host,
+                        &candidates,
+                        askpass.as_deref(),
+                    )?;
                     let bootstrap = dunlin_ssh::bootstrap(&host, &binary, askpass.as_deref())?;
                     let local_port = bootstrap.tunnel.local_port;
                     let url = format!("http://127.0.0.1:{local_port}");
@@ -358,17 +364,19 @@ fn askpass_path() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-fn relay_binary_path() -> Option<PathBuf> {
-    let candidates = [
+fn relay_binary_candidates() -> Vec<PathBuf> {
+    let mut candidates = vec![
+        PathBuf::from("dist/relay/linux-arm64/dunlin-relay"),
+        PathBuf::from("dist/relay/linux-x86_64/dunlin-relay"),
+        PathBuf::from("dist/relay/macos-arm64/dunlin-relay"),
         PathBuf::from("dist/dunlin-relay"),
         PathBuf::from("target/release/dunlin-relay"),
         PathBuf::from("target/debug/dunlin-relay"),
     ];
+    if let Ok(executable) = std::env::current_exe()
+        && let Some(parent) = executable.parent()
+    {
+        candidates.push(parent.join("dunlin-relay"));
+    }
     candidates
-        .into_iter()
-        .find(|path| path.is_file())
-        .or_else(|| {
-            let path = std::env::current_exe().ok()?.parent()?.join("dunlin-relay");
-            path.is_file().then_some(path)
-        })
 }
