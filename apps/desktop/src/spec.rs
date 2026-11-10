@@ -425,10 +425,39 @@ fn refresh_view(view: &mut View, store: Option<&dunlin_storage::Store>) {
 }
 
 impl DunlinApp {
+    pub(crate) fn spec_kit_available(&self) -> bool {
+        let project = &self.project().id;
+        self.plugins.packs.iter().any(|pack| {
+            pack.manifest.id == "spec-kit" && self.plugins.is_enabled_for(Some(project), pack)
+        }) || self.skills.iter().any(|skill| {
+            skill.id == SPEC_KIT_SKILL
+                && !skill.disabled
+                && skill
+                    .installations
+                    .iter()
+                    .any(|entry| entry.scope == Scope::Global || entry.project_id == *project)
+        })
+    }
+
+    pub(crate) fn install_spec_kit_skill(&mut self, cx: &mut Context<Self>) {
+        if self.spec_kit_available() {
+            return;
+        }
+        self.install_catalog_skill(SPEC_KIT_SKILL, Target::Shared, Scope::Global, "", None, cx);
+        if let Some(message) = self.skills_ui.message.clone() {
+            self.set_notice(message, cx);
+        }
+    }
+
+    pub(crate) fn spec_tools_enabled(&self) -> bool {
+        self.plugins
+            .governance_enabled_for((!self.projects.is_empty()).then(|| self.project().id.as_str()))
+    }
+
     pub(crate) fn open_spec_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.spec_tools_enabled {
+        if !self.spec_tools_enabled() {
             self.file_notice(
-                "Spec, intent and agent-contract tools are disabled in Settings → Extensions",
+                "Install and enable Intent, Concepts & Decisions in Settings → Extensions to use these tools",
                 cx,
             );
             return;
@@ -446,6 +475,8 @@ impl DunlinApp {
             return;
         }
         self.branch_ui.dismiss();
+        self.workspace_tools.current = None;
+        self.section = self.sidebar_tab.section();
         self.remember_workspace_tab();
         self.project_settings_target = None;
         self.project_runtime_draft = None;
@@ -560,6 +591,11 @@ impl DunlinApp {
     }
 
     pub(crate) fn close_spec_workspace(&mut self, cx: &mut Context<Self>) {
+        if let Some(project) = self.spec.view.as_ref().map(|view| view.project.id.clone()) {
+            if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Spec(project), cx) {
+                return;
+            }
+        }
         if let Some(view) = &self.spec.view {
             self.workbench
                 .panes
@@ -762,7 +798,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn start_intent_interview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.spec_tools_enabled {
+        if !self.spec_tools_enabled() {
             self.file_notice("Intent capture is disabled in Settings → Extensions", cx);
             return;
         }
@@ -784,7 +820,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn capture_intent(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.spec_tools_enabled {
+        if !self.spec_tools_enabled() {
             self.file_notice("Intent capture is disabled in Settings → Extensions", cx);
             return;
         }
@@ -861,7 +897,7 @@ impl DunlinApp {
     }
 
     pub(crate) fn open_agent_contract(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.spec_tools_enabled {
+        if !self.spec_tools_enabled() {
             self.file_notice(
                 "The agent contract is disabled in Settings → Extensions",
                 cx,
@@ -2072,8 +2108,7 @@ fn artifact_list(view: &View, p: &Palette, cx: &mut Context<DunlinApp>) -> State
         .h_full()
         .overflow_y_scroll()
         .border_r_1()
-        .border_color(p.border)
-        .bg(p.panel);
+        .border_color(p.border);
     let kinds: &[Kind] = if view.inbox {
         &[Kind::Intent]
     } else {
@@ -2788,7 +2823,6 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
         .min_h(px(0.))
         .flex()
         .flex_col()
-        .bg(p.bg)
         .text_color(p.fg);
     let mut header = div()
         .flex_shrink_0()
@@ -2903,21 +2937,31 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                 .label("Agent contract")
                 .on_click(cx.listener(|this, _, window, cx| this.open_agent_contract(window, cx))),
         )
-        .child(
-            dunlin_ui::action_button("spec-install-pack-skill")
-                .label("Install Spec Kit skill globally")
-                .disabled(this.skills_ui.busy)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.install_catalog_skill(
-                        SPEC_KIT_SKILL,
-                        Target::Shared,
-                        Scope::Global,
-                        "",
-                        None,
-                        cx,
-                    );
-                })),
-        )
+        .when(!this.spec_kit_available(), |header| {
+            header.child(
+                dunlin_ui::action_button("spec-install-pack-skill")
+                    .label(
+                        if this.skills_ui.installing.as_deref() == Some(SPEC_KIT_SKILL) {
+                            "Installing Spec Kit…"
+                        } else {
+                            "Install Spec Kit skill globally"
+                        },
+                    )
+                    .disabled(this.skills_ui.busy)
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("spec-install-pack-skill")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| this.install_spec_kit_skill(cx))),
+            )
+        })
         .child(
             dunlin_ui::button("spec-extensions")
                 .ghost()
@@ -3144,7 +3188,7 @@ mod tests {
     }
 
     #[test]
-    fn spec_tools_setting_defaults_on_and_round_trips_off() {
+    fn legacy_spec_tools_preference_remains_readable_for_package_migration() {
         let mut settings = crate::app::StoredSettings::default();
         assert!(settings.spec_tools_enabled);
         settings.spec_tools_enabled = false;

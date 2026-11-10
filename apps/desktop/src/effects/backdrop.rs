@@ -58,30 +58,6 @@ pub(crate) struct OverlayBackdrop {
     shared: Rc<Shared>,
 }
 
-/// A localized, input-transparent material below GPUI toolbar controls.
-#[derive(Default)]
-pub(crate) struct ControlGlass(RefCell<native::BackdropViews>);
-impl ControlGlass {
-    pub(crate) fn paint(&self, bounds: Bounds<Pixels>, window: &Window, cx: &App) {
-        if crate::platform::reduce_transparency() {
-            self.clear(window);
-            return;
-        }
-        self.0.borrow_mut().update_panel(
-            window,
-            Bounds::new(point(px(0.), px(0.)), window.viewport_size()),
-            Some(bounds),
-            f32::from(bounds.size.height) / 2.,
-            palette(cx).bg.l < 0.5,
-        );
-    }
-    pub(crate) fn clear(&self, window: &Window) {
-        self.0
-            .borrow_mut()
-            .update_panel(window, Bounds::default(), None, 0., false);
-    }
-}
-
 #[derive(Default)]
 struct WindowBackdrops(HashMap<WindowId, Weak<Shared>>);
 impl Global for WindowBackdrops {}

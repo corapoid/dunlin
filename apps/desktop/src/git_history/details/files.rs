@@ -234,7 +234,11 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     )
                     .custom(
                         ButtonCustomVariant::new(cx)
-                            .color(if selected { p.selection } else { p.panel })
+                            .color(if selected {
+                                p.selection
+                            } else {
+                                transparent_black()
+                            })
                             .foreground(p.fg)
                             .hover(if selected { p.selection } else { p.hover })
                             .active(p.selection),
@@ -250,7 +254,11 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .pl(px(10. + row.depth as f32 * 14.))
                     .min_w(px(0.))
                     .border_l_2()
-                    .border_color(if selected || focused { p.blue } else { p.panel })
+                    .border_color(if selected || focused {
+                        p.blue
+                    } else {
+                        transparent_black()
+                    })
                     .when(focused, |r| r.bg(p.hover))
                     .tooltip(tooltip)
                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -399,7 +407,6 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .flex()
         .flex_col()
         .overflow_hidden()
-        .bg(p.panel)
         .child(heading)
         .child(
             div()

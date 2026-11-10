@@ -31,13 +31,20 @@ schema v11; this is not the current database schema version).
 It is replaced on every refresh and can be deleted/rebuilt without touching
 files.
 
-## Global switch
+## Package enablement
 
-**Settings → Extensions → Spec & intent tools** disables the Spec workspace,
-Intent Inbox, agent contract, the Spec tab and the bundled Spec Kit /
-agent-contract pack commands. The switch is stored in `StoredSettings` and
-defaults to on for existing installations. Disabling it never deletes or edits
-files on disk.
+Install and enable **Settings → Extensions → Intent, Concepts & Decisions** to
+use the Spec workspace, Intent Inbox, agent contracts and their commands. They
+share this package's enablement; there is no separate Spec & intent tools entry.
+The package is disabled after installation until explicitly enabled. Disabling
+it closes the Spec view without deleting or editing project files. A legacy
+disabled Spec & intent preference keeps the package off during migration.
+
+The workspace uses the same reading-surface background as other document tabs.
+The optional **Install Spec Kit skill globally** action is hidden when the Spec
+Kit integration is enabled for the project or an enabled skill is already
+installed for the project/globally. Installation progress and failures are also
+shown as workspace notices, not only in Settings.
 
 ## Intent inbox
 

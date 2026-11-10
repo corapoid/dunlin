@@ -35,6 +35,14 @@ pub(crate) fn run() {
     std::fs::write(&gh, r##"#!/usr/bin/env python3
 import json, sys, subprocess, time, pathlib
 a = sys.argv[1:]
+active_file = pathlib.Path(__file__).parent / 'active-account'
+active = active_file.read_text() if active_file.exists() else 'github-fixture'
+if a[:2] == ['auth', 'status'] and '--json' in a:
+ print(json.dumps([{'login': login, 'active': login == active} for login in ['github-fixture', 'second-fixture']]))
+ sys.exit(0)
+if a[:2] == ['auth', 'switch']:
+ assert a[2:] == ['--hostname', 'github.com', '--user', 'second-fixture']
+ active_file.write_text('second-fixture'); sys.exit(0)
 if a == ['--version'] or a[:2] == ['auth', 'status']: sys.exit(0)
 if a[:2] == ['repo', 'clone']:
  subprocess.run(['git', 'init', '--template=', '-q', a[3]], check=True)
@@ -47,7 +55,7 @@ if 'search/repositories' in a:
  print(json.dumps({'total_count': 54072, 'incomplete_results': False, 'items': [{'full_name': 'fixture/one'}, {'full_name': 'fixture/two'}]}))
  sys.exit(0)
 if 'user' in a:
- print(json.dumps({'id': 42, 'login': 'github-fixture', 'name': 'GitHub Fixture', 'avatar_url': None})); sys.exit(0)
+  print(json.dumps({'id': 42, 'login': active, 'name': 'GitHub Fixture', 'avatar_url': None})); sys.exit(0)
 sys.exit(1)
 "##).unwrap();
     let glab = bin.join("glab");
@@ -123,12 +131,26 @@ sys.exit(1)
                         let position = if stage == 18 { point(bounds.right() - px(12.), bounds.center().y) } else { bounds.center() };
                         parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, position, cx)).unwrap();
                      }
-                     if stage == 20 {
+                      if stage == 20 {
                          let bounds = crate::workspace_ui_smoke::measured("add-project");
                          parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, bounds.center(), cx)).unwrap();
                          stage = 21;
                          return false;
-                     }
+                      }
+                      if stage == 19 {
+                           parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "escape")).unwrap();
+                      }
+                      if stage == 23 {
+                          parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-user-menu").center(), cx)).unwrap();
+                          stage = 24;
+                          return false;
+                      }
+                      if stage == 24 {
+                          assert!(crate::workspace_ui_smoke::measured("profile-menu").size.width <= px(244.));
+                          parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("profile-github-switch").center(), cx)).unwrap();
+                          stage = 25;
+                          return false;
+                      }
                      if stage == 21 {
                          assert!(!owner.read(cx).project_import.open, "Add project must show source choices before opening a form");
                          parent.update(cx, |_, window, cx| {
@@ -274,7 +296,8 @@ sys.exit(1)
                               16 if app.user_profile.checked.is_some() => {
                                  let avatar = crate::workspace_ui_smoke::measured("title-user-menu");
                                  let host = crate::workspace_ui_smoke::measured("host-menu-button");
-                                 assert_eq!(host.size, avatar.size, "host hover target must match the avatar");
+                                  assert!(crate::workspace_ui_smoke::measured("sidebar-footer").contains(&host.center()), "connection status belongs in the sidebar");
+                                  assert!(host.top() > avatar.bottom());
                                  assert!(crate::workspace_ui_smoke::measured("titlebar-content").right() - avatar.right() >= px(12.), "avatar needs a right inset");
                                  assert_eq!(app.user_profile.profiles.len(), 2);
                                  assert_eq!(app.user_profile.profiles[0].0.name, "GitHub Fixture");
@@ -290,10 +313,17 @@ sys.exit(1)
                              19 => {
                                  assert!(app.density == crate::app::UiDensity::Compact, "avatar menu switch must change interface density");
                                   app.set_ui_density(crate::app::UiDensity::Comfortable, cx);
-                                  app.section = dunlin_domain::SidebarSection::Projects;
+                                   app.section = dunlin_domain::SidebarSection::Projects;
+                                   app.sidebar_tab = crate::sidebar_layout::Tab::Projects;
                                   app.settings_open = false;
+                                   assert_eq!(app.user_profile.github_accounts.len(), 2);
+                                   stage = 23;
+                              },
+                              25 if app.user_profile.profiles.iter().any(|(profile, _)| profile.login == "second-fixture") => {
+                                  assert_eq!(std::fs::read_to_string(dir.join("bin/active-account")).unwrap(), "second-fixture");
+                                  assert!(app.user_profile.github_accounts.iter().any(|account| account.login == "second-fixture" && account.active));
                                   stage = 20;
-                             },
+                              },
                              22 if app.project_import.open && app.project_import.inputs.is_some() => {
                                   assert!(app.project_import.mode == Mode::GitHub, "remote import should start with provider input, not a local folder sheet");
                                    println!("PASS: project import source menu, remote form, local folder handling, live search Cancel/retry, GitHub/GitLab safe clones and profiles");

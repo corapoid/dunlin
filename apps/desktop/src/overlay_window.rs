@@ -335,6 +335,22 @@ mod native {
         if child.frame() != parent.frame() {
             child.setFrame_display(parent.frame(), true);
         }
+        // This borderless child spans the owner, including the desktop outside
+        // its rounded corners. Clip the whole overlay plane (dim paint AND native
+        // material subviews), not just its foreground settings panel.
+        cv.setWantsLayer(true);
+        if let Some(layer) = cv.layer() {
+            let radius = if parent.styleMask().contains(NSWindowStyleMask::FullScreen) {
+                0.
+            } else {
+                12.
+            };
+            CATransaction::begin();
+            CATransaction::setDisableActions(true);
+            layer.setCornerRadius(radius);
+            layer.setMasksToBounds(true);
+            CATransaction::commit();
+        }
         true
     }
 }

@@ -1,11 +1,7 @@
-//! Toolbar-only glass selector: equal segments, scrub preview, commit on release.
+//! Flat sliding selector: equal segments, scrub preview, commit on release.
 use crate::app::DunlinApp;
 use dunlin_domain::MainView;
-use dunlin_ui::prelude::FluentBuilder as _;
-use dunlin_ui::{
-    component::{Sizable, button::ButtonVariants},
-    *,
-};
+use dunlin_ui::*;
 use std::time::Duration;
 
 const HEIGHT: f32 = 30.;
@@ -17,8 +13,6 @@ struct State {
     bounds: Option<Bounds<Pixels>>,
     pointer: Option<f32>,
     focus: Option<FocusHandle>,
-    glass: crate::effects::ControlGlass,
-    lens: crate::effects::ControlGlass,
 }
 
 fn position(x: f32, width: f32) -> f32 {
@@ -35,8 +29,6 @@ pub(super) fn render(
     if !visible {
         state.update(cx, |state, _| {
             state.pointer = None;
-            state.glass.clear(window);
-            state.lens.clear(window);
         });
         return div().into_any_element();
     }
@@ -47,17 +39,6 @@ pub(super) fn render(
     let motion = gpui_kit::base::Spring::new(Duration::from_millis(240))
         .with_travel(!dragging && !reduce_motion);
     let selected = gpui_kit::base::spring("toolbar-view-selection", target, motion, window, cx);
-    let zoom = gpui_kit::base::spring(
-        "toolbar-view-zoom",
-        if dragging && !reduce_motion {
-            1.14_f32
-        } else {
-            1.
-        },
-        gpui_kit::base::Spring::new(Duration::from_millis(220)).with_travel(!reduce_motion),
-        window,
-        cx,
-    );
     let focus = state.update(cx, |state, cx| {
         state.focus.get_or_insert_with(|| cx.focus_handle()).clone()
     });
@@ -66,19 +47,13 @@ pub(super) fn render(
     let movement = state.clone();
     let release = state.clone();
     let cancel = state.clone();
-    let lens = state.clone();
     let width = SEGMENT * 3. + INSET * 2.;
-    // The view switcher is secondary while working; keep it flat and close to
-    // the title bar instead of carrying a bright glass slab.
-    let glass = false;
-    let mut control = div()
+    let mut control = sliding_segments(p, selected, 3, HEIGHT)
         .id("toolbar-view-selector")
         .relative()
         .w(px(width))
         .h(px(HEIGHT))
         .flex_shrink_0()
-        .rounded_full()
-        .bg(p.fg.opacity(if glass { 0.03 } else { 0.05 }))
         .track_focus(&focus)
         .capture_any_mouse_down(cx.listener(move |_, event: &MouseDownEvent, window, cx| {
             if event.button != MouseButton::Left {
@@ -151,15 +126,10 @@ pub(super) fn render(
         .child(
             canvas(
                 move |bounds, _, _| bounds,
-                move |bounds, _, window, cx| {
+                move |bounds, _, _, cx| {
                     measure.update(cx, |state, _| {
                         state.bounds = Some(bounds);
                     });
-                    if glass {
-                        measure.read(cx).glass.paint(bounds, window, cx);
-                    } else {
-                        measure.read(cx).glass.clear(window);
-                    }
                 },
             )
             .absolute()
@@ -180,87 +150,57 @@ pub(super) fn render(
                     }
                 })
                 .absolute()
-                .left(px(INSET + selected * SEGMENT - (zoom - 1.) * SEGMENT / 2.))
-                .top(px(INSET - (zoom - 1.) * (HEIGHT - INSET * 2.) / 2.))
-                .w(px(SEGMENT * zoom))
-                .h(px((HEIGHT - INSET * 2.) * zoom))
-                .rounded_full()
-                .bg(p.fg.opacity(if dragging { 0.12 } else { 0.07 }))
-                .border_1()
-                .border_color(p.fg.opacity(if dragging { 0.16 } else { 0.05 }))
-                .child(
-                    canvas(
-                        |bounds, _, _| bounds,
-                        move |bounds, _, window, cx| {
-                            if glass {
-                                lens.read(cx).lens.paint(bounds, window, cx);
-                            } else {
-                                lens.read(cx).lens.clear(window);
-                            }
-                        },
-                    )
-                    .absolute()
-                    .inset_0()
-                    .size_full(),
-                )
-                .when(dragging && glass, |pill| {
-                    pill.child(
-                        div()
-                            .absolute()
-                            .top(px(1.))
-                            .left(relative(0.2))
-                            .w(relative(0.6))
-                            .h(px(1.))
-                            .rounded_full()
-                            .bg(white().opacity(0.35)),
-                    )
-                }),
+                .left(px(INSET + selected * SEGMENT))
+                .top(px(INSET))
+                .w(px(SEGMENT))
+                .h(px(HEIGHT - INSET * 2.)),
         );
     let mut labels = div().absolute().inset_0().flex().p(px(INSET));
     for (index, view) in MainView::ALL.into_iter().enumerate() {
         labels = labels.child(
-            dunlin_ui::button(("toolbar-view", index))
-                .relative()
-                .children({
-                    #[cfg(debug_assertions)]
-                    {
-                        crate::workspace_ui_smoke::probe(
-                            ["view-label-chat", "view-label-graph", "view-label-trace"][index],
-                        )
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        None::<AnyElement>
-                    }
-                })
-                .ghost()
-                .small()
-                .w(px(SEGMENT))
-                .h(px(HEIGHT - INSET * 2.))
-                .min_w(px(0.))
-                .p(px(0.))
-                .flex_shrink_0()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .toggled(this.view == view)
-                .accessibility_label(format!(
-                    "Open {} view{}",
-                    view.label(),
-                    if this.view == view { ", selected" } else { "" }
-                ))
-                .tooltip(if this.show_shortcut_hints {
-                    format!("{} · ⌘{} · drag to switch", view.label(), index + 1)
-                } else {
-                    format!("{} · drag to switch", view.label())
-                })
-                .label(view.label())
-                .text_color(if target.round() as usize == index {
-                    p.fg
-                } else {
-                    p.muted_fg
-                })
-                .on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx))),
+            sliding_segment(
+                ("toolbar-view", index),
+                view.label(),
+                this.view == view,
+                p,
+                cx,
+            )
+            .relative()
+            .children({
+                #[cfg(debug_assertions)]
+                {
+                    crate::workspace_ui_smoke::probe(
+                        ["view-label-chat", "view-label-graph", "view-label-trace"][index],
+                    )
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    None::<AnyElement>
+                }
+            })
+            .w(px(SEGMENT))
+            .h(px(HEIGHT - INSET * 2.))
+            .min_w(px(0.))
+            .p(px(0.))
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .accessibility_label(format!(
+                "Open {} view{}",
+                view.label(),
+                if this.view == view { ", selected" } else { "" }
+            ))
+            .tooltip(if this.show_shortcut_hints {
+                format!("{} · ⌘{} · drag to switch", view.label(), index + 1)
+            } else {
+                format!("{} · drag to switch", view.label())
+            })
+            .text_color(if target.round() as usize == index {
+                p.fg
+            } else {
+                p.muted_fg
+            })
+            .on_click(cx.listener(move |this, _, _, cx| this.set_view(view, cx))),
         );
     }
     control = control.child(labels);

@@ -36,8 +36,18 @@ pub(crate) struct State {
     backfill_started: bool,
     pub(crate) pending: Vec<dunlin_domain::SessionSummary>,
     pub(crate) notices: HashMap<String, String>,
+    pub(crate) last_import: HashMap<String, i64>,
 }
 impl State {
+    pub(crate) fn load(store: Option<&dunlin_storage::Store>) -> Self {
+        Self {
+            last_import: store
+                .and_then(|store| store.load_setting("session_import_times").ok().flatten())
+                .unwrap_or_default(),
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn progress_label(&self) -> Option<String> {
         self.progress
             .as_ref()
@@ -945,7 +955,14 @@ impl DunlinApp {
                     }
                 }
                         this.clear_session_import_preview(cx);
-                this.session_import.error = applied.error;
+                 this.session_import.error = applied.error;
+                 if this.session_import.error.is_none() {
+                     this.session_import.last_import.insert(harness.clone(), chrono::Utc::now().timestamp_millis());
+                     if let Some(store) = &this.store
+                         && let Err(error) = store.save_setting("session_import_times", &this.session_import.last_import) {
+                         crate::logging::warn(&format!("Could not save last import time: {error}"));
+                     }
+                 }
                 if let Some(error) = &this.session_import.error {
                     this.session_import.notices.entry(harness.clone()).or_default().push_str(&format!(" · {error}"));
                 }
@@ -1052,6 +1069,15 @@ mod tests {
     use crate::harness::{ChatItem, TurnTiming};
     use dunlin_agent::{TokenUsage, ToolCallView};
     use dunlin_domain::{ToolKind, ToolStatus};
+
+    #[test]
+    fn last_import_times_survive_restart_and_legacy_data_starts_unknown() {
+        let store = dunlin_storage::Store::open_in_memory().unwrap();
+        assert!(super::State::load(Some(&store)).last_import.is_empty());
+        let times = std::collections::HashMap::from([("Claude Code".to_string(), 123456789_i64)]);
+        store.save_setting("session_import_times", &times).unwrap();
+        assert_eq!(super::State::load(Some(&store)).last_import, times);
+    }
 
     #[test]
     fn session_import_only_offers_supported_automatic_sources() {

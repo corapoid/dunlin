@@ -46,9 +46,92 @@ pub fn load(provider: Provider) -> Result<Profile, String> {
     };
     profile(user, provider)
 }
+
+/// Public identity metadata only. gh keeps tokens and account credentials private.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct GitHubAccount {
+    pub login: String,
+    pub active: bool,
+}
+
+fn valid_login(login: &str) -> bool {
+    !login.is_empty()
+        && login.len() <= 100
+        && login.as_bytes()[0].is_ascii_alphanumeric()
+        && login
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
+fn parse_accounts(bytes: &[u8]) -> Result<Vec<GitHubAccount>, String> {
+    let accounts: Vec<GitHubAccount> =
+        serde_json::from_slice(bytes).map_err(|_| "Invalid GitHub account list".to_string())?;
+    if accounts.iter().any(|account| !valid_login(&account.login)) {
+        return Err("Invalid GitHub account identity".into());
+    }
+    Ok(accounts)
+}
+
+pub fn github_accounts() -> Result<Vec<GitHubAccount>, String> {
+    let mut command = crate::github::cli_command();
+    // Filter inside gh: no token, scopes, credential storage paths or raw auth
+    // diagnostics ever cross this boundary, including on non-zero status.
+    command.args([
+        "auth",
+        "status",
+        "--hostname",
+        "github.com",
+        "--json",
+        "hosts",
+        "--jq",
+        "[.hosts[\"github.com\"][]? | select(.state == \"success\") | {login, active}]",
+    ]);
+    let (status, bytes) =
+        crate::github::process::run(command, None, std::time::Duration::from_secs(15), 65536)
+            .map_err(|_| "GitHub account list unavailable".to_string())?;
+    if !status.success() {
+        return Err("GitHub account list unavailable".into());
+    }
+    parse_accounts(&bytes)
+}
+
+pub fn switch_github_account(login: &str) -> Result<(), String> {
+    if !valid_login(login) {
+        return Err("Invalid GitHub account identity".into());
+    }
+    let mut command = crate::github::cli_command();
+    command.args([
+        "auth",
+        "switch",
+        "--hostname",
+        "github.com",
+        "--user",
+        login,
+    ]);
+    let (status, _) =
+        crate::github::process::run(command, None, std::time::Duration::from_secs(15), 65536)
+            .map_err(|_| "GitHub account switch unavailable".to_string())?;
+    if !status.success() {
+        return Err("Could not switch GitHub account. Check gh auth status; environment tokens may override the active account.".into());
+    }
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn github_accounts_are_validated_without_credentials() {
+        let accounts = parse_accounts(
+            br#"[{"login":"first-user","active":true},{"login":"second","active":false}]"#,
+        )
+        .unwrap();
+        assert_eq!(accounts.len(), 2);
+        assert!(accounts[0].active && !accounts[1].active);
+        for login in ["", "--user", "a/b", "user\nname", "a b"] {
+            assert!(!valid_login(login));
+        }
+        assert!(parse_accounts(br#"[{"login":"user/name","active":false}]"#).is_err());
+    }
     #[test]
     fn both_account_contracts_use_the_authenticated_id_and_fall_back_to_login() {
         for (key, provider) in [("login", Provider::GitHub), ("username", Provider::GitLab)] {

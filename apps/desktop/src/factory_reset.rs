@@ -39,45 +39,56 @@ fn reset_data(
 
 impl DunlinApp {
     fn reset_blocked(&self) -> bool {
-        self.has_dirty_tabs()
-            || self.explorer.busy
-            || self.has_running_agents()
-            || self.harness.status.is_busy()
-            || self.harness.local_session_loading
-            || self.branch_ui.running()
-            || self.git_history.running
-            || self.local_import_running
-            || self.project_import.busy
-            || self.backup.busy
-            || self.backup.cloning
-            || self.session_import.loading
-            || self.remote_loading
-            || self.vault.ui.busy
-            || self.security.check_running
-            || self.skills_ui.busy
-            || !self.comparisons.active.is_empty()
-            || !self.ai_commit.jobs.is_empty()
-            || self
-                .terminal
-                .tabs
-                .iter()
-                .any(|tab| tab.status == crate::terminal::Status::Running)
-            || self
-                .projects
-                .iter()
-                .any(|project| self.git_mutation_in_flight(&project.id))
+        self.reset_block_reason().is_some()
+    }
+
+    fn reset_block_reason(&self) -> Option<&'static str> {
+        [
+            (self.has_dirty_tabs(), "Save or discard edited files before resetting Dunlin."),
+            (self.terminal.tabs.iter().any(|tab| tab.status == crate::terminal::Status::Running), "Close all running terminal tabs before resetting Dunlin, including idle shells."),
+            (self.has_running_agents() || self.harness.status.is_busy() || self.harness.local_session_loading
+                || self.harness_checks.values().any(crate::harness::HarnessStatus::is_busy),
+                "Stop running agents and wait for their connections to finish before resetting Dunlin."),
+            (self.explorer.busy || self.branch_ui.running() || self.git_history.running
+                || self.projects.iter().any(|project| self.git_mutation_in_flight(&project.id)),
+                "Wait for file and Git operations to finish before resetting Dunlin."),
+            (self.local_import_running || self.project_import.busy || self.backup.busy || self.backup.cloning || self.session_import.loading,
+                "Wait for imports, exports and backups to finish before resetting Dunlin."),
+            (self.remote_loading || self.vault.ui.busy || self.security.check_running || self.skills_ui.busy
+                || !self.comparisons.active.is_empty() || !self.ai_commit.jobs.is_empty(),
+                "Wait for remote, credential, security, skill and comparison operations to finish before resetting Dunlin."),
+        ].into_iter().find_map(|(blocked, reason)| blocked.then_some(reason))
     }
 
     pub(crate) fn request_factory_reset(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.factory_resetting {
             return;
         }
-        if self.reset_blocked() {
-            self.file_notice("Save edited files, close running terminals and wait for file, Git and agent operations before resetting Dunlin", cx);
+        self.settings_ui.recovery_notice = None;
+        if let Some(reason) = self.reset_block_reason() {
+            // Settings is rendered in a separate modal plane on macOS. A
+            // workspace status notice underneath it looks like a dead button.
+            let answer = window.prompt(
+                PromptLevel::Warning,
+                "Cannot reset Dunlin yet",
+                Some(reason),
+                &[PromptButton::ok("OK")],
+                cx,
+            );
+            self.overlay_backdrop.track_native(answer, cx).detach();
             return;
         }
         self.factory_resetting = true;
-        let answer = window.prompt(PromptLevel::Warning, TITLE, Some(WARNING), ANSWERS, cx);
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            TITLE,
+            Some(WARNING),
+            &[
+                PromptButton::cancel(ANSWERS[0]),
+                PromptButton::new(ANSWERS[1]),
+            ],
+            cx,
+        );
         let answer = self.overlay_backdrop.track_native(answer, cx);
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -96,17 +107,18 @@ impl DunlinApp {
 
     fn begin_factory_reset(&mut self, cx: &mut Context<Self>) {
         if self.reset_blocked() {
-            self.file_notice(
+            self.reset_notice(
                 "Reset cancelled: save edited files and wait for pending operations",
                 cx,
             );
             return;
         }
         let Some(path) = self.store.as_ref().and_then(Store::database_path) else {
-            self.file_notice("Reset requires an available local database", cx);
+            self.reset_notice("Reset requires an available local database", cx);
             return;
         };
         let Some(parent) = path.parent() else {
+            self.reset_notice("Reset could not locate the local data directory", cx);
             return;
         };
         let preferences = parent.join("window.json");
@@ -138,10 +150,16 @@ impl DunlinApp {
                 Err(error) => {
                     this.store = Some(store);
                     this.factory_resetting = false;
-                    this.file_notice(format!("Reset incomplete: {error}. Some credentials may already be removed. Local metadata was retained for retry."), cx);
+                    this.reset_notice(format!("Reset incomplete: {error}. Some credentials may already be removed. Local metadata was retained for retry."), cx);
                 }
             });
         }).detach();
+    }
+
+    fn reset_notice(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
+        let message = message.into();
+        self.settings_ui.recovery_notice = Some(message.clone());
+        self.file_notice(message, cx);
     }
 }
 

@@ -21,6 +21,9 @@ pub(super) fn render(
             .child(setting_row("Local storage", "Database, write-ahead logs and cached projections. Remote storage is not included.",
                 mono_value(&crate::app::format_bytes(crate::app::storage_size() as usize), &p), &p)))
         .child(section_label("Recovery · destructive actions", &p))
+        .when_some(this.settings_ui.recovery_notice.clone(), |page, notice| {
+            page.child(dunlin_ui::settings::notice(notice, p).text_color(p.red))
+        })
         .child(dunlin_ui::settings::description("Portable export is not a full history backup. Read what is included above before clearing data. Both actions below require confirmation.", p))
         .child(settings_card(&p).border_color(p.red.opacity(0.35))
             .child(setting_row("Clear conversation history", "Delete local sessions and transcripts. Projects, repository files and settings stay.",

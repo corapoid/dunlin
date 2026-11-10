@@ -156,6 +156,10 @@ fn audited_settings_and_forms_use_standard_actions_not_quiet_text_buttons() {
             "Git mutation actions",
             include_str!("git_history/mutations.rs"),
         ),
+        (
+            "Repository inventory",
+            include_str!("git_history/overview.rs"),
+        ),
         ("Run actions", include_str!("run.rs")),
         (
             "Markdown resource form",
@@ -228,7 +232,7 @@ fn standard_actions_do_not_override_their_size_or_become_ghost_buttons() {
 }
 
 #[test]
-fn settings_surfaces_share_the_recipe_and_agent_visibility_has_a_label() {
+fn settings_surfaces_share_the_recipe_and_agents_have_one_stateful_action() {
     for (name, source) in [
         ("settings", include_str!("views/settings.rs")),
         ("credentials", include_str!("vault/settings.rs")),
@@ -244,6 +248,172 @@ fn settings_surfaces_share_the_recipe_and_agent_visibility_has_a_label() {
     }
     let source = include_str!("views/settings.rs");
     assert!(!source.contains("dunlin_ui::switch(format!(\"harness-visible:"));
-    assert!(source.contains(".label(\"Show in agent picker\")"));
+    assert!(!source.contains("Show in agent picker"));
+    assert!(!source.contains("harness-default:"));
+    assert!(source.contains("let stage = agent_action("));
     assert!(source.contains("agent_import_visible(name, installed, cli_only)"));
+}
+
+#[test]
+fn settings_do_not_restore_removed_agent_and_extension_panels() {
+    let settings = include_str!("views/settings.rs");
+    for removed in [
+        "OpenCode provider accounts",
+        "Custom ACP command",
+        "harness-connect",
+        "add-custom-harness",
+    ] {
+        assert!(!settings.contains(removed), "removed setting: {removed}");
+    }
+    let extensions = include_str!("plugins.rs");
+    for removed in [
+        "Technical details",
+        "Methodology packs",
+        "spec-tools\"",
+        "extensions-open-proposals",
+        "extensions-scope-global",
+    ] {
+        assert!(
+            !extensions.contains(removed),
+            "removed extension panel: {removed}"
+        );
+    }
+    let skills = include_str!("skills.rs");
+    assert!(!skills.contains("supporting files are installed together and are not editable here"));
+    assert!(skills.contains("if skill.is_builtin()"));
+    assert!(skills.contains("toggle_builtin_skill"));
+}
+
+#[test]
+fn navigation_is_owned_by_the_sidebar_and_search_replaces_titlebar_history() {
+    let chrome = include_str!("views/titlebar.rs");
+    assert!(chrome.contains("global-search-trigger"));
+    assert!(!chrome.contains("host_control::render"));
+    assert!(!chrome.contains("title-git-history"));
+    let app = include_str!("app.rs");
+    assert!(!app.contains("self.rail(cx)"));
+    let sidebar = include_str!("views/sidebar/navigation.rs");
+    for id in [
+        "sidebar-source-control",
+        "sidebar-knowledge",
+        "sidebar-intent",
+        "sidebar-artifacts",
+        "sidebar-security",
+        "sidebar-settings",
+    ] {
+        assert!(sidebar.contains(id));
+    }
+    assert!(sidebar.contains(".when(this.spec_tools_enabled()"));
+    assert!(!sidebar.contains("SidebarSection::Dashboard"));
+    let profile = include_str!("user_profile.rs");
+    assert!(
+        !profile.contains("PopupMenuItem"),
+        "compound theme controls must not sit in a hoverable menu row"
+    );
+    assert!(profile.contains(".anchor(Anchor::TopRight)"));
+    assert!(!profile.contains("Application settings"));
+    assert!(!profile.contains("profile-settings"));
+    assert!(profile.contains("github_accounts.len() > 1"));
+    assert!(!include_str!("views/sidebar.rs").contains("search-projects"));
+}
+
+#[test]
+fn git_forms_and_harness_choices_use_shared_ui_controls() {
+    let mutations = include_str!("git_history/mutations.rs");
+    assert!(mutations.contains("dunlin_ui::settings::input"));
+    assert!(mutations.contains("dunlin_ui::settings::button"));
+    assert!(!mutations.contains("compact_input("));
+    let controls = include_str!("views/chat_controls.rs");
+    let trigger = controls
+        .split("pub(crate) fn harness(")
+        .nth(1)
+        .unwrap()
+        .split(".dropdown_menu_with_anchor")
+        .next()
+        .unwrap();
+    assert!(
+        !trigger.contains("harness_brand::logo"),
+        "composer shows only the selected harness name"
+    );
+    assert!(controls.contains("let branded = matches!(action, Action::Harness(_))"));
+}
+
+#[test]
+fn project_tools_are_tabs_and_audit_execution_is_not_settings_configuration() {
+    let sidebar = include_str!("views/sidebar/navigation.rs");
+    assert!(sidebar.contains(".when(this.security_workspace_enabled()"));
+    assert!(sidebar.contains(".font_family(dunlin_ui::theme::code_font())"));
+    let profile = include_str!("user_profile.rs");
+    assert!(profile.contains("profile_appearance_picker"));
+    let tools = include_str!("workspace_tools.rs");
+    assert!(!tools.contains("open_window("));
+    assert!(tools.contains("TabKey::Tool"));
+    let runner = include_str!("security/workspace.rs");
+    assert!(runner.contains("submit_automation_prompt"));
+    assert!(runner.contains("visible_models()"));
+    assert!(!runner.contains("install_catalog_skill"));
+    assert!(!runner.contains("request_settings_location"));
+    let chrome = include_str!("app/overlays.rs");
+    assert!(
+        !chrome.contains(".when(!chat,"),
+        "Git sync and change counts also belong in Chat"
+    );
+}
+
+#[test]
+fn workspace_surfaces_share_reading_colors_and_audit_refresh_is_report_scoped() {
+    let spec = include_str!("spec.rs");
+    let render = spec
+        .split("pub(crate) fn render(")
+        .nth(1)
+        .unwrap()
+        .split("#[cfg(test)]")
+        .next()
+        .unwrap();
+    assert!(
+        !render.contains(".bg(p.bg)"),
+        "the Spec root must not repaint the reading surface"
+    );
+    assert!(render.contains(".when(!this.spec_kit_available()"));
+    let audit = include_str!("security/workspace.rs");
+    assert!(!audit.contains(".max_w(px(1100.))"));
+    assert!(audit.contains("run.report.is_some()"));
+    assert!(audit.contains(".bg(p.card)"));
+    let controls = include_str!("views/chat_controls.rs");
+    assert!(controls.contains(".label(option.selector.label())"));
+    assert!(controls.contains("menu.label(current.name.clone())"));
+    let app = include_str!("app.rs");
+    assert!(app.contains("capture_action"));
+    assert!(app.contains("OutdentInline"));
+}
+
+#[test]
+fn repository_inventory_keeps_rounded_sections_and_the_workspaces_background() {
+    let inventory = include_str!("git_history/overview.rs");
+    assert!(inventory.contains("SurfaceGeometry::SETTINGS_CARD"));
+    assert!(
+        !inventory.contains(".bg(p.bg)"),
+        "a full-size square fill covers the reading surface corners"
+    );
+    assert!(
+        !inventory.contains("dunlin_ui::action_button("),
+        "inventory actions use the shared rounded recipe"
+    );
+    let files = include_str!("git_history/details/files.rs");
+    assert!(!files.contains(".bg(p.panel)"));
+    assert!(!files.contains("else { p.panel }"));
+    let fields = include_str!("../../../crates/ui/src/controls.rs");
+    assert!(fields.contains("scale::INPUT_HEIGHT"));
+    let compact = fields
+        .split("pub fn compact_input(")
+        .nth(1)
+        .unwrap()
+        .split("pub fn search_input(")
+        .next()
+        .unwrap();
+    assert!(
+        !compact.contains(".small()"),
+        "search and form fields must not diverge in height"
+    );
+    assert!(!include_str!("../../../crates/ui/src/settings.rs").contains("Styled::h("));
 }

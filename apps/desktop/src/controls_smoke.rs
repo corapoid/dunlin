@@ -35,7 +35,7 @@ struct Controls {
     link_bounds: [Probe; 2],
     links: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     fields: Vec<Entity<InputState>>,
-    field_bounds: [Probe; 5],
+    field_bounds: [Probe; 6],
     action_bounds: Probe,
     loading_bounds: Probe,
     choice_bounds: Probe,
@@ -43,7 +43,7 @@ struct Controls {
 
 impl Controls {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let fields = (0..5)
+        let fields = (0..6)
             .map(|_| cx.new(|cx| InputState::new(window, cx)))
             .collect::<Vec<_>>();
         // Input updates must repaint the compound form just like application fields.
@@ -199,6 +199,7 @@ impl Render for Controls {
                     dunlin_ui::input(&self.fields[4])
                         .aria_label("Disabled field")
                         .disabled(true),
+                    dunlin_ui::settings::input(&self.fields[5], p).aria_label("Settings field"),
                 ]
                 .into_iter()
                 .enumerate()
@@ -329,7 +330,7 @@ pub(crate) fn run() {
                                   assert_eq!(heights[0], controls.action_bounds.get().unwrap().size.height, "form fields and actions must align");
                                   assert_eq!(heights[0], heights[2], "command and form fields must align");
                                   assert_eq!(heights[1], heights[3], "compact and search fields must align");
-                                  assert!(heights[1] < heights[0]);
+                                   assert!(heights.iter().all(|height| *height == heights[0]), "form, compact, command, search and disabled fields share one height");
                                   let probe = controls.field_bounds[0].clone();
                                   click(window, cx, &probe);
                               }

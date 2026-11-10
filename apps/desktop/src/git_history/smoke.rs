@@ -170,7 +170,9 @@ pub(crate) fn run() {
                  let done=cx.update(|cx| {
                      if previous_stage != Some(stage) { eprintln!("Native Git/workbench stage {stage}"); previous_stage=Some(stage); }
                     assert!(start.elapsed()<Duration::from_secs(75),"Git smoke stalled at stage {stage}");
-                    handle.update(cx,|_,w,cx|{w.refresh();w.draw(cx).clear(cx);}).unwrap();
+                    let visual = std::env::var_os("DUNLIN_GIT_CAPTURE").is_some();
+                    if visual { cx.activate(true); }
+                    handle.update(cx,|_,w,cx|{w.refresh();if visual { w.activate_window(); } else { w.draw(cx).clear(cx); }}).unwrap();
                     handle.update(cx,|_,w,cx|owner.update(cx,|app,cx| {
                         if workbench_only{return super::workbench_smoke::step(app,&mut stage,w,cx);}
                         match stage {
@@ -235,15 +237,45 @@ pub(crate) fn run() {
                                    let view = app.git_history.view.as_mut().unwrap();
                                    assert_eq!(view.selected_file, Some(0));
                                    assert!(view.patch_note.is_none(), "fixture text diff must parse without fallback: {:?}", view.patch_note);
-                                   view.inspector.tab = super::details::Tab::Operations;
-                                   view.branch_form_open = true;
-                                   stage = 3005;
+                                    view.inspector.tab = super::details::Tab::Operations;
+                                    view.branch_form_open = true;
+                                    app.sidebar_width = 220.;
+                                    app.git.branch = "design/a-very-long-branch-name-that-must-fit-the-sidebar".into();
+                                    stage = 3005;
                                },
-                               3005 => {
-                                   crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
-                                   app.open_git_overview(cx);
-                                   stage = 4;
-                              },
+                                3005 => {
+                                    crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                    let card = crate::workspace_ui_smoke::measured("source-control-card");
+                                    let count = crate::workspace_ui_smoke::measured("git-change-count");
+                                    assert!(card.contains(&count.center()) && count.right() <= card.right(), "long branches must not push change counts outside the sidebar");
+                                    let field = crate::workspace_ui_smoke::measured("git-stash-field");
+                                    let button = crate::workspace_ui_smoke::measured("git-stash-tracked");
+                                    assert!(field.bottom() <= button.top(), "Git fields and actions occupy separate aligned rows");
+                                    // The absolute probe measures inside the action's 1px border.
+                                    assert_eq!(button.size.height, px(dunlin_ui::scale::control(dunlin_ui::settings::Tokens::CONTROL_HEIGHT) - 2.));
+                                    app.open_git_overview(cx);
+                                    stage = 4000;
+                               },
+                             4000 if app.git_history.view.as_ref().is_some_and(|view| !view.overview.loading && view.overview.value.is_some()) => {
+                                 crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                 let panel = crate::workspace_ui_smoke::measured("git-inventory-panel");
+                                 let surface = crate::workspace_ui_smoke::measured("reading-surface");
+                                 assert!(panel.size.width <= surface.size.width);
+                                 if std::env::var_os("DUNLIN_GIT_CAPTURE").is_some() {
+                                     crate::workspace_ui_smoke::capture_preview(w, &dir.join("repository-state-top.png"));
+                                 }
+                                 app.git_history.view.as_ref().unwrap().overview.scroll.scroll_to_bottom();
+                                 stage = 4001;
+                             },
+                             4001 => {
+                                 assert!(app.git_history.view.as_ref().unwrap().overview.scroll.offset().y < px(0.), "inventory and operations share one reachable vertical scroll");
+                                 crate::workspace_ui_smoke::assert_painted_corners(w, "reading-surface", app.render_workbench_tabs(0, cx).1);
+                                 if std::env::var_os("DUNLIN_GIT_CAPTURE").is_some() {
+                                     crate::workspace_ui_smoke::capture_preview(w, &dir.join("repository-state-operations.png"));
+                                 }
+                                 app.git_history.view.as_ref().unwrap().overview.scroll.set_offset(point(px(0.), px(0.)));
+                                 stage = 4;
+                             },
                             4 if !app.git_loading=>{app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.locks("another-project"),"aliases and linked worktrees must remain protected");stage=5;},
                              5 if !app.git_history.running && !app.git_loading=>{let view=app.git_history.view.as_mut().unwrap();assert!(view.mutations.pending.is_some(),"{:?}",view.mutations.error);assert_eq!(fs::read_to_string(&path).unwrap(),disk);view.mutations.pending=None;app.prepare_repository_action(Action::StashPush{message:"native fixture".into(),include_untracked:true},cx);assert!(app.git_history.running,"{:?}",app.notice);stage=6;},
                              6 if !app.git_history.running && !app.git_loading=>{let view=app.git_history.view.as_ref().unwrap();let prepared=view.mutations.pending.clone().expect("preflight must produce a plan");app.execute_repository_action(view.id,view.project.clone(),prepared,cx);assert!(app.git_history.running,"{:?}",app.notice);app.close_git_history(cx);assert!(app.git_history.locks("another-project"));stage=7;},

@@ -31,7 +31,7 @@ dunlin-terminal.workspace = true
 notify.workspace = true
 objc2.workspace = true
 objc2-app-kit.workspace = true
-objc2-foundation.workspace = true
+objc2-foundation = { workspace = true, features = ["NSProcessInfo"] }
 base64 = "0.23.1"
 chrono = "0.4"
 libc = "0.2"

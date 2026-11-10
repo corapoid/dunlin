@@ -3,6 +3,21 @@ use dunlin_workspace::tree::{FileEntry, FileTree};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
+pub(crate) fn typed_text(key: &dunlin_ui::Keystroke) -> Option<&str> {
+    key.key_char
+        .as_deref()
+        .or_else(|| {
+            if key.modifiers.alt {
+                None
+            } else if key.key == "space" {
+                Some(" ")
+            } else {
+                (key.key.chars().count() == 1).then_some(key.key.as_str())
+            }
+        })
+        .filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Match {
     pub path: String,

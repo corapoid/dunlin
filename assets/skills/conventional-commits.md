@@ -1,7 +1,7 @@
 # Conventional commits from the current working tree
 
 Run only for an explicit user request to create commits (for example the
-"Commit on AI" action). Never infer authorization from skill installation.
+"Commit with AI" action). Never infer authorization from skill installation.
 
 1. Verify the exact repository root, branch, HEAD, index and worktree status.
    Stop for a merge/rebase/cherry-pick, unresolved conflicts, a dirty editor,

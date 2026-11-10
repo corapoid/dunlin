@@ -156,19 +156,6 @@ fn filtered(context: &BranchContext, query: &str) -> Vec<String> {
     branches
 }
 impl DunlinApp {
-    pub(crate) fn open_branch_picker_filtered(
-        &mut self,
-        branch: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_branch_picker(&self.project().id.clone(), window, cx);
-        if let Some(picker) = &self.branch_ui.picker {
-            picker.filter.update(cx, |state, cx| {
-                state.set_value(branch.to_string(), window, cx)
-            });
-        }
-    }
     pub(crate) fn open_branch_picker(
         &mut self,
         project: &str,
@@ -373,7 +360,7 @@ pub(crate) fn badge(
     label: &str,
     id: impl Into<ElementId>,
     cx: &mut Context<DunlinApp>,
-) -> AnyElement {
+) -> dunlin_ui::component::button::Button {
     branch_badge(this, project, label, id.into(), Presentation::Modal, cx)
 }
 pub(crate) fn status_badge(
@@ -390,6 +377,7 @@ pub(crate) fn status_badge(
         Presentation::StatusBar,
         cx,
     )
+    .into_any_element()
 }
 fn branch_badge(
     this: &DunlinApp,
@@ -398,7 +386,7 @@ fn branch_badge(
     id: ElementId,
     presentation: Presentation,
     cx: &mut Context<DunlinApp>,
-) -> AnyElement {
+) -> dunlin_ui::component::button::Button {
     let p = palette(cx);
     let project = project.to_string();
     let label = if this.branch_ui.locks(&project) {
@@ -407,6 +395,8 @@ fn branch_badge(
         label
     };
     dunlin_ui::button(id)
+        .min_w(px(0.))
+        .max_w_full()
         .small()
         .accessibility_label(format!("Switch Git branch · {label}"))
         .relative()
@@ -440,9 +430,15 @@ fn branch_badge(
             this.open_branch_picker_with(&project, presentation, window, cx);
         }))
         .child(Icon::new(IconName::GitBranch).size(px(12.)))
-        .child(div().max_w(px(144.)).truncate().child(label.to_string()))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .max_w(px(144.))
+                .truncate()
+                .child(label.to_string()),
+        )
         .child(Icon::new(IconName::ChevronDown).size(px(10.)))
-        .into_any_element()
 }
 pub(crate) fn render(this: &DunlinApp, window: &Window, cx: &mut Context<DunlinApp>) -> AnyElement {
     let Some(picker) = &this.branch_ui.picker else {

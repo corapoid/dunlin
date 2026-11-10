@@ -9,6 +9,20 @@ use dunlin_ui::*;
 
 use crate::app::{DunlinApp, SettingsTab};
 
+actions!(dunlin_chat, [NextAgentMode]);
+struct ModeBindings;
+impl Global for ModeBindings {}
+pub(crate) fn init_mode_keys(cx: &mut App) {
+    if !cx.has_global::<ModeBindings>() {
+        cx.set_global(ModeBindings);
+        cx.bind_keys([KeyBinding::new(
+            "shift-tab",
+            NextAgentMode,
+            Some("DunlinChat"),
+        )]);
+    }
+}
+
 #[derive(Clone)]
 enum Action {
     Settings(SettingsTab),
@@ -56,6 +70,7 @@ fn item(
     action: Action,
 ) -> PopupMenuItem {
     let app = app.clone();
+    let branded = matches!(action, Action::Harness(_));
     #[cfg(debug_assertions)]
     let probe = match &action {
         Action::ToggleReasoning => Some("chat-option-reasoning"),
@@ -91,9 +106,18 @@ fn item(
                 .opacity(if disabled { 0.5 } else { 1.0 })
                 .child(
                     div()
-                        .text_size(px(12.5))
-                        .text_color(p.fg)
-                        .child(text.0.clone()),
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .when(branded, |row| {
+                            row.child(crate::harness_brand::logo(&text.0, 16., p.fg))
+                        })
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .text_color(p.fg)
+                                .child(text.0.clone()),
+                        ),
                 )
                 .when(!text.1.is_empty(), |this| {
                     this.child(
@@ -108,7 +132,7 @@ fn item(
             cx,
         )
     })
-    .icon(icon)
+    .when(!branded, |item| item.icon(icon))
     .checked(selected)
     .disabled(disabled)
     .on_click(move |_, window, cx| {
@@ -213,7 +237,6 @@ pub(crate) fn harness(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
     dunlin_ui::button("composer-harness")
         .ghost()
         .small()
-        .child(crate::harness_brand::logo(&label, 16., palette(cx).fg))
         .label(label)
         .dropdown_caret(true)
         .max_w(px(240.))
@@ -521,7 +544,8 @@ pub(crate) fn model_options(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Ve
                     }
                 })
                 .icon(IconName::SlidersHorizontal)
-                .label(format!("{} · {}", option.name, option.selector.label()))
+                .label(option.selector.label())
+                .accessibility_label(format!("{} · {}", option.name, option.selector.label()))
                 .dropdown_caret(true)
                 .disabled(this.chat_controls_busy())
                 .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
@@ -537,6 +561,7 @@ pub(crate) fn model_options(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Ve
                     else {
                         return menu;
                     };
+                    menu = menu.label(current.name.clone());
                     for choice in &current.selector.choices {
                         menu = menu.item(item(
                             &app,
@@ -682,10 +707,6 @@ pub(crate) fn provider_controls(
 }
 
 pub(crate) fn provider(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    provider_button(this, cx, false)
-}
-
-fn provider_button(this: &DunlinApp, cx: &mut Context<DunlinApp>, settings: bool) -> AnyElement {
     let selected = this.selected_provider();
     let label = this
         .provider_catalog
@@ -697,48 +718,10 @@ fn provider_button(this: &DunlinApp, cx: &mut Context<DunlinApp>, settings: bool
             crate::providers::provider_name(selected.unwrap_or("Choose provider")).into()
         });
     let app = cx.entity().downgrade();
-    let selector = (if settings {
-        dunlin_ui::settings::button("composer-provider")
-            .label(label)
-            .icon(IconName::Cloud)
-            .dropdown_caret(true)
-    } else {
-        trigger("composer-provider", label, IconName::Cloud)
-    })
-    .accessibility_label("OpenCode model provider and billing account")
-    .map(|mut button| {
-        if settings {
-            button = button
-                .with_size(dunlin_ui::component::Size::default())
-                .w_full()
-                .max_w_full()
-                .min_h(px(36.))
-                .outline();
-            button.interactivity().tooltip(|window, cx| {
-                dunlin_ui::component::tooltip::Tooltip::element(|_, cx| {
-                    div()
-                        .max_w(px(320.))
-                        .text_size(px(13.))
-                        .line_height(relative(1.45))
-                        .text_color(palette(cx).fg)
-                        .child("Choose the model provider and billing account used by OpenCode.")
-                })
-                .px(px(10.))
-                .py(px(8.))
-                .build(window, cx)
-            });
-            button
-        } else {
-            button.tooltip("Model provider and billing account inside OpenCode")
-        }
-    })
-    .dropdown_menu_with_anchor(
-        if settings {
-            Anchor::TopLeft
-        } else {
-            Anchor::BottomLeft
-        },
-        move |mut menu, _, cx| {
+    trigger("composer-provider", label, IconName::Cloud)
+        .accessibility_label("OpenCode model provider and billing account")
+        .tooltip("Model provider and billing account inside OpenCode")
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
                 return menu;
             };
@@ -811,74 +794,8 @@ fn provider_button(this: &DunlinApp, cx: &mut Context<DunlinApp>, settings: bool
                 ))
                 .scrollable(true)
                 .max_h(px(420.))
-        },
-    )
-    .on_open_change(track_menu(cx))
-    .into_any_element();
-    if settings {
-        div()
-            .relative()
-            .w_full()
-            .child(selector)
-            .children({
-                #[cfg(debug_assertions)]
-                {
-                    crate::workspace_ui_smoke::probe("settings-provider-selector")
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    None::<AnyElement>
-                }
-            })
-            .into_any_element()
-    } else {
-        selector
-    }
-}
-
-pub(crate) fn provider_accounts(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
-    let p = palette(cx);
-    let local = this.local_opencode();
-    div().flex().flex_col().gap(px(8.))
-        .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
-            "OpenCode is the harness. Free filters its verified zero-cost models; Go is a separate subscription provider. Account credentials stay in OpenCode, not in Dunlin's settings or conversation history."
-        ))
-        .when(local, |view| view
-            .child(dunlin_ui::settings::card(p).p(px(14.)).flex().items_center().flex_wrap().gap(px(12.))
-                .child(div().flex_1().min_w(px(200.)).flex().flex_col().gap(px(6.))
-                    .child(div().text_size(px(11.5)).text_color(p.muted_fg).child("Provider"))
-                    .child(provider_button(this, cx, true)))
-                .child(
-                div()
-                    .flex()
-                    .justify_end()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(
-                        dunlin_ui::settings::button("provider-account-connect")
-                            .label(if this.provider_connected() {
-                                "Add / reconnect account…"
-                            } else {
-                                "Connect account…"
-                            })
-                            .disabled(this.chat_controls_busy())
-                            .on_click(cx.listener(|this, _, window, cx| this.connect_provider(window, cx))),
-                    )
-                    .child(
-                        dunlin_ui::settings::button("provider-account-refresh")
-                            .label(if this.provider_catalog.loading { "Refreshing…" } else { "Refresh providers / models" })
-                            .loading(this.provider_catalog.loading)
-                            .disabled(this.chat_controls_busy() || this.provider_catalog.loading)
-                            .on_click(cx.listener(|this, _, _, cx| this.reload_provider_models(cx))),
-                    ),
-            ))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child(
-                "Connect with an API key or browser sign-in, as supported by the provider. Models refresh automatically after connection. A listed model does not guarantee account funds or Go entitlement."
-            ))
-            .when_some(this.provider_catalog.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error))))
-        .when(!local, |view| view.child(div().text_size(px(11.5)).text_color(p.muted_fg).child(
-            "Select a local OpenCode conversation to manage its providers. For remote conversations, connect the provider on the relay."
-        )))
+        })
+        .on_open_change(track_menu(cx))
         .into_any_element()
 }
 

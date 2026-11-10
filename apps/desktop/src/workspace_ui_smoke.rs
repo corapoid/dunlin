@@ -46,6 +46,10 @@ pub(crate) fn measured(name: &str) -> Bounds<Pixels> {
     })
 }
 
+pub(crate) fn take_measured(name: &str) -> Option<Bounds<Pixels>> {
+    BOUNDS.with(|map| map.borrow_mut().as_mut().and_then(|map| map.remove(name)))
+}
+
 // Inspect paint, not just layout: a square child fill can hide a rounded parent.
 pub(crate) fn assert_painted_corners(window: &Window, name: &str, rounded_left: bool) {
     let bounds = if name == "settings-panel" {
@@ -57,6 +61,14 @@ pub(crate) fn assert_painted_corners(window: &Window, name: &str, rounded_left: 
 }
 
 fn assert_compact_session_row() {
+    if let Some(row) = BOUNDS.with(|map| {
+        map.borrow()
+            .as_ref()
+            .and_then(|map| map.get("minimal-session-row").copied())
+    }) {
+        assert_eq!(row.size.height, px(30.));
+        return;
+    }
     let row = measured("compact-session-row");
     let status = measured("compact-session-status");
     let date = measured("compact-session-date");
@@ -106,7 +118,7 @@ pub(crate) fn click(window: &mut Window, position: Point<Pixels>, cx: &mut App) 
 }
 
 /// Opt-in screenshot of this fixture's own window; never captures the desktop.
-fn capture_preview(window: &Window, path: &std::path::Path) {
+pub(crate) fn capture_preview(window: &Window, path: &std::path::Path) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window).unwrap();
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
@@ -217,7 +229,7 @@ pub(crate) fn run() {
             ..dunlin_ui::window_options() }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         parent.update(cx, |_, window, cx| crate::terminal::smoke_glyphs(window, cx)).unwrap();
         owner.update(cx, |app, cx| {
-            app.section = SidebarSection::Projects; app.view = MainView::Chat; app.sidebar_collapsed = false;
+            app.section = SidebarSection::Projects; app.sidebar_tab = crate::sidebar_layout::Tab::Projects; app.view = MainView::Chat; app.sidebar_collapsed = false;
             app.harness.status = crate::harness::HarnessStatus::Starting;
             cx.notify();
         });
@@ -267,7 +279,7 @@ pub(crate) fn run() {
                           15 => Some("composer-options"), 16 => Some("chat-option-reasoning"),
                            18 => Some("composer-options"), 19 => Some("chat-option-commit-skill"),
                          7900 => Some("ctx-project-group"), 7902 => Some("project-group-none"),
-                          7903 => Some("ctx-project-trust"), 7910 => Some("claude-harness-visible"),
+                           7903 => Some("ctx-project-trust"),
                          10000 => Some("delete-cancel"), 10001 => Some("delete-confirm"),
                         100 => Some("group-settings-button"), 101 => Some("group-icon-kubernetes"),
                         102 => Some("group-color-teal"), 103 | 107 => Some("group-settings-save"),
@@ -468,7 +480,7 @@ pub(crate) fn run() {
                         return false;
                     }
                     if stage == 7804 {
-                        parent.update(cx, |_, window, cx| click(window, measured("search-projects").center(), cx)).unwrap();
+                         parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "cmd-alt-p")).unwrap();
                         stage = 7805;
                         return false;
                     }
@@ -520,10 +532,8 @@ pub(crate) fn run() {
                         if selector_pressed.unwrap().elapsed() < Duration::from_millis(350) { return false; }
                         let bounds = measured("toolbar-view-selector");
                         let lens = measured("toolbar-view-lens");
-                        assert!((lens.center().y - bounds.center().y).abs() <= px(1.), "glass lens must stay vertically centered while pressed");
-                        if !owner.read(cx).reduce_motion && !cx.reduce_motion() {
-                            assert!(lens.size.width > px(79.), "pressed glass lens must visibly expand");
-                        }
+                        assert!((lens.center().y - bounds.center().y).abs() <= px(1.), "selection must stay vertically centered while pressed");
+                        assert_eq!(lens.size.width, px(76.), "the flat selection slides without zoom, outlines or another active pill");
                         let target = point(bounds.right() - bounds.size.width / 6., bounds.center().y);
                         parent.update(cx, |_, window, cx| {
                             window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { position: target, button: MouseButton::Left, click_count: 1, ..Default::default() }), cx);
@@ -754,7 +764,7 @@ pub(crate) fn run() {
                                 assert!(measured("composer").size.width <= px(824.));
                                  assert!(measured("project-sessions").size.height > px(10.));
                                   comfortable_project_height = measured("active-project-row").size.height;
-                                  rail_origin = measured("rail-projects").origin;
+                                   rail_origin = measured("sidebar-tab-projects").origin;
                                   sidebar_width = measured("sidebar").size.width;
                                    assert!(measured("titlebar-content").size.height <= px(38.));
                                    for name in ["title-sidebar", "navigation-back"] {
@@ -767,12 +777,12 @@ pub(crate) fn run() {
                                     let host = measured("host-menu-button");
                                     let icon = measured("host-icon");
                                     let dot = measured("host-status-dot");
-                                    assert!((icon.center().x - host.center().x).abs() < px(1.));
+                                     assert!(host.contains(&icon.center()));
                                     assert!((icon.center().y - host.center().y).abs() < px(1.));
                                     assert!(dot.left() < icon.right() && dot.right() > icon.right());
                                     assert!(dot.top() >= icon.center().y && dot.bottom() <= icon.bottom());
                                     assert!((measured("reading-surface").bottom() - measured("workspace-surface").bottom()).abs() < px(1.));
-                                  assert_eq!(measured("rail-projects").size, size(px(36.), px(36.)));
+                                   assert_eq!(measured("sidebar-tab-projects").size.height, px(30.));
                                   component::Root::update(window, cx, |root, _, _| {
                                       assert_eq!(root.style().background, Some(transparent_black().into()), "opaque kit root hides the native material");
                                   });
@@ -791,14 +801,15 @@ pub(crate) fn run() {
                                   stage = 5003;
                               }
                               5003 => {
-                                  assert_eq!(measured("rail-projects").origin, rail_origin, "rail jumped during collapse");
-                                  if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("sidebar")) { return false; }
+                                   if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("sidebar")) { return false; }
+                                   assert!(!BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("sidebar-footer")), "the footer must collapse with the sidebar");
+                                   assert!(!BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("host-menu-button")), "connection status must not leave a separate rail");
                                   app.sidebar_collapsed = false;
                                   stage = 5004;
                               }
                               5004 => {
-                                  assert_eq!(measured("rail-projects").origin, rail_origin, "rail jumped during expansion");
-                                  if measured("workspace-surface").left() < measured("navigation-rail").right() + sidebar_width - px(1.) { return false; }
+                                   if measured("workspace-surface").left() < px(dunlin_ui::scale::WORKSPACE_INSET) + sidebar_width - px(1.) { return false; }
+                                   assert_eq!(measured("sidebar-tab-projects").origin, rail_origin, "sidebar tabs must restore their position");
                                   stage = 5006;
                               }
                                5006 => {
@@ -1033,8 +1044,8 @@ pub(crate) fn run() {
                                  }
                                  stage = 3;
                              }
-                             3 => {
-                                 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("sidebar")) { return false; }
+                              3 => {
+                                  assert!(BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("sidebar")), "Dashboard keeps the unified navigation sidebar");
                                   assert!(!app.sidebar_collapsed);
                                   let picker_root = dunlin_domain::ProjectGroup { id: "picker-root".into(), name: "Picker root".into(),
                                       parent_id: None, tone: dunlin_domain::ProjectTone::Blue, settings: Default::default() };
@@ -1073,7 +1084,7 @@ pub(crate) fn run() {
                                   assert!(!app.project_menu_open);
                                   assert_eq!(app.project().id, "ui-fixture");
                                    app.projects.retain(|p| p.id != "picker-top-level");
-                                   app.section = SidebarSection::Projects; app.view = MainView::Chat;
+                                   app.section = SidebarSection::Projects; app.sidebar_tab = crate::sidebar_layout::Tab::Projects; app.view = MainView::Chat;
                                  app.request_git_action(Action::Switch { branch: "feature".into(), discard: false }, window, cx);
                                  stage = 350;
                              }
@@ -1166,7 +1177,8 @@ pub(crate) fn run() {
                                   stage = 83;
                               }
                               83 => {
-                                  app.section = SidebarSection::Sessions;
+                                   app.section = SidebarSection::Sessions;
+                                   app.sidebar_tab = crate::sidebar_layout::Tab::Sessions;
                                 let mut chat = app.project().clone();
                                  chat.id = "general-chat".into(); chat.name = "General chat".into();
                                  chat.kind = dunlin_domain::ProjectKind::ChatSpace;
@@ -1253,11 +1265,11 @@ pub(crate) fn run() {
                              }
                              190 => { stage = 191; }
                              191 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("selected-host-status")) => {
-                                 assert!(measured("selected-host-status").top() > measured("host-menu-button").bottom());
+                                  assert!(measured("selected-host-status").bottom() < measured("host-menu-button").top(), "footer host menu opens above its trigger");
                                  stage = 192;
                              }
                              200 => {
-                                 let answer = window.prompt(PromptLevel::Warning, "Commit on AI?", Some("Fixture only: no request or commit will run."), &["Cancel", "Analyze and commit"], cx);
+                                 let answer = window.prompt(PromptLevel::Warning, "Commit with AI?", Some("Fixture only: no request or commit will run."), &["Cancel", "Analyze and commit"], cx);
                                  let answer = app.overlay_backdrop.track_native(answer, cx);
                                  cx.spawn(async move |_, _| { PROMPT_ANSWER.with(|value| *value.borrow_mut() = None); let result = answer.await.unwrap(); PROMPT_ANSWER.with(|value| *value.borrow_mut() = Some(result)); }).detach();
                                  stage = 201;
@@ -1304,7 +1316,6 @@ pub(crate) fn run() {
                                    app.settings_tab = crate::app::SettingsTab::Harnesses;
                                    app.harness_discovery.push(crate::harness_discovery::Detected {
                                        name: "Claude Code", cli: Some("/usr/bin/false".into()), adapter: None,
-                                       docs: "https://agentclientprotocol.com/",
                                    });
                               }
                               211 if !dunlin_ui::theme::is_transitioning(cx) => {
@@ -1482,7 +1493,8 @@ pub(crate) fn run() {
                                    }
                                    app.set_vault_enabled(false, cx);
                                    app.close_bottom_panel(cx);
-                                   app.section = SidebarSection::Projects;
+                                    app.section = SidebarSection::Projects;
+                                    app.sidebar_tab = crate::sidebar_layout::Tab::Projects;
                                    stage = 7800;
                               }
                               7801 => {
@@ -1497,7 +1509,8 @@ pub(crate) fn run() {
                               7803 => {
                                   assert_eq!(app.project().id, search_target, "project search must switch to the selected repository");
                                   assert!(!app.command_open);
-                                  app.section = SidebarSection::Projects;
+                                   app.section = SidebarSection::Projects;
+                                   app.sidebar_tab = crate::sidebar_layout::Tab::Projects;
                                   stage = 7804;
                               }
                               7805 => {
@@ -1625,21 +1638,15 @@ pub(crate) fn run() {
                                   stage = 7910;
                               }
                               7910 => {
-                                  assert!(!app.harness_visible("Claude Code"));
-                                  assert_eq!(app.default_harness, recent_file, "visibility button must not select a new default");
+                                  assert!(app.harness_visible("Claude Code"));
+                                  assert_eq!(app.default_harness, recent_file);
                                   let harness = app.session_harness();
                                   let transcript = app.harness.transcript.len();
                                   app.custom_harness_command = "/usr/bin/false".into();
                                   assert!(app.visible_harness_names().iter().any(|name| name == "Custom ACP"));
-                                  app.toggle_harness_visibility("Custom ACP", cx);
-                                  assert!(!app.visible_harness_names().iter().any(|name| name == "Custom ACP"));
                                   assert_eq!(app.session_harness(), harness);
                                   assert_eq!(app.harness.transcript.len(), transcript);
-                                  let stored: crate::app::StoredSettings = app.store.as_ref().unwrap().load_setting("app").unwrap().unwrap();
-                                  assert!(stored.hidden_harnesses.iter().any(|name| name == "Custom ACP"));
-                                  app.toggle_harness_visibility("Custom ACP", cx);
-                                  assert!(app.visible_harness_names().iter().any(|name| name == "Custom ACP"));
-                                  std::fs::write(dir.join("PASS"), "PASS: project actions/group dialog, harness visibility, SSH key geometry, project search, text zoom, MRU and workspace UI\n").unwrap();
+                                  std::fs::write(dir.join("PASS"), "PASS: project actions/group dialog, installed harness choices, SSH key geometry, project search, text zoom, MRU and workspace UI\n").unwrap();
                                  println!("PASS: workspace UI smoke"); cx.quit(); return true;
                             }
                             _ => {}

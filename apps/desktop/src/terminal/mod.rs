@@ -397,6 +397,7 @@ impl DunlinApp {
             return false;
         };
         self.remember_workspace_tab();
+        self.workspace_tools.current = None;
         self.stash_editor_tab();
         self.workbench.show_file = false;
         self.git_history.active = false;
@@ -749,6 +750,10 @@ impl DunlinApp {
     }
 
     pub(crate) fn close_terminal_tab(&mut self, id: &str, cx: &mut Context<Self>) {
+        if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Terminal(id.into()), cx)
+        {
+            return;
+        }
         let Some(index) = self.terminal.tabs.iter().position(|tab| tab.id == id) else {
             return;
         };

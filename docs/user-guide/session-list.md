@@ -40,6 +40,9 @@ session.id --owner selection--> project --id lookup--> history [proven]
 - Open/delete actions and session context menus identify sessions by stable IDs.
   Deletion keeps confirmation, storage error handling and remote deletion behavior.
   Deleting another workspace's session leaves current selection/transcript alone.
+- Minimal view renders each session in one line (status dot, title and delete
+  action), omitting date headers and the metadata row. Full metadata stays in the
+  row tooltip; scope, ordering, opening and deletion rules are unchanged.
 
 ## Verification and handoff
 

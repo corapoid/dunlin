@@ -326,7 +326,26 @@ fn action_button(
     disabled: bool,
     cx: &mut Context<DunlinApp>,
 ) -> Button {
-    dunlin_ui::action_button(id)
+    #[cfg(debug_assertions)]
+    let probe = match &action {
+        Action::StashPush {
+            include_untracked: false,
+            ..
+        } => Some("git-stash-tracked"),
+        _ => None,
+    };
+    dunlin_ui::settings::button(id)
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                probe.and_then(crate::workspace_ui_smoke::probe)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .label(label)
         .disabled(disabled)
         .on_click(
@@ -334,9 +353,7 @@ fn action_button(
         )
 }
 pub(super) fn stash_actions(oid: &str, disabled: bool, cx: &mut Context<DunlinApp>) -> AnyElement {
-    div()
-        .flex()
-        .gap(px(4.))
+    dunlin_ui::settings::actions()
         .children([
             action_button(
                 format!("stash-apply-{oid}"),
@@ -376,9 +393,7 @@ pub(super) fn operation_actions(
     disabled: bool,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
-    div()
-        .flex()
-        .gap(px(4.))
+    dunlin_ui::settings::actions()
         .children([
             action_button(
                 format!("continue-{operation:?}"),
@@ -412,123 +427,161 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         mainline_text.parse::<usize>().map(Some)
     };
     div()
-        .p(px(10.))
+        .min_w(px(0.))
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .text_size(px(11.))
-        .border_b_1()
-        .border_color(p.border)
-        .child("Git operations · every action prepares a fresh confirmation")
+        .gap(px(16.))
+        .text_size(px(dunlin_ui::settings::Tokens::BODY_SIZE))
+        .child(dunlin_ui::settings::description(
+            "Prepare an action, then review its fresh confirmation. Nothing changes automatically.",
+            p,
+        ))
         .child(
-            div()
-                .flex()
-                .gap(px(6.))
-                .flex_wrap()
+            operation_section("Stash changes", "Save working tree changes for later.", p)
                 .child(
-                    compact_input(&form.message)
-                        .aria_label("Stash message")
-                        .min_w(px(140.))
-                        .flex_1(),
-                )
-                .child(action_button(
-                    "stash-tracked",
-                    "Stash tracked…",
-                    Action::StashPush {
-                        message: message.clone(),
-                        include_untracked: false,
-                    },
-                    busy,
-                    cx,
-                ))
-                .child(action_button(
-                    "stash-untracked",
-                    "Stash + untracked…",
-                    Action::StashPush {
-                        message,
-                        include_untracked: true,
-                    },
-                    busy,
-                    cx,
-                )),
-        )
-        .child(
-            div()
-                .flex()
-                .gap(px(6.))
-                .flex_wrap()
-                .child(
-                    compact_input(&form.revision)
-                        .aria_label("Target revision")
-                        .min_w(px(150.))
-                        .flex_1(),
+                    dunlin_ui::settings::field(
+                        "Message (optional)",
+                        dunlin_ui::settings::input(&form.message, p)
+                            .aria_label("Stash message")
+                            .w_full()
+                            .min_w(px(0.)),
+                        p,
+                    )
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        {
+                            crate::workspace_ui_smoke::probe("git-stash-field")
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            None::<AnyElement>
+                        }
+                    }),
                 )
                 .child(
-                    compact_input(&form.mainline)
-                        .aria_label("Merge parent number")
-                        .min_w(px(150.))
-                        .flex_1(),
+                    dunlin_ui::settings::actions()
+                        .child(action_button(
+                            "stash-tracked",
+                            "Stash tracked…",
+                            Action::StashPush {
+                                message: message.clone(),
+                                include_untracked: false,
+                            },
+                            busy,
+                            cx,
+                        ))
+                        .child(action_button(
+                            "stash-untracked",
+                            "Stash + untracked…",
+                            Action::StashPush {
+                                message,
+                                include_untracked: true,
+                            },
+                            busy,
+                            cx,
+                        )),
                 ),
         )
         .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(4.))
-                .child(action_button(
-                    "git-merge",
-                    "Merge…",
-                    Action::Merge {
-                        revision: revision.clone(),
-                    },
-                    busy,
-                    cx,
-                ))
-                .child(action_button(
-                    "git-rebase",
-                    "Rebase…",
-                    Action::Rebase {
-                        revision: revision.clone(),
-                    },
-                    busy,
-                    cx,
-                ))
-                .child(action_button(
-                    "git-cherry-pick",
-                    "Cherry-pick…",
-                    Action::CherryPick {
-                        revision: revision.clone(),
-                        mainline: mainline.as_ref().ok().copied().flatten(),
-                    },
-                    busy || mainline.is_err(),
-                    cx,
-                )),
+            operation_section(
+                "Integrate revisions",
+                "Choose a local commit, branch or tag.",
+                p,
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(8.))
+                    .child(
+                        dunlin_ui::settings::field(
+                            "Target revision",
+                            dunlin_ui::settings::input(&form.revision, p)
+                                .aria_label("Target revision")
+                                .w_full()
+                                .min_w(px(0.)),
+                            p,
+                        )
+                        .flex_1()
+                        .min_w(px(180.)),
+                    )
+                    .child(
+                        dunlin_ui::settings::field(
+                            "Merge parent (optional)",
+                            dunlin_ui::settings::input(&form.mainline, p)
+                                .aria_label("Merge parent number")
+                                .w_full()
+                                .min_w(px(0.)),
+                            p,
+                        )
+                        .flex_1()
+                        .min_w(px(180.)),
+                    ),
+            )
+            .child(
+                dunlin_ui::settings::actions()
+                    .child(action_button(
+                        "git-merge",
+                        "Merge…",
+                        Action::Merge {
+                            revision: revision.clone(),
+                        },
+                        busy,
+                        cx,
+                    ))
+                    .child(action_button(
+                        "git-rebase",
+                        "Rebase…",
+                        Action::Rebase {
+                            revision: revision.clone(),
+                        },
+                        busy,
+                        cx,
+                    ))
+                    .child(action_button(
+                        "git-cherry-pick",
+                        "Cherry-pick…",
+                        Action::CherryPick {
+                            revision: revision.clone(),
+                            mainline: mainline.as_ref().ok().copied().flatten(),
+                        },
+                        busy || mainline.is_err(),
+                        cx,
+                    )),
+            ),
         )
         .child(
-            div()
-                .flex()
-                .gap(px(6.))
-                .flex_wrap()
-                .child(
-                    compact_input(&form.name)
-                        .aria_label("Worktree name")
-                        .min_w(px(140.))
-                        .flex_1(),
-                )
-                .child(action_button(
-                    "git-worktree-add",
-                    "Add worktree…",
-                    Action::WorktreeAdd { name, revision },
-                    busy,
-                    cx,
-                ))
-                .child(action_button(
-                    "git-worktree-prune",
-                    "Prune stale…",
-                    Action::WorktreePrune,
-                    busy,
-                    cx,
-                )),
+            operation_section(
+                "Create a worktree",
+                "Uses the target revision above without switching this checkout.",
+                p,
+            )
+            .child(dunlin_ui::settings::field(
+                "Worktree name",
+                dunlin_ui::settings::input(&form.name, p)
+                    .aria_label("Worktree name")
+                    .w_full()
+                    .min_w(px(0.)),
+                p,
+            ))
+            .child(
+                dunlin_ui::settings::actions()
+                    .child(action_button(
+                        "git-worktree-add",
+                        "Add worktree…",
+                        Action::WorktreeAdd { name, revision },
+                        busy,
+                        cx,
+                    ))
+                    .child(action_button(
+                        "git-worktree-prune",
+                        "Prune stale…",
+                        Action::WorktreePrune,
+                        busy,
+                        cx,
+                    )),
+            ),
         )
         .when(busy, |r| {
             r.child(
@@ -540,68 +593,82 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         })
         .when_some(form.pending.as_ref(), |r, prepared| {
             r.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .p(px(6.))
-                    .bg(p.muted)
-                    .child(format!(
-                        "{} · HEAD {} · target {}",
-                        prepared.plan.action.label(),
-                        prepared.plan.head.as_deref().unwrap_or("unborn"),
-                        prepared.plan.target.as_deref().unwrap_or("—")
-                    ))
-                    .child(prepared.plan.warning.clone())
-                    .child(format!(
-                        "Request: {}",
-                        serde_json::to_string(&prepared.plan.action).unwrap_or_default()
-                    ))
-                    .child(format!(
-                        "Worktree: {} · changed status records: {} (first 80 below)",
-                        prepared.plan.worktree_target.as_deref().unwrap_or("—"),
-                        prepared.plan.status.split_terminator('\0').count()
-                    ))
-                    .child(
-                        div()
-                            .id("git-preflight-status")
-                            .max_h(px(100.))
-                            .overflow_y_scroll()
-                            .flex()
-                            .flex_col()
-                            .children(
-                                prepared
-                                    .plan
-                                    .status
-                                    .split_terminator('\0')
-                                    .take(80)
-                                    .map(|line| div().child(line.escape_debug().to_string())),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .gap(px(6.))
-                            .child(
-                                dunlin_ui::action_button("git-operation-confirm")
-                                    .label("Review and confirm…")
-                                    .disabled(busy)
-                                    .on_click(cx.listener(|this, _, w, cx| {
-                                        this.confirm_repository_action(w, cx)
-                                    })),
-                            )
-                            .child(
-                                dunlin_ui::action_button("git-operation-cancel")
-                                    .label("Cancel")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        if let Some(v) = &mut this.git_history.view {
-                                            v.mutations.pending = None;
-                                        }
-                                        cx.notify();
-                                    })),
-                            ),
-                    ),
+                operation_section(
+                    "Prepared action",
+                    "Review the pinned request before confirming.",
+                    p,
+                )
+                .child(format!(
+                    "{} · HEAD {} · target {}",
+                    prepared.plan.action.label(),
+                    prepared.plan.head.as_deref().unwrap_or("unborn"),
+                    prepared.plan.target.as_deref().unwrap_or("—")
+                ))
+                .child(prepared.plan.warning.clone())
+                .child(format!(
+                    "Request: {}",
+                    serde_json::to_string(&prepared.plan.action).unwrap_or_default()
+                ))
+                .child(format!(
+                    "Worktree: {} · changed status records: {} (first 80 below)",
+                    prepared.plan.worktree_target.as_deref().unwrap_or("—"),
+                    prepared.plan.status.split_terminator('\0').count()
+                ))
+                .child(
+                    div()
+                        .id("git-preflight-status")
+                        .max_h(px(100.))
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .children(
+                            prepared
+                                .plan
+                                .status
+                                .split_terminator('\0')
+                                .take(80)
+                                .map(|line| div().child(line.escape_debug().to_string())),
+                        ),
+                )
+                .child(
+                    dunlin_ui::settings::actions()
+                        .child(
+                            dunlin_ui::settings::button("git-operation-confirm")
+                                .label("Review and confirm…")
+                                .disabled(busy)
+                                .on_click(cx.listener(|this, _, w, cx| {
+                                    this.confirm_repository_action(w, cx)
+                                })),
+                        )
+                        .child(
+                            dunlin_ui::settings::button("git-operation-cancel")
+                                .label("Cancel")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(v) = &mut this.git_history.view {
+                                        v.mutations.pending = None;
+                                    }
+                                    cx.notify();
+                                })),
+                        ),
+                ),
             )
         })
         .into_any_element()
+}
+
+fn operation_section(title: &str, detail: &str, p: Palette) -> Div {
+    SurfaceGeometry::SETTINGS_CARD
+        .paint(transparent_black(), p.border)
+        .min_w(px(0.))
+        .flex_shrink_0()
+        .p(px(16.))
+        .flex()
+        .flex_col()
+        .gap(px(10.))
+        .child(
+            div()
+                .font_weight(FontWeight::MEDIUM)
+                .child(title.to_owned()),
+        )
+        .child(dunlin_ui::settings::description(detail.to_owned(), p))
 }

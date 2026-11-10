@@ -9,10 +9,10 @@ pub(crate) struct State {
     pub audits: bool,
     pub usage_report: bool,
     pub credential_details: Option<String>,
-    pub extension_details: Option<String>,
     pub backup_details: bool,
     pub available_agents: bool,
     pub project_focus: Option<FocusHandle>,
+    pub recovery_notice: Option<String>,
 }
 
 pub(super) const GROUPS: &[(&str, &[SettingsTab])] = &[
@@ -61,9 +61,9 @@ impl SettingsTab {
             Self::Sidebar => "Dashboard, project list, Explorer and project discovery.",
             Self::Chat => "Response behavior and message appearance.",
             Self::Editor => "Code typography, editing and terminal integration.",
-            Self::Harnesses => "Local ACP agents, provider accounts and connection defaults.",
+            Self::Harnesses => "Local ACP agents, session imports and connection defaults.",
             Self::Skills => "Install skills once globally and share them across harnesses.",
-            Self::Extensions => "Methodology packs and optional sandboxed WASM validators.",
+            Self::Extensions => "Install and enable extension packages on this Mac.",
             Self::Permissions => "Agent approval policy and separate macOS permissions.",
             Self::Secrets => "Keychain storage, scoped agent access and credential policies.",
             Self::Security => "Configure audit tools or inspect project audits and evidence.",
@@ -83,7 +83,7 @@ impl SettingsTab {
                 "design appearance theme system light dark font interface density comfortable compact reduce motion animation shortcut hints keyboard accessibility"
             }
             Self::Sidebar => {
-                "sidebar workspace dashboard live agents activity heatmap explorer file sizes project list branch language topics wrap information info preview sort width import github gitlab gh glab cli tracked watched folder"
+                "sidebar workspace dashboard live agents activity heatmap explorer file sizes project list branch language topics wrap information info preview sort import github gitlab gh glab cli tracked watched folder"
             }
             Self::Chat => {
                 "chat stream responses timestamps message times duration logo reasoning thinking final answer only"
@@ -92,10 +92,10 @@ impl SettingsTab {
                 "editor terminal code font size typography word wrap autosave minimap inline blame shell integration zsh bash"
             }
             Self::Harnesses => {
-                "harness adapter agents acp default custom command accounts provider opencode claude codex gemini copilot cursor qwen auggie kiro openclaw hermes qoder connect auto-connect restart crash import sessions portable test connection"
+                "harness adapter agents acp default opencode claude codex gemini copilot cursor qwen auggie kiro openclaw hermes qoder connect auto-connect restart crash import sessions portable"
             }
             Self::Skills => {
-                "skills instructions library catalog install uninstall global project github import folder bundle spec kit plugin builder"
+                "skills instructions library catalog install uninstall disable enable edit global project github import folder bundle spec kit plugin builder"
             }
             Self::Extensions => {
                 "extensions plugins packs wasm methodology governance proposals mcp scope spec intent tools"
@@ -126,12 +126,10 @@ impl SettingsTab {
 
     pub(crate) fn matches_search(self, query: &str) -> bool {
         let names = match self {
-            Self::General => {
-                "Startup destination Restore the last session Desktop notifications Notification permission"
-            }
+            Self::General => "Startup destination Restore the last session Desktop notifications",
             Self::Design => "UI font Interface density Show keyboard shortcut hints Reduce motion",
             Self::Sidebar => {
-                "Live agents Activity Show branch names Show primary language Show repository topics Wrap project names Project information Sort Width Show file sizes Project discovery Git hosting"
+                "Live agents Activity Show branch names Show primary language Show repository topics Wrap project names Project information Sort Show file sizes Project discovery Git hosting"
             }
             Self::Chat => {
                 "Stream responses Message times Agent turn duration Response logo Show reasoning by default Final answer only"
@@ -140,16 +138,16 @@ impl SettingsTab {
                 "Code font Font size Word wrap Autosave File minimap Inline blame Shell integration"
             }
             Self::Harnesses => {
-                "Local agents Default agent Test connection Scan again Default for new conversations Show in choices Custom ACP command Auto-connect Connect automatically Restart on crash Provider accounts Import sessions"
+                "Local agents Install Default agent Set default Scan again Default for new conversations Auto-connect Connect automatically Restart on crash Import sessions Last import Refresh"
             }
             Self::Skills => {
-                "Available skills Installed skills Install globally Add skill Scan harness folders Import from GitHub Import folder Project copies"
+                "Available skills Installed skills Install Enable Disable Edit Install globally Add skill Scan harness folders Import from GitHub Import folder Project copies"
             }
             Self::Extensions => {
-                "Spec & intent tools Built-in workspace tools Extension packs Methodology packs Technical details Enable Disable"
+                "Intent Concepts Decisions Spec Extension packs Install pack Enable Disable"
             }
             Self::Permissions => {
-                "Agent approval policy Default permission mode Ask every time Read-only Auto-approve Workspace writes Home directory Network access Secrets macOS permissions"
+                "Agent approval policy Default permission mode Ask every time Read-only Auto-approve Workspace writes Home directory Network access Secrets macOS permissions Notification permission"
             }
             Self::Secrets => {
                 "Agent credential access Stored credentials Add credential Allowed API hosts Description for the agent Injection Header OAuth AWS Path prefix Time to live Require approval Projects Access policies & history"
@@ -286,7 +284,7 @@ mod tests {
             ("harness", SettingsTab::Harnesses),
             ("secrets", SettingsTab::Secrets),
             ("backup export", SettingsTab::Data),
-            ("SIDEBAR width", SettingsTab::Sidebar),
+            ("SIDEBAR sort", SettingsTab::Sidebar),
             ("terminal shell", SettingsTab::Editor),
             ("logs zip", SettingsTab::Advanced),
         ] {

@@ -101,6 +101,7 @@ fn remap(path: &Path, report: &TransferReport) -> Option<PathBuf> {
 
 impl DunlinApp {
     pub(crate) fn focus_explorer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sidebar_tab = crate::sidebar_layout::Tab::Explorer;
         self.explorer
             .focus
             .get_or_insert_with(|| cx.focus_handle())
@@ -114,7 +115,7 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) -> bool {
         let key = &event.keystroke;
-        if self.section != dunlin_domain::SidebarSection::Files
+        if self.sidebar_section() != dunlin_domain::SidebarSection::Files
             || self.sidebar_collapsed
             || self.projects.is_empty()
             || self.has_overlay()
@@ -166,18 +167,7 @@ impl DunlinApp {
                 }
             }
             _ => {
-                let text = key.key_char.as_deref().or_else(|| {
-                    if key.modifiers.alt {
-                        None
-                    } else if key.key == "space" {
-                        Some(" ")
-                    } else {
-                        (key.key.chars().count() == 1).then_some(key.key.as_str())
-                    }
-                });
-                let Some(text) =
-                    text.filter(|text| !text.is_empty() && !text.chars().any(char::is_control))
-                else {
+                let Some(text) = search::typed_text(key) else {
                     return false;
                 };
                 let query = format!("{}{text}", self.explorer.search.query);

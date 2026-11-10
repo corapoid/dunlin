@@ -262,33 +262,42 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             .min_h(px(0.))
             .overflow_y_scroll()
             .child(
-                dunlin_ui::action_button("history-branch-form")
-                    .label(if view.branch_form_open {
-                        "Hide branch form"
-                    } else {
-                        "Create branch…"
-                    })
-                    .disabled(this.git_history.running || view.loading)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if let Some(v) = &mut this.git_history.view {
-                            v.branch_form_open = !v.branch_form_open;
-                        }
-                        cx.notify();
-                    })),
+                div().p(px(16.)).child(
+                    dunlin_ui::settings::button("history-branch-form")
+                        .self_start()
+                        .label(if view.branch_form_open {
+                            "Hide branch form"
+                        } else {
+                            "Create branch…"
+                        })
+                        .disabled(this.git_history.running || view.loading)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(v) = &mut this.git_history.view {
+                                v.branch_form_open = !v.branch_form_open;
+                            }
+                            cx.notify();
+                        })),
+                ),
             )
             .when(view.branch_form_open, |r| {
                 r.child(
                     div()
-                        .p(px(10.))
+                        .p(px(16.))
                         .flex()
                         .flex_col()
                         .gap(px(6.))
                         .border_b_1()
                         .border_color(p.border)
                         .child("Create branch from selected commit")
-                        .child(dunlin_ui::input(&view.name).aria_label("New branch name"))
                         .child(
-                            dunlin_ui::action_button("history-create")
+                            dunlin_ui::settings::input(&view.name, p)
+                                .w_full()
+                                .min_w(px(0.))
+                                .aria_label("New branch name"),
+                        )
+                        .child(
+                            dunlin_ui::settings::button("history-create")
+                                .self_start()
                                 .primary()
                                 .label("Create branch")
                                 .disabled(this.git_history.running || view.loading)
@@ -303,7 +312,12 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         ),
                 )
             })
-            .child(mutations::render(this, cx))
+            .child(
+                div()
+                    .px(px(16.))
+                    .pb(px(16.))
+                    .child(mutations::render(this, cx)),
+            )
             .into_any_element(),
     };
     let mut tabs = div()

@@ -6,21 +6,20 @@ CLI and choosing an agent mode are separate operations.
 
 ## Connect locally
 
-Use **Settings → Agents** to scan, open setup instructions, test a connection,
-choose a default or configure a custom ACP command. Detection does not prove
-authentication or ACP compatibility. **Test connection** opens an empty ACP
-session without sending a prompt. **Show in agent picker** checkboxes affect selection menus,
-not installed software or saved conversations.
-
-Select the radio beside an agent to make it the default for new conversations.
-The checked radio marks the default; unavailable or unverified agents cannot be made
-the default. Existing conversations keep their agent. **Scan again** remains an
-explicit, read-only discovery action.
+Use **Settings → Agents** to scan, open setup instructions or choose a default.
+Each agent has one action: **Install → Import
+sessions → Set default → Default**. Agents without a supported history reader skip
+the import step. **Set default** verifies an empty ACP session in a trusted local
+project without sending a prompt, then saves the default only on success.
+Detection alone does not prove authentication or ACP compatibility. Existing
+conversations keep their agent. **Scan again** is read-only discovery.
 
 Detected/configured agents are listed first. Expand **Set up another agent** to
-browse agents that are not installed. **Import history** is available only for
-supported detected CLIs/adapters; it reads local history without starting an ACP
-session. A CLI-only installation can be imported even when its ACP adapter is missing.
+browse agents that are not installed. **Import sessions** reads local history
+without starting an ACP session. Install the ACP adapter first. After importing,
+the second line shows the number imported and last import time; the refresh icon
+checks for new histories and metadata without changing source files. Older imports
+show an unknown import time until their first refresh.
 
 The chat harness selector lists only visible agents with a verified, ready
 connection for the current project configuration. Unverified or failed adapters
@@ -44,8 +43,9 @@ Common commands from the built-in catalog:
 | Qoder CLI | `qodercli --acp` |
 
 The current setup catalog in the app is authoritative for adapter installation
-instructions. Other commands can be configured as Custom ACP; repository-local
-executables are not automatically trusted. Remote installation/authentication
+instructions. Existing legacy Custom ACP configurations remain readable, but the
+custom-command form is no longer shown. Repository-local executables are not
+automatically trusted. Remote installation/authentication
 belongs to [server management](../administration/relay-setup.md).
 
 ## Models, modes and defaults
@@ -53,6 +53,13 @@ belongs to [server management](../administration/relay-setup.md).
 The composer offers models and agent modes advertised by the connected harness.
 Not every adapter offers model switching or the same modes. Tool permissions
 (Ask, Read-only, Auto-approve) are client policy, not the agent's Plan/Build mode.
+
+**Shift+Tab** cycles the advertised modes in the active Chat document, whether
+shortcut hints are shown or hidden. It also works when focus is on the Chat
+surface rather than inside the composer. Editors, terminals, settings and open
+menus retain their normal key behavior. The selected mode changes only after the
+harness confirms it. Model-option controls show the selected value (for example
+Default); the dropdown heading gives the option name (for example Effort).
 Contract ceilings and budgets may further restrict permissions.
 
 Global, ancestor-group and project defaults resolve with explicit sources.
@@ -81,8 +88,8 @@ see connected-account counts and advertised sign-in methods, and connect another
 provider. Integrations requiring custom forms or external setup are identified
 without guessing their configuration.
 
-Provider-menu sign-in and **Settings → Agents → OpenCode provider accounts** use
-the verified local OpenCode service. Authentication is persisted by OpenCode, not
+Provider-menu sign-in uses the verified local OpenCode service. Provider accounts
+are managed from the composer, not duplicated in Settings. Authentication is persisted by OpenCode, not
 as a Dunlin credential. Refresh providers/models after external changes. Selecting
 a provider filter does not silently change the current session's model.
 

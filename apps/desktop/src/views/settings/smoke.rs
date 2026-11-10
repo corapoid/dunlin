@@ -63,6 +63,11 @@ pub(crate) fn run() {
     fs::create_dir(&dir).expect("fixture directory must not already exist");
     let root = dir.join("project");
     fs::create_dir(&root).unwrap();
+    fs::write(
+        root.join("navigation-fixture.rs"),
+        "// Global search fixture\n",
+    )
+    .unwrap();
     let store = dunlin_storage::Store::open(dir.join("dunlin.db")).unwrap();
     store
         .save_setting(
@@ -124,6 +129,19 @@ pub(crate) fn run() {
         }, cx, |window, cx| cx.new(|cx| DunlinApp::new(window, cx))).unwrap();
         cx.activate(true);
         owner.update(cx, |app, cx| { app.settings_open = true; app.settings_tab = SettingsTab::General; cx.notify(); });
+        let reset_dir = dir.clone();
+        cx.on_app_restart(move |_| {
+            let store = dunlin_storage::Store::open(reset_dir.join("dunlin.db")).unwrap();
+            assert!(store.projects().unwrap().is_empty());
+            assert!(store.sessions(None).unwrap().is_empty());
+            assert!(store.load_setting::<StoredSettings>("app").unwrap().is_none());
+            assert!(reset_dir.join("project").is_dir(), "reset must preserve repository files");
+            fs::write(reset_dir.join("PASS"), "Settings matrix; avatar positioning/theme/density; global search suggestions and file navigation; unified sidebar collapse/footer; reset blocking/cancellation and confirmed fixture reset passed\n").unwrap();
+            println!("PASS: settings, avatar menu, global search, unified sidebar and fixture factory reset");
+            // The fixture verifies the restart boundary without relaunching the
+            // smoke executable (which would reuse its already-created directory).
+            std::process::exit(0);
+        }).detach();
         cx.spawn(async move |cx| {
             let started = Instant::now();
             let pages: Vec<_> = navigation::GROUPS.iter().flat_map(|(_, pages)| pages.iter().copied()).collect();
@@ -134,19 +152,188 @@ pub(crate) fn run() {
               let mut agent_catalog = false;
             let total = pages.len() * 8;
             let mut stage = 0;
+            let mut expanded_footer = None;
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 let done = cx.update(|cx| {
                     assert!(started.elapsed() < Duration::from_secs(90), "settings smoke stalled: page {index}, stage {stage}");
                     let visual = std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some();
                     if visual { cx.activate(true); }
-                    parent.update(cx, |_, window, cx| { window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
-                    let Some(child) = owner.read(cx).overlay_window.debug_window() else { return false; };
+                     parent.update(cx, |_, window, cx| { window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
+                     match stage {
+                         80 if !owner.read(cx).overlay_window.is_open() => {
+                             parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-user-menu").center(), cx)).unwrap();
+                             stage = 81;
+                             return false;
+                         }
+                         81 => {
+                             let avatar = crate::workspace_ui_smoke::measured("title-user-menu");
+                             let menu = crate::workspace_ui_smoke::measured("profile-menu");
+                              assert!(menu.top() > avatar.bottom(), "user menu must open below the avatar");
+                              assert!(menu.size.width <= px(244.), "profile menu fits its contents without a wide empty right edge");
+                             parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("theme-choice-System").center(), cx)).unwrap();
+                             assert_eq!(owner.read(cx).appearance, Appearance::System, "profile menu must support System, not just a light/dark toggle");
+                             stage = 82;
+                             return false;
+                         }
+                         82 => {
+                             parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("theme-choice-Dark").center(), cx)).unwrap();
+                             assert_eq!(owner.read(cx).appearance, Appearance::Dark);
+                             stage = 83;
+                             return false;
+                         }
+                         83 => {
+                             parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("profile-density").center(), cx)).unwrap();
+                              assert_eq!(owner.read(cx).density, UiDensity::Compact, "Minimal view must enable compact density");
+                              parent.update(cx, |_, window, cx| {
+                                  let viewport = window.viewport_size();
+                                  crate::workspace_ui_smoke::click(window, point(viewport.width - px(8.), viewport.height - px(8.)), cx);
+                              }).unwrap();
+                              stage = 85;
+                              return false;
+                          }
+                          85 if !owner.read(cx).user_profile.menu_open => {
+                              let search = crate::workspace_ui_smoke::measured("global-search-trigger");
+                              parent.update(cx, |_, window, cx| {
+                                  assert!((search.center().x - window.viewport_size().width / 2.).abs() < px(1.), "global search must be centered in the window");
+                                  crate::workspace_ui_smoke::click(window, search.center(), cx);
+                              }).unwrap();
+                              assert!(owner.read(cx).command_open);
+                              assert_eq!(owner.read(cx).filtered_commands()[0].command, crate::app::Command::Section(dunlin_domain::SidebarSection::Dashboard));
+                              stage = 86;
+                              return false;
+                          }
+                          86 => {
+                              parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
+                                  app.command_query.update(cx, |input, cx| input.set_value("navigation-fixture", window, cx));
+                                  // Programmatic fixture assignment does not emit the
+                                  // user-input Change event that maintains this mirror.
+                                  app.command_text = "navigation-fixture".into();
+                              })).unwrap();
+                              stage = 87;
+                              return false;
+                          }
+                          87 => {
+                              let items = owner.read(cx).filtered_commands();
+                              assert_eq!(items[0].command, crate::app::Command::Section(dunlin_domain::SidebarSection::Dashboard), "Dashboard stays pinned while searching");
+                              assert_eq!(items[1].label, "navigation-fixture.rs");
+                              parent.update(cx, |_, window, cx| {
+                                  crate::controls_smoke::key(window, cx, "down");
+                                  crate::controls_smoke::key(window, cx, "enter");
+                              }).unwrap();
+                              stage = 88;
+                              return false;
+                          }
+                          88 if !owner.read(cx).command_open && owner.read(cx).workbench.show_file => {
+                              assert!(owner.read(cx).workbench.show_file, "a file search result must open the editor");
+                              parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("global-search-trigger").center(), cx)).unwrap();
+                              stage = 89;
+                              return false;
+                          }
+                          89 => {
+                              parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "enter")).unwrap();
+                              assert_eq!(owner.read(cx).section, dunlin_domain::SidebarSection::Dashboard);
+                              parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-sidebar").center(), cx)).unwrap();
+                              stage = 94;
+                              return false;
+                          }
+                          94 => {
+                              if crate::workspace_ui_smoke::measured("workspace-surface").left() > px(dunlin_ui::scale::WORKSPACE_INSET + 1.) { return false; }
+                              assert!(owner.read(cx).sidebar_collapsed, "collapse must remove the entire sidebar width, including its navigation");
+                              parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-sidebar").center(), cx)).unwrap();
+                              stage = 95;
+                              return false;
+                          }
+                          95 => {
+                              if crate::workspace_ui_smoke::measured("workspace-surface").left() < px(200.) { return false; }
+                              let footer = crate::workspace_ui_smoke::measured("sidebar-footer");
+                              let host = crate::workspace_ui_smoke::measured("host-menu-button");
+                              let settings = crate::workspace_ui_smoke::measured("sidebar-settings");
+                               assert!(footer.contains(&host.center()) && settings.right() < host.left());
+                               assert_eq!(settings.size, size(px(32.), px(32.)));
+                               assert!((settings.center().y - host.center().y).abs() < px(1.));
+                               expanded_footer = Some(footer);
+                               parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("sidebar-workspace-toggle").center(), cx)).unwrap();
+                               stage = 96;
+                               return false;
+                           }
+                           96 => {
+                               assert!(owner.read(cx).workspace_navigation_collapsed);
+                               let footer = crate::workspace_ui_smoke::measured("sidebar-footer");
+                               assert!(footer.top() > expanded_footer.unwrap().top() + px(60.), "workspace navigation collapses toward the bottom even with minimal rows and optional tools hidden");
+                               assert_eq!(footer.bottom(), expanded_footer.unwrap().bottom(), "utility row stays pinned to the bottom");
+                               let settings = crate::workspace_ui_smoke::measured("sidebar-settings");
+                               let host = crate::workspace_ui_smoke::measured("host-menu-button");
+                               assert!(footer.contains(&settings.center()) && footer.contains(&host.center()));
+                               assert!(owner.read(cx).store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap().workspace_navigation_collapsed);
+                               parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("sidebar-workspace-toggle").center(), cx)).unwrap();
+                               stage = 97;
+                               return false;
+                           }
+                           97 => {
+                               assert!(!owner.read(cx).workspace_navigation_collapsed, "workspace navigation can be expanded again");
+                               assert_eq!(crate::workspace_ui_smoke::measured("sidebar-footer"), expanded_footer.unwrap());
+                               crate::workspace_ui_smoke::measured("sidebar-source-control");
+                               assert!(!owner.read(cx).store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap().workspace_navigation_collapsed);
+                               owner.update(cx, |app, cx| { app.sidebar_width = 220.; cx.notify(); });
+                               stage = 98;
+                               return false;
+                           }
+                           98 => {
+                               let footer = crate::workspace_ui_smoke::measured("sidebar-footer");
+                               let settings = crate::workspace_ui_smoke::measured("sidebar-settings");
+                               let host = crate::workspace_ui_smoke::measured("host-menu-button");
+                               assert!(settings.right() < host.left() && host.right() <= footer.right(), "utility row fits the narrowest sidebar");
+                               assert!((settings.center().y - host.center().y).abs() < px(1.));
+                               parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("sidebar-tab-projects").center(), cx)).unwrap();
+                               stage = 100;
+                               return false;
+                           }
+                           100 => {
+                               parent.update(cx, |_, window, cx| {
+                                   for key in ["s", "e", "t", "t", "i", "n", "g", "s"] { crate::controls_smoke::key(window, cx, key); }
+                               }).unwrap();
+                               stage = 101;
+                               return false;
+                           }
+                           101 => {
+                               assert_eq!(owner.read(cx).project_search.query, "settings");
+                               assert_eq!(owner.read(cx).project_search.current(), Some("settings-fixture"));
+                               assert!(!owner.read(cx).command_open, "typing in Projects uses inline name search, not the global palette");
+                               parent.update(cx, |_, window, cx| {
+                                   crate::controls_smoke::key(window, cx, "backspace");
+                                   crate::controls_smoke::key(window, cx, "down");
+                                   crate::controls_smoke::key(window, cx, "enter");
+                                   crate::controls_smoke::key(window, cx, "escape");
+                               }).unwrap();
+                               assert!(owner.read(cx).project_search.query.is_empty());
+                               parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("sidebar-settings").center(), cx)).unwrap();
+                               stage = 99;
+                               return false;
+                           }
+                           99 if owner.read(cx).settings_open => {
+                               assert_eq!(owner.read(cx).settings_tab, SettingsTab::General, "Settings icon opens application settings");
+                               owner.update(cx, |app, cx| { app.settings_open = true; app.settings_tab = SettingsTab::Data; cx.notify(); });
+                              stage = 84;
+                              return false;
+                          }
+                         _ => {}
+                     }
+                     let Some(child) = owner.read(cx).overlay_window.debug_window() else { return false; };
                     child.update(cx, |_, window, cx| { if visual { window.activate_window(); } window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
                      if index < total {
                          if matrix_prepared {
                          if visual && !PAINTED_PAGE.with(|page| page.get() == Some(pages[index % pages.len()])) { return false; }
                          child.update(cx, |_, window, _| {
+                             #[cfg(target_os = "macos")]
+                             {
+                                 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                                 let RawWindowHandle::AppKit(handle) = window.window_handle().unwrap().as_raw() else { panic!("native settings window") };
+                                 let view: &objc2_app_kit::NSView = unsafe { &*handle.ns_view.as_ptr().cast() };
+                                 let layer = view.layer().unwrap();
+                                 assert!(layer.masksToBounds(), "whole overlay plane must clip its desktop corners");
+                                 assert_eq!(layer.cornerRadius(), 12.);
+                             }
                              crate::workspace_ui_smoke::assert_painted_corners(window, "settings-panel", true);
                              crate::workspace_ui_smoke::assert_painted_corners(window, "settings-content", false);
                              dunlin_ui::surface_test::assert_region_corners(window,
@@ -162,13 +349,8 @@ pub(crate) fn run() {
                          assert!(page.size.width <= content.size.width, "{:?} must fit the content width", owner.read(cx).settings_tab);
                           assert_eq!(owner.read(cx).settings_tab, pages[index % pages.len()]);
                           if pages[index % pages.len()] == SettingsTab::Harnesses {
-                              let radio = crate::workspace_ui_smoke::measured("claude-harness-default");
-                              assert!(radio.size.width >= px(28.) && radio.size.height >= px(28.), "default-agent radios need a usable click target");
-                              if owner.read(cx).local_opencode() {
-                                  let provider = crate::workspace_ui_smoke::measured("settings-provider-selector");
-                                  assert!(provider.size.height >= px(36.), "settings must not reuse the tiny composer provider trigger");
-                                  assert!(provider.size.width >= px(200.));
-                              }
+                              let action = crate::workspace_ui_smoke::measured("claude-harness-action");
+                              assert!(action.size.height >= px(28.), "agent actions need a usable click target");
                           }
                           if std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some()
                                && matches!(index / pages.len(), 4 | 5) {
@@ -243,7 +425,6 @@ pub(crate) fn run() {
                                          name: spec.name,
                                          cli: matches!(spec.name, "OpenCode" | "Claude Code").then(|| "/usr/bin/false".into()),
                                          adapter: (spec.name == "OpenCode").then(|| "/usr/bin/false".into()),
-                                         docs: spec.docs,
                                      }).collect();
                                  }
                                 app.settings_ui.audits = tab == SettingsTab::Security && variant % 2 == 1;
@@ -255,9 +436,41 @@ pub(crate) fn run() {
                         return false;
                     }
                     match stage {
-                        0 => {
-                            println!("Settings render matrix completed in {:?}", started.elapsed());
-                            child.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
+                         0 => {
+                             println!("Settings render matrix completed in {:?}", started.elapsed());
+                             owner.update(cx, |app, cx| {
+                                 app.settings_tab = SettingsTab::Skills;
+                                 app.add_catalog_skill(crate::skills::PLUGIN_BUILDER_SKILL, cx);
+                                 app.install_skill_scoped(crate::skills::PLUGIN_BUILDER_SKILL, crate::skills::Target::Shared,
+                                     Some(dir.join("fixture-skills")), crate::skills::Scope::Global, "", cx);
+                             });
+                             stage = 90;
+                         }
+                         90 if !owner.read(cx).skills_ui.busy => {
+                             let app = owner.read(cx);
+                             let skill = app.skills.iter().find(|skill| skill.id == crate::skills::PLUGIN_BUILDER_SKILL).unwrap();
+                             assert!(!skill.installations.is_empty() && !skill.disabled);
+                             child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("builtin-plugin-builder-action").center(), cx)).unwrap();
+                             stage = 91;
+                         }
+                         91 if !owner.read(cx).skills_ui.busy => {
+                             let app = owner.read(cx);
+                             let skill = app.skills.iter().find(|skill| skill.id == crate::skills::PLUGIN_BUILDER_SKILL).unwrap();
+                             assert!(skill.disabled);
+                             assert!(!std::path::Path::new(&skill.installations[0].path).exists());
+                             assert!(!app.conversation_skill_choices().iter().any(|skill| skill.id == crate::skills::PLUGIN_BUILDER_SKILL));
+                             child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("builtin-plugin-builder-action").center(), cx)).unwrap();
+                             stage = 92;
+                         }
+                         92 if !owner.read(cx).skills_ui.busy => {
+                             let app = owner.read(cx);
+                             let skill = app.skills.iter().find(|skill| skill.id == crate::skills::PLUGIN_BUILDER_SKILL).unwrap();
+                             assert!(!skill.disabled);
+                             assert!(std::path::Path::new(&skill.installations[0].path).is_file());
+                             stage = 93;
+                         }
+                         93 => {
+                             child.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
                                 app.settings_tab = SettingsTab::Secrets;
                                 app.new_vault_draft(window, cx);
                                 assert!(app.settings_have_draft());
@@ -328,11 +541,50 @@ pub(crate) fn run() {
                                  let restored = cx.new(|cx| DunlinApp::new(window, cx));
                                  assert_eq!(restored.read(cx).appearance, Appearance::Light, "a new app instance must restore the selected theme");
                              }).unwrap();
-                             fs::write(dir.join("PASS"), format!("{total} settings render combinations; form discard/keep; search/theme keyboard activation and preference restoration passed\n")).unwrap();
-                             println!("PASS: {} pages × 2 sizes × 2 themes × 2 densities; form discard/keep; search/theme keyboard activation and preference restoration", pages.len());
-                            cx.quit();
-                            return true;
-                        }
+                              owner.update(cx, |app, cx| {
+                                  app.settings_open = false;
+                                  app.set_ui_density(UiDensity::Comfortable, cx);
+                                  cx.notify();
+                              });
+                              stage = 80;
+                         }
+                         84 => {
+                              child.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
+                                  app.session_import.loading = true;
+                                  app.request_factory_reset(window, cx);
+                                  assert!(!app.factory_resetting, "an active import must block reset");
+                              })).unwrap();
+                              stage = 9;
+                         }
+                         9 if dunlin_ui::debug_confirmation_answer(0).is_some() => {
+                             child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, dunlin_ui::debug_confirmation_answer(0).unwrap().center(), cx)).unwrap();
+                             stage = 10;
+                         }
+                         10 => {
+                             child.update(cx, |_, window, cx| owner.update(cx, |app, cx| {
+                                 app.session_import.loading = false;
+                                 app.request_factory_reset(window, cx);
+                                 assert!(app.factory_resetting, "reset must open confirmation");
+                             })).unwrap();
+                             stage = 11;
+                         }
+                         11 if dunlin_ui::debug_confirmation_answer(0).is_some() => {
+                             child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, dunlin_ui::debug_confirmation_answer(0).unwrap().center(), cx)).unwrap();
+                             stage = 12;
+                         }
+                         12 | 14 | 16 if !owner.read(cx).factory_resetting => {
+                             assert!(!owner.read(cx).store.as_ref().unwrap().projects().unwrap().is_empty(), "cancellation must preserve projects");
+                             child.update(cx, |_, window, cx| owner.update(cx, |app, cx| app.request_factory_reset(window, cx))).unwrap();
+                             stage += 1;
+                         }
+                         13 | 15 if dunlin_ui::debug_confirmation_answer(0).is_some() => {
+                             child.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, if stage == 13 { "escape" } else { "enter" })).unwrap();
+                             stage += 1;
+                         }
+                         17 if dunlin_ui::debug_confirmation_answer(1).is_some() => {
+                             child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, dunlin_ui::debug_confirmation_answer(1).unwrap().center(), cx)).unwrap();
+                             stage = 18;
+                         }
                         _ => {}
                     }
                     false

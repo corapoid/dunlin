@@ -30,9 +30,11 @@ fn unavailable_reason(status: Option<&HarnessStatus>) -> Option<String> {
         Some(HarnessStatus::Ready { .. }) => None,
         Some(HarnessStatus::Starting) => Some("Connection in progress…".into()),
         Some(HarnessStatus::Failed(message) | HarnessStatus::Exited(message)) => Some(format!(
-            "Connection failed: {message}. Retry in Settings → Agents."
+            "Connection failed: {message}. Set the default agent in Settings → Agents to retry."
         )),
-        _ => Some("Test the connection in Settings → Agents first.".into()),
+        _ => {
+            Some("Set this agent as default in Settings → Agents to verify its connection.".into())
+        }
     }
 }
 
@@ -44,7 +46,7 @@ impl DunlinApp {
             .collect()
     }
 
-    pub(super) fn local_harness_config(&self, name: &str) -> Result<HarnessConfig, String> {
+    pub(crate) fn local_harness_config(&self, name: &str) -> Result<HarnessConfig, String> {
         let project = self.project();
         if project.is_remote() || !project.trusted {
             return Err("A trusted local project is required to connect a local harness.".into());
@@ -114,9 +116,14 @@ impl DunlinApp {
         self.harness_checks.insert(key, status);
     }
 
-    /// Explicitly starts an adapter and an empty ACP session, never a prompt or login.
-    /// A successful test does not alter the current conversation or default harness.
-    pub(crate) fn test_harness_connection(&mut self, name: &str, cx: &mut Context<Self>) {
+    /// Verify an empty ACP session before changing the default. Existing
+    /// conversations keep their harness; no prompt or login is performed.
+    pub(crate) fn set_default_harness(&mut self, name: &str, cx: &mut Context<Self>) {
+        // Only one pending default choice can own the result; a slower earlier
+        // verification must not overwrite a more recent selection.
+        if self.harness_checks.values().any(HarnessStatus::is_busy) {
+            return;
+        }
         let mut config = match self.local_harness_config(name) {
             Ok(config) => config,
             Err(error) => {
@@ -129,8 +136,11 @@ impl DunlinApp {
         if self
             .harness_checks
             .get(&key)
-            .is_some_and(HarnessStatus::is_busy)
+            .is_some_and(HarnessStatus::is_ready)
         {
+            self.default_harness = name.to_owned();
+            self.persist_settings(cx);
+            cx.notify();
             return;
         }
         logging::register_secrets(config.process_env.clone());
@@ -181,8 +191,16 @@ impl DunlinApp {
                 result.detail().unwrap_or_default()
             ));
             let _ = this.update(cx, |this, cx| {
-                let message = if result.is_ready() {
-                    format!("{name} · connection verified; available for new conversations")
+                let message = if result.is_ready()
+                    && this
+                        .local_harness_config(&name)
+                        .is_ok_and(|config| config_key(&name, &config) == key)
+                {
+                    this.default_harness = name.clone();
+                    this.persist_settings(cx);
+                    format!("{name} · default for new conversations")
+                } else if result.is_ready() {
+                    format!("{name} · project configuration changed; default unchanged")
                 } else {
                     format!(
                         "{name} · {}",

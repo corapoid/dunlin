@@ -4,6 +4,33 @@ use dunlin_ui::*;
 
 pub(crate) const DEFAULT_WIDTH: f32 = 278.;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum Tab {
+    #[default]
+    Projects,
+    Sessions,
+    Explorer,
+}
+
+impl Tab {
+    pub(crate) fn section(self) -> dunlin_domain::SidebarSection {
+        use dunlin_domain::SidebarSection;
+        match self {
+            Self::Projects => SidebarSection::Projects,
+            Self::Sessions => SidebarSection::Sessions,
+            Self::Explorer => SidebarSection::Files,
+        }
+    }
+
+    pub(crate) fn from_section(section: dunlin_domain::SidebarSection) -> Self {
+        match section {
+            dunlin_domain::SidebarSection::Sessions => Self::Sessions,
+            dunlin_domain::SidebarSection::Files => Self::Explorer,
+            _ => Self::Projects,
+        }
+    }
+}
+
 pub(crate) fn project_row_options(width: f32, compact: bool, wrap_names: bool) -> (bool, bool) {
     (width >= 320., !compact && wrap_names && width >= 260.)
 }
@@ -16,6 +43,16 @@ pub(crate) fn width(saved: f32, viewport: f32) -> f32 {
     saved.clamp(220., (viewport - 470.).clamp(220., 560.))
 }
 impl DunlinApp {
+    pub(crate) fn sidebar_section(&self) -> dunlin_domain::SidebarSection {
+        use dunlin_domain::SidebarSection;
+        match self.section {
+            SidebarSection::SourceControl | SidebarSection::Search | SidebarSection::Knowledge => {
+                self.section
+            }
+            _ => self.sidebar_tab.section(),
+        }
+    }
+
     pub(crate) fn finish_sidebar_resize(&mut self, cx: &mut Context<Self>) {
         if self.sidebar_resize.take().is_some() {
             self.persist_settings(cx);
@@ -58,6 +95,33 @@ pub(crate) fn handle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sidebar_tab_is_independent_and_old_preferences_migrate() {
+        use dunlin_domain::SidebarSection;
+        for (section, tab) in [
+            (SidebarSection::Files, super::Tab::Explorer),
+            (SidebarSection::Sessions, super::Tab::Sessions),
+            (SidebarSection::Knowledge, super::Tab::Projects),
+        ] {
+            assert_eq!(super::Tab::from_section(section), tab);
+        }
+        let legacy: crate::app::StoredSettings =
+            serde_json::from_str(r#"{"section":"Files","sidebar_width":320}"#).unwrap();
+        assert!(legacy.sidebar_tab.is_none());
+        assert!(
+            !legacy.workspace_navigation_collapsed,
+            "older settings keep workspace navigation expanded"
+        );
+        let mut saved = legacy;
+        saved.sidebar_tab = Some(super::Tab::Sessions);
+        saved.workspace_navigation_collapsed = true;
+        let restored: crate::app::StoredSettings =
+            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(restored.sidebar_tab, Some(super::Tab::Sessions));
+        assert_eq!(restored.sidebar_width, 320.);
+        assert!(restored.workspace_navigation_collapsed);
+    }
+
     #[test]
     fn narrow_rows_reserve_space_for_names_instead_of_badges_or_letter_towers() {
         for width in [100., 180., 220., 250.] {

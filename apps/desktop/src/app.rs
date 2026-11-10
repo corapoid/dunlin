@@ -174,7 +174,10 @@ pub(crate) struct StoredSettings {
     pub appearance: Option<Appearance>,
     pub view: MainView,
     pub section: SidebarSection,
+    #[serde(default)]
+    pub sidebar_tab: Option<crate::sidebar_layout::Tab>,
     pub sidebar_collapsed: bool,
+    pub workspace_navigation_collapsed: bool,
     pub notifications_enabled: bool,
     pub show_shortcut_hints: bool,
     pub show_file_sizes: bool,
@@ -296,7 +299,9 @@ impl Default for StoredSettings {
             appearance: Some(Appearance::System),
             view: MainView::Chat,
             section: SidebarSection::Files,
+            sidebar_tab: None,
             sidebar_collapsed: false,
+            workspace_navigation_collapsed: false,
             last_project_id: None,
             last_session_id: None,
             remote_hosts: Vec::new(),
@@ -474,7 +479,7 @@ impl ToastAction {
 pub(crate) enum ContextTarget {
     Project(usize),
     Session(String),
-    Tab(String),
+    Tab(crate::workspace_panes::TabKey),
 }
 
 #[derive(Clone, Debug)]
@@ -509,7 +514,6 @@ pub(crate) enum Command {
     GitPull,
     GitPush,
     GitAmend,
-    SwitchBranch(usize),
     ChooseBranch,
     ToggleTerminal,
     ToggleRun,
@@ -529,6 +533,8 @@ pub(crate) enum Command {
     SaveFileArtifact,
     Pack(usize),
     SwitchProject(usize),
+    SearchResult(usize),
+    Artifacts,
     CloseInspector,
 }
 
@@ -573,6 +579,10 @@ pub(crate) struct DunlinApp {
     pub view: MainView,
     pub view_epoch: u64,
     pub navigation: navigation::History,
+    pub sidebar_tab: crate::sidebar_layout::Tab,
+    pub global_search: crate::global_search::State,
+    pub workspace_tools: crate::workspace_tools::State,
+    pub project_search: crate::project_search::State,
     pub section: SidebarSection,
     pub projects: Vec<Project>,
     pub local_import_running: bool,
@@ -604,7 +614,6 @@ pub(crate) struct DunlinApp {
     pub project_sessions_running_only: bool,
     pub git_history: crate::git_history::State,
     pub spec: crate::spec::State,
-    pub spec_tools_enabled: bool,
     pub knowledge: crate::knowledge::State,
     pub plugins: crate::plugins::State,
     pub ssh_hosts: Vec<dunlin_domain::SshHost>,
@@ -720,6 +729,7 @@ pub(crate) struct DunlinApp {
     pub command_projects_only: bool,
     pub command_text: String,
     pub command_index: usize,
+    pub command_scroll: ScrollHandle,
     _command_subscription: Subscription,
 
     pub settings_open: bool,
@@ -728,11 +738,10 @@ pub(crate) struct DunlinApp {
     pub default_harness: String,
     pub hidden_harnesses: Vec<String>,
     pub custom_harness_command: String,
-    pub custom_command_input: Entity<InputState>,
-    _custom_command_subscription: Subscription,
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
     pub sidebar_collapsed: bool,
+    pub workspace_navigation_collapsed: bool,
     pub pending_delete: Option<PendingDelete>,
     pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
@@ -805,7 +814,7 @@ pub(crate) struct DunlinApp {
 
     pub git: git::GitStatus,
     pub git_loading: bool,
-    pub branches: Vec<String>,
+    pub source_control: crate::source_control::State,
     pub commit_input: Entity<InputState>,
 
     pub store: Option<dunlin_storage::Store>,
@@ -821,6 +830,7 @@ pub(crate) struct DunlinApp {
 
 impl DunlinApp {
     pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        views::chat_controls::init_mode_keys(cx);
         // The kit root paints an opaque theme surface unless explicitly overridden.
         window.defer(cx, |window, cx| {
             dunlin_ui::component::Root::update(window, cx, |root, _, cx| {
@@ -1059,6 +1069,7 @@ impl DunlinApp {
                 InputEvent::Change => {
                     this.command_text = this.command_query.read(cx).value().to_string();
                     this.command_index = 0;
+                    this.command_scroll.set_offset(point(px(0.), px(0.)));
                     cx.notify();
                 }
                 InputEvent::PressEnter { .. } => {
@@ -1108,24 +1119,6 @@ impl DunlinApp {
 
         let diff_state = cx.new(|cx| DiffState::new(Vec::new(), cx));
 
-        let custom_command_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("your-agent --acp")
-                .default_value(stored.custom_harness_command.clone())
-        });
-        let custom_command_subscription = cx.subscribe_in(
-            &custom_command_input,
-            window,
-            |this, _, event: &InputEvent, _, cx| {
-                if matches!(event, InputEvent::Change) {
-                    this.custom_harness_command =
-                        this.custom_command_input.read(cx).value().to_string();
-                    this.persist_settings(cx);
-                    cx.notify();
-                }
-            },
-        );
-
         let mut sessions: Vec<SessionSummary> = projects
             .first()
             .map(|project| {
@@ -1169,6 +1162,16 @@ impl DunlinApp {
             view: stored.view,
             view_epoch: 0,
             navigation: Default::default(),
+            sidebar_tab: stored.sidebar_tab.unwrap_or_else(|| {
+                if projects.is_empty() {
+                    crate::sidebar_layout::Tab::Projects
+                } else {
+                    crate::sidebar_layout::Tab::from_section(stored.section)
+                }
+            }),
+            global_search: Default::default(),
+            workspace_tools: Default::default(),
+            project_search: Default::default(),
             section: if stored.dashboard_settings.start_at_dashboard {
                 SidebarSection::Dashboard
             } else if stored.section == SidebarSection::Dashboard
@@ -1187,7 +1190,7 @@ impl DunlinApp {
             user_profile: Default::default(),
             remote_connection: Default::default(),
             group_cleanup: Default::default(),
-            session_import: Default::default(),
+            session_import: crate::session_import::State::load(store.as_ref()),
             fallback_project,
             project_groups,
             collapsed_project_groups: stored.collapsed_project_groups.clone(),
@@ -1208,7 +1211,6 @@ impl DunlinApp {
             project_sessions_running_only: false,
             git_history: Default::default(),
             spec: Default::default(),
-            spec_tools_enabled: stored.spec_tools_enabled,
             knowledge: Default::default(),
             ssh_hosts,
             ssh_status: std::collections::HashMap::new(),
@@ -1218,7 +1220,8 @@ impl DunlinApp {
                 stored.enabled_plugins.clone(),
                 stored.project_disabled_plugins.clone(),
                 stored.project_enabled_plugins.clone(),
-            ),
+            )
+            .with_legacy_spec_tools(stored.spec_tools_enabled),
             task_budgets,
             coordination: crate::coordination::State::start(),
             subtask_worktrees,
@@ -1337,18 +1340,20 @@ impl DunlinApp {
             command_projects_only: false,
             command_text: String::new(),
             command_index: 0,
+            command_scroll: ScrollHandle::new(),
             _command_subscription: command_subscription,
             settings_open: false,
             settings_ui: views::settings::State::default(),
             settings_tab: SettingsTab::Harnesses,
             default_harness: stored.default_harness.clone(),
-            hidden_harnesses: stored.hidden_harnesses.clone(),
+            // The agent catalog no longer has a visibility preference. Restore
+            // previously hidden installed adapters to the picker on upgrade.
+            hidden_harnesses: Vec::new(),
             custom_harness_command: stored.custom_harness_command.clone(),
-            custom_command_input,
-            _custom_command_subscription: custom_command_subscription,
             permission_mode: stored.permission_mode,
             project_menu_open: false,
             sidebar_collapsed: stored.sidebar_collapsed,
+            workspace_navigation_collapsed: stored.workspace_navigation_collapsed,
             pending_delete: None,
             diff_view: None,
             auto_connect: stored.auto_connect,
@@ -1418,7 +1423,7 @@ impl DunlinApp {
             notice: None,
             git: git::GitStatus::default(),
             git_loading: false,
-            branches: Vec::new(),
+            source_control: Default::default(),
             commit_input,
             store,
             storage_error: RefCell::new(storage_error),
@@ -1992,7 +1997,18 @@ impl DunlinApp {
 
     /// Every command currently available to the palette, before filtering.
     pub(crate) fn commands(&self) -> Vec<CommandItem> {
-        let mut items = vec![
+        let mut items =
+            vec![
+            CommandItem {
+                command: Command::Section(SidebarSection::Dashboard),
+                label: "Dashboard".into(), hint: None,
+                icon: IconName::ChartNoAxesColumn,
+                keywords: "home overview activity recent projects".into(),
+            },
+            CommandItem {
+                command: Command::Artifacts, label: "Artifacts & Evidence".into(), hint: None,
+                icon: IconName::FileText, keywords: "artifact evidence files knowledge".into(),
+            },
             CommandItem {
                 command: Command::View(MainView::Chat),
                 label: "Go to Chat".into(),
@@ -2334,7 +2350,7 @@ impl DunlinApp {
                 keywords: "hide panel editor".into(),
             },
         ];
-        if !self.spec_tools_enabled {
+        if !self.spec_tools_enabled() {
             items.retain(|item| {
                 !matches!(
                     item.command,
@@ -2373,16 +2389,6 @@ impl DunlinApp {
             icon: IconName::GitBranch,
             keywords: "checkout branch choose search".into(),
         });
-        for (index, branch) in self.branches.iter().take(16).enumerate() {
-            items.push(CommandItem {
-                command: Command::SwitchBranch(index),
-                label: format!("Switch to branch {branch}"),
-                hint: Some("git".into()),
-                icon: IconName::GitBranch,
-                keywords: format!("checkout branch {branch}"),
-            });
-        }
-
         for (index, project) in self.projects.iter().enumerate() {
             if project.is_chat_space() {
                 continue;
@@ -2416,13 +2422,32 @@ impl DunlinApp {
     pub(crate) fn filtered_commands(&self) -> Vec<CommandItem> {
         let query = self.command_text.trim().to_lowercase();
         let terms: Vec<&str> = query.split_whitespace().collect();
-        self.commands()
+        let mut items: Vec<_> = self
+            .commands()
             .into_iter()
             .filter(|item| {
                 !self.command_projects_only || matches!(item.command, Command::SwitchProject(_))
             })
-            .filter(|item| command_matches(item, &terms))
-            .collect()
+            .filter(|item| {
+                (!self.command_projects_only
+                    && item.command == Command::Section(SidebarSection::Dashboard))
+                    || command_matches(item, &terms)
+            })
+            .collect();
+        if !self.command_projects_only {
+            for item in views::settings::search_entries(&query) {
+                if !items
+                    .iter()
+                    .any(|existing| existing.command == item.command)
+                {
+                    items.push(item);
+                }
+            }
+            items.extend(self.global_search.items(&terms));
+            items.sort_by_key(|item| crate::global_search::rank(item, terms.is_empty()));
+            items.truncate(80);
+        }
+        items
     }
 
     pub(crate) fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2444,15 +2469,12 @@ impl DunlinApp {
         }
         self.command_projects_only = projects_only;
         if !projects_only {
-            self.branches = self
-                .backend()
-                .ok()
-                .and_then(|backend| backend.git_branches().ok())
-                .unwrap_or_default();
+            self.refresh_global_search();
         }
         self.command_open = true;
         self.command_text.clear();
         self.command_index = 0;
+        self.command_scroll.set_offset(point(px(0.), px(0.)));
         self.settings_open = false;
         self.project_menu_open = false;
         self.command_query.update(cx, |state, cx| {
@@ -2460,7 +2482,7 @@ impl DunlinApp {
                 if projects_only {
                     "Search projects…"
                 } else {
-                    "Search commands or projects…"
+                    "Search projects, sessions, files and settings…"
                 },
                 window,
                 cx,
@@ -2488,6 +2510,8 @@ impl DunlinApp {
         } else {
             let current = self.command_index.min(len - 1) as isize;
             self.command_index = (current + delta).rem_euclid(len as isize) as usize;
+            let offset = (self.command_index as f32 * 49. + 48. + 10. - 330.).max(0.);
+            self.command_scroll.set_offset(point(px(0.), -px(offset)));
         }
         cx.notify();
     }
@@ -2504,12 +2528,30 @@ impl DunlinApp {
                 self.set_view(view, cx);
             }
             Command::Section(section) => {
+                if section == SidebarSection::Knowledge {
+                    self.open_workspace_tool(crate::workspace_tools::Tool::Knowledge, window, cx);
+                    return;
+                }
                 if section == SidebarSection::Security {
+                    self.open_workspace_tool(crate::workspace_tools::Tool::Security, window, cx);
+                    return;
+                }
+                if section == SidebarSection::Security && !self.security_enabled {
                     self.settings_open = true;
                     self.settings_tab = SettingsTab::Security;
                     return;
                 }
                 self.section = section;
+                if matches!(
+                    section,
+                    SidebarSection::Projects
+                        | SidebarSection::Sessions
+                        | SidebarSection::Files
+                        | SidebarSection::Search
+                ) {
+                    self.sidebar_tab = crate::sidebar_layout::Tab::from_section(section);
+                    self.sidebar_collapsed = false;
+                }
                 self.settings_open = false;
                 self.persist_settings(cx);
                 if section == SidebarSection::Knowledge {
@@ -2525,11 +2567,17 @@ impl DunlinApp {
                     if !self.git_loading {
                         self.refresh_git_status(cx);
                     }
+                } else if section == SidebarSection::Security {
+                    self.security.checked_project = None;
                 }
             }
             Command::Settings(tab) => {
                 self.settings_open = true;
                 self.settings_tab = tab;
+            }
+            Command::SearchResult(index) => self.open_global_search_result(index, window, cx),
+            Command::Artifacts => {
+                self.open_workspace_tool(crate::workspace_tools::Tool::Artifacts, window, cx);
             }
             Command::OpenFolder => self.open_folder(cx),
             Command::AddRemoteProject => self.open_remote_picker(cx),
@@ -2575,11 +2623,6 @@ impl DunlinApp {
             Command::GitPull => self.git_pull(cx),
             Command::GitPush => self.git_push(cx),
             Command::GitAmend => self.amend_commit(cx),
-            Command::SwitchBranch(index) => {
-                if let Some(branch) = self.branches.get(index).cloned() {
-                    self.switch_branch(&branch, window, cx);
-                }
-            }
             Command::ChooseBranch => {
                 self.open_branch_picker(&self.project().id.clone(), window, cx)
             }
@@ -2588,7 +2631,7 @@ impl DunlinApp {
             Command::Impact => self.open_impact_map(window, cx),
             Command::Compare => self.open_comparisons(window, cx),
             Command::Spec => {
-                if self.spec_tools_enabled {
+                if self.spec_tools_enabled() {
                     self.open_spec_workspace(window, cx)
                 } else {
                     self.file_notice(
@@ -2598,14 +2641,14 @@ impl DunlinApp {
                 }
             }
             Command::CaptureIntent => {
-                if self.spec_tools_enabled {
+                if self.spec_tools_enabled() {
                     self.capture_intent(window, cx)
                 } else {
                     self.file_notice("Intent capture is disabled in Settings → Extensions", cx)
                 }
             }
             Command::AgentContract => {
-                if self.spec_tools_enabled {
+                if self.spec_tools_enabled() {
                     self.open_agent_contract(window, cx)
                 } else {
                     self.file_notice(
@@ -2649,7 +2692,13 @@ impl DunlinApp {
                 }
             }
         }
-        self.focus_handle.focus(window, cx);
+        if !matches!(
+            command,
+            Command::SearchResult(_)
+                | Command::Section(SidebarSection::Files | SidebarSection::Search)
+        ) {
+            self.focus_handle.focus(window, cx);
+        }
         cx.notify();
     }
 
@@ -4104,7 +4153,7 @@ impl DunlinApp {
             };
             self.restart_file_watcher();
             self.git = git::GitStatus::default();
-            self.branches.clear();
+            self.global_search = Default::default();
             self.search_hits.clear();
         } else if active {
             let next = index.min(self.projects.len() - 1);
@@ -4407,6 +4456,9 @@ impl DunlinApp {
             cx.stop_propagation();
             return;
         }
+        if self.user_profile.menu_open {
+            return;
+        }
         if event.keystroke.key == "escape"
             && !self.has_modal_overlay()
             && (self.project_menu_open
@@ -4624,7 +4676,9 @@ impl DunlinApp {
             }
         }
 
-        if self.explorer_key_down(event, window, cx) {
+        if self.project_search_key_down(event, window, cx)
+            || self.explorer_key_down(event, window, cx)
+        {
             cx.stop_propagation();
             return;
         }
@@ -4648,26 +4702,9 @@ impl DunlinApp {
             && !platform
             && !keystroke.modifiers.control
             && !keystroke.modifiers.alt
-            && !self.projects.is_empty()
-            && self.view == MainView::Chat
-            && matches!(
-                self.current_workspace_tab(),
-                Some(crate::workspace_panes::TabKey::Chat(_))
-            )
-            && !self.has_modal_overlay()
-            && !self.command_open
-            && !self.settings_open
-            && self.composer.read(cx).focus_handle(cx).is_focused(window)
-            && let Some(mode) = self
-                .harness
-                .modes
-                .as_ref()
-                .and_then(views::chat_controls::next_mode)
-                .map(str::to_owned)
+            && !event.is_held
+            && self.cycle_chat_mode(window, cx)
         {
-            if !event.is_held {
-                self.select_mode(&mode, cx);
-            }
             cx.stop_propagation();
             return;
         }
@@ -4820,24 +4857,8 @@ impl DunlinApp {
                     self.save_editor(cx);
                     true
                 }
-                "w" if self.spec.is_active_for(self.project()) => {
-                    self.close_spec_workspace(cx);
-                    self.focus_handle.focus(window, cx);
-                    true
-                }
-                "w" if self.git_history.is_active_for(self.project()) => {
-                    self.close_git_history(cx);
-                    self.focus_handle.focus(window, cx);
-                    true
-                }
-                "w" if self.workbench.terminal.is_some() => {
-                    if let Some(id) = self.workbench.terminal.clone() {
-                        self.close_terminal_tab(&id, cx);
-                    }
-                    true
-                }
-                "w" if !self.workbench.show_file => {
-                    self.close_chat_tab(window, cx);
+                "w" if let Some(key) = self.current_workspace_tab() => {
+                    self.request_close_workspace_tab(&key, window, cx);
                     true
                 }
                 "n" => {
@@ -4846,6 +4867,7 @@ impl DunlinApp {
                 }
                 "f" if shift => {
                     self.section = SidebarSection::Search;
+                    self.sidebar_collapsed = false;
                     self.settings_open = false;
                     let handle = self.search_input.read(cx).focus_handle(cx);
                     window.focus(&handle, cx);
@@ -5102,6 +5124,7 @@ impl DunlinApp {
         self.park_current_runtime(cx);
         self.reset_mcp_for_navigation();
         self.navigation_generation = self.navigation_generation.wrapping_add(1);
+        self.workspace_tools.current = None;
         self.remote_sessions_loading = false;
         self.selected_project = index;
         self.explorer.selected = None;
@@ -5776,15 +5799,6 @@ impl DunlinApp {
         .detach();
     }
 
-    pub(crate) fn switch_branch(
-        &mut self,
-        branch: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_branch_picker_filtered(branch, window, cx);
-    }
-
     pub(crate) fn amend_commit(&mut self, cx: &mut Context<Self>) {
         if !self.guard_ai_commit_mutation(cx) {
             return;
@@ -5837,6 +5851,7 @@ impl DunlinApp {
     /// active tab visibly settles into place.
     pub(crate) fn set_view(&mut self, view: MainView, cx: &mut Context<Self>) {
         self.remember_workspace_tab();
+        self.workspace_tools.current = None;
         self.workbench.terminal = None;
         self.ensure_chat_tab();
         self.git_history.active = false;
@@ -5892,6 +5907,7 @@ impl DunlinApp {
             appearance: Some(self.appearance),
             view: self.view,
             section: self.section,
+            sidebar_tab: Some(self.sidebar_tab),
             last_project_id: self
                 .projects
                 .get(self.selected_project)
@@ -5902,13 +5918,17 @@ impl DunlinApp {
                 .map(|session| session.id.clone()),
             remote_hosts: self.remote_hosts.clone(),
             watched_project_folders: self.watched_project_folders.clone(),
-            collapsed_project_groups: self.collapsed_project_groups.clone(),
+            collapsed_project_groups: self
+                .project_search
+                .saved_groups(&self.collapsed_project_groups)
+                .to_vec(),
             project_sort: self.project_sort,
             project_group_order: self.project_group_order.clone(),
             sidebar_width: self.sidebar_width,
             show_project_branches: self.show_project_branches,
             project_list: self.project_list.clone(),
             sidebar_collapsed: self.sidebar_collapsed,
+            workspace_navigation_collapsed: self.workspace_navigation_collapsed,
             opencode_provider: self.opencode_provider.clone(),
             recent_models: self.recent_models.clone(),
             group_contexts: self.group_contexts.clone(),
@@ -5937,7 +5957,7 @@ impl DunlinApp {
             enabled_plugins: self.plugins.enabled(),
             project_disabled_plugins: self.plugins.project_disabled(),
             project_enabled_plugins: self.plugins.project_enabled(),
-            spec_tools_enabled: self.spec_tools_enabled,
+            spec_tools_enabled: true,
         }
     }
 
@@ -6626,9 +6646,7 @@ impl Render for DunlinApp {
             self.last_dock_badge = badge;
         }
         let p = palette(cx);
-        let show_sidebar = !self.projects.is_empty()
-            && self.section != SidebarSection::Dashboard
-            && !self.sidebar_collapsed;
+        let show_sidebar = !self.sidebar_collapsed;
         let (sidebar_fraction, moving) = self.sidebar_motion.sample(show_sidebar);
         if moving {
             let entity = cx.entity().downgrade();
@@ -6638,7 +6656,6 @@ impl Render for DunlinApp {
             window.request_animation_frame();
         }
         let titlebar = views::titlebar::render(self, window, cx);
-        let rail = Some(self.rail(cx));
         let sidebar = views::sidebar::render(self, window, cx);
         let main_panel = self.main_panel(window, cx);
         let dock =
@@ -6737,6 +6754,7 @@ impl Render for DunlinApp {
                             return;
                         }
                         this.section = SidebarSection::Projects;
+                        this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
                         cx.notify();
                     }),
                 )
@@ -6840,6 +6858,33 @@ impl Render for DunlinApp {
                 )
             })
             .capture_key_down(cx.listener(Self::on_key_down))
+            .key_context(
+                if self.view == MainView::Chat
+                    && matches!(
+                        self.current_workspace_tab(),
+                        Some(crate::workspace_panes::TabKey::Chat(_))
+                    )
+                    && !self.has_overlay()
+                {
+                    "DunlinChat"
+                } else {
+                    "Dunlin"
+                },
+            )
+            .capture_action(cx.listener(
+                |this, _: &dunlin_ui::component::input::OutdentInline, window, cx| {
+                    if !this.cycle_chat_mode(window, cx) {
+                        cx.propagate();
+                    }
+                },
+            ))
+            .capture_action(cx.listener(
+                |this, _: &views::chat_controls::NextAgentMode, window, cx| {
+                    if !this.cycle_chat_mode(window, cx) {
+                        cx.propagate();
+                    }
+                },
+            ))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
                 if this.terminal_split_drag(event, cx) {
                     return;
@@ -6922,7 +6967,7 @@ impl Render for DunlinApp {
                     .min_h(px(0.))
                     .w_full()
                     .pr(px(dunlin_ui::scale::WORKSPACE_INSET))
-                    .when_some(rail, |this, rail| this.child(rail))
+                    .pl(px(dunlin_ui::scale::WORKSPACE_INSET))
                     .when(sidebar_fraction > 0., |this| {
                         this.child(
                             div()

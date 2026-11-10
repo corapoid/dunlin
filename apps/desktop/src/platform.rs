@@ -2,6 +2,14 @@
 
 use dunlin_ui::*;
 
+/// AppKit reads the process name for the system application menu when launched
+/// as a bare development binary. Set it before NSApplication is initialized.
+pub(crate) fn set_application_name() {
+    #[cfg(target_os = "macos")]
+    objc2_foundation::NSProcessInfo::processInfo()
+        .setProcessName(objc2_foundation::ns_string!("Dunlin"));
+}
+
 /// Query on render so changes to the system accessibility setting take effect
 /// without relaunching. AppKit owns the underlying native window material.
 pub(crate) fn reduce_transparency() -> bool {

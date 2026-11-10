@@ -1,7 +1,7 @@
 //! Dunlin's styled controls reuse GPUI Kit's keyboard, focus and menu behavior.
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{
-    Selectable, Sizable,
+    FocusableExt, Selectable, Sizable,
     button::{Button, ButtonVariant, ButtonVariants},
     checkbox::Checkbox,
     input::{Input, InputState, Textarea, TextareaState},
@@ -14,14 +14,21 @@ use gpui_kit::*;
 
 use crate::{Palette, SurfaceEdges, SurfaceGeometry, scale};
 
-/// Ordinary form fields retain the kit's themed border, focus and disabled states.
-/// Use `small()` for dense toolbars, not a custom height or a hand-drawn frame.
+/// One single-line field geometry for forms, toolbars and search. The kit still
+/// owns focus, selection, validation and disabled behavior.
 pub fn input(state: &Entity<InputState>) -> Input {
-    Input::new(state).font_family(crate::theme::ui_font())
+    let height = px(scale::control(scale::INPUT_HEIGHT));
+    Styled::h(Input::new(state), height)
+        .min_h(height)
+        .flex_shrink_0()
+        .rounded(px(crate::radii::MODAL))
+        .py(px(4.))
+        .text_size(px(scale::TEXT_BODY_LARGE))
+        .font_family(crate::theme::ui_font())
 }
 
 pub fn compact_input(state: &Entity<InputState>) -> Input {
-    input(state).small()
+    input(state)
 }
 
 pub fn search_input(state: &Entity<InputState>, label: impl Into<SharedString>) -> Input {
@@ -63,6 +70,7 @@ pub fn button(id: impl Into<ElementId>) -> Button {
 pub fn action_button(id: impl Into<ElementId>) -> Button {
     button(id)
         .with_variant(ButtonVariant::Default)
+        .h(px(scale::control(scale::INPUT_HEIGHT)))
         .raised(true)
         .label_renderer(|label| crate::MorphText::new("button-label", label).into_any_element())
 }
@@ -75,6 +83,67 @@ pub fn icon_button(
 ) -> Button {
     let label = label.into();
     named_icon_button(id, icon, label.clone()).tooltip(label)
+}
+
+/// Flat, compact labeled actions for toolbars (not raised form buttons).
+pub fn toolbar_button(id: impl Into<ElementId>) -> Button {
+    button(id)
+        .small()
+        .h(px(28.))
+        .px(px(10.))
+        .rounded(px(crate::radii::CONTROL))
+        .shadow_none()
+        .text_size(px(11.))
+}
+
+/// One sliding selection surface; labels must not paint a second selected pill.
+/// The caller animates `position` and supplies equal-width, transparent buttons.
+pub fn sliding_segments(p: Palette, position: f32, count: usize, height: f32) -> Div {
+    assert!(count > 0);
+    div()
+        .relative()
+        .flex()
+        .items_center()
+        .h(px(height))
+        .p(px(3.))
+        .rounded(px(crate::settings::Tokens::CONTROL_RADIUS))
+        .bg(p.subtle)
+        .child(
+            div().absolute().inset_0().m(px(3.)).child(
+                div()
+                    .absolute()
+                    .left(relative(
+                        position.clamp(0., (count - 1) as f32) / count as f32,
+                    ))
+                    .w(relative(1. / count as f32))
+                    .h_full()
+                    .rounded(px(crate::settings::Tokens::CONTROL_RADIUS))
+                    .bg(p.card),
+            ),
+        )
+}
+
+pub fn sliding_segment(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    active: bool,
+    p: Palette,
+    cx: &App,
+) -> Button {
+    use gpui_kit::component::button::ButtonCustomVariant;
+    button(id)
+        .custom(ButtonCustomVariant::new(cx).foreground(p.fg))
+        .small()
+        .h_full()
+        .flex_1()
+        .min_w(px(0.))
+        .p(px(0.))
+        .border_0()
+        .shadow_none()
+        .rounded(px(crate::settings::Tokens::CONTROL_RADIUS))
+        .toggled(active)
+        .text_size(px(11.))
+        .label(label)
 }
 
 fn named_icon_button(id: impl Into<ElementId>, icon: IconName, label: SharedString) -> Button {
@@ -101,6 +170,7 @@ pub fn tooltip_icon_button(
 pub fn switch(id: impl Into<ElementId>, label: impl Into<SharedString>, checked: bool) -> Switch {
     Switch::new(id)
         .small()
+        .focus_ring(false)
         .accessibility_label(label)
         .checked(checked)
 }
@@ -326,6 +396,11 @@ pub fn window_options() -> WindowOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switches_keep_keyboard_support_without_a_focus_outline() {
+        assert!(!switch("test-switch", "Test switch", false).is_focus_ring_enabled());
+    }
 
     #[test]
     fn choices_share_theme_tokens_in_both_palettes() {

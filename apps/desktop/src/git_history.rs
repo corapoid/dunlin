@@ -2,6 +2,7 @@
 use crate::app::DunlinApp;
 use crate::remote::{RemoteHost, WorkspaceBackend};
 use dunlin_domain::Project;
+use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
 use dunlin_ui::{
     component::{
@@ -289,6 +290,7 @@ impl DunlinApp {
         }
         self.branch_ui.dismiss();
         self.remember_workspace_tab();
+        self.workspace_tools.current = None;
         self.project_settings_target = None;
         self.project_runtime_draft = None;
         self.group_settings_draft = None;
@@ -383,6 +385,16 @@ impl DunlinApp {
         cx.notify();
     }
     pub(crate) fn close_git_history(&mut self, cx: &mut Context<Self>) {
+        if let Some(project) = self
+            .git_history
+            .view
+            .as_ref()
+            .map(|view| view.project.id.clone())
+        {
+            if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Git(project), cx) {
+                return;
+            }
+        }
         if let Some(view) = &self.git_history.view {
             self.workbench
                 .panes
@@ -923,22 +935,17 @@ fn browser(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .child(
                     dunlin_ui::input(&view.revision)
                         .aria_label("Commit or revision")
-                        .small()
                         .min_w(px(120.))
                         .flex_1(),
                 )
                 .child(
-                    dunlin_ui::button("history-revision")
-                        .ghost()
-                        .small()
+                    dunlin_ui::toolbar_button("history-revision")
                         .label("Show history")
                         .disabled(view.loading || this.git_history.running)
                         .on_click(cx.listener(|this, _, _, cx| this.load_git_history(cx))),
                 )
                 .child(
-                    dunlin_ui::button("history-all")
-                        .ghost()
-                        .small()
+                    dunlin_ui::toolbar_button("history-all")
                         .label("All refs")
                         .disabled(view.loading || this.git_history.running)
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -949,20 +956,20 @@ fn browser(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                         })),
                 )
                 .child(
-                    dunlin_ui::action_button("history-refresh")
+                    dunlin_ui::toolbar_button("history-state")
+                        .label("Repository state")
+                        .on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))),
+                )
+                .child(div().flex_1())
+                .child(
+                    dunlin_ui::toolbar_button("history-refresh")
+                        .icon(IconName::RefreshCw)
                         .label("Refresh")
                         .disabled(view.loading || this.git_history.running)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.load_git_history(cx);
                             this.load_git_overview(cx);
                         })),
-                )
-                .child(
-                    dunlin_ui::button("history-state")
-                        .ghost()
-                        .small()
-                        .label("Repository state")
-                        .on_click(cx.listener(|this, _, _, cx| this.open_git_overview(cx))),
                 ),
         )
         .child(div().px(px(10.)).flex_shrink_0().child(status))

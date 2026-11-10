@@ -1741,6 +1741,9 @@ impl DunlinApp {
     /// Rescan the explorer and flag a clean editor for reload after a turn.
     fn refresh_workspace_after_turn(&mut self, cx: &mut Context<Self>) {
         self.refresh_file_tree(cx);
+        if self.current_workspace_tool() == Some(crate::workspace_tools::Tool::Security) {
+            self.refresh_security_runs(cx);
+        }
         self.editor_stale = self.inspector.is_some() && !self.editor_dirty;
     }
 
@@ -2484,6 +2487,36 @@ impl DunlinApp {
         cx.notify();
     }
 
+    /// Shift+Tab is a chat command, not a shortcut-hint preference. The root
+    /// also routes the toolkit's mapped outdent/focus actions here, because
+    /// key bindings can consume the keystroke before raw key-down handlers.
+    pub(crate) fn cycle_chat_mode(&mut self, window: &Window, cx: &mut Context<Self>) -> bool {
+        if self.projects.is_empty()
+            || self.view != dunlin_domain::MainView::Chat
+            || !matches!(
+                self.current_workspace_tab(),
+                Some(crate::workspace_panes::TabKey::Chat(_))
+            )
+            || self.has_overlay()
+            || self.chat_menu_open
+            || self.user_profile.menu_open
+            || self.terminal.focus.is_focused(window)
+        {
+            return false;
+        }
+        let Some(mode) = self
+            .harness
+            .modes
+            .as_ref()
+            .and_then(crate::views::chat_controls::next_mode)
+            .map(str::to_owned)
+        else {
+            return false;
+        };
+        self.select_mode(&mode, cx);
+        true
+    }
+
     pub(crate) fn select_chat_harness(&mut self, name: &str, cx: &mut Context<Self>) {
         if self.chat_controls_busy()
             || self.project().is_remote()
@@ -3025,16 +3058,6 @@ impl DunlinApp {
             .into_iter()
             .filter(|name| self.harness_visible(name))
             .collect()
-    }
-
-    pub(crate) fn toggle_harness_visibility(&mut self, name: &str, cx: &mut Context<Self>) {
-        if self.harness_visible(name) {
-            self.hidden_harnesses.push(name.to_owned());
-        } else {
-            self.hidden_harnesses.retain(|hidden| hidden != name);
-        }
-        self.persist_settings(cx);
-        cx.notify();
     }
 }
 

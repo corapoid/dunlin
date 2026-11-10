@@ -9,6 +9,7 @@ use dunlin_ui::assets::IconName;
 use dunlin_ui::component::Disableable;
 use dunlin_ui::component::button::ButtonVariants;
 use dunlin_ui::component::{Icon, Selectable, Sizable};
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use dunlin_workspace::preview::PreviewKind;
 use serde_json::Value;
@@ -47,6 +48,8 @@ pub(crate) struct ArtifactView {
 
 #[derive(Default)]
 pub(crate) struct State {
+    scope: Option<(String, String)>,
+    request: uuid::Uuid,
     pub graph: KnowledgeGraph,
     pub selected: Option<String>,
     pub mode: Mode,
@@ -84,10 +87,12 @@ pub(crate) fn render(
     let mode = this.knowledge.mode;
     let filter = this.knowledge.filter.clone();
     let toolbar = div()
-        .h(px(42.))
+        .min_h(px(42.))
+        .py(px(6.))
         .flex_shrink_0()
         .px(px(14.))
         .flex()
+        .flex_wrap()
         .items_center()
         .gap(px(8.))
         .border_b_1()
@@ -101,7 +106,11 @@ pub(crate) fn render(
             div()
                 .text_size(px(13.))
                 .font_weight(FontWeight::SEMIBOLD)
-                .child("Knowledge"),
+                .child(if mode == Mode::Artifacts {
+                    "Artifacts"
+                } else {
+                    "Knowledge"
+                }),
         )
         .child(
             div()
@@ -117,8 +126,10 @@ pub(crate) fn render(
                 .small()
                 .label("List")
                 .selected(mode == Mode::List)
-                .on_click(cx.listener(|this, _, _, cx| {
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_workspace_tool(crate::workspace_tools::Tool::Knowledge, window, cx);
                     this.knowledge.mode = Mode::List;
+                    this.workspace_tools.knowledge_mode = Mode::List;
                     cx.notify();
                 })),
         )
@@ -128,8 +139,10 @@ pub(crate) fn render(
                 .small()
                 .label("Graph")
                 .selected(mode == Mode::Graph)
-                .on_click(cx.listener(|this, _, _, cx| {
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_workspace_tool(crate::workspace_tools::Tool::Knowledge, window, cx);
                     this.knowledge.mode = Mode::Graph;
+                    this.workspace_tools.knowledge_mode = Mode::Graph;
                     cx.notify();
                 })),
         )
@@ -139,9 +152,8 @@ pub(crate) fn render(
                 .small()
                 .label(format!("Artifacts · {}", this.knowledge.artifacts.len()))
                 .selected(mode == Mode::Artifacts)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.knowledge.mode = Mode::Artifacts;
-                    cx.notify();
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_workspace_tool(crate::workspace_tools::Tool::Artifacts, window, cx);
                 })),
         )
         .child(
@@ -154,8 +166,10 @@ pub(crate) fn render(
                     format!("Proposals · {pending}")
                 })
                 .selected(this.knowledge.show_proposals)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.knowledge.show_proposals = !this.knowledge.show_proposals;
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let show = !this.knowledge.show_proposals;
+                    this.open_workspace_tool(crate::workspace_tools::Tool::Knowledge, window, cx);
+                    this.knowledge.show_proposals = show;
                     cx.notify();
                 })),
         )
@@ -185,9 +199,8 @@ pub(crate) fn render(
         .flex_1()
         .min_h(px(0.))
         .min_w(px(0.))
-        .bg(p.card)
         .child(toolbar)
-        .child(filters)
+        .when(mode != Mode::Artifacts, |root| root.child(filters))
         .child(body)
         .into_any_element()
 }
@@ -203,10 +216,12 @@ fn filter_bar(
         *counts.entry(kind_id_str(&object.kind)).or_default() += 1;
     }
     let mut bar = div()
-        .h(px(32.))
+        .min_h(px(32.))
+        .py(px(4.))
         .flex_shrink_0()
         .px(px(12.))
         .flex()
+        .flex_wrap()
         .items_center()
         .gap(px(5.))
         .border_b_1()
@@ -1618,6 +1633,14 @@ fn proposals_view(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEleme
 
 impl DunlinApp {
     pub(crate) fn refresh_knowledge_if_needed(&mut self, cx: &mut Context<Self>) {
+        let scope = (self.project().id.clone(), self.project().path.clone());
+        if self.knowledge.scope.as_ref() != Some(&scope) {
+            let mode = self.knowledge.mode;
+            self.knowledge = State {
+                mode,
+                ..Default::default()
+            };
+        }
         if !self.knowledge.loaded && !self.knowledge.loading {
             self.refresh_knowledge(cx);
         }
@@ -1625,6 +1648,10 @@ impl DunlinApp {
 
     pub(crate) fn refresh_knowledge(&mut self, cx: &mut Context<Self>) {
         let project = self.project().clone();
+        let scope = (project.id.clone(), project.path.clone());
+        let request = uuid::Uuid::now_v7();
+        self.knowledge.scope = Some(scope.clone());
+        self.knowledge.request = request;
         if !project.trusted {
             self.knowledge.error =
                 Some("Trust the project before reading its knowledge files".into());
@@ -1670,6 +1697,13 @@ impl DunlinApp {
                     })
                     .await;
                 let _ = this.update(cx, |this, cx| {
+                    if this.knowledge.scope.as_ref() != Some(&scope)
+                        || this.knowledge.request != request
+                        || this.project().id != scope.0
+                        || this.project().path != scope.1
+                    {
+                        return;
+                    }
                     this.finish_knowledge_refresh(
                         result.0,
                         result.1,
@@ -1691,6 +1725,13 @@ impl DunlinApp {
                     })
                     .await;
                 let _ = this.update(cx, |this, cx| {
+                    if this.knowledge.scope.as_ref() != Some(&scope)
+                        || this.knowledge.request != request
+                        || this.project().id != scope.0
+                        || this.project().path != scope.1
+                    {
+                        return;
+                    }
                     let snapshot = match result.0 {
                         Ok(snapshot) => snapshot,
                         Err(error) => {

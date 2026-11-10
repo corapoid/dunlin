@@ -74,6 +74,9 @@ pub const WORKSPACE_RADIUS: f32 = crate::radii::WORKSPACE;
 pub const WORKSPACE_INSET: f32 = 10.;
 pub const TITLEBAR_HEIGHT: f32 = 38.;
 pub const HEADER_HEIGHT: f32 = 36.;
+/// Every ordinary single-line form/search field uses this height in a density mode.
+/// Multiline editors and the composer size themselves by their content instead.
+pub const INPUT_HEIGHT: f32 = 32.;
 
 /// Project rows need a stronger density change than ordinary form controls.
 pub fn project_row_height(density: Density) -> f32 {

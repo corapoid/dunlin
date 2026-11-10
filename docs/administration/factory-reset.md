@@ -6,9 +6,12 @@ Popover/menu implementation rules belong in [UI surfaces](../development/ui-surf
 
 ## Reset contract
 
-**Settings → Data & Backup → Recovery → Reset…** opens a native warning with **No**
+**Settings → Data & Backup → Recovery → Reset…** opens a themed warning with **No**
 first/default and **Yes, reset Dunlin** second. Dismissal, failure to receive an
 answer and every answer other than the explicit Yes leave data untouched.
+**Esc** or **Enter** on the dialog itself selects No. If reset is blocked, a
+visible dialog explains what must finish or be closed (including idle terminal
+shells), rather than leaving a workspace notice hidden behind Settings.
 
 Before confirming and again before starting, reset refuses unsaved editors,
 running terminals/agents, pending imports, credential/skill writes and active

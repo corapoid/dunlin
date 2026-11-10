@@ -6,7 +6,6 @@ pub(crate) struct Detected {
     pub name: &'static str,
     pub cli: Option<PathBuf>,
     pub adapter: Option<PathBuf>,
-    pub docs: &'static str,
 }
 
 impl Detected {
@@ -329,7 +328,6 @@ fn discover_in(paths: &[PathBuf]) -> Vec<Detected> {
             name: spec.name,
             cli: find_in(spec.cli, paths),
             adapter: split_command(spec.command).and_then(|(name, _)| find_in(name, paths)),
-            docs: spec.docs,
         })
         .collect()
 }

@@ -43,6 +43,12 @@ pub(crate) const NATIVE_SMOKES: &[NativeSmoke] = &[
         timeout_secs: 150,
     },
     NativeSmoke {
+        flag: "--workspace-tools-smoke",
+        fixture: Some("workspace-tools"),
+        light_narrow: false,
+        timeout_secs: 100,
+    },
+    NativeSmoke {
         flag: "--project-import-smoke",
         fixture: Some("project-import"),
         light_narrow: false,

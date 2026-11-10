@@ -112,3 +112,16 @@ fn legacy_settings_gain_the_skill_without_replacing_existing_preferences_or_empt
     let settings: crate::app::StoredSettings = serde_json::from_str(r#"{"skills":[]}"#).unwrap();
     assert!(settings.skills.is_empty());
 }
+
+#[test]
+fn ai_mode_is_default_and_commit_skill_is_optional_without_losing_scope_guards() {
+    assert!(!super::State::default().manual);
+    let basic = super::commit_prompt("fixture snapshot", None);
+    assert!(basic.contains("fixture snapshot"));
+    assert!(basic.contains("Preserve partial staging"));
+    assert!(!basic.contains("Skill:"));
+    let skill = crate::skills::defaults().remove(0);
+    let enhanced = super::commit_prompt("fixture snapshot", Some(&skill));
+    assert!(enhanced.contains(&skill.body));
+    assert!(enhanced.contains("not pushes"));
+}

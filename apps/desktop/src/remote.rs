@@ -700,18 +700,6 @@ impl RemoteWorkspace {
         )
     }
 
-    pub fn git_branches(&self) -> Result<Vec<String>, String> {
-        #[derive(Deserialize)]
-        struct Branches {
-            branches: Vec<String>,
-        }
-        let response: Branches = self.get(&format!(
-            "/v1/git/branches?project={}",
-            encode(&self.project.project_id)
-        ))?;
-        Ok(response.branches)
-    }
-
     pub fn read_file(&self, path: &str) -> Result<FileContents, String> {
         self.get(&format!(
             "/v1/fs/file?project={}&path={}",
@@ -1243,13 +1231,6 @@ impl WorkspaceBackend {
         match self {
             WorkspaceBackend::Local { root } => git::push(root),
             WorkspaceBackend::Remote(remote) => remote.git_push(),
-        }
-    }
-
-    pub fn git_branches(&self) -> Result<Vec<String>, String> {
-        match self {
-            WorkspaceBackend::Local { root } => git::branches(root),
-            WorkspaceBackend::Remote(remote) => remote.git_branches(),
         }
     }
 

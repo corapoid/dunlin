@@ -18,6 +18,7 @@ use std::sync::Arc;
 
 mod new_tabs;
 mod saving;
+mod tab_menu;
 
 const FILE_NOTICE_DURATION: std::time::Duration = std::time::Duration::from_millis(2500);
 
@@ -492,6 +493,7 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) {
         self.remember_workspace_tab();
+        self.workspace_tools.current = None;
         self.stash_editor_tab();
         let Some(tab) = self
             .workbench
@@ -531,6 +533,7 @@ impl DunlinApp {
         cx.notify();
     }
     pub(crate) fn show_chat_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.workspace_tools.current = None;
         self.stash_editor_tab();
         self.workbench.show_file = false;
         self.spec.active = false;
@@ -550,6 +553,9 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Chat(id.into()), cx) {
+            return;
+        }
         let active =
             self.current_workspace_tab() == Some(crate::workspace_panes::TabKey::Chat(id.into()));
         self.workbench.chat_tabs.retain(|tab| tab != id);
@@ -823,6 +829,9 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::File(id.into()), cx) {
+            return;
+        }
         let Some(tab) = self
             .workbench
             .tabs
@@ -870,19 +879,10 @@ impl DunlinApp {
             return;
         }
         let project = self.project().id.clone();
-        let locked: std::collections::HashSet<String> = self
-            .workbench
-            .tabs
-            .iter()
-            .filter(|tab| tab.locked)
-            .map(|tab| tab.id.clone())
-            .collect();
         let keys: Vec<_> = self
             .workspace_tab_keys()
             .into_iter()
-            .filter(|key| {
-                !matches!(key, crate::workspace_panes::TabKey::File(id) if locked.contains(id))
-            })
+            .filter(|key| !self.workspace_tab_locked(key))
             .collect();
         let ids = closing_tab_ids(
             &project,
@@ -941,6 +941,12 @@ impl DunlinApp {
         cx: &mut Context<Self>,
     ) {
         use crate::workspace_panes::TabKey;
+        let unlocked: Vec<_> = keys
+            .iter()
+            .filter(|key| !self.workspace_tab_locked(key))
+            .cloned()
+            .collect();
+        let keys = &unlocked;
         for key in keys {
             match key {
                 TabKey::Chat(id) => {
@@ -951,6 +957,7 @@ impl DunlinApp {
                 TabKey::Terminal(id) => self.close_terminal_tab(id, cx),
                 TabKey::Git(_) => self.close_git_history(cx),
                 TabKey::Spec(_) => self.close_spec_workspace(cx),
+                TabKey::Tool(project, tool) => self.close_workspace_tool(project, *tool, cx),
             }
             self.workbench.panes.closed(key);
         }
@@ -963,8 +970,14 @@ impl DunlinApp {
             self.workbench.active = None;
             self.close_inspector();
         }
-        self.workbench.terminal = None;
-        self.workbench.panes.active = [None, None];
+        if self
+            .workbench
+            .terminal
+            .as_ref()
+            .is_some_and(|id| keys.contains(&TabKey::Terminal(id.clone())))
+        {
+            self.workbench.terminal = None;
+        }
         self.workbench.panes.restore = None;
         cx.notify();
     }
@@ -1115,7 +1128,6 @@ impl DunlinApp {
             let id = tab.id.clone();
             let close = id.clone();
             let lock = id.clone();
-            let menu = id.clone();
             let active = selection == Some(&TabKey::File(id.clone()));
             let name = tab.inspector.name.clone();
             let locked = tab.locked;
@@ -1140,17 +1152,6 @@ impl DunlinApp {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_file_tab(&id, window, cx)
                     }))
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
-                            cx.stop_propagation();
-                            this.context_menu = Some(crate::app::ContextMenuState {
-                                target: crate::app::ContextTarget::Tab(menu.clone()),
-                                position: event.position,
-                            });
-                            cx.notify();
-                        }),
-                    )
                     .suffix(if locked {
                         icon_button(
                             format!("lock-tab:{lock}"),
@@ -1267,7 +1268,7 @@ impl DunlinApp {
                     ),
             );
         }
-        if self.spec_tools_enabled
+        if self.spec_tools_enabled()
             && self.spec.is_open_for(self.project())
             && self
                 .workbench
@@ -1295,6 +1296,40 @@ impl DunlinApp {
                     ),
             );
         }
+        for key in self.workspace_tab_keys() {
+            let TabKey::Tool(project, tool) = key else {
+                continue;
+            };
+            if !self
+                .workbench
+                .panes
+                .belongs(&TabKey::Tool(project.clone(), tool), pane)
+            {
+                continue;
+            }
+            keys.push(TabKey::Tool(project.clone(), tool));
+            let close_project = project.clone();
+            tabs.push(
+                document_tab(tool.label())
+                    .prefix(Icon::new(tool.icon()).size(px(14.)))
+                    .aria_label(format!("{} tab", tool.label()))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_workspace_tool(tool, window, cx)
+                    }))
+                    .suffix(
+                        icon_button(
+                            format!("close-tool:{project}:{tool:?}"),
+                            IconName::X,
+                            format!("Close {}", tool.label()),
+                        )
+                        .size(px(24.))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.close_workspace_tool(&close_project, tool, cx);
+                        })),
+                    ),
+            );
+        }
         let order = self.workspace_tab_keys();
         let mut ordered: Vec<_> = keys.into_iter().zip(tabs).collect();
         ordered.sort_by_key(|(key, _)| {
@@ -1308,6 +1343,9 @@ impl DunlinApp {
         let tabs = ordered
             .into_iter()
             .map(|(key, tab)| {
+                let menu_key = key.clone();
+                let unlock_key = key.clone();
+                let locked = self.workspace_tab_locked(&key);
                 let (label, icon) = match &key {
                     TabKey::Chat(id) => (
                         self.sessions
@@ -1328,6 +1366,7 @@ impl DunlinApp {
                     ),
                     TabKey::Git(_) => (self.git_history.tab_label().into(), IconName::GitBranch),
                     TabKey::Spec(_) => ("Spec".into(), IconName::File),
+                    TabKey::Tool(_, tool) => (tool.label().into(), tool.icon()),
                     TabKey::Terminal(id) => (
                         self.terminal
                             .tabs
@@ -1339,6 +1378,37 @@ impl DunlinApp {
                     ),
                 };
                 tab.background_motion(!self.reduce_motion)
+                    .relative()
+                    .when(Some(&key) == selection, |tab| {
+                        tab.children(tab_probe("active-workspace-tab"))
+                    })
+                    .when(locked && !matches!(&key, TabKey::File(_)), |tab| {
+                        tab.suffix(
+                            icon_button(
+                                format!("unlock-workspace-tab:{key:?}"),
+                                IconName::Lock,
+                                "Unlock tab",
+                            )
+                            .size(px(24.))
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.toggle_workspace_tab_lock(&unlock_key, cx);
+                                },
+                            )),
+                        )
+                    })
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.context_menu = Some(crate::app::ContextMenuState {
+                                target: crate::app::ContextTarget::Tab(menu_key.clone()),
+                                position: event.position,
+                            });
+                            cx.notify();
+                        }),
+                    )
                     .drag_over::<crate::workspace_panes::TabDrag>(|style, _, _, cx| {
                         style.border_b_2().border_color(palette(cx).blue)
                     })

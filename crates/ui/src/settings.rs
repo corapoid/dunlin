@@ -17,14 +17,14 @@ pub struct Tokens {
 }
 
 impl Tokens {
-    pub const NAV_WIDTH: f32 = 230.;
-    pub const PAGE_INSET: f32 = 32.;
-    pub const PAGE_GAP: f32 = 24.;
-    pub const CONTROL_HEIGHT: f32 = 36.;
+    pub const NAV_WIDTH: f32 = 216.;
+    pub const PAGE_INSET: f32 = 24.;
+    pub const PAGE_GAP: f32 = 18.;
+    pub const CONTROL_HEIGHT: f32 = scale::INPUT_HEIGHT;
     pub const CONTROL_RADIUS: f32 = radii::MODAL;
-    pub const TITLE_SIZE: f32 = 20.;
-    pub const BODY_SIZE: f32 = 13.;
-    pub const CAPTION_SIZE: f32 = 12.;
+    pub const TITLE_SIZE: f32 = 18.;
+    pub const BODY_SIZE: f32 = 12.;
+    pub const CAPTION_SIZE: f32 = 11.;
 
     pub fn new(p: Palette) -> Self {
         Self {
@@ -50,14 +50,7 @@ pub fn button(id: impl Into<ElementId>) -> Button {
 
 /// Filled fields retain the kit's real focus frame and accessible input behavior.
 pub fn input(state: &Entity<InputState>, p: Palette) -> Input {
-    // Input::h is a multiline-only API; use Styled to size the actual frame.
-    Styled::h(
-        crate::input(state),
-        px(scale::control(Tokens::CONTROL_HEIGHT)),
-    )
-    .rounded(px(Tokens::CONTROL_RADIUS))
-    .bg(Tokens::new(p).field)
-    .text_size(px(Tokens::BODY_SIZE))
+    crate::input(state).bg(Tokens::new(p).field)
 }
 
 pub fn search(state: &Entity<InputState>, label: impl Into<SharedString>, p: Palette) -> Input {
@@ -86,7 +79,7 @@ pub fn page() -> Div {
         .min_w(px(0.))
         .px(px(Tokens::PAGE_INSET))
         .pt(px(12.))
-        .pb(px(32.))
+        .pb(px(24.))
         .flex()
         .flex_col()
         .gap(px(Tokens::PAGE_GAP))
@@ -126,7 +119,7 @@ pub fn actions() -> Div {
 pub fn description(text: impl Into<SharedString>, p: Palette) -> Div {
     div()
         .text_size(px(Tokens::CAPTION_SIZE))
-        .line_height(relative(1.5))
+        .line_height(relative(1.4))
         .text_color(p.muted_fg)
         .child(text.into())
 }
@@ -144,20 +137,20 @@ pub fn divider(p: Palette) -> Div {
 
 pub fn row(title: &str, description: &str, control: AnyElement, p: Palette) -> Div {
     div()
-        .min_h(px(scale::control(76.)))
-        .px(px(18.))
-        .py(px(scale::space(16.)))
+        .min_h(px(scale::control(62.)))
+        .px(px(14.))
+        .py(px(scale::space(11.)))
         .flex()
         .flex_wrap()
         .items_center()
-        .gap(px(20.))
+        .gap(px(14.))
         .child(
             div()
                 .flex_1()
                 .min_w(px(220.))
                 .flex()
                 .flex_col()
-                .gap(px(5.))
+                .gap(px(4.))
                 .child(
                     div()
                         .text_size(px(Tokens::BODY_SIZE))

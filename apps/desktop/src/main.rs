@@ -23,6 +23,7 @@ mod git_actions;
 mod git_history;
 #[cfg(debug_assertions)]
 mod glass_smoke;
+mod global_search;
 #[cfg(debug_assertions)]
 mod governance_smoke;
 mod group_cleanup;
@@ -54,6 +55,7 @@ mod project_groups;
 mod project_icons;
 mod project_import;
 mod project_runtime_settings;
+mod project_search;
 mod project_tree;
 mod projection;
 mod provider_auth;
@@ -72,6 +74,7 @@ mod session_import;
 mod session_list;
 mod sidebar_layout;
 mod skills;
+mod source_control;
 mod spec;
 mod ssh;
 mod subtask_worktrees;
@@ -90,6 +93,7 @@ mod window_state;
 mod workbench;
 mod workspace_panes;
 mod workspace_text;
+mod workspace_tools;
 #[cfg(debug_assertions)]
 mod workspace_ui_smoke;
 
@@ -179,6 +183,11 @@ fn main() {
         return;
     }
     #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--workspace-tools-smoke") {
+        workspace_tools::smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--governance-smoke") {
         match governance_smoke::run() {
             Ok(()) => {
@@ -265,6 +274,7 @@ fn main() {
         print!("{}", two_face::acknowledgement::listing().to_md());
         return;
     }
+    platform::set_application_name();
     application().with_assets(assets::AllAssets).run(|cx| {
         cx.set_app_identity("dev.dunlin.ide", "Dunlin");
         dunlin_ui::init(cx);

@@ -1,5 +1,4 @@
-//! The ⌘K command palette: a calm, keyboard-first launcher for navigation,
-//! project switching and workspace actions.
+//! Global search: suggested destinations, projects, sessions, files and actions.
 
 use dunlin_ui::component::ThemeStyled as _;
 use dunlin_ui::component::{Icon, Sizable};
@@ -31,8 +30,15 @@ pub(crate) fn render(
         .gap(px(9.))
         .child(
             div().flex_1().min_w(px(0.)).child(
-                search_input(&this.command_query, "Search commands and projects")
-                    .with_size(dunlin_ui::component::Size::Medium),
+                search_input(
+                    &this.command_query,
+                    if projects_only {
+                        "Search projects"
+                    } else {
+                        "Global search"
+                    },
+                )
+                .with_size(dunlin_ui::component::Size::Medium),
             ),
         )
         .when(show_shortcuts, |this| this.child(kbd("esc", p)));
@@ -52,7 +58,7 @@ pub(crate) fn render(
                         if projects_only {
                             "No matching projects"
                         } else {
-                            "No matching commands"
+                            "No matching results"
                         },
                     ))
                     .child(
@@ -63,7 +69,7 @@ pub(crate) fn render(
                             .child(if projects_only {
                                 "Search by project name or path"
                             } else {
-                                "Try “chat”, “folder”, or a project name"
+                                "Search by project, session, filename or setting"
                             }),
                     ),
             );
@@ -72,17 +78,18 @@ pub(crate) fn render(
             let active = index == selected;
             let command = item.command;
             let label = item.label.clone();
-            let path = if projects_only {
-                match command {
-                    crate::app::Command::SwitchProject(index) => {
-                        this.projects.get(index).map(|project| project.path.clone())
-                    }
-                    _ => None,
+            let path = match command {
+                crate::app::Command::SwitchProject(index) => {
+                    this.projects.get(index).map(|project| project.path.clone())
                 }
-            } else {
-                None
+                crate::app::Command::SearchResult(index) => this.global_search.detail(index),
+                _ => None,
             };
-            let hint = if show_shortcuts {
+            let hint = if show_shortcuts
+                || matches!(
+                    command,
+                    crate::app::Command::SearchResult(_) | crate::app::Command::SwitchProject(_)
+                ) {
                 item.hint.clone()
             } else {
                 None
@@ -91,14 +98,15 @@ pub(crate) fn render(
             list = list.child(
                 div()
                     .id(format!("command-row:{index}"))
-                    .h(px(if projects_only { 48. } else { 38. }))
+                    .h(px(48.))
+                    .flex_shrink_0()
                     .px(px(7.))
                     .rounded(px(dunlin_ui::radii::CONTROL))
                     .flex()
                     .items_center()
                     .gap(px(9.))
                     .cursor_pointer()
-                    .when(active, |this| this.bg(p.accent))
+                    .when(active, |this| this.bg(p.hover))
                     .when(!active, |this| this.hover(move |style| style.bg(p.hover)))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.run_command(command, window, cx);
@@ -166,22 +174,35 @@ pub(crate) fn render(
                 .child(format!(
                     "{} {}",
                     items.len(),
-                    if projects_only {
-                        "projects"
-                    } else {
-                        "commands"
-                    }
+                    if projects_only { "projects" } else { "results" }
                 )),
         );
 
     let panel = div()
         .id("command-palette")
+        .role(Role::Dialog)
+        .aria_label(if projects_only {
+            "Project search"
+        } else {
+            "Global search"
+        })
         .popover_style(cx)
         .occlude()
         .w(px(590.))
         .max_w(relative(0.95))
         .overflow_hidden()
         .on_click(|_, _, cx| cx.stop_propagation())
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("global-search-panel")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
         .child(search)
         .child(divider(p))
         .child(
@@ -189,6 +210,7 @@ pub(crate) fn render(
                 .id("command-list")
                 .max_h(px(330.))
                 .overflow_y_scroll()
+                .track_scroll(&this.command_scroll)
                 .child(list),
         )
         .child(divider(p))

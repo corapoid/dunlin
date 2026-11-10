@@ -8,8 +8,9 @@ instructions before installation: an agent may execute tools they describe.
 
 **Installed skills** lists skills with global or project installations.
 **Available skills** combines bundled skills with saved or imported instructions
-that are not installed yet. Use **Install globally** directly; there is no separate
-“Add to library” step. After uninstalling, a skill returns to Available skills.
+that are not installed yet. Bundled skills have exactly two actions: **Install**
+and **Edit**, or **Disable / Enable** and **Edit** after installation. They cannot
+be deleted from the library. Imported skills retain their delete/uninstall actions.
 Creation, folder scanning and imports are grouped below these two sections.
 
 Folder import supports bounded multi-file UTF-8 bundles and never follows
@@ -28,8 +29,15 @@ without storing separate copies.
 | Claude Code | `$CLAUDE_CONFIG_DIR/skills` or `~/.claude/skills` |
 | Codex | `~/.agents/skills` |
 
-Library edits do not silently update installed files; use **Update global
-installation**. Unchanged Dunlin-managed legacy global copies are replaced with
+Saving an installed, enabled bundled skill updates its managed installations.
+Editing a disabled skill keeps its new instructions in the library until enabled.
+Disabling preserves the full bundle and suspends its `SKILL.md` entry point, so
+harness discovery links no longer expose it; enabling restores it. Existing agent
+sessions must be restarted to reload skills. Disabled skills are also excluded
+from conversation choices and future attachments.
+
+For imported skills, use **Update global installation** after library edits.
+Unchanged Dunlin-managed legacy global copies are replaced with
 discovery links during this explicit update. Unmanaged files, unrelated links and
 external edits are preserved; conflicts are reported, not overwritten. Removal
 deletes only recorded discovery links and hash-checked managed files, never an
@@ -57,12 +65,16 @@ as prompt context; they are not installed on the server.
 
 ## AI-assisted commits
 
-When local authentication and the last dispatched harness/model can be verified,
-Source Control offers **Commit on AI**. Otherwise use the manual commit form;
-Dunlin does not silently select another model/provider.
+Source Control has an **AI commit / Manual commit** selector, defaulting to AI.
+AI uses the last dispatched harness/model once local authentication can be
+verified. Missing authentication or an unavailable model leaves AI selected with
+an explanation; it never silently changes mode or chooses a replacement model.
+Select Manual commit explicitly to enter a message and commit staged changes.
 
 After confirmation of paid-token/commit permission, a separate conversation uses
-the bundled editable **Conventional commits** skill. It reviews repository policy,
+the editable **Conventional commits** skill when it is in the skill library and
+enabled. Without that skill, it uses a basic commit workflow following repository
+conventions. Both workflows review repository policy,
 recent history and coherent staged scope; it must not push, rewrite history,
 commit secrets or bypass hooks. Its instructions are injected without implicitly
 installing global files.

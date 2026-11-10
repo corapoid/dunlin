@@ -3,7 +3,10 @@
 ## UI
 
 Open **Repository → Branch Graph & History… → Repository state**. The Git view
-stays a main-panel tab. **Merge / rebase / pick…** in history copies the selected
+stays a main-panel tab. Repository state separates in-progress operations,
+conflicts, stashes and worktrees into rounded sections. Inventory and preparation
+forms share one vertical scroll; each worktree's path and actions stay together.
+**Merge / rebase / pick…** in history copies the selected
 commit into the operation form; it does not run Git. Alternatively enter a local
 commit, branch or tag in the form. Every mutation first prepares a read-only plan,
 shows its pinned request/HEAD/target/worktree and bounded status preview (first 80

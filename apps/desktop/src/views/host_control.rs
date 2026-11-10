@@ -1,5 +1,4 @@
-//! Title-bar host switcher: the current machine, paired relays and the SSH
-//! terminal entry point. The control stays visible in every view and mode.
+//! Sidebar connection status and host switcher, including paired relays and SSH.
 
 use dunlin_ui::assets::IconName;
 use dunlin_ui::component::button::ButtonVariants;
@@ -168,11 +167,14 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         crate::harness::HarnessStatus::Failed(_) | crate::harness::HarnessStatus::Exited(_)
     );
 
-    let control = dunlin_ui::button("title-host")
+    let control = dunlin_ui::button("sidebar-host")
         .ghost()
-        .size(px(32.))
-        .p(px(0.))
-        .rounded_full()
+        .w_full()
+        .min_w(px(0.))
+        .h(px(32.))
+        .px(px(10.))
+        .justify_start()
+        .rounded(px(dunlin_ui::radii::CONTROL))
         .child(
             div()
                 .relative()
@@ -217,9 +219,22 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     }
                 }),
         )
+        .child(
+            div().flex_1().min_w(px(0.)).child(
+                div()
+                    .text_size(px(11.5))
+                    .truncate()
+                    .child(host_name.clone()),
+            ),
+        )
+        .child(
+            component::Icon::new(IconName::ChevronsUpDown)
+                .size(px(12.))
+                .text_color(p.muted_fg),
+        )
         .accessibility_label(format!("Host: {host_name}. {detail}"))
         .tooltip(format!("Host · {host_name} · {detail}"))
-        .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
             let Some(entity) = app.upgrade() else {
                 return menu;
             };
@@ -309,6 +324,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     #[cfg(debug_assertions)]
     let control = div()
         .relative()
+        .w_full()
         .child(control)
         .children(crate::workspace_ui_smoke::probe("host-menu-button"));
     control.into_any_element()

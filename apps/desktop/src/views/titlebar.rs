@@ -1,13 +1,10 @@
-//! Custom window title bar: brand, project breadcrumb, primary view switcher
-//! and the quiet utility cluster on the right.
-
+//! Unified chrome: window navigation, centered global search, view modes and avatar.
+use crate::app::DunlinApp;
 use dunlin_domain::SidebarSection;
 use dunlin_ui::assets::IconName;
-use dunlin_ui::component::{Disableable, Icon, TitleBar, button::ButtonVariants};
+use dunlin_ui::component::{Disableable, Icon, TitleBar};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
-
-use crate::app::DunlinApp;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Switcher {
@@ -17,12 +14,14 @@ pub(crate) enum Switcher {
 }
 
 pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
-    if this.projects.is_empty()
+    if this.current_workspace_tool().is_some()
+        || this.projects.is_empty()
         || this.settings_open
-        || this.section == SidebarSection::Dashboard
-        || (this.section == SidebarSection::Security && this.security_enabled)
-        || this.section == SidebarSection::Knowledge
-        || (this.spec_tools_enabled && this.spec.is_active_for(this.project()))
+        || matches!(
+            this.section,
+            SidebarSection::Dashboard | SidebarSection::Knowledge | SidebarSection::Security
+        )
+        || (this.spec_tools_enabled() && this.spec.is_active_for(this.project()))
     {
         Switcher::None
     } else if this.section == SidebarSection::SourceControl
@@ -41,172 +40,156 @@ pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
     }
 }
 
+pub(crate) fn search_geometry(viewport: f32) -> (f32, f32) {
+    let width = (viewport - 720.)
+        .clamp(200., 420.)
+        .min((viewport - 120.).max(0.));
+    ((viewport - width) / 2., width)
+}
+
 pub(crate) fn render(
     this: &mut DunlinApp,
     window: &mut Window,
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
-    let has_projects = !this.projects.is_empty();
-    let dashboard = this.section == SidebarSection::Dashboard;
-    let security = this.section == SidebarSection::Security && this.security_enabled;
-    let switcher = switcher(this);
-    let agent = switcher == Switcher::Agent;
-    let show_shortcut_hints = this.show_shortcut_hints;
-    let sidebar_collapsed = this.sidebar_collapsed;
-
+    let (search_left, search_width) = search_geometry(f32::from(window.viewport_size().width));
+    let collapsed = this.sidebar_collapsed;
     let left = div()
-        .flex_1()
         .h_full()
+        .max_w(px((search_left - 12.).max(0.)))
         .min_w(px(0.))
+        .pl(px(if cfg!(target_os = "macos") { 80. } else { 12. }))
         .flex()
         .items_center()
-        .gap(px(8.))
-        .when(has_projects, |bar| {
-            let sidebar_label = match (sidebar_collapsed, show_shortcut_hints) {
-                (true, true) => "Show sidebar (⌘B)",
-                (true, false) => "Show sidebar",
-                (false, true) => "Hide sidebar (⌘B)",
-                (false, false) => "Hide sidebar",
-            };
-            bar.child(
-                navigation_button(
-                    "title-sidebar",
-                    if sidebar_collapsed {
-                        IconName::PanelLeftOpen
-                    } else {
-                        IconName::PanelLeftClose
-                    },
-                    sidebar_label,
-                )
-                .size(px(28.))
-                .relative()
-                .children({
-                    #[cfg(debug_assertions)]
-                    {
-                        crate::workspace_ui_smoke::probe("title-sidebar")
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        None::<AnyElement>
-                    }
-                })
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.sidebar_collapsed = !this.sidebar_collapsed;
-                    this.persist_settings(cx);
-                    cx.notify();
-                })),
-            )
-        })
+        .gap(px(4.))
         .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .child(
-                    navigation_button("navigation-back", IconName::ArrowLeft, "Back")
-                        .size(px(28.))
-                        .relative()
-                        .children({
-                            #[cfg(debug_assertions)]
-                            {
-                                crate::workspace_ui_smoke::probe("navigation-back")
-                            }
-                            #[cfg(not(debug_assertions))]
-                            {
-                                None::<AnyElement>
-                            }
-                        })
-                        .tooltip(if show_shortcut_hints {
-                            "Back (⌘[)"
-                        } else {
-                            "Back"
-                        })
-                        .disabled(!this.can_navigate_history(false))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.navigate_history(false, window, cx);
-                        })),
-                )
-                .child(
-                    navigation_button("navigation-forward", IconName::ArrowRight, "Forward")
-                        .size(px(28.))
-                        .tooltip(if show_shortcut_hints {
-                            "Forward (⌘])"
-                        } else {
-                            "Forward"
-                        })
-                        .disabled(!this.can_navigate_history(true))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.navigate_history(true, window, cx);
-                        })),
+            navigation_button(
+                "title-sidebar",
+                if collapsed {
+                    IconName::PanelLeftOpen
+                } else {
+                    IconName::PanelLeftClose
+                },
+                this.shortcut_label(
+                    if collapsed {
+                        "Show sidebar"
+                    } else {
+                        "Hide sidebar"
+                    },
+                    "⌘B",
                 ),
+            )
+            .size(px(28.))
+            .relative()
+            .children({
+                #[cfg(debug_assertions)]
+                {
+                    crate::workspace_ui_smoke::probe("title-sidebar")
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    None::<AnyElement>
+                }
+            })
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.sidebar_collapsed = !this.sidebar_collapsed;
+                this.persist_settings(cx);
+                cx.notify();
+            })),
         )
-        .when(has_projects, |bar| {
-            bar.child(super::sidebar::project_switcher(this, cx))
-        })
-        .when(!has_projects, |bar| {
-            bar.child(div().text_size(px(13.)).child("Dunlin"))
+        .child(
+            navigation_button(
+                "navigation-back",
+                IconName::ArrowLeft,
+                this.shortcut_label("Back", "⌘["),
+            )
+            .size(px(28.))
+            .disabled(!this.can_navigate_history(false))
+            .relative()
+            .children({
+                #[cfg(debug_assertions)]
+                {
+                    crate::workspace_ui_smoke::probe("navigation-back")
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    None::<AnyElement>
+                }
+            })
+            .on_click(cx.listener(|this, _, window, cx| this.navigate_history(false, window, cx))),
+        )
+        .child(
+            navigation_button(
+                "navigation-forward",
+                IconName::ArrowRight,
+                this.shortcut_label("Forward", "⌘]"),
+            )
+            .size(px(28.))
+            .disabled(!this.can_navigate_history(true))
+            .on_click(cx.listener(|this, _, window, cx| this.navigate_history(true, window, cx))),
+        )
+        .when(!this.projects.is_empty(), |bar| {
+            let leading = if cfg!(target_os = "macos") { 80. } else { 12. };
+            bar.child(
+                super::sidebar::project_switcher(this, cx)
+                    .max_w(px((search_left - leading - 112.).max(48.)))
+                    .min_w(px(0.)),
+            )
         });
 
-    let view_selector = super::view_switcher::render(this, agent, window, cx);
-    let mut center = div().flex().flex_shrink_0();
-    if agent {
-        center = center.child(view_selector);
-    } else if switcher == Switcher::Git {
-        center = center.child(
-            dunlin_ui::button("title-git-history")
-                .ghost()
-                .label("History")
-                .tooltip(this.shortcut_label("Branch graph & history", "⌘⌥G"))
-                .on_click(cx.listener(|this, _, window, cx| this.show_git_history(window, cx))),
-        );
-    }
-    let center = if dashboard {
-        div().into_any_element()
-    } else if security {
-        div()
-            .flex_shrink_0()
-            .h(px(28.))
-            .px(px(10.))
-            .rounded(px(dunlin_ui::radii::PANEL))
-            .border_1()
-            .border_color(p.border)
-            .bg(p.muted)
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .child(
-                Icon::new(IconName::ShieldCheck)
-                    .size(px(13.))
-                    .text_color(p.fg),
-            )
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(p.fg)
-                    .child("Security"),
-            )
-            .into_any_element()
-    } else if switcher != Switcher::None {
-        center.into_any_element()
-    } else {
-        div().flex_shrink_0().into_any_element()
-    };
-
+    let modes = super::view_switcher::render(this, switcher(this) == Switcher::Agent, window, cx);
     let right = div()
-        .flex_1()
-        .min_w(px(0.))
+        .ml_auto()
         .pr(px(12.))
+        .flex_shrink_0()
         .flex()
         .items_center()
-        .justify_end()
-        .gap(px(6.))
-        .child(super::host_control::render(this, cx))
+        .gap(px(10.))
+        .child(modes)
         .child(crate::user_profile::render(this, cx));
-
+    let search = dunlin_ui::button("global-search-trigger")
+        .absolute()
+        .left(px(search_left))
+        .w(px(search_width))
+        .h(px(30.))
+        .px(px(12.))
+        .rounded(px(dunlin_ui::radii::CONTROL))
+        .bg(p.fg.opacity(0.05))
+        .justify_start()
+        .accessibility_label("Global search")
+        .tooltip(this.shortcut_label("Global search", "⌘K"))
+        .child(
+            Icon::new(IconName::Search)
+                .size(px(14.))
+                .text_color(p.muted_fg),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .text_size(px(12.))
+                .text_color(p.muted_fg)
+                .truncate()
+                .child("Search…"),
+        )
+        .when(this.show_shortcut_hints, |button| {
+            button.child(div().text_size(px(10.)).text_color(p.muted_fg).child("⌘K"))
+        })
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("global-search-trigger")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .on_click(cx.listener(|this, _, window, cx| this.open_palette(window, cx)));
     TitleBar::new()
         .h(px(dunlin_ui::scale::TITLEBAR_HEIGHT))
+        .pl(px(0.))
         .border_b_0()
         .bg(transparent_black())
         .border_color(transparent_black())
@@ -217,10 +200,9 @@ pub(crate) fn render(
                 .h_full()
                 .flex()
                 .items_center()
-                .gap(px(6.))
                 .child(left)
-                .child(center)
                 .child(right)
+                .child(search)
                 .children({
                     #[cfg(debug_assertions)]
                     {
@@ -233,4 +215,16 @@ pub(crate) fn render(
                 }),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn global_search_is_centered_at_every_supported_window_size() {
+        for viewport in [800., 1100., 1360., 1920.] {
+            let (left, width) = super::search_geometry(viewport);
+            assert_eq!(left + width / 2., viewport / 2.);
+            assert!(width >= 200. && left >= 0. && left + width <= viewport);
+        }
+    }
 }

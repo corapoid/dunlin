@@ -118,9 +118,12 @@ pub(crate) fn run() {
                             stage = if settings_closes < 5 { 9000 } else { 0 };
                         }
                         0 => {
-                            let rail = crate::workspace_ui_smoke::measured("navigation-rail");
-                            let settings = crate::workspace_ui_smoke::measured("rail-settings");
-                            assert!(settings.bottom() > rail.bottom() - px(16.), "Settings belongs at the bottom of the navigation rail");
+                             let footer = crate::workspace_ui_smoke::measured("sidebar-footer");
+                             let settings = crate::workspace_ui_smoke::measured("sidebar-settings");
+                             assert!(footer.contains(&settings.center()), "Settings belongs in the sidebar footer");
+                             let host = crate::workspace_ui_smoke::measured("host-menu-button");
+                             assert!(settings.right() < host.left());
+                             assert!((settings.center().y - host.center().y).abs() < px(1.));
                             assert_eq!(crate::workspace_ui_smoke::measured("user-avatar").size, size(px(22.), px(22.)));
                             assert_eq!(crate::workspace_ui_smoke::measured("title-user-menu").size, size(px(32.), px(32.)), "a smaller avatar must preserve its click target");
                             parent.update(cx, |_, window, cx| click(window, settings.center(), cx)).unwrap();
@@ -276,13 +279,10 @@ pub(crate) fn run() {
                         }
                         9 if open && panel.is_some() => {
                             let child = owner.read(cx).overlay_window.debug_window().unwrap();
-                             // Follow the actual default control after layout changes,
-                             // not a coordinate that used to point at a radio.
-                             child.update(cx, |_, window, cx| click(window, crate::workspace_ui_smoke::measured("claude-harness-default").center(), cx)).unwrap();
-                             assert_eq!(owner.read(cx).default_harness, "Custom ACP", "an unavailable/unverified adapter must not change the default");
                             assert_eq!(owner.read(cx).session_harness(), "Custom ACP", "selection must not replace an existing conversation's harness");
                             child.update(cx, |_, window, cx| click(window, crate::workspace_ui_smoke::measured("claude-harness-action").center(), cx)).unwrap();
-                            assert_eq!(owner.read(cx).harness_setup.as_deref(), Some("Claude Code"), "Set up must show in-app instructions without launching a browser");
+                             assert_eq!(owner.read(cx).harness_setup.as_deref(), Some("Claude Code"), "Set up must show in-app instructions without launching a browser");
+                             assert_eq!(owner.read(cx).default_harness, "Custom ACP", "Install must not change the default");
                             let adapter = adapter_bin.join("claude-agent-acp");
                             std::fs::write(&adapter, "#!/bin/sh\nexit 99\n").unwrap();
                             use std::os::unix::fs::PermissionsExt;

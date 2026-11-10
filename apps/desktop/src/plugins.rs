@@ -3,8 +3,6 @@
 
 use crate::app::DunlinApp;
 use dunlin_plugin::{LoadedPack, Source};
-use dunlin_plugin_host::InstalledPlugin;
-use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -31,11 +29,6 @@ impl DunlinApp {
             .iter()
             .filter(|pack| self.plugins.is_enabled_for(Some(&project_id), pack))
         {
-            if !self.spec_tools_enabled
-                && matches!(pack.manifest.id.as_str(), "spec-kit" | "agent-contract")
-            {
-                continue;
-            }
             for command in &pack.manifest.contributes.commands {
                 if command.prompt.trim().is_empty() {
                     continue;
@@ -97,12 +90,10 @@ pub(crate) struct State {
     pub warnings: Vec<String>,
     pub loaded: bool,
     pub error: Option<String>,
-    pub scope_project: bool,
     disabled: Vec<String>,
     enabled: Vec<String>,
     project_disabled: HashMap<String, Vec<String>>,
     project_enabled: HashMap<String, Vec<String>>,
-    pub(crate) wasm_status: HashMap<String, String>,
     pub(crate) available: Vec<dunlin_plugin::CatalogPlugin>,
 }
 
@@ -140,6 +131,18 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .skills
+            .iter()
+            .any(|skill| skill.id == crate::skills::PLUGIN_BUILDER_SKILL && skill.disabled)
+        {
+            self.settings_open = true;
+            self.settings_tab = crate::app::SettingsTab::Skills;
+            self.skills_ui.message =
+                Some("Enable Build Dunlin plugins before starting its guided chat.".into());
+            cx.notify();
+            return;
+        }
         self.add_catalog_skill(crate::skills::PLUGIN_BUILDER_SKILL, cx);
         self.install_catalog_skill(
             crate::skills::PLUGIN_BUILDER_SKILL,
@@ -192,12 +195,10 @@ impl State {
             warnings: Vec::new(),
             loaded: false,
             error: None,
-            scope_project: false,
             disabled,
             enabled,
             project_disabled,
             project_enabled,
-            wasm_status: HashMap::new(),
             available: Vec::new(),
         };
         state.load();
@@ -228,6 +229,11 @@ impl State {
         }
     }
     pub(crate) fn is_enabled_for(&self, project: Option<&str>, pack: &LoadedPack) -> bool {
+        // Agent-contract metadata is part of the governance package, not a
+        // separately configurable extension.
+        if pack.manifest.id == "agent-contract" {
+            return self.governance_enabled_for(project);
+        }
         let id = &pack.manifest.id;
         let base = self.is_enabled(pack);
         let Some(project) = project else {
@@ -248,6 +254,26 @@ impl State {
             return true;
         }
         base
+    }
+
+    pub(crate) fn governance_enabled_for(&self, project: Option<&str>) -> bool {
+        self.packs
+            .iter()
+            .find(|pack| pack.manifest.id == "dunlin-governance")
+            .is_some_and(|pack| self.is_enabled_for(project, pack))
+    }
+
+    pub(crate) fn with_legacy_spec_tools(mut self, enabled: bool) -> Self {
+        if !enabled {
+            self.enabled.retain(|id| id != "dunlin-governance");
+            if !self.disabled.iter().any(|id| id == "dunlin-governance") {
+                self.disabled.push("dunlin-governance".into());
+            }
+            for ids in self.project_enabled.values_mut() {
+                ids.retain(|id| id != "dunlin-governance");
+            }
+        }
+        self
     }
     pub(crate) fn toggle_for(&mut self, project: Option<&str>, pack: &LoadedPack) -> bool {
         let id = pack.manifest.id.clone();
@@ -276,6 +302,15 @@ impl State {
             return next;
         }
         let next = !self.is_enabled(pack);
+        // With a single package switch, an explicit global choice supersedes
+        // legacy per-project overrides for that package only.
+        for ids in self
+            .project_disabled
+            .values_mut()
+            .chain(self.project_enabled.values_mut())
+        {
+            ids.retain(|entry| entry != &id);
+        }
         match pack.source {
             Source::Bundled => {
                 if next {
@@ -367,51 +402,8 @@ impl State {
         ))
     }
 
-    pub(crate) fn validate_wasm_by_id(&mut self, id: &str) -> Result<String, String> {
-        let pack = self
-            .packs
-            .iter()
-            .find(|pack| pack.manifest.id == id)
-            .cloned()
-            .ok_or_else(|| "Plugin is no longer discovered".to_string())?;
-        self.validate_wasm(&pack)
-    }
-
-    pub(crate) fn validate_wasm(&mut self, pack: &LoadedPack) -> Result<String, String> {
-        let wasm = pack
-            .manifest
-            .wasm
-            .as_ref()
-            .ok_or_else(|| "This pack has no WASM module".to_string())?;
-        let directory = pack.directory.as_deref().ok_or_else(|| {
-            "Bundled WASM packs are not installed from a directory yet".to_string()
-        })?;
-        let directory = PathBuf::from(directory);
-        let installed = InstalledPlugin {
-            manifest: pack.manifest.clone(),
-            manifest_hash: pack.manifest_hash.clone(),
-            directory: directory.clone(),
-            wasm_path: Some(directory.join(&wasm.path)),
-        };
-        let plugin = installed.load().map_err(|error| error.to_string())?;
-        let schema = plugin.describe().map_err(|error| error.to_string())?;
-        let status = format!(
-            "WASM ok · {} kind(s) · {} relation(s) · fuel {}",
-            schema.kinds.len(),
-            schema.relations.len(),
-            wasm.fuel
-        );
-        self.wasm_status
-            .insert(pack.manifest.id.clone(), status.clone());
-        Ok(status)
-    }
-
     fn directory() -> Option<PathBuf> {
         crate::app::data_dir().map(|data| data.join("plugins"))
-    }
-
-    fn proposals_directory() -> Option<PathBuf> {
-        crate::app::data_dir().map(|data| data.join("proposals"))
     }
 
     pub(crate) fn mcp_binary() -> String {
@@ -421,22 +413,6 @@ impl State {
             .filter(|path| path.is_file())
             .map(|path| path.to_string_lossy().to_string())
             .unwrap_or_else(|| "dunlin-knowledge-mcp".into())
-    }
-
-    fn pending_proposals() -> usize {
-        let Some(directory) = Self::proposals_directory() else {
-            return 0;
-        };
-        std::fs::read_dir(directory)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .filter(|entry| {
-                        entry.path().extension().and_then(|ext| ext.to_str()) == Some("json")
-                    })
-                    .count()
-            })
-            .unwrap_or(0)
     }
 }
 
@@ -490,114 +466,19 @@ fn permissions(pack: &LoadedPack) -> String {
     }
 }
 
+fn pack_description(id: &str, description: &str) -> String {
+    if id == "dunlin-governance" {
+        "Spec workspace, Intent Inbox, agent contracts, concepts and decisions, with a sandboxed WASM validator. Disabled by default.".into()
+    } else {
+        description.to_string()
+    }
+}
+
 pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     this.plugins.load();
     let p = palette(cx);
-    let project = this.project().clone();
-    let scope = this.plugins.scope_project.then(|| project.id.clone());
-    let directory = State::directory()
-        .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|| "unavailable".into());
-    let mut content = dunlin_ui::settings::page()
-        .child(dunlin_ui::settings::section("Built-in workspace tools · this Mac", p))
-        .child(dunlin_ui::settings::card(p).child(dunlin_ui::settings::row("Spec & intent tools",
-            "Show Spec, Intent Inbox and agent-contract commands. Disabling leaves existing files untouched.",
-            dunlin_ui::switch("spec-tools", "Spec & intent tools", this.spec_tools_enabled)
-                .on_click(cx.listener(|this, enabled: &bool, _, cx| {
-                    this.spec_tools_enabled = *enabled;
-                    if !enabled { this.spec.active = false; this.spec.view = None; }
-                    this.persist_settings(cx); cx.notify();
-                })).into_any_element(), p)))
-        .child(dunlin_ui::settings::section("Extension packs", p))
-        .child(dunlin_ui::settings::description("Preferences and installed packs live on this Mac. Project overrides do not install packs or authorize tools on a remote server.", p))
-        .child(
-            card(&p)
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child("Methodology packs"),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(p.muted_fg)
-                        .child("Packs add methodology, commands and optional sandboxed WASM validation. They cannot run native app code. Installation and enabling are separate actions; review capabilities before enabling."),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(p.muted_fg)
-                        .child(format!("External pack folder: {directory}")),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(p.muted_fg)
-                                .flex_1().child(format!(
-                                    "Pending governance proposals: {}",
-                                    State::pending_proposals()
-                                )),
-                        )
-                        .child(
-                            dunlin_ui::settings::button("extensions-open-proposals")
-                                .label("Open proposals folder")
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    if let Some(directory) = State::proposals_directory()
-                                        && std::fs::create_dir_all(&directory).is_ok()
-                                    {
-                                        let _ = std::process::Command::new("open")
-                                            .arg(&directory)
-                                            .spawn();
-                                    }
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(6.))
-                        .child(
-                            dunlin_ui::settings::segments(p)
-                                .child(dunlin_ui::settings::segment("extensions-scope-global", "This Mac · global", !this.plugins.scope_project)
-                                    .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = false; cx.notify(); })))
-                                .child(dunlin_ui::settings::segment("extensions-scope-project", format!("Project: {}", project.name), this.plugins.scope_project).max_w(px(260.))
-                                    .on_click(cx.listener(|this, _, _, cx| { this.plugins.scope_project = true; cx.notify(); }))),
-                        )
-                        .child(div().flex_1())
-                        .child(
-                            dunlin_ui::settings::button("extensions-refresh")
-                                .label("Refresh")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.plugins.loaded = false;
-                                    this.plugins.load();
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            dunlin_ui::settings::button("extensions-open-folder")
-                                .label("Open extensions folder")
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    if let Some(directory) = State::directory()
-                                        && std::fs::create_dir_all(&directory).is_ok()
-                                    {
-                                        let _ = std::process::Command::new("open")
-                                            .arg(&directory)
-                                            .spawn();
-                                    }
-                                    cx.notify();
-                                })),
-                        ),
-                ),
-        );
+    let mut content =
+        dunlin_ui::settings::page().child(dunlin_ui::settings::section("Extension packs", p));
     if let Some(error) = &this.plugins.error {
         content = content.child(
             div()
@@ -673,7 +554,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         div()
                             .text_size(px(10.5))
                             .text_color(p.muted_fg)
-                            .child(catalog.manifest.description.clone()),
+                            .child(pack_description(&catalog.id, &catalog.manifest.description)),
                     )
                     .child(
                         div()
@@ -715,17 +596,17 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             ),
     );
     for (index, pack) in this.plugins.packs.iter().enumerate() {
-        let enabled = this.plugins.is_enabled_for(scope.as_deref(), pack);
+        if pack.manifest.id == "agent-contract" {
+            continue;
+        }
+        let enabled = this.plugins.is_enabled_for(None, pack);
         let id = pack.manifest.id.clone();
-        let scope_id = scope.clone();
         let source = match pack.source {
             Source::Bundled => "bundled",
             Source::External => "external",
         };
         let color = if enabled { p.green } else { p.muted_fg };
-        let details = this.settings_ui.extension_details.as_deref() == Some(&id);
-        let details_id = id.clone();
-        let mut item =
+        let item =
             card(&p)
                 .child(
                     div()
@@ -754,7 +635,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         )
                         .child(badge(if enabled { "enabled" } else { "off" }, color, &p))
                         .child(
-                            dunlin_ui::switch(format!("extension-toggle:{index}"), format!("Enable {} for the selected scope", pack.manifest.name), enabled)
+                            dunlin_ui::switch(format!("extension-toggle:{index}"), format!("Enable {}", pack.manifest.name), enabled)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     let pack = this
                                         .plugins
@@ -763,8 +644,12 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                                         .find(|pack| pack.manifest.id == id)
                                         .cloned();
                                     if let Some(pack) = pack {
-                                        let enabled =
-                                            this.plugins.toggle_for(scope_id.as_deref(), &pack);
+                                         let enabled =
+                                             this.plugins.toggle_for(None, &pack);
+                                         if !this.spec_tools_enabled() {
+                                             this.spec.active = false;
+                                             this.spec.view = None;
+                                         }
                                         this.persist_settings(cx);
                                         if this.section == dunlin_domain::SidebarSection::Knowledge
                                         {
@@ -790,7 +675,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                     div()
                         .text_size(px(10.5))
                         .text_color(p.muted_fg)
-                        .child(pack.manifest.description.clone()),
+                        .child(pack_description(&pack.manifest.id, &pack.manifest.description)),
                 )
                 .child(
                     div()
@@ -803,114 +688,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
                         .text_size(px(10.))
                         .text_color(p.muted_fg)
                         .child(format!("Permissions: {}", permissions(pack))),
-                )
-                .child(div().flex().justify_end().child(dunlin_ui::settings::button(format!("extension-details:{index}")).label(if details { "Hide technical details" } else { "Technical details…" })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.settings_ui.extension_details = if details { None } else { Some(details_id.clone()) };
-                        cx.notify();
-                    }))));
-        if !details {
-            content = content.child(item);
-            continue;
-        }
-        if let Some(wasm) = &pack.manifest.wasm {
-            let wasm_id = pack.manifest.id.clone();
-            let status = this.plugins.wasm_status.get(&wasm_id).cloned();
-            let mcp_command = pack.directory.as_ref().map(|directory| {
-                format!(
-                    "{:?} --project {:?} --plugin {:?}",
-                    State::mcp_binary(),
-                    project.path,
-                    directory
-                )
-            });
-            item = item
-                .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(p.muted_fg)
-                        .child(format!(
-                            "WASM: {} · sha256 {}… · fuel {} · max {} MiB",
-                            wasm.path,
-                            &wasm.sha256[..wasm.sha256.len().min(12)],
-                            wasm.fuel,
-                            wasm.max_memory_bytes / 1024 / 1024
-                        )),
-                )
-                .when_some(mcp_command, |item, command| {
-                    item.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(p.muted_fg)
-                                    .truncate()
-                                    .child(command.clone()),
-                            )
-                            .child(
-                                dunlin_ui::settings::button(format!("extension-copy-mcp:{index}"))
-                                    .label("Copy MCP command")
-                                    .on_click(cx.listener(move |_, _, _, cx| {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(
-                                            command.clone(),
-                                        ));
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-                })
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .child(
-                            dunlin_ui::settings::button(format!("extension-validate-wasm:{index}"))
-                                .label("Validate WASM")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    match this.plugins.validate_wasm_by_id(&wasm_id) {
-                                        Ok(status) => this.set_notice(status, cx),
-                                        Err(error) => this.set_notice(
-                                            format!("WASM validation failed: {error}"),
-                                            cx,
-                                        ),
-                                    }
-                                    cx.notify();
-                                })),
-                        )
-                        .when_some(status, |row, status| {
-                            row.child(div().text_size(px(10.)).text_color(p.green).child(status))
-                        }),
                 );
-        }
-        if !pack.manifest.contributes.commands.is_empty() {
-            item = item.child(
-                div()
-                    .text_size(px(10.))
-                    .text_color(p.muted_fg)
-                    .child(format!(
-                        "Commands: {}",
-                        pack.manifest
-                            .contributes
-                            .commands
-                            .iter()
-                            .map(|command| command.label.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )),
-            );
-        }
-        if !pack.manifest.contributes.mcp_servers.is_empty() {
-            item = item.child(
-                div()
-                    .text_size(px(10.))
-                    .text_color(p.amber)
-                    .child("MCP declarations are metadata only in this build; connector launch is not implemented."),
-            );
-        }
         content = content.child(item);
     }
     if this.plugins.packs.is_empty() && this.plugins.loaded {
@@ -928,6 +706,48 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
 mod tests {
     use super::{State, governance_mcp_config};
     use std::collections::HashMap;
+
+    #[test]
+    fn native_tools_and_agent_contract_share_the_installed_governance_package() {
+        let mut state = State::new(Vec::new(), Vec::new(), HashMap::new(), HashMap::new());
+        state
+            .packs
+            .retain(|pack| pack.manifest.id != "dunlin-governance");
+        let contract = state
+            .packs
+            .iter()
+            .find(|pack| pack.manifest.id == "agent-contract")
+            .unwrap()
+            .clone();
+        assert!(!state.governance_enabled_for(None));
+        assert!(!state.is_enabled_for(Some("project"), &contract));
+        let catalog = dunlin_plugin::catalog_plugin("dunlin-governance").unwrap();
+        let governance = dunlin_plugin::LoadedPack {
+            manifest: catalog.manifest,
+            manifest_hash: catalog.manifest_hash,
+            source: dunlin_plugin::Source::External,
+            directory: Some("/fixture/governance".into()),
+        };
+        state.packs.push(governance.clone());
+        assert!(
+            !state.governance_enabled_for(None),
+            "installing never enables a WASM package"
+        );
+        assert!(state.toggle_for(None, &governance));
+        assert!(state.governance_enabled_for(Some("project")));
+        assert!(state.is_enabled_for(Some("project"), &contract));
+        assert!(!state.toggle_for(Some("project"), &governance));
+        assert!(!state.governance_enabled_for(Some("project")));
+        assert!(!state.is_enabled_for(Some("project"), &contract));
+        state.toggle_for(None, &governance);
+        state.toggle_for(None, &governance);
+        assert!(
+            state.governance_enabled_for(Some("project")),
+            "the single global switch clears old project overrides"
+        );
+        let migrated = state.with_legacy_spec_tools(false);
+        assert!(!migrated.governance_enabled_for(Some("project")));
+    }
 
     #[test]
     fn governance_mcp_config_is_project_scoped_and_trusted() {

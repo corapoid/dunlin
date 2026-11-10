@@ -1,6 +1,7 @@
 //! Read-only inventory shares the history tab's project/backend ownership, but
 //! has independent request/error state so unborn repos and bad revisions work.
 use super::*;
+use dunlin_ui::{assets::IconName, component::Icon};
 use dunlin_workspace::git::overview::Overview;
 
 #[derive(Default)]
@@ -10,7 +11,7 @@ pub(super) struct State {
     pub(super) error: Option<String>,
     pub(super) loading: bool,
     request: uuid::Uuid,
-    scroll: ScrollHandle,
+    pub(super) scroll: ScrollHandle,
 }
 
 impl DunlinApp {
@@ -73,30 +74,33 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let view = this.git_history.view.as_ref().unwrap();
     let state = &view.overview;
     let mut content = div()
-        .id("git-inventory-list")
-        .flex_1()
-        .min_h(px(0.))
-        .overflow_scroll()
-        .track_scroll(&state.scroll)
-        .p(px(12.))
+        .w_full()
+        .max_w(px(1100.))
+        .self_center()
+        .flex_shrink_0()
+        .min_w(px(0.))
         .flex()
         .flex_col()
-        .gap(px(8.))
+        .gap(px(16.))
         .text_size(px(12.));
     if state.loading {
-        content = content.child("Reading repository metadata…");
+        content = content.child(description("Reading repository metadata…", p));
     }
     if let Some(error) = &state.error {
-        content = content.child(div().text_color(p.red).child(error.clone()));
+        content = content.child(dunlin_ui::settings::notice(error.clone(), p).text_color(p.red));
     }
     if let Some(value) = &state.value {
-        content = content.child(heading(format!("Operations · {}", value.operations.len())));
+        let mut operations = section(
+            IconName::GitBranch,
+            "In progress",
+            value.operations.len(),
+            p,
+        );
         if value.operations.is_empty() {
-            content =
-                content.child("No merge/rebase/cherry-pick/revert/sequencer markers observed.");
+            operations = operations.child(description("No Git operation in progress.", p));
         }
         for operation in &value.operations {
-            content = content.child(
+            operations = operations.child(
                 div()
                     .text_color(p.amber)
                     .child(format!("{} in progress", operation.label())),
@@ -107,33 +111,50 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     | dunlin_workspace::git::overview::Operation::Rebase
                     | dunlin_workspace::git::overview::Operation::CherryPick
             ) {
-                content = content.child(super::mutations::operation_actions(
+                operations = operations.child(super::mutations::operation_actions(
                     *operation,
                     this.git_history.running,
                     cx,
                 ));
             }
         }
-        content = content.child(heading(format!(
-            "Unmerged index paths · {}",
-            value.conflicts.len()
-        )));
+        let mut conflicts = section(
+            IconName::TriangleAlert,
+            "Conflicts",
+            value.conflicts.len(),
+            p,
+        );
         if value.conflicts.is_empty() {
-            content = content.child(
-                "No unmerged index entries observed. This does not mean the working tree is clean.",
-            );
+            conflicts = conflicts.child(description(
+                "No unmerged paths. Working tree changes may still exist.",
+                p,
+            ));
         }
         for conflict in &value.conflicts {
-            content = content.child(row(format!(
-                "{} · {} · stages {:?}",
-                conflict.path.escape_debug(),
-                conflict.label(),
-                conflict.stages
-            )));
+            conflicts = conflicts.child(
+                item()
+                    .child(
+                        div()
+                            .font_family(dunlin_ui::theme::code_font())
+                            .child(conflict.path.escape_debug().to_string()),
+                    )
+                    .child(description(
+                        format!("{} · stages {:?}", conflict.label(), conflict.stages),
+                        p,
+                    )),
+            );
         }
-        content = content.child(heading(format!("Stash · {}", value.stashes.len())));
+        content = content.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(16.))
+                .child(operations.flex_1().min_w(px(260.)))
+                .child(conflicts.flex_1().min_w(px(260.))),
+        );
+        let mut stashes = section(IconName::Archive, "Stashes", value.stashes.len(), p);
         if value.stashes.is_empty() {
-            content = content.child("No stashes.");
+            stashes = stashes.child(description("No saved stashes.", p));
         }
         for stash in &value.stashes {
             let date = chrono::DateTime::from_timestamp(stash.timestamp, 0)
@@ -143,19 +164,30 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         .to_string()
                 })
                 .unwrap_or_default();
-            content = content.child(row(format!(
-                "{} · {} · {date} · {}",
-                stash.selector,
-                stash.oid.chars().take(8).collect::<String>(),
-                stash.subject.escape_debug()
-            )));
-            content = content.child(super::mutations::stash_actions(
-                &stash.oid,
-                this.git_history.running,
-                cx,
-            ));
+            stashes = stashes.child(
+                item()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .child(stash.subject.escape_debug().to_string()),
+                    )
+                    .child(description(
+                        format!(
+                            "{} · {} · {date}",
+                            stash.selector,
+                            stash.oid.chars().take(8).collect::<String>()
+                        ),
+                        p,
+                    ))
+                    .child(super::mutations::stash_actions(
+                        &stash.oid,
+                        this.git_history.running,
+                        cx,
+                    )),
+            );
         }
-        content = content.child(heading(format!("Worktrees · {}", value.worktrees.len())));
+        content = content.child(stashes);
+        let mut worktrees = section(IconName::FolderGit2, "Worktrees", value.worktrees.len(), p);
         for tree in &value.worktrees {
             let mut flags = Vec::new();
             if tree.current {
@@ -174,28 +206,10 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 flags.push(format!("prunable: {}", reason.escape_debug()));
             }
             let reference = tree.branch.as_deref().unwrap_or("no branch");
-            content = content.child(row(format!(
-                "{} · {} · {} · {}",
-                tree.path.escape_debug(),
-                reference.escape_debug(),
-                tree.head
-                    .as_ref()
-                    .map(|s| s.chars().take(8).collect::<String>())
-                    .unwrap_or_default(),
-                flags.join(" · ")
-            )));
-            content = content.child(super::mutations::worktree_action(
-                &tree.path,
-                this.git_history.running
-                    || tree.current
-                    || tree.bare
-                    || tree.locked.is_some()
-                    || tree.prunable.is_some(),
-                cx,
-            ));
             let path = tree.path.clone();
-            let mut actions = div().flex().gap(px(4.)).child(
-                dunlin_ui::action_button(format!("worktree-copy-{path}"))
+            let mut actions = dunlin_ui::settings::actions().child(
+                dunlin_ui::settings::button(format!("worktree-copy-{path}"))
+                    .icon(IconName::Copy)
                     .label(if view.project.is_remote() {
                         "Copy server path"
                     } else {
@@ -208,7 +222,8 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             if !view.project.is_remote() && !tree.bare && tree.prunable.is_none() {
                 let path = tree.path.clone();
                 actions = actions.child(
-                    dunlin_ui::action_button(format!("worktree-open-{path}"))
+                    dunlin_ui::settings::button(format!("worktree-open-{path}"))
+                        .icon(IconName::FolderOpen)
                         .label("Open as project…")
                         .disabled(this.git_history.running)
                         .on_click(cx.listener(move |this, _, _, cx| {
@@ -216,38 +231,212 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         })),
                 );
             }
-            content = content.child(actions);
+            actions = actions.child(super::mutations::worktree_action(
+                &tree.path,
+                this.git_history.running
+                    || tree.current
+                    || tree.bare
+                    || tree.locked.is_some()
+                    || tree.prunable.is_some(),
+                cx,
+            ));
+            worktrees = worktrees.child(
+                item()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(
+                                Icon::new(IconName::GitBranch)
+                                    .size(px(14.))
+                                    .text_color(p.muted_fg),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .truncate()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(
+                                        reference
+                                            .trim_start_matches("refs/heads/")
+                                            .escape_debug()
+                                            .to_string(),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(p.muted_fg)
+                                    .font_family(dunlin_ui::theme::code_font())
+                                    .child(
+                                        tree.head
+                                            .as_ref()
+                                            .map(|s| s.chars().take(8).collect::<String>())
+                                            .unwrap_or_default(),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .min_w(px(0.))
+                            .truncate()
+                            .text_size(px(11.))
+                            .text_color(p.muted_fg)
+                            .child(tree.path.escape_debug().to_string()),
+                    )
+                    .when(!flags.is_empty(), |row| {
+                        row.child(description(flags.join(" · "), p))
+                    })
+                    .child(actions),
+            );
         }
+        content = content.child(worktrees);
     }
-    div().id("git-inventory-panel").track_focus(&view.focus).flex_1().min_w(px(0.)).min_h(px(0.))
-        .bg(p.bg).text_color(p.fg).flex().flex_col().overflow_hidden()
-        .child(div().p(px(10.)).flex().flex_wrap().items_center().gap(px(8.))
-            .child(format!("Repository state · {}", view.project.name)).child(div().flex_1())
-            .child(dunlin_ui::button("inventory-history").label("Commit history").on_click(cx.listener(|this, _, _, cx| {
-                if let Some(view) = &mut this.git_history.view { view.overview.visible = false; }
-                cx.notify();
-            })))
-            .child(dunlin_ui::action_button("inventory-refresh").label("Refresh state").disabled(state.loading || this.git_history.running)
-                .on_click(cx.listener(|this, _, _, cx| this.load_git_overview(cx))))
-            .child(dunlin_ui::button("inventory-close").label("Close tab").on_click(cx.listener(|this, _, window, cx| {
-                this.close_git_history(cx); this.focus_handle.focus(window, cx);
-            }))))
-        .child(div().px(px(12.)).pb(px(8.)).text_size(px(11.)).text_color(p.muted_fg)
-             .child(format!("{} snapshot · mutations require a fresh preflight and explicit confirmation", if view.project.is_remote() { "Relay" } else { "Local" })))
-        .child(super::mutations::render(this,cx))
-        .child(content)
-        .child(div().p(px(10.)).text_size(px(11.)).text_color(p.muted_fg)
-             .child("Snapshot alone never authorizes a mutation. New detached worktrees live in the common Git directory's dunlin-worktrees folder; existing worktree removal is explicit and requires clean state."))
+    content = content.child(div().pt(px(8.)).flex().flex_col().gap(px(12.))
+        .child(div().text_size(px(14.)).font_weight(FontWeight::MEDIUM).child("Git operations"))
+        .child(super::mutations::render(this, cx)))
+        .child(description("Every change requires a fresh preflight and explicit confirmation. New detached worktrees are created in the common Git directory's dunlin-worktrees folder; removal requires a clean, unlocked worktree.", p));
+    div()
+        .id("git-inventory-panel")
+        .relative()
+        .track_focus(&view.focus)
+        .flex_1()
+        .min_w(px(0.))
+        .min_h(px(0.))
+        .text_color(p.fg)
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("git-inventory-panel")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .child(
+            div()
+                .px(px(20.))
+                .py(px(16.))
+                .flex_shrink_0()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(12.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(180.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .text_size(px(16.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .child("Repository state"),
+                        )
+                        .child(description(
+                            format!(
+                                "{} · {} snapshot",
+                                view.project.name,
+                                if view.project.is_remote() {
+                                    "Relay"
+                                } else {
+                                    "Local"
+                                }
+                            ),
+                            p,
+                        )),
+                )
+                .child(
+                    dunlin_ui::toolbar_button("inventory-history")
+                        .icon(IconName::GitBranch)
+                        .label("Commit history")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(view) = &mut this.git_history.view {
+                                view.overview.visible = false;
+                            }
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    dunlin_ui::toolbar_button("inventory-refresh")
+                        .icon(IconName::RefreshCw)
+                        .label("Refresh")
+                        .disabled(state.loading || this.git_history.running)
+                        .on_click(cx.listener(|this, _, _, cx| this.load_git_overview(cx))),
+                )
+                .child(
+                    icon_button("inventory-close", IconName::X, "Close Git tab").on_click(
+                        cx.listener(|this, _, window, cx| {
+                            this.close_git_history(cx);
+                            this.focus_handle.focus(window, cx);
+                        }),
+                    ),
+                ),
+        )
+        .child(
+            div()
+                .id("git-inventory-list")
+                .flex_1()
+                .min_h(px(0.))
+                .min_w(px(0.))
+                .overflow_y_scroll()
+                .track_scroll(&state.scroll)
+                .px(px(20.))
+                .pb(px(20.))
+                .flex()
+                .flex_col()
+                .child(content),
+        )
         .into_any_element()
 }
 
-fn heading(label: String) -> impl IntoElement {
-    div()
+fn section(icon: IconName, title: &str, count: usize, p: Palette) -> Div {
+    SurfaceGeometry::SETTINGS_CARD
+        .paint(transparent_black(), p.border)
+        .min_w(px(0.))
         .flex_shrink_0()
-        .mt(px(10.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .child(label)
+        .p(px(16.))
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(Icon::new(icon).size(px(15.)).text_color(p.muted_fg))
+                .child(
+                    div()
+                        .flex_1()
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(title.to_owned()),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(p.muted_fg)
+                        .child(count.to_string()),
+                ),
+        )
 }
-fn row(label: String) -> impl IntoElement {
-    div().flex_shrink_0().child(label)
+
+fn item() -> Div {
+    div()
+        .min_w(px(0.))
+        .flex_shrink_0()
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+}
+
+fn description(text: impl Into<SharedString>, p: Palette) -> Div {
+    dunlin_ui::settings::description(text, p)
 }

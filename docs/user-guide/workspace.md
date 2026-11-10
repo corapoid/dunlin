@@ -19,7 +19,47 @@ separate from repository projects.
 
 ## Navigation and tabs
 
-- **⌘K** opens the command palette; **⌘[ / ⌘]** navigate back/forward.
+- Click the centered title-bar **Search…** field or press **⌘K** for global search.
+  Suggestions appear before typing, with **Dashboard** always first. Search spans
+  configured projects, saved sessions, filenames from the current loaded Explorer,
+  settings and workspace actions. It does not scan file contents or query servers
+  when opened. **↑/↓**, **Enter** and **Esc** navigate, open and dismiss results.
+- The single sidebar has **Projects / Sessions / Explorer** icons at the top.
+  **Projects** uses the same inline name search as Explorer: focus the list or
+  select its tab, then type a name. **↑/↓** selects a match, **Enter** opens it,
+  **Backspace** edits and **Esc** clears the query. Matching groups are temporarily
+  expanded and restored on clearing. **+ New** opens the project source menu.
+  Its footer contains **Source Control, Knowledge, Intent, Artifacts, Security
+  Audit**. Click **Project workspace** to collapse this list downward; its state is
+  remembered between launches. A bottom row keeps the **Settings** icon on the
+  left and host/connection status on the right, even with the list collapsed.
+  Intent appears only with its package enabled; Security Audit appears only with
+  an installed, enabled audit skill for this project or globally.
+  **⌘B** collapses the entire sidebar, including this
+  footer; no separate navigation rail remains.
+- **Chat / Graph / Trace** appears beside the user avatar when a conversation is
+  active. The avatar menu opens below the avatar and contains appearance controls,
+  Minimal view and, when multiple GitHub accounts are logged into `gh`, an account
+  switcher. Switching changes the active `github.com` CLI account; credentials
+  remain in `gh`. Settings is available from the sidebar, not this menu.
+  Connection status is not duplicated in the title bar.
+- **⌘[ / ⌘]** navigate back/forward, including Knowledge and Artifact destinations.
+- **Knowledge**, **Artifacts** and **Security Audit** open independent project
+  documents in the normal tab strip. They share the workspace's rounded surface,
+  support closing/splitting/reordering and do not open overlay windows.
+- Right-click any document tab for **Lock/Unlock tab** and **Close tab**. Locked
+  tabs show a lock instead of the close icon and are skipped by Close all tabs;
+  unlock them before closing, including with **⌘W**.
+- Git sync and change counts remain in the status bar in every workspace view,
+  including Chat. Sync actions are shown when a configured upstream is known.
+- Source Control keeps its commit controls fixed above a virtualized change list;
+  only visible file rows are built. Stage all is a compact toolbar action; Unstage
+  all and Discard all changes are in the adjacent menu (discard still confirms).
+- Chat / Graph / Trace and AI / Manual commit use flat sliding selection surfaces,
+  without a glass lens or press zoom. Reduced motion disables the sliding animation.
+- **Minimal view** keeps the avatar menu unchanged while simplifying session
+  lists to one-line rows and tightening Project workspace entries. Session
+  metadata remains available in tooltips and context menus.
 - **⌘N** opens another conversation tab. Closing one hides it; reopen saved history
   from Sessions. [Session scopes](session-list.md) keep general and project history separate.
 - File buffers, undo, drafts and pane layout are not interchangeable with saved
@@ -44,6 +84,7 @@ recent projects can perform a bounded read-only upstream check; this does not
 fetch, pull or update tracking refs. Missing upstream, unavailable comparison and
 failed checks are distinct from zero changes. Remote status must not borrow a
 local repository's results.
+Dashboard has no permanent navigation button; open the first global-search result.
 
 Project icons come from bounded local assets or an explicit custom image, never
 from executing repository configuration or fetching favicons. Settings → Workspace

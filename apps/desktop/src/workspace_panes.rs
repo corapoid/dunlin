@@ -18,6 +18,7 @@ pub(crate) enum TabKey {
     File(String),
     Git(String),
     Spec(String),
+    Tool(String, crate::workspace_tools::Tool),
     Terminal(String),
 }
 
@@ -62,6 +63,7 @@ pub(crate) struct State {
     pub active: [Option<TabKey>; 2],
     pub views: [MainView; 2],
     pub order: Vec<TabKey>,
+    pub locked: std::collections::HashSet<TabKey>,
     recent: Vec<TabKey>,
     pub restore: Option<TabKey>,
     restoring: bool,
@@ -81,6 +83,7 @@ impl Default for State {
             active: [None, None],
             views: [MainView::Chat; 2],
             order: Vec::new(),
+            locked: Default::default(),
             recent: Vec::new(),
             restore: None,
             restoring: false,
@@ -101,6 +104,7 @@ impl State {
         }
     }
     pub fn closed(&mut self, key: &TabKey) {
+        self.locked.remove(key);
         let current = self.recent.last() == Some(key);
         let pane = self.owner(key);
         self.order.retain(|tab| tab != key);
@@ -154,6 +158,9 @@ impl State {
         }
         let old = TabKey::Chat(old.into());
         let new = TabKey::Chat(new.into());
+        if self.locked.remove(&old) {
+            self.locked.insert(new.clone());
+        }
         for key in &mut self.order {
             if *key == old {
                 *key = new.clone();
@@ -228,7 +235,9 @@ impl DunlinApp {
         }
     }
     pub(crate) fn current_workspace_tab(&self) -> Option<TabKey> {
-        if self.spec.is_active_for(self.project()) {
+        if let Some(tool) = self.current_workspace_tool() {
+            Some(TabKey::Tool(self.project().id.clone(), tool))
+        } else if self.spec.is_active_for(self.project()) {
             Some(TabKey::Spec(self.project().id.clone()))
         } else if self.git_history.is_active_for(self.project()) {
             Some(TabKey::Git(self.project().id.clone()))
@@ -266,8 +275,21 @@ impl DunlinApp {
         if self.git_history.is_open_for(self.project()) {
             keys.push(TabKey::Git(self.project().id.clone()));
         }
-        if self.spec_tools_enabled && self.spec.is_open_for(self.project()) {
+        if self.spec_tools_enabled() && self.spec.is_open_for(self.project()) {
             keys.push(TabKey::Spec(self.project().id.clone()));
+        }
+        for tool in [
+            crate::workspace_tools::Tool::Knowledge,
+            crate::workspace_tools::Tool::Artifacts,
+            crate::workspace_tools::Tool::Security,
+        ] {
+            if self
+                .workspace_tools
+                .opened
+                .contains(&(self.project().id.clone(), tool))
+            {
+                keys.push(TabKey::Tool(self.project().id.clone(), tool));
+            }
         }
         keys.extend(
             self.terminal
@@ -496,6 +518,10 @@ impl DunlinApp {
                 self.open_spec_workspace(window, cx);
                 true
             }
+            TabKey::Tool(_, tool) => {
+                self.open_workspace_tool(*tool, window, cx);
+                self.current_workspace_tool() == Some(*tool)
+            }
         }
     }
     pub(crate) fn focus_workspace_pane(
@@ -647,6 +673,8 @@ impl DunlinApp {
         let conflict = self.editor_conflict.clone();
         let git = self.git_history.active;
         let spec = self.spec.active;
+        let tool = self.workspace_tools.current.take();
+        let knowledge_mode = self.knowledge.mode;
         let composer = self.composer.clone();
         self.exchange_pane_ui(pane, window, cx);
         let mut alternate = None;
@@ -711,6 +739,14 @@ impl DunlinApp {
                 self.spec.active = true;
                 self.git_history.active = false;
             }
+            TabKey::Tool(project, kind) => {
+                self.workspace_tools.current = Some((project.clone(), *kind));
+                self.knowledge.mode = if *kind == crate::workspace_tools::Tool::Artifacts {
+                    crate::knowledge::Mode::Artifacts
+                } else {
+                    self.workspace_tools.knowledge_mode
+                };
+            }
         }
         let content = self.workspace_content(window, cx);
         if let TabKey::Chat(id) = &key {
@@ -740,6 +776,8 @@ impl DunlinApp {
         self.editor_conflict = conflict;
         self.git_history.active = git;
         self.spec.active = spec;
+        self.workspace_tools.current = tool;
+        self.knowledge.mode = knowledge_mode;
         self.composer = composer;
         content
     }
@@ -748,6 +786,19 @@ impl DunlinApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tab_locks_follow_chat_identity_and_are_cleared_on_final_close() {
+        let mut state = State::default();
+        let old = TabKey::Chat("local".into());
+        let new = TabKey::Chat("advertised".into());
+        state.opened(old.clone());
+        state.locked.insert(old.clone());
+        state.rekey_chat("local", "advertised");
+        assert!(!state.locked.contains(&old));
+        assert!(state.locked.contains(&new));
+        state.closed(&new);
+        assert!(!state.locked.contains(&new));
+    }
     #[test]
     fn close_restores_recent_selection_not_first_open_tab_and_stays_in_its_pane() {
         let a = TabKey::Chat("a".into());

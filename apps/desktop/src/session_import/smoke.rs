@@ -145,7 +145,10 @@ pub(crate) fn run() {
                                 assert!(histories.iter().all(|s| s.workspace.is_some() && app.session_visible(s)));
                                 assert_eq!(histories.iter().filter(|s| app.session_scope(s) == Some(crate::session_list::Scope::Project)).count(), 699);
                                 assert_eq!(histories.iter().filter(|s| s.project_id == "other-project" && app.session_scope(s).is_none()).count(), 1);
-                                let store = app.store.as_ref().unwrap();
+                                 let store = app.store.as_ref().unwrap();
+                                 let last_import = app.session_import.last_import["Claude Code"];
+                                 assert!(last_import > 0);
+                                 assert_eq!(State::load(Some(store)).last_import["Claude Code"], last_import);
                                 assert_eq!(store.sessions(None).unwrap().iter().filter(|s| s.id.starts_with("import-")).count(), 700);
                                  if stage == 0 {
                                     let id = imported_id("Claude Code", "fixture-0");

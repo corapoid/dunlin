@@ -7,135 +7,6 @@ use dunlin_ui::component::{
 };
 
 impl DunlinApp {
-    pub(super) fn rail(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = palette(cx);
-        let mut rail = div()
-            .id("navigation-rail")
-            .relative()
-            .w(px(52.))
-            .h_full()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .py(px(9.))
-            .gap(px(3.));
-        #[cfg(debug_assertions)]
-        {
-            rail = rail.children(crate::workspace_ui_smoke::probe("navigation-rail"));
-        }
-
-        let mut items = vec![
-            (
-                SidebarSection::Dashboard,
-                IconName::ChartNoAxesColumn,
-                0,
-                false,
-            ),
-            (
-                SidebarSection::Projects,
-                IconName::LayoutGrid,
-                self.projects.len(),
-                false,
-            ),
-            (SidebarSection::Files, IconName::Files, 0, false),
-            (SidebarSection::Search, IconName::Search, 0, false),
-            (SidebarSection::SourceControl, IconName::GitBranch, 4, true),
-        ];
-        items.push((
-            SidebarSection::Sessions,
-            IconName::Clock3,
-            self.sessions.len(),
-            false,
-        ));
-        items.push((
-            SidebarSection::Knowledge,
-            IconName::BookOpen,
-            self.knowledge.graph.objects.len(),
-            false,
-        ));
-
-        for (section, icon_name, count, has_badge) in items {
-            let active = self.section == section && !self.settings_open;
-            let mut button = navigation_button(
-                ("rail", section as usize),
-                icon_name,
-                match section {
-                    SidebarSection::Search => self.shortcut_label(section.label(), "⌘⇧F"),
-                    SidebarSection::SourceControl => self.shortcut_label(section.label(), "⌘⌥G"),
-                    _ => section.label().into(),
-                },
-            )
-            .relative()
-            .size(px(36.))
-            .selected(active)
-            .toggled(active)
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.section = section;
-                if section != SidebarSection::Dashboard {
-                    this.sidebar_collapsed = false;
-                }
-                this.settings_open = false;
-                if section == SidebarSection::Files {
-                    this.focus_explorer(window, cx);
-                }
-                if section == SidebarSection::SourceControl {
-                    this.open_git_history(window, cx);
-                    if !this.git_loading {
-                        this.refresh_git_status(cx);
-                    }
-                }
-                this.persist_settings(cx);
-                cx.notify();
-            }));
-            #[cfg(debug_assertions)]
-            if section == SidebarSection::Projects {
-                button = button.children(crate::workspace_ui_smoke::probe("rail-projects"));
-            }
-            if has_badge && count > 0 {
-                button = button.child(
-                    div()
-                        .absolute()
-                        .top(px(6.))
-                        .right(px(6.))
-                        .size(px(6.))
-                        .rounded_full()
-                        .bg(p.amber)
-                        .border_1()
-                        .border_color(p.panel),
-                );
-            }
-            rail = rail.child(button);
-        }
-
-        rail.child(div().flex_1())
-            .child(
-                navigation_button(
-                    "rail-settings",
-                    IconName::Settings,
-                    self.shortcut_label("Settings", "⌘,"),
-                )
-                .relative()
-                .size(px(36.))
-                .selected(self.settings_open)
-                .toggled(self.settings_open)
-                .children({
-                    #[cfg(debug_assertions)]
-                    {
-                        crate::workspace_ui_smoke::probe("rail-settings")
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        None::<AnyElement>
-                    }
-                })
-                .on_click(|_, window, cx| {
-                    window.dispatch_action(Box::new(crate::native_menu::Settings), cx)
-                }),
-            )
-            .into_any_element()
-    }
-
     pub(crate) fn takeover_current_session(&mut self, cx: &mut Context<Self>) {
         let session = self.session().clone();
         let Some(host_id) = session.origin.host_id().map(str::to_string) else {
@@ -809,7 +680,11 @@ impl DunlinApp {
             return crate::dashboard::render(self, cx);
         }
         if self.section == SidebarSection::Knowledge {
-            return crate::knowledge::render(self, window, cx);
+            self.open_workspace_tool(crate::workspace_tools::Tool::Knowledge, window, cx);
+        }
+        if self.section == SidebarSection::Security {
+            self.section = self.sidebar_tab.section();
+            self.open_workspace_tool(crate::workspace_tools::Tool::Security, window, cx);
         }
         if self.projects.is_empty() {
             return self.onboarding(cx);
@@ -917,7 +792,9 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.spec_tools_enabled && self.spec.is_active_for(self.project()) {
+        if let Some(tool) = self.current_workspace_tool() {
+            self.render_workspace_tool(tool, window, cx)
+        } else if self.spec_tools_enabled() && self.spec.is_active_for(self.project()) {
             crate::spec::render(self, cx)
         } else if self.git_history.is_active_for(self.project()) {
             crate::git_history::render(self, cx)
@@ -2077,14 +1954,14 @@ impl DunlinApp {
                     )),
                 )
             }
-            ContextTarget::Tab(id) => {
-                let Some(tab) = self.workbench.tabs.iter().find(|tab| tab.id == id) else {
+            ContextTarget::Tab(key) => {
+                if !self.workspace_tab_keys().contains(&key) {
                     return div().into_any_element();
-                };
-                let name = tab.inspector.name.clone();
-                let locked = tab.locked;
-                let close_id = id.clone();
-                let lock_id = id.clone();
+                }
+                let name = self.workspace_tab_label(&key);
+                let locked = self.workspace_tab_locked(&key);
+                let close_key = key.clone();
+                let lock_key = key.clone();
                 div()
                     .flex()
                     .flex_col()
@@ -2106,21 +1983,27 @@ impl DunlinApp {
                             if locked { "Unlock tab" } else { "Lock tab" },
                             p.fg,
                         )
+                        .relative()
+                        .children({
+                            #[cfg(debug_assertions)]
+                            {
+                                crate::workspace_ui_smoke::probe("ctx-tab-lock")
+                            }
+                            #[cfg(not(debug_assertions))]
+                            {
+                                None::<AnyElement>
+                            }
+                        })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.context_menu = None;
-                            if let Some(tab) =
-                                this.workbench.tabs.iter_mut().find(|tab| tab.id == lock_id)
-                            {
-                                tab.locked = !tab.locked;
-                            }
-                            cx.notify();
+                            this.toggle_workspace_tab_lock(&lock_key, cx);
                         })),
                     )
                     .child(
                         item("ctx-tab-close", "Close tab", p.fg).on_click(cx.listener(
                             move |this, _, window, cx| {
                                 this.context_menu = None;
-                                this.request_close_tab(&close_id, window, cx);
+                                this.request_close_workspace_tab(&close_key, window, cx);
                             },
                         )),
                     )
@@ -2592,10 +2475,6 @@ impl DunlinApp {
         });
         let ahead = remote.and_then(|activity| activity.ahead);
         let behind = remote.and_then(|activity| activity.behind);
-        let chat = matches!(
-            self.current_workspace_tab(),
-            Some(crate::workspace_panes::TabKey::Chat(_))
-        ) && self.view == MainView::Chat;
         let repository = self
             .git
             .repository
@@ -2717,7 +2596,7 @@ impl DunlinApp {
                 &branch,
                 cx,
             ))
-            .when(!chat, |view| {
+            .map(|view| {
                 let mut row = view;
                 if let Some(upstream) = upstream.clone() {
                     let incoming = behind.unwrap_or(0);
@@ -2766,6 +2645,13 @@ impl DunlinApp {
                 }
                 row.child(
                     div()
+                        .id("status-git-changes")
+                        .relative().children({
+                            #[cfg(debug_assertions)]
+                            { crate::workspace_ui_smoke::probe("status-git-changes") }
+                            #[cfg(not(debug_assertions))]
+                            { None::<AnyElement> }
+                        })
                         .flex()
                         .items_center()
                         .gap(px(5.))
@@ -3099,7 +2985,34 @@ impl DunlinApp {
             .text_color(p.fg)
             .font_family(dunlin_ui::theme::ui_font())
             .track_focus(&self.focus_handle)
+            .key_context(
+                if self.view == MainView::Chat
+                    && matches!(
+                        self.current_workspace_tab(),
+                        Some(crate::workspace_panes::TabKey::Chat(_))
+                    )
+                    && !self.has_overlay()
+                {
+                    "DunlinChat"
+                } else {
+                    "Dunlin"
+                },
+            )
             .capture_key_down(cx.listener(Self::on_key_down))
+            .capture_action(cx.listener(
+                |this, _: &dunlin_ui::component::input::OutdentInline, window, cx| {
+                    if !this.cycle_chat_mode(window, cx) {
+                        cx.propagate();
+                    }
+                },
+            ))
+            .capture_action(cx.listener(
+                |this, _: &views::chat_controls::NextAgentMode, window, cx| {
+                    if !this.cycle_chat_mode(window, cx) {
+                        cx.propagate();
+                    }
+                },
+            ))
             .on_action(
                 cx.listener(|this, _: &crate::native_menu::Back, window, cx| {
                     this.navigate_history(false, window, cx);
@@ -3137,6 +3050,7 @@ impl DunlinApp {
                     cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
                         if this.dismiss_history_for_menu(cx) {
                             this.section = SidebarSection::Projects;
+                            this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
                             cx.notify();
                         }
                     }),

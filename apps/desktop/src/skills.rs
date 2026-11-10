@@ -245,8 +245,21 @@ pub(crate) struct Skill {
     pub source_hash: String,
     #[serde(default)]
     pub installations: Vec<Installation>,
+    #[serde(default)]
+    pub disabled: bool,
 }
 impl Skill {
+    fn is_builtin(&self) -> bool {
+        matches!(
+            self.id.as_str(),
+            COMMIT_SKILL
+                | SECURITY_AUDIT_SKILL
+                | SPEC_KIT_SKILL
+                | PLUGIN_BUILDER_SKILL
+                | COORDINATION_SKILL
+        )
+    }
+
     pub fn rendered(&self) -> Result<String, String> {
         if self.id.is_empty()
             || self.id.len() > 48
@@ -317,19 +330,6 @@ impl Skill {
         }
         files[1..].sort_by(|a, b| a.0.cmp(&b.0));
         Ok(files)
-    }
-
-    pub(crate) fn bundle_size(&self) -> usize {
-        self.rendered()
-            .map(|contents| {
-                contents.len()
-                    + self
-                        .files
-                        .iter()
-                        .map(|file| file.contents.len())
-                        .sum::<usize>()
-            })
-            .unwrap_or(0)
     }
 
     pub(crate) fn content_hash(&self) -> String {
@@ -403,7 +403,7 @@ fn shared_installation_current(skill: &Skill) -> bool {
         })
 }
 pub(crate) fn defaults() -> Vec<Skill> {
-    vec![Skill { id: COMMIT_SKILL.into(), title: "Conventional commits".into(), description: "Analyze repository changes and create focused Conventional Commits only when the user explicitly requests commits.".into(), body: COMMIT_INSTRUCTIONS.into(), files: Vec::new(), origin: "Built-in".into(), source_hash: String::new(), installations: Vec::new() }]
+    vec![Skill { id: COMMIT_SKILL.into(), title: "Conventional commits".into(), description: "Analyze repository changes and create focused Conventional Commits only when the user explicitly requests commits.".into(), body: COMMIT_INSTRUCTIONS.into(), files: Vec::new(), origin: "Built-in".into(), source_hash: String::new(), installations: Vec::new(), disabled: false }]
 }
 pub(crate) fn catalog_metadata() -> Vec<&'static Skill> {
     vec![
@@ -541,6 +541,7 @@ fn parse_skill_contents(contents: &str, fallback_id: &str) -> Result<Skill, Stri
         origin: String::new(),
         source_hash: hex::encode(Sha256::digest(contents.as_bytes())),
         installations: Vec::new(),
+        disabled: false,
     })
 }
 
@@ -1133,11 +1134,131 @@ pub(crate) fn uninstall(installation: &Installation, id: &str) -> Result<(), Str
     Ok(())
 }
 
+const DISABLED_ENTRYPOINT: &str = ".dunlin-disabled-SKILL.md";
+
+fn managed_skill_directory<'a>(
+    installation: &'a Installation,
+    id: &str,
+) -> Result<&'a Path, String> {
+    let path = Path::new(&installation.path);
+    let directory = path.parent().ok_or("Missing skill directory")?;
+    if !path.is_absolute()
+        || path.file_name().is_none_or(|name| name != "SKILL.md")
+        || directory
+            .file_name()
+            .is_none_or(|name| name != format!("dunlin-{id}").as_str())
+        || fs::canonicalize(directory).map_err(|error| error.to_string())? != directory
+    {
+        return Err("Refusing a moved or symlinked managed skill directory".into());
+    }
+    Ok(directory)
+}
+
+fn move_entrypoint(source: &Path, destination: &Path) -> Result<(), String> {
+    // Creating a link refuses an existing destination; never overwrite another
+    // file when suspending or restoring the harness discovery entry point.
+    fs::hard_link(source, destination).map_err(|error| error.to_string())?;
+    if let Err(error) = fs::remove_file(source) {
+        let _ = fs::remove_file(destination);
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+fn set_skill_enabled_at(skill: &Skill, enabled: bool) -> Result<(), String> {
+    let mut moves = Vec::new();
+    for link in skill
+        .installations
+        .iter()
+        .filter(|installation| installation.linked_to.is_some())
+    {
+        let alias = Path::new(&link.path).parent().ok_or("Missing skill link")?;
+        let target = Path::new(link.linked_to.as_deref().unwrap())
+            .parent()
+            .ok_or("Missing canonical skill directory")?;
+        if !fs::symlink_metadata(alias).is_ok_and(|metadata| metadata.file_type().is_symlink())
+            || !fs::read_link(alias).is_ok_and(|path| path == target)
+        {
+            return Err("The managed skill link was replaced; it was preserved".into());
+        }
+    }
+    for installation in skill
+        .installations
+        .iter()
+        .filter(|installation| installation.linked_to.is_none())
+    {
+        let directory = managed_skill_directory(installation, &skill.id)?;
+        let active = directory.join("SKILL.md");
+        let inactive = directory.join(DISABLED_ENTRYPOINT);
+        let (source, destination) = if enabled {
+            (inactive, active)
+        } else {
+            (active, inactive)
+        };
+        let already_moved = !source.try_exists().map_err(|error| error.to_string())?;
+        let check = if already_moved { &destination } else { &source };
+        regular_file(check)?;
+        if file_hash(&fs::read_to_string(check).map_err(|error| error.to_string())?)
+            != file_hash(&installation.contents)
+        {
+            return Err("Installed skill was changed outside Dunlin; it was preserved".into());
+        }
+        if !already_moved {
+            if fs::symlink_metadata(&destination).is_ok() {
+                return Err("A saved skill entry point already exists; it was preserved".into());
+            }
+            moves.push((source, destination));
+        }
+    }
+    for (index, (source, destination)) in moves.iter().enumerate() {
+        if let Err(error) = move_entrypoint(source, destination) {
+            for (source, destination) in moves[..index].iter().rev() {
+                let _ = move_entrypoint(destination, source);
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+fn update_builtin_installations(skill: &Skill) -> Result<Vec<Installation>, String> {
+    let mut updated = Vec::new();
+    for installation in skill
+        .installations
+        .iter()
+        .filter(|installation| installation.linked_to.is_none())
+    {
+        let directory = managed_skill_directory(installation, &skill.id)?;
+        updated.push(install_at_scoped(
+            directory.parent().ok_or("Missing skill base directory")?,
+            skill,
+            installation.target,
+            installation.scope,
+            &installation.project_id,
+        )?);
+    }
+    for link in skill
+        .installations
+        .iter()
+        .filter(|installation| installation.linked_to.is_some())
+    {
+        let canonical = updated
+            .iter()
+            .find(|installation| Some(&installation.path) == link.linked_to.as_ref())
+            .ok_or("Missing canonical skill installation")?;
+        let mut installation = link.clone();
+        installation.contents = canonical.contents.clone();
+        installation.files = canonical.files.clone();
+        updated.push(installation);
+    }
+    Ok(updated)
+}
+
 #[derive(Default)]
 pub(crate) struct Ui {
     draft: Option<Draft>,
     pub(crate) busy: bool,
-    installing: Option<String>,
+    pub(crate) installing: Option<String>,
     pub(crate) message: Option<String>,
 }
 impl Ui {
@@ -1277,13 +1398,99 @@ fn fetch_github_skill(urls: &[Url]) -> Result<Skill, String> {
 }
 
 impl DunlinApp {
+    fn update_builtin_skill(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(skill) = self.skills.iter().find(|skill| skill.id == id).cloned() else {
+            return;
+        };
+        self.skills_ui.busy = true;
+        cx.spawn(async move |this, cx| {
+            let id = skill.id.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { update_builtin_installations(&skill) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.skills_ui.busy = false;
+                match result {
+                    Ok(installations) => {
+                        if let Some(skill) = this.skills.iter_mut().find(|skill| skill.id == id) {
+                            skill.installations = installations;
+                        }
+                        this.skills_ui.message = Some(
+                            "Updated skill. Restart existing agent sessions to reload it.".into(),
+                        );
+                        this.persist_settings(cx);
+                    }
+                    Err(error) => {
+                        this.skills_ui.message = Some(format!(
+                            "Instructions saved, but installed files need attention: {error}"
+                        ))
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn toggle_builtin_skill(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.skills_ui.busy {
+            return;
+        }
+        let Some(skill) = self
+            .skills
+            .iter()
+            .find(|skill| skill.id == id && skill.is_builtin() && !skill.installations.is_empty())
+            .cloned()
+        else {
+            return;
+        };
+        let enabled = skill.disabled;
+        self.skills_ui.busy = true;
+        cx.spawn(async move |this, cx| {
+            let id = skill.id.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move { set_skill_enabled_at(&skill, enabled) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.skills_ui.busy = false;
+                match result {
+                    Ok(()) => {
+                        if let Some(skill) = this.skills.iter_mut().find(|skill| skill.id == id) {
+                            skill.disabled = !enabled;
+                        }
+                        if !enabled {
+                            for selected in this.conversation_skills.values_mut() {
+                                selected.retain(|selected| selected != &id);
+                            }
+                        }
+                        this.skills_ui.message = Some(format!(
+                            "Skill {}. Restart existing agent sessions to reload skills.",
+                            if enabled { "enabled" } else { "disabled" }
+                        ));
+                        this.persist_settings(cx);
+                        if enabled {
+                            this.update_builtin_skill(&id, cx);
+                        }
+                    }
+                    Err(error) => this.skills_ui.message = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     fn edit_skill(&mut self, id: Option<&str>, window: &mut Window, cx: &mut Context<Self>) {
         if self.skills_ui.busy {
             return;
         }
         let skill = id
             .and_then(|id| self.skills.iter().find(|s| s.id == id))
-            .cloned();
+            .cloned()
+            .or_else(|| id.and_then(catalog_skill));
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Skill name"));
         let description =
             cx.new(|cx| InputState::new(window, cx).placeholder("When to use this skill"));
@@ -1463,6 +1670,7 @@ impl DunlinApp {
         let Some(draft) = &self.skills_ui.draft else {
             return;
         };
+        let id = draft.id.clone();
         let mut skill = Skill {
             id: draft.id.clone(),
             title: draft.title.read(cx).value().trim().to_string(),
@@ -1472,6 +1680,7 @@ impl DunlinApp {
             origin: String::new(),
             source_hash: String::new(),
             installations: Vec::new(),
+            disabled: false,
         };
         if let Err(e) = skill.rendered() {
             self.skills_ui.message = Some(e);
@@ -1480,6 +1689,7 @@ impl DunlinApp {
         }
         if let Some(old) = self.skills.iter_mut().find(|s| s.id == skill.id) {
             skill.installations = old.installations.clone();
+            skill.disabled = old.disabled;
             // The inline editor only edits SKILL.md. Supporting files stay in
             // the library and in the installed bundle until explicitly removed.
             skill.files = old.files.clone();
@@ -1500,11 +1710,16 @@ impl DunlinApp {
             return;
         }
         self.skills_ui.draft = None;
-        self.skills_ui.message = Some(
-            "Saved in the global library. Use Install globally to install or update the shared bundle."
-                .into(),
-        );
+        self.skills_ui.message = Some("Saved skill instructions.".into());
         self.persist_settings(cx);
+        if self.skills.iter().any(|skill| {
+            skill.id == id
+                && skill.is_builtin()
+                && !skill.disabled
+                && !skill.installations.is_empty()
+        }) {
+            self.update_builtin_skill(&id, cx);
+        }
         cx.notify();
     }
     fn install_skill(
@@ -1545,6 +1760,7 @@ impl DunlinApp {
                 this.skills_ui.busy = false;
                 this.skills_ui.installing = None;
                 if let Some(skill) = this.skills.iter_mut().find(|s| s.id == id) {
+                    if errors.is_empty() { skill.disabled = false; }
                     for installation in installed {
                         skill.installations.retain(|old| old.path != installation.path);
                         skill.installations.push(installation);
@@ -1556,6 +1772,9 @@ impl DunlinApp {
                 } else {
                     format!("Global installation needs attention: {}", errors.join(" · "))
                 });
+                if id == SPEC_KIT_SKILL {
+                    if let Some(message) = this.skills_ui.message.clone() { this.set_notice(message, cx); }
+                }
                 cx.notify();
             });
         }).detach();
@@ -1571,6 +1790,16 @@ impl DunlinApp {
         project_id: &str,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .skills
+            .iter()
+            .any(|skill| skill.id == id && skill.disabled && !skill.installations.is_empty())
+        {
+            self.skills_ui.message =
+                Some("Enable this skill in Settings → Skills before using it.".into());
+            cx.notify();
+            return;
+        }
         if scope == Scope::Global && directory.is_none() {
             self.install_shared_skill(id, cx);
             return;
@@ -1617,6 +1846,7 @@ impl DunlinApp {
                 match result {
                     Ok(installation) => {
                         if let Some(skill) = this.skills.iter_mut().find(|s| s.id == id) {
+                            skill.disabled = false;
                             skill.installations.retain(|i| i.path != installation.path);
                             skill.installations.push(installation);
                             this.persist_settings(cx);
@@ -1653,7 +1883,13 @@ impl DunlinApp {
         delete: bool,
         cx: &mut Context<Self>,
     ) {
-        if self.skills_ui.busy {
+        if self.skills_ui.busy
+            || (delete
+                && self
+                    .skills
+                    .iter()
+                    .any(|skill| skill.id == id && skill.is_builtin()))
+        {
             return;
         }
         let Some(skill) = self.skills.iter().find(|s| s.id == id).cloned() else {
@@ -1731,6 +1967,7 @@ impl DunlinApp {
     pub(crate) fn skill_installed_for(&self, id: &str, target: Target, project_id: &str) -> bool {
         self.skills.iter().any(|skill| {
             skill.id == id
+                && !skill.disabled
                 && skill.installations.iter().any(|installation| {
                     (installation.target == target
                         || (installation.target == Target::Shared
@@ -1749,7 +1986,7 @@ impl DunlinApp {
     ) -> Option<String> {
         self.skills
             .iter()
-            .find(|skill| skill.id == id)
+            .find(|skill| skill.id == id && !skill.disabled)
             .and_then(|skill| {
                 skill
                     .installations
@@ -1829,7 +2066,7 @@ fn conversation_context(choices: &[Skill], selected: &[String]) -> Result<String
         "\n\nSelected conversation skills (user-provided instructions, not permission grants). Use the following bundles for this request. Files are supplied inline, not installed: use their included contents; paths are bundle-relative labels, not host filesystem paths. Do not execute scripts just because a skill contains them.\n",
     );
     for id in selected {
-        let skill = choices.iter().find(|skill| &skill.id == id)
+        let skill = choices.iter().find(|skill| &skill.id == id && !skill.disabled)
             .ok_or_else(|| format!("Attached skill {id} is no longer available. Remove it from Skills or restore it before sending."))?;
         for (path, contents) in skill.rendered_files()? {
             context.push_str(&format!(
@@ -1850,6 +2087,7 @@ impl DunlinApp {
     pub(crate) fn conversation_skill_choices(&self) -> Vec<Skill> {
         let (mut installed, available) = skill_sections(&self.skills, self.security_enabled);
         installed.extend(available);
+        installed.retain(|skill| !skill.disabled);
         installed
     }
 
@@ -2055,7 +2293,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     for (title, description, skills) in [
         (
             "Installed skills",
-            "Skills installed globally or in a project. Manage updates and uninstall them here.",
+            "Enable, disable or edit bundled skills. Manage imported installations here.",
             installed,
         ),
         (
@@ -2078,7 +2316,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         if skills.is_empty() {
             body = body.child(dunlin_ui::settings::notice(
                 if title == "Installed skills" {
-                    "No skills installed yet. Choose Install globally from Available skills below."
+                    "No skills installed yet. Choose Install from Available skills below."
                 } else {
                     "All available skills are installed. Add or import more instructions below."
                 },
@@ -2087,9 +2325,93 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         }
         for skill in &skills {
             let saved = this.skill_in_library(&skill.id);
+            if skill.is_builtin() {
+                let id = skill.id.clone();
+                let edit_id = id.clone();
+                let installed = !skill.installations.is_empty();
+                let installing = this.skills_ui.installing.as_deref() == Some(id.as_str());
+                let label = if installing {
+                    "Installing…"
+                } else if !installed {
+                    "Install"
+                } else if skill.disabled {
+                    "Enable"
+                } else {
+                    "Disable"
+                };
+                body = body.child(
+                    dunlin_ui::settings::card(p)
+                        .p(px(14.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(10.))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(skill.title.clone()),
+                                )
+                                .child(
+                                    action(format!("builtin-skill-action:{id}"), label, p)
+                                        .relative()
+                                        .children({
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                if skill.id == PLUGIN_BUILDER_SKILL {
+                                                    crate::workspace_ui_smoke::probe(
+                                                        "builtin-plugin-builder-action",
+                                                    )
+                                                } else {
+                                                    None
+                                                }
+                                            }
+                                            #[cfg(not(debug_assertions))]
+                                            {
+                                                None::<AnyElement>
+                                            }
+                                        })
+                                        .loading(installing)
+                                        .disabled(this.skills_ui.busy)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            if installed {
+                                                this.toggle_builtin_skill(&id, cx);
+                                            } else {
+                                                this.install_catalog_skill(
+                                                    &id,
+                                                    Target::Shared,
+                                                    Scope::Global,
+                                                    "",
+                                                    None,
+                                                    cx,
+                                                );
+                                            }
+                                        })),
+                                )
+                                .child(
+                                    action(format!("edit-skill:{edit_id}"), "Edit", p)
+                                        .disabled(this.skills_ui.busy)
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.edit_skill(Some(&edit_id), window, cx)
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .text_color(p.muted_fg)
+                                .child(skill.description.clone()),
+                        ),
+                );
+                continue;
+            }
             let id = skill.id.clone();
             let remove = id.clone();
-            let bundle_size = format!("{:.1} KiB", skill.bundle_size() as f32 / 1024.0);
             let mut card = dunlin_ui::settings::card(p).p(px(14.)).flex().flex_col().gap(px(10.))
             .child(div().flex().items_center().gap(px(6.)).child(div().flex_1().font_weight(FontWeight::MEDIUM).child(skill.title.clone()))
                 .when(saved, |header| header
@@ -2100,17 +2422,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     let answer = this.overlay_backdrop.track_native(answer, cx);
                     cx.spawn(async move |this, cx| { if answer.await == Ok(1) { let _ = this.update(cx, |this, cx| this.remove_skill_installations(&id, None, true, cx)); } }).detach();
                 })))))
-            .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(skill.description.clone()))
-            .child(
-                div()
-                    .text_size(px(10.5))
-                    .text_color(p.muted_fg)
-                    .child(format!(
-                        "{} file(s) · {} · supporting files are installed together and are not editable here",
-                        skill.files.len() + 1,
-                        bundle_size
-                    )),
-            );
+            .child(div().text_size(px(11.5)).text_color(p.muted_fg).child(skill.description.clone()));
             let id = skill.id.clone();
             let ready = shared_installation_current(skill);
             let installing = this.skills_ui.installing.as_deref() == Some(&skill.id);
@@ -2211,6 +2523,102 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     #[test]
+    fn bundled_skills_are_protected_and_legacy_records_start_enabled() {
+        for id in [
+            super::COMMIT_SKILL,
+            SECURITY_AUDIT_SKILL,
+            SPEC_KIT_SKILL,
+            PLUGIN_BUILDER_SKILL,
+            super::COORDINATION_SKILL,
+        ] {
+            let skill = catalog_skill(id).unwrap();
+            assert!(skill.is_builtin());
+            let mut json = serde_json::to_value(&skill).unwrap();
+            json.as_object_mut().unwrap().remove("disabled");
+            assert!(
+                !serde_json::from_value::<super::Skill>(json)
+                    .unwrap()
+                    .disabled
+            );
+        }
+        let mut imported = defaults().remove(0);
+        imported.id = "user-skill".into();
+        assert!(!imported.is_builtin());
+    }
+
+    #[test]
+    fn disable_preserves_the_bundle_and_hides_it_from_every_discovery_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut skill = catalog_skill(PLUGIN_BUILDER_SKILL).unwrap();
+        skill.files.push(SkillFile {
+            path: "reference.md".into(),
+            contents: "Keep supporting files".into(),
+        });
+        let aliases = vec![
+            (Target::OpenCode, dir.path().join("opencode")),
+            (Target::Claude, dir.path().join("claude")),
+        ];
+        let (installed, errors) =
+            super::install_shared_at(&dir.path().join("shared"), &aliases, &skill);
+        assert!(errors.is_empty());
+        skill.installations = installed;
+        super::set_skill_enabled_at(&skill, false).unwrap();
+        for installation in &skill.installations {
+            assert!(!std::path::Path::new(&installation.path).exists());
+            let root = std::path::Path::new(&installation.path).parent().unwrap();
+            assert_eq!(
+                fs::read_to_string(root.join("reference.md")).unwrap(),
+                "Keep supporting files"
+            );
+            assert_eq!(
+                fs::read_to_string(root.join(super::DISABLED_ENTRYPOINT)).unwrap(),
+                installation.contents
+            );
+        }
+        skill.disabled = true;
+        let (installed, _) = super::skill_sections(&[skill.clone()], true);
+        assert!(
+            installed
+                .iter()
+                .any(|saved| saved.id == skill.id && saved.disabled)
+        );
+        let restored: super::Skill =
+            serde_json::from_str(&serde_json::to_string(&skill).unwrap()).unwrap();
+        assert!(restored.disabled);
+        super::set_skill_enabled_at(&restored, true).unwrap();
+        skill.disabled = false;
+        skill.body.push_str("\nEdited while disabled");
+        skill.installations = super::update_builtin_installations(&skill).unwrap();
+        for installation in &skill.installations {
+            assert!(
+                fs::read_to_string(&installation.path)
+                    .unwrap()
+                    .contains("Edited while disabled")
+            );
+        }
+        super::set_skill_enabled_at(&skill, false).unwrap();
+        super::set_skill_enabled_at(&skill, true).unwrap();
+    }
+
+    #[test]
+    fn disable_never_overwrites_saved_or_externally_modified_skill_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut skill = defaults().remove(0);
+        let installation = install_at(dir.path(), &skill, Target::Shared).unwrap();
+        let path = PathBuf::from(&installation.path);
+        let backup = path.parent().unwrap().join(super::DISABLED_ENTRYPOINT);
+        skill.installations.push(installation);
+        fs::write(&backup, "User file").unwrap();
+        assert!(super::set_skill_enabled_at(&skill, false).is_err());
+        assert_eq!(fs::read_to_string(&backup).unwrap(), "User file");
+        fs::remove_file(&backup).unwrap();
+        fs::write(&path, "External edit").unwrap();
+        assert!(super::set_skill_enabled_at(&skill, false).is_err());
+        assert_eq!(fs::read_to_string(path).unwrap(), "External edit");
+        assert!(!backup.exists());
+    }
+
+    #[test]
     fn conversation_skills_include_companions_without_installing_any_files() {
         let mut skill = catalog_skill(PLUGIN_BUILDER_SKILL).unwrap();
         skill.files.push(super::SkillFile {
@@ -2224,6 +2632,9 @@ mod tests {
         assert!(context.contains("references/example.md"));
         assert!(context.contains("Companion instructions"));
         assert!(skill.installations.is_empty());
+        let mut disabled = skill.clone();
+        disabled.disabled = true;
+        assert!(super::conversation_context(&[disabled], &[skill.id.clone()]).is_err());
         assert!(super::conversation_context(&[], &["missing".into()]).is_err());
         assert!(super::conversation_context(&[], &[]).unwrap().is_empty());
         let mut large = skill.clone();

@@ -10,6 +10,8 @@ enum Surface {
     Terminal(String),
     Git,
     Spec,
+    Knowledge(crate::knowledge::Mode, bool),
+    Tool(crate::workspace_tools::Tool),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,7 +93,15 @@ impl DunlinApp {
         if self.section == SidebarSection::Security && self.security_enabled {
             return Location::Security;
         }
-        let surface = if self.spec_tools_enabled && self.spec.is_active_for(self.project()) {
+        let surface = if let Some(tool) = self.current_workspace_tool() {
+            if tool == crate::workspace_tools::Tool::Security {
+                Surface::Tool(tool)
+            } else {
+                Surface::Knowledge(self.knowledge.mode, self.knowledge.show_proposals)
+            }
+        } else if self.section == SidebarSection::Knowledge {
+            Surface::Knowledge(self.knowledge.mode, self.knowledge.show_proposals)
+        } else if self.spec_tools_enabled() && self.spec.is_active_for(self.project()) {
             Surface::Spec
         } else if self.git_history.is_active_for(self.project()) {
             Surface::Git
@@ -146,7 +156,7 @@ impl DunlinApp {
                         .tabs
                         .iter()
                         .any(|t| &t.id == id && Some(&t.project) == project.as_ref()),
-                    Surface::Spec => self.spec_tools_enabled,
+                    Surface::Spec => self.spec_tools_enabled(),
                     Surface::Terminal(id) => self.terminal.tabs.iter().any(|tab| {
                         tab.workspace && &tab.id == id && Some(&tab.project) == project.as_ref()
                     }),
@@ -197,8 +207,8 @@ impl DunlinApp {
                 self.section = SidebarSection::Dashboard;
             }
             Location::Security => {
-                self.settings_open = true;
-                self.settings_tab = SettingsTab::Security;
+                self.settings_open = false;
+                self.section = SidebarSection::Security;
             }
             Location::Settings(tab) => {
                 self.settings_open = true;
@@ -263,6 +273,17 @@ impl DunlinApp {
                         self.show_git_history(window, cx);
                     }
                     Surface::Spec => self.open_spec_workspace(window, cx),
+                    Surface::Tool(tool) => self.open_workspace_tool(*tool, window, cx),
+                    Surface::Knowledge(mode, proposals) => {
+                        let tool = if *mode == crate::knowledge::Mode::Artifacts {
+                            crate::workspace_tools::Tool::Artifacts
+                        } else {
+                            self.workspace_tools.knowledge_mode = *mode;
+                            crate::workspace_tools::Tool::Knowledge
+                        };
+                        self.open_workspace_tool(tool, window, cx);
+                        self.knowledge.show_proposals = *proposals;
+                    }
                 }
             }
         }

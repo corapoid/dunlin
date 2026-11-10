@@ -2,14 +2,33 @@
 
 The Security workspace launches explicit audit workflows and displays their
 artifacts. It is **not a bundled scanner or proof that a project is secure**.
-Use **Settings → Security Audits** for configuration/project audit actions.
+Use **Settings → Security Audits** for configuration, installation and external
+scanner setup; use **Project workspace → Security Audit** to run an audit and
+review results for the active project.
 
 ## Start and review
 
 Install the recommended pinned Cloudflare `security-audit-skill` bundle globally
 once, shared across supported harnesses. Companion files, schema and license are
-installed together. **Start audit in chat** creates a dedicated conversation and
-prepares a source-only Phase 1 prompt; it does not run target code itself.
+installed together. The workspace entry appears only while the skill is installed
+and enabled (and Security tools are enabled).
+
+In the project audit tab, choose a harness and model. The initial selection is the
+default harness and that harness's last dispatched model. **Load / refresh harness
+models** discovers choices through an empty ACP session without sending a prompt
+or changing the default agent. Model IDs can also be entered explicitly.
+**Run audit** creates a dedicated conversation, connects the selected harness,
+selects the exact advertised model, and sends the complete source-only skill
+workflow. An unavailable model is an error, never an implicit replacement. The
+tab stays open and displays artifact-backed runs, findings, coverage and reports.
+The form and results use the full document width. **Refresh results** appears
+only in the top header once a report exists; completion of a turn refreshes the
+open audit workspace automatically.
+Normal harness permission prompts still apply; this does not sandbox the harness.
+
+The legacy **Start audit in chat** action in configuration still only prepares
+a Phase 1 prompt for manual dispatch. Continue actions likewise prepare prompts.
+For remote projects the relay owns the harness; the model must be advertised by it.
 
 Local run artifacts live under
 `~/Library/Application Support/Dunlin/audits/<project>/run-<id>/` by default.

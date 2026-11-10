@@ -15,20 +15,20 @@ setting names and aliases such as *harness*, *secrets*, *sidebar*, *backup* and
 | Security & Privacy | Permissions; Credentials; Security Audits |
 | System & Data | Remote & SSH; Usage & Limits; Data & Backup; Diagnostics & About |
 
-- **General:** startup destination, session restoration, default conversation view,
-  desktop notification preference and its macOS permission.
+- **General:** startup destination, session restoration and desktop notification preference.
 - **Appearance:** theme, interface font, density, motion and shortcut hints.
 - **Workspace:** Dashboard widgets, sidebar/project presentation, Explorer sizes,
   GitHub/GitLab CLI status and watched project folders. Project/group default
   editors are linked here and remain available from their context menus.
-- **Agents:** local ACP adapters, connection tests, default agent, visibility,
-  account links, custom command and session import. Auto-connect and restart on
+- **Agents:** local ACP adapters, installation/import/default-agent actions,
+  and session import. Auto-connect and restart on
   crash are configured only here. Opening a remote project never silently turns
   this page into server administration; use **Manage server** instead.
-- **Extensions:** built-in Spec & intent tools, pack scope, capabilities and
-  enablement. Installation does not imply enablement.
+- **Extensions:** package installation, capabilities and global enablement.
+  **Intent, Concepts & Decisions** includes Spec, Intent Inbox and agent contracts;
+  there is no separate Spec & intent switch. Installation does not imply enablement.
 - **Permissions:** agent approval policy and boundaries are separate from macOS
-  permissions. Notification permission is linked to General rather than duplicated.
+  permissions, including notification permission and its macOS status.
 - **Credentials:** the Mac's Keychain storage and broker. Basic entries are separate
   from expandable access policies, HTTP operations, CLI recipes and activity.
 - **Security Audits:** Configuration controls tool visibility and describes
@@ -40,6 +40,17 @@ setting names and aliases such as *harness*, *secrets*, *sidebar*, *backup* and
 - **Data & Backup:** portable export/import, local storage and confirmed recovery
   actions. Portable exports do not contain conversation history or credentials.
 - **Diagnostics & About:** agent logs/export, environment report and app version.
+
+The user menu shares Appearance's **System / Light / Dark** selector. **Minimal
+view** enables compact spacing. The interface font list always starts with
+**Geist (Default)**. Editor's live font preview sits directly below Typography.
+Resize the sidebar by dragging its edge; double-click the edge to reset its width.
+Settings is available in the sidebar footer, with **⌘,**, or through global search.
+The avatar popover contains appearance, density and available GitHub accounts;
+it does not duplicate Settings.
+Single-line text fields use the same height in settings, dialogs and search bars
+throughout the application; Compact applies the same reduction everywhere.
+Multiline editors and the chat composer retain their content-based sizing.
 
 ## Scope and saving
 
@@ -71,5 +82,6 @@ target/debug/dunlin --settings-smoke /absolute/path/dunlin-settings-smoke-unique
 The directory must be new. This fixture uses an empty home, disables agents and
 the credential broker, renders all 15 pages in both themes/densities at 1100×720
 and 1360×860, and tests keeping/discarding an unsaved credential form plus keyboard
-activation of filtered search results and theme cards. It never
-creates real credentials, authorizes providers or performs destructive recovery.
+activation of filtered search results and theme cards. It also tests reset
+blocking/cancellation and a confirmed reset of its disposable fixture database,
+stopping at the restart boundary. It never touches real data or credentials.

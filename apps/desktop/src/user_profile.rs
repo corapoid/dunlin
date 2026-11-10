@@ -1,12 +1,9 @@
 //! Account menu backed by authenticated gh/glab profiles; no token access.
-use crate::app::{DunlinApp, SettingsTab, UiDensity};
+use crate::app::{DunlinApp, UiDensity};
 use dunlin_http as ureq;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::{
-    component::{
-        Icon,
-        menu::{DropdownMenu, PopupMenuItem},
-    },
+    component::{Disableable, Icon, Selectable, popover::Popover},
     *,
 };
 use dunlin_workspace::{
@@ -23,6 +20,9 @@ use std::{
 pub(crate) struct State {
     pub profiles: Vec<(Profile, Option<Arc<Image>>)>,
     pub checked: Option<Instant>,
+    pub menu_open: bool,
+    pub github_accounts: Vec<hosting_account::GitHubAccount>,
+    switching: bool,
     busy: bool,
 }
 fn avatar_url(value: &str) -> Option<url::Url> {
@@ -74,23 +74,59 @@ impl DunlinApp {
         }
         self.user_profile.busy = true;
         cx.spawn(async |this, cx| {
-            let profiles = cx
+            let (profiles, accounts) = cx
                 .background_executor()
                 .spawn(async {
-                    [Provider::GitHub, Provider::GitLab]
+                    let accounts = hosting_account::github_accounts().unwrap_or_default();
+                    let profiles = [Provider::GitHub, Provider::GitLab]
                         .into_iter()
                         .filter_map(|provider| {
                             let profile = hosting_account::load(provider).ok()?;
                             let image = profile.avatar_url.as_deref().and_then(avatar);
                             Some((profile, image))
                         })
-                        .collect()
+                        .collect();
+                    (profiles, accounts)
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.user_profile.profiles = profiles;
+                this.user_profile.github_accounts = accounts;
                 this.user_profile.checked = Some(Instant::now());
                 this.user_profile.busy = false;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    pub(crate) fn switch_github_account(&mut self, login: String, cx: &mut Context<Self>) {
+        if self.user_profile.switching
+            || self.user_profile.busy
+            || !self
+                .user_profile
+                .github_accounts
+                .iter()
+                .any(|account| account.login == login && !account.active)
+        {
+            return;
+        }
+        self.user_profile.switching = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { hosting_account::switch_github_account(&login) })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.user_profile.switching = false;
+                match result {
+                    Ok(()) => {
+                        this.user_profile.checked = None;
+                        this.refresh_user_profile(cx);
+                        this.set_notice("Active GitHub account switched", cx);
+                    }
+                    Err(error) => this.set_notice(error, cx),
+                }
                 cx.notify();
             });
         })
@@ -178,7 +214,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 face.child(Icon::new(assets::IconName::User).size(px(14.)))
             }
         });
-    dunlin_ui::button("title-user-menu")
+    let trigger = dunlin_ui::button("title-user-menu")
         .relative()
         .children({
             #[cfg(debug_assertions)]
@@ -195,79 +231,175 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .p(px(0.))
         .accessibility_label(label.clone())
         .tooltip(label.clone())
-        .child(face)
-        .dropdown_menu_with_anchor(Anchor::BottomRight, {
-            let app = cx.entity().downgrade();
-            move |menu, _, cx| {
-                let Some(entity) = app.upgrade() else {
-                    return menu;
-                };
-                entity.update(cx, |this, cx| this.refresh_user_profile(cx));
-                let density_row_app = app.clone();
-                let theme_app = app.clone();
-                let settings_app = app.clone();
-                let comfortable = entity.read(cx).density == UiDensity::Comfortable;
-                menu.max_w(px(280.))
-                    .label(name.clone())
-                    .label(identity.clone())
-                    .separator()
-                    .item(
-                        PopupMenuItem::new("Toggle light / dark theme")
-                            .icon(assets::IconName::Sun)
-                            .on_click(move |_, window, cx| {
-                                let _ = theme_app
-                                    .update(cx, |this, cx| this.toggle_appearance(window, cx));
-                            }),
-                    )
-                    .item(
-                        PopupMenuItem::element(move |_, _| {
-                            div()
-                                .relative()
-                                .children({
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        crate::workspace_ui_smoke::probe("profile-density")
-                                    }
-                                    #[cfg(not(debug_assertions))]
-                                    {
-                                        None::<AnyElement>
-                                    }
-                                })
-                                .min_w(px(190.))
-                                .py(px(2.))
-                                .child("Comfortable spacing")
-                                .into_any_element()
+        .child(face);
+    let app = cx.entity().downgrade();
+    let content_app = app.clone();
+    Popover::new("profile-popover")
+        .anchor(Anchor::TopRight)
+        .offset(px(6.))
+        .trigger(trigger)
+        .on_open_change(move |open, _, cx| {
+            let app = app.clone();
+            let open = *open;
+            cx.defer(move |cx| {
+                let _ = app.update(cx, |this, cx| {
+                    this.user_profile.menu_open = open;
+                    if open {
+                        this.refresh_user_profile(cx);
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .content(move |_, _, cx| {
+            let popover = cx.entity().downgrade();
+            content_app
+                .update(cx, |this, cx| {
+                    let p = palette(cx);
+                    div()
+                        .id("profile-menu")
+                        .w(px(244.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(10.))
+                        .role(Role::Dialog)
+                        .aria_label("User menu")
+                        .relative()
+                        .children({
+                            #[cfg(debug_assertions)]
+                            {
+                                crate::workspace_ui_smoke::probe("profile-menu")
+                            }
+                            #[cfg(not(debug_assertions))]
+                            {
+                                None::<AnyElement>
+                            }
                         })
-                        .checked(comfortable)
-                        .on_click(move |_, _, cx| {
-                            let _ = density_row_app.update(cx, |this, cx| {
-                                this.set_ui_density(
-                                    if this.density == UiDensity::Comfortable {
-                                        UiDensity::Compact
+                        .child(
+                            div()
+                                .px(px(6.))
+                                .py(px(4.))
+                                .flex()
+                                .flex_col()
+                                .gap(px(4.))
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .child(name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.5))
+                                        .text_color(p.muted_fg)
+                                        .child(identity.clone()),
+                                ),
+                        )
+                        .child(div().h(px(1.)).bg(p.border))
+                        // A real control group, not an interactive menu item: there
+                        // is no row-wide hover/selection paint behind the segments.
+                        .child(crate::views::settings::profile_appearance_picker(this, cx))
+                        .child(
+                            div()
+                                .px(px(6.))
+                                .h(px(30.))
+                                .flex()
+                                .items_center()
+                                .gap(px(12.))
+                                .child(div().flex_1().text_size(px(12.)).child("Minimal view"))
+                                .child(
+                                    div()
+                                        .relative()
+                                        .child(
+                                            dunlin_ui::switch(
+                                                "profile-minimal-view",
+                                                "Minimal view",
+                                                this.density == UiDensity::Compact,
+                                            )
+                                            .on_click(
+                                                cx.listener(|this, checked: &bool, _, cx| {
+                                                    this.set_ui_density(
+                                                        if *checked {
+                                                            UiDensity::Compact
+                                                        } else {
+                                                            UiDensity::Comfortable
+                                                        },
+                                                        cx,
+                                                    );
+                                                }),
+                                            ),
+                                        )
+                                        .children({
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                crate::workspace_ui_smoke::probe("profile-density")
+                                            }
+                                            #[cfg(not(debug_assertions))]
+                                            {
+                                                None::<AnyElement>
+                                            }
+                                        }),
+                                ),
+                        )
+                        .when(this.user_profile.github_accounts.len() > 1, |menu| {
+                            menu.child(div().h(px(1.)).bg(p.border))
+                                .child(
+                                    div()
+                                        .px(px(6.))
+                                        .text_size(px(10.))
+                                        .text_color(p.muted_fg)
+                                        .child("GitHub accounts"),
+                                )
+                                .children(this.user_profile.github_accounts.iter().map(|account| {
+                                    let login = account.login.clone();
+                                    let popover = popover.clone();
+                                    menu_button(
+                                        format!("profile-github:{}", account.login),
+                                        format!("@{}", account.login),
+                                    )
+                                    .icon(if account.active {
+                                        assets::IconName::Check
                                     } else {
-                                        UiDensity::Comfortable
-                                    },
-                                    cx,
-                                );
-                            });
-                        }),
-                    )
-                    .separator()
-                    .item(
-                        PopupMenuItem::new("Application settings")
-                            .icon(assets::IconName::Settings)
-                            .on_click(move |_, _, cx| {
-                                let _ = settings_app.update(cx, |this, cx| {
-                                    if !this.dismiss_history_for_menu(cx) {
-                                        return;
-                                    }
-                                    this.settings_tab = SettingsTab::General;
-                                    this.settings_open = true;
-                                    cx.notify();
-                                });
-                            }),
-                    )
-            }
+                                        assets::IconName::Github
+                                    })
+                                    .selected(account.active)
+                                    .toggled(account.active)
+                                    .disabled(
+                                        account.active
+                                            || this.user_profile.switching
+                                            || this.user_profile.busy,
+                                    )
+                                    .accessibility_label(format!(
+                                        "Switch GitHub account to @{}",
+                                        account.login
+                                    ))
+                                    .relative()
+                                    .children({
+                                        #[cfg(debug_assertions)]
+                                        {
+                                            crate::workspace_ui_smoke::probe(if account.active {
+                                                "profile-github-active"
+                                            } else {
+                                                "profile-github-switch"
+                                            })
+                                        }
+                                        #[cfg(not(debug_assertions))]
+                                        {
+                                            None::<AnyElement>
+                                        }
+                                    })
+                                    .on_click(cx.listener(
+                                        move |this, _, window, cx| {
+                                            this.switch_github_account(login.clone(), cx);
+                                            let _ = popover
+                                                .update(cx, |state, cx| state.dismiss(window, cx));
+                                        },
+                                    ))
+                                }))
+                        })
+                        .into_any_element()
+                })
+                .unwrap_or_else(|_| div().into_any_element())
         })
         .into_any_element()
 }
