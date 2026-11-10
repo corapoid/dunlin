@@ -40,6 +40,22 @@ pub(crate) fn switcher(this: &DunlinApp) -> Switcher {
     }
 }
 
+fn sidebar_icon(collapsed: bool) -> Icon {
+    Icon::default().data(if collapsed {
+        br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m4-13 4 4-4 4"/></svg>"#
+    } else {
+        br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18m7-13-4 4 4 4"/></svg>"#
+    })
+}
+
+fn history_icon(forward: bool, ink: Hsla) -> Icon {
+    Icon::default().data(if forward {
+        br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>"#
+    } else {
+        br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5m6-6-6 6 6 6"/></svg>"#
+    }).size(px(15.)).text_color(ink)
+}
+
 pub(crate) fn search_geometry(viewport: f32) -> (f32, f32) {
     let width = (viewport - 720.)
         .clamp(200., 420.)
@@ -64,13 +80,9 @@ pub(crate) fn render(
         .items_center()
         .gap(px(4.))
         .child(
-            navigation_button(
+            navigation_button_with_icon(
                 "title-sidebar",
-                if collapsed {
-                    IconName::PanelLeftOpen
-                } else {
-                    IconName::PanelLeftClose
-                },
+                sidebar_icon(collapsed).size(px(15.)).text_color(p.muted_fg),
                 this.shortcut_label(
                     if collapsed {
                         "Show sidebar"
@@ -99,9 +111,9 @@ pub(crate) fn render(
             })),
         )
         .child(
-            navigation_button(
+            navigation_button_with_icon(
                 "navigation-back",
-                IconName::ArrowLeft,
+                history_icon(false, p.muted_fg),
                 this.shortcut_label("Back", "⌘["),
             )
             .size(px(28.))
@@ -120,9 +132,9 @@ pub(crate) fn render(
             .on_click(cx.listener(|this, _, window, cx| this.navigate_history(false, window, cx))),
         )
         .child(
-            navigation_button(
+            navigation_button_with_icon(
                 "navigation-forward",
-                IconName::ArrowRight,
+                history_icon(true, p.muted_fg),
                 this.shortcut_label("Forward", "⌘]"),
             )
             .size(px(28.))
@@ -148,16 +160,10 @@ pub(crate) fn render(
         .gap(px(10.))
         .child(modes)
         .child(crate::user_profile::render(this, cx));
-    let search = dunlin_ui::button("global-search-trigger")
+    let search = titlebar_field("global-search-trigger", "Global search", p)
         .absolute()
         .left(px(search_left))
         .w(px(search_width))
-        .h(px(30.))
-        .px(px(12.))
-        .rounded(px(dunlin_ui::radii::CONTROL))
-        .bg(p.fg.opacity(0.05))
-        .justify_start()
-        .accessibility_label("Global search")
         .tooltip(this.shortcut_label("Global search", "⌘K"))
         .child(
             Icon::new(IconName::Search)
@@ -200,9 +206,9 @@ pub(crate) fn render(
                 .h_full()
                 .flex()
                 .items_center()
-                .child(left)
-                .child(right)
-                .child(search)
+                .when(!this.onboarding_visible(), |bar| {
+                    bar.child(left).child(right).child(search)
+                })
                 .children({
                     #[cfg(debug_assertions)]
                     {

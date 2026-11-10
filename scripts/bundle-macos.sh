@@ -52,7 +52,7 @@ if [[ "$BUILD" == "1" ]]; then
   if [[ "$PROFILE" == "release" ]]; then
     build_args+=(--release)
   fi
-  cargo "${build_args[@]}" -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
+  cargo "${build_args[@]}" -p dunlin -p dunlin-knowledge-mcp -p dunlin-relay --locked
 fi
 
 BIN="${DUNLIN_BIN:-}"
@@ -100,7 +100,7 @@ mkdir -p "$MACOS" "$RESOURCES" "$ICONSET" "$DIST"
 
 cp "$BIN" "$MACOS/$APP_NAME"
 chmod +x "$MACOS/$APP_NAME"
-for helper in dunlin-knowledge-mcp dunlin-ssh-askpass dunlin-relay; do
+for helper in dunlin-knowledge-mcp dunlin-relay; do
   if [[ -x "$BIN_DIR/$helper" ]]; then
     cp "$BIN_DIR/$helper" "$MACOS/$helper"
     chmod +x "$MACOS/$helper"

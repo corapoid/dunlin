@@ -211,6 +211,14 @@ impl HarnessConfig {
 
 /// A tool call as rendered by the chat surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FileChange {
+    pub path: String,
+    pub additions: u32,
+    pub deletions: u32,
+    pub diff: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallView {
     pub id: String,
     pub title: String,
@@ -223,6 +231,9 @@ pub struct ToolCallView {
     /// Unified diff supplied by ACP, when the tool changed a file.
     #[serde(default)]
     pub diff: Option<String>,
+    /// Per-file edits, never inferred from the tool title or shell output.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_changes: Vec<FileChange>,
 }
 
 /// Partial update for a tool call that already exists in the conversation.
@@ -237,6 +248,44 @@ pub struct ToolCallDelta {
     pub deletions: Option<u32>,
     #[serde(default)]
     pub diff: Option<String>,
+    #[serde(default)]
+    pub file_changes: Option<Vec<FileChange>>,
+    #[serde(default)]
+    pub locations: Option<Vec<String>>,
+}
+
+impl ToolCallView {
+    /// ACP updates are replacement snapshots, not increments. In particular a
+    /// repeated terminal update must not count the same patch twice.
+    pub fn apply(&mut self, delta: ToolCallDelta) {
+        if let Some(value) = delta.title {
+            self.title = value;
+        }
+        if let Some(value) = delta.kind {
+            self.kind = value;
+        }
+        if let Some(value) = delta.status {
+            self.status = value;
+        }
+        if let Some(value) = delta.detail {
+            self.detail = value;
+        }
+        if let Some(value) = delta.additions {
+            self.additions = value;
+        }
+        if let Some(value) = delta.deletions {
+            self.deletions = value;
+        }
+        if let Some(value) = delta.diff {
+            self.diff = Some(value);
+        }
+        if let Some(value) = delta.file_changes {
+            self.file_changes = value;
+        }
+        if let Some(value) = delta.locations {
+            self.locations = value;
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1320,10 +1369,17 @@ fn tool_view(tool: &ToolCall) -> ToolCallView {
         additions,
         deletions,
         diff,
+        file_changes: file_changes(&tool.content),
     }
 }
 
 fn tool_delta(update: &ToolCallUpdate) -> ToolCallDelta {
+    let changes = update
+        .fields
+        .content
+        .as_ref()
+        .map(|content| file_changes(content));
+    let has_diff = changes.as_ref().is_some_and(|changes| !changes.is_empty());
     let (detail, additions, deletions, diff) = update
         .fields
         .content
@@ -1336,10 +1392,52 @@ fn tool_delta(update: &ToolCallUpdate) -> ToolCallDelta {
         kind: update.fields.kind.map(map_tool_kind),
         status: update.fields.status.map(map_tool_status),
         detail: (!detail.is_empty()).then_some(detail),
-        additions: (additions > 0).then_some(additions),
-        deletions: (deletions > 0).then_some(deletions),
+        additions: has_diff.then_some(additions),
+        deletions: has_diff.then_some(deletions),
         diff,
+        file_changes: has_diff.then(|| changes.unwrap_or_default()),
+        locations: update.fields.locations.as_ref().map(|locations| {
+            locations
+                .iter()
+                .map(|location| location.path.display().to_string())
+                .collect()
+        }),
     }
+}
+
+fn file_changes(content: &[ToolCallContent]) -> Vec<FileChange> {
+    content
+        .iter()
+        .filter_map(|item| {
+            let ToolCallContent::Diff(diff) = item else {
+                return None;
+            };
+            let path = diff.path.display().to_string();
+            let comparison = similar::TextDiff::from_lines(
+                diff.old_text.as_deref().unwrap_or(""),
+                &diff.new_text,
+            );
+            let mut additions = 0;
+            let mut deletions = 0;
+            for change in comparison.iter_all_changes() {
+                match change.tag() {
+                    similar::ChangeTag::Insert => additions += 1,
+                    similar::ChangeTag::Delete => deletions += 1,
+                    similar::ChangeTag::Equal => {}
+                }
+            }
+            Some(FileChange {
+                diff: comparison
+                    .unified_diff()
+                    .context_radius(3)
+                    .header(&format!("a/{path}"), &format!("b/{path}"))
+                    .to_string(),
+                path,
+                additions,
+                deletions,
+            })
+        })
+        .collect()
 }
 
 fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32, Option<String>) {
@@ -1364,14 +1462,16 @@ fn tool_content(content: &[ToolCallContent]) -> (String, u32, u32, Option<String
                 }
                 let path = diff.path.display().to_string();
                 detail.push_str(&path);
-                additions += diff.new_text.lines().count() as u32;
-                deletions += diff
-                    .old_text
-                    .as_deref()
-                    .map(|text| text.lines().count() as u32)
-                    .unwrap_or(0);
                 let old = diff.old_text.as_deref().unwrap_or("");
-                let unified = similar::TextDiff::from_lines(old, &diff.new_text)
+                let comparison = similar::TextDiff::from_lines(old, &diff.new_text);
+                for change in comparison.iter_all_changes() {
+                    match change.tag() {
+                        similar::ChangeTag::Insert => additions += 1,
+                        similar::ChangeTag::Delete => deletions += 1,
+                        similar::ChangeTag::Equal => {}
+                    }
+                }
+                let unified = comparison
                     .unified_diff()
                     .context_radius(3)
                     .header(&format!("a/{path}"), &format!("b/{path}"))
@@ -1539,6 +1639,10 @@ impl WsTransport {
                 ));
             }
         }
+        if !(cfg!(debug_assertions) && loopback)
+            && (!matches!(parsed.scheme(),"https"|"wss") || !parsed.host_str().is_some_and(dunlin_domain::relay::tailscale_hostname)) {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied,"Remote agents require private Tailscale HTTPS/WSS (*.ts.net)"));
+        }
         let base = url.trim_end_matches('/');
         let ws = match parsed.scheme() {
             "https" => format!("wss://{}", base.strip_prefix("https://").unwrap_or(base)),
@@ -1629,7 +1733,8 @@ mod tests {
 
     #[test]
     fn remote_transport_requires_tls_off_loopback() {
-        assert!(WsTransport::new("https://relay.example.test", "token", "prj", vec![]).is_ok());
+        assert!(WsTransport::new("https://relay.tail123.ts.net", "token", "prj", vec![]).is_ok());
+        assert!(WsTransport::new("https://relay.example.test", "token", "prj", vec![]).is_err());
         assert!(WsTransport::new("http://127.0.0.1:8787", "token", "prj", vec![]).is_ok());
         assert!(WsTransport::new("http://192.168.1.10:8787", "token", "prj", vec![]).is_err());
         assert!(
@@ -1643,7 +1748,7 @@ mod tests {
         );
         assert!(
             WsTransport::new(
-                "https://relay.example.test",
+                "https://relay.tail123.ts.net",
                 "token",
                 "prj",
                 vec!["prj-a".into(), "prj-b".into()]
@@ -1906,9 +2011,43 @@ mod tests {
         )];
         let (detail, additions, deletions, diff) = tool_content(&content);
         assert_eq!(detail, "/tmp/hello.rs");
-        assert_eq!((additions, deletions), (2, 2));
+        assert_eq!((additions, deletions), (1, 1));
         let diff = diff.expect("diff should be present");
         assert!(diff.contains("-three"));
         assert!(diff.contains("+two"));
+    }
+
+    #[test]
+    fn structured_changes_preserve_per_file_counts_and_unchanged_lines_are_free() {
+        let content = vec![
+            ToolCallContent::Diff(
+                agent_client_protocol::v1::schema::Diff::new("a.rs", "same\nnew\n")
+                    .old_text("same\nold\n"),
+            ),
+            ToolCallContent::Diff(agent_client_protocol::v1::schema::Diff::new(
+                "b.rs",
+                "one\ntwo\n",
+            )),
+        ];
+        let changes = file_changes(&content);
+        assert_eq!(changes.len(), 2);
+        assert_eq!((changes[0].additions, changes[0].deletions), (1, 1));
+        assert_eq!((changes[1].additions, changes[1].deletions), (2, 0));
+        let (_, added, removed, _) = tool_content(&content);
+        assert_eq!((added, removed), (3, 1));
+    }
+
+    #[test]
+    fn tool_snapshots_replace_counts_including_zero_and_preserve_absent_fields() {
+        let mut view: ToolCallView = serde_json::from_value(serde_json::json!({
+            "id":"edit", "title":"Edit", "kind":"Edit", "status":"Running", "detail":"", "locations":["a.rs"], "additions":7, "deletions":2
+        })).unwrap();
+        assert!(view.file_changes.is_empty()); // old transcripts still load
+        let delta: ToolCallDelta = serde_json::from_value(serde_json::json!({ "id":"edit", "status":"Done", "additions":0, "deletions":1, "locations":["b.rs"] })).unwrap();
+        view.apply(delta.clone());
+        view.apply(delta);
+        assert_eq!((view.additions, view.deletions), (0, 1));
+        assert_eq!(view.locations, ["b.rs"]);
+        assert_eq!(view.title, "Edit");
     }
 }

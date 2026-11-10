@@ -1,8 +1,5 @@
 //! Two tab groups over canonical buffers and session runtimes, not duplicate apps.
-use crate::{
-    app::{DunlinApp, TraceFilter},
-    harness::ChatItem,
-};
+use crate::{app::DunlinApp, harness::ChatItem};
 use dunlin_domain::MainView;
 use dunlin_ui::{
     assets::IconName,
@@ -202,8 +199,6 @@ struct ActivityUi {
     activity_search: Entity<InputState>,
     activity_query: String,
     selected_node: Option<String>,
-    selected_span: Option<String>,
-    trace_filter: TraceFilter,
     expanded_tool: Option<usize>,
     queue_open: bool,
     chat_visible_items: usize,
@@ -216,8 +211,6 @@ impl ActivityUi {
             activity_search,
             activity_query,
             selected_node,
-            selected_span,
-            trace_filter,
             expanded_tool,
             queue_open,
             chat_visible_items
@@ -329,8 +322,6 @@ impl DunlinApp {
                 activity_search: search,
                 activity_query: String::new(),
                 selected_node: None,
-                selected_span: None,
-                trace_filter: TraceFilter::All,
                 expanded_tool: None,
                 queue_open: false,
                 chat_visible_items: crate::app::CHAT_WINDOW,

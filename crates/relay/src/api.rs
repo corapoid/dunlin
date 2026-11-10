@@ -27,6 +27,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 
 mod history;
 mod operations;
+mod presence;
 
 use crate::config::Config;
 use crate::store::{ArtifactRow, Device, Project, Store, StoreError, User};
@@ -35,6 +36,9 @@ pub type UsageCache = Arc<Mutex<Option<(Instant, Vec<ProviderUsage>)>>>;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) jobs: Arc<crate::jobs::Service>,
+    pub(crate) linear: Arc<crate::linear::Service>,
+    presence: Arc<Mutex<presence::Registry>>,
     pub(crate) management: Arc<Mutex<crate::management::Management>>,
     pub store: Arc<Mutex<Store>>,
     pub config: Arc<Config>,
@@ -88,6 +92,9 @@ impl AppState {
         vault: Option<Arc<crate::vault::RelayVault>>,
     ) -> Self {
         Self {
+            jobs: Arc::new(crate::jobs::Service::default()),
+            linear: Arc::new(crate::linear::Service::default()),
+            presence: Arc::new(Mutex::new(presence::Registry::default())),
             management: Arc::new(Mutex::new(crate::management::Management::default())),
             store: Arc::new(Mutex::new(store)),
             artifact_dir: config
@@ -130,7 +137,7 @@ impl AppState {
         })
     }
 
-    fn connection_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+    pub(crate) fn connection_permit(&self) -> Result<OwnedSemaphorePermit, ApiError> {
         let _installation = self.installation_guard()?;
         self.connections.clone().try_acquire_owned().map_err(|_| {
             ApiError::new(
@@ -302,6 +309,18 @@ impl FromRequestParts<AppState> for AuthUser {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/v1/presence", post(presence::heartbeat))
+        .route("/v1/jobs", get(crate::jobs::list).post(crate::jobs::enqueue).layer(DefaultBodyLimit::max(16*1024)))
+        .route("/v1/jobs/queue", post(crate::jobs::queue_action))
+        .route("/v1/jobs/{id}", get(crate::jobs::get).post(crate::jobs::action))
+        .route(
+            "/v1/integrations/linear",
+            get(crate::linear::inbox)
+                .put(crate::linear::connect)
+                .delete(crate::linear::disconnect)
+                .layer(DefaultBodyLimit::max(64 * 1024)),
+        )
+        .route("/v1/integrations/linear/sync", post(crate::linear::sync))
         .route(
             "/v1/server",
             get(crate::management::info).put(crate::management::update),

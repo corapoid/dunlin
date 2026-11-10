@@ -6,6 +6,7 @@ pub(crate) struct ChatScroll {
     session: String,
     jump_pending: bool,
     following: bool,
+    pub reveal: Option<usize>,
 }
 
 impl Default for ChatScroll {
@@ -15,6 +16,7 @@ impl Default for ChatScroll {
             session: String::new(),
             jump_pending: true,
             following: true,
+            reveal: None,
         }
     }
 }
@@ -24,21 +26,31 @@ fn near_bottom(offset: f32, maximum: f32) -> bool {
 }
 
 impl ChatScroll {
+    pub(crate) fn reveal_item(&mut self, index: usize) {
+        self.pause_following();
+        self.reveal = Some(index);
+    }
+
     pub(crate) fn jump_to_latest(&mut self) {
+        self.reveal = None;
         self.jump_pending = true;
         self.following = true;
     }
 
-    pub(crate) fn user_scrolled(&mut self) {
+    pub(crate) fn user_scrolled(&mut self) -> bool {
+        let previous = self.following;
         self.following = near_bottom(
             self.handle.offset().y / px(1.),
             self.handle.max_offset().y / px(1.),
         );
+        previous != self.following
     }
 
-    pub(crate) fn pause_following(&mut self) {
+    pub(crate) fn pause_following(&mut self) -> bool {
+        let changed = self.following || self.jump_pending;
         self.following = false;
         self.jump_pending = false;
+        changed
     }
 
     /// Called before layout. GPUI's
@@ -49,6 +61,11 @@ impl ChatScroll {
             self.handle = ScrollHandle::new();
             self.jump_pending = true;
             self.following = true;
+        }
+        // A reveal can arrive before Chat has rendered this session once.
+        // Do not let initial live-edge following override its scroll anchor.
+        if self.reveal.is_some() {
+            self.pause_following();
         }
         // Content growth can move the old offset away from the new bottom.
         // Only an actual user scroll is allowed to pause following, not layout.
@@ -63,6 +80,31 @@ impl ChatScroll {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_explicit_reveal_wins_over_initial_session_following() {
+        let mut scroll = ChatScroll::default();
+        scroll.reveal_item(42);
+        assert!(!scroll.prepare("timeline-session"));
+        assert_eq!(scroll.reveal.take(), Some(42));
+        assert!(!scroll.prepare("timeline-session"));
+        scroll.jump_to_latest();
+        assert!(scroll.prepare("timeline-session"));
+    }
+
+    #[test]
+    fn history_scroll_only_invalidates_when_follow_mode_changes() {
+        let mut scroll = ChatScroll::default();
+        scroll.prepare("history");
+        assert!(scroll.pause_following());
+        for _ in 0..1000 {
+            assert!(!scroll.pause_following());
+        }
+        assert!(scroll.user_scrolled()); // Empty content is at the live edge.
+        for _ in 0..1000 {
+            assert!(!scroll.user_scrolled());
+        }
+    }
 
     #[test]
     fn live_edge_follows_but_reading_history_does_not() {

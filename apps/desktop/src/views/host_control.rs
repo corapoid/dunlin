@@ -311,8 +311,8 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .item(item(
                     &app,
                     (
-                        "Manage remote environments…".into(),
-                        "Pair or remove a self-hosted relay".into(),
+                        "Connection map & remote environments…".into(),
+                        "Your servers and connected users".into(),
                     ),
                     IconName::Settings2,
                     false,

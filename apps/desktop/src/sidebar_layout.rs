@@ -3,6 +3,10 @@ use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 pub(crate) const DEFAULT_WIDTH: f32 = 278.;
+pub(crate) const UTILITY_INSET: f32 = 8.;
+pub(crate) const UTILITY_SIZE: f32 = 32.;
+const RESIZE_HIT_WIDTH: f32 = 10.;
+const RESIZE_LINE_WIDTH: f32 = 1.;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Tab {
@@ -60,20 +64,52 @@ impl DunlinApp {
         }
     }
 }
+fn resize_indicator(p: Palette, dragging: bool) -> Div {
+    div()
+        .absolute()
+        .right(px((RESIZE_HIT_WIDTH - RESIZE_LINE_WIDTH) / 2.))
+        .top_0()
+        .h_full()
+        .w(px(RESIZE_LINE_WIDTH))
+        .bg(transparent_black())
+        .when(dragging, |line| line.bg(p.border_strong))
+        .group_hover("sidebar-resize", move |line| line.bg(p.border_strong))
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("sidebar-resize-line")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+}
+
 pub(crate) fn handle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     div()
         .id("sidebar-resize-handle")
+        .group("sidebar-resize")
         .aria_label("Drag to resize sidebar; double-click to reset")
         .absolute()
         .right_0()
         .top_0()
         .h_full()
-        .w(px(10.))
+        .w(px(RESIZE_HIT_WIDTH))
         .occlude()
         .cursor(CursorStyle::ResizeLeftRight)
-        .when(this.sidebar_resize.is_some(), |bar| bar.bg(p.border_strong))
-        .hover(move |style| style.bg(p.border_strong))
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("sidebar-resize-handle")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .child(resize_indicator(p, this.sidebar_resize.is_some()))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(|this, event: &MouseDownEvent, window, cx| {
@@ -95,6 +131,21 @@ pub(crate) fn handle(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resize_indicator_is_invisible_at_rest_in_every_skin_and_appearance() {
+        use dunlin_ui::*;
+        for skin in Skin::ALL {
+            for dark in [false, true] {
+                let p = theme::for_skin(skin, dark);
+                let mut idle = super::resize_indicator(p, false);
+                assert_eq!(idle.style().background, Some(transparent_black().into()));
+                assert_eq!(idle.style().size.width, Some(px(1.).into()));
+                let mut dragging = super::resize_indicator(p, true);
+                assert_eq!(dragging.style().background, Some(p.border_strong.into()));
+            }
+        }
+    }
+
     #[test]
     fn sidebar_tab_is_independent_and_old_preferences_migrate() {
         use dunlin_domain::SidebarSection;

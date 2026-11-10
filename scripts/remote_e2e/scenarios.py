@@ -38,7 +38,9 @@ class Scenarios:
         wait_until(lambda: self.c.request("/health") == "ok", timeout=30)
 
     def initialize(self):
-        self.c.tunnel(self.p)
+        endpoint = urlparse(self.c.url)
+        if endpoint.scheme != "https" or not (endpoint.hostname or "").endswith(".ts.net"):
+            raise Blocked("Supply --endpoint with this disposable relay's private Tailscale Serve HTTPS address. Product SSH tunnels/bootstrap were removed; provider SSH is for test provisioning only.")
         self.ready()
         self.expiring = (self.code(ttl="1"), time.monotonic())
         pairing = self.c.pair(self.code())
@@ -50,7 +52,7 @@ class Scenarios:
         self.c.request("/v1/project/settings", "PUT", {
             "project": self.c.project_id,
             "settings": {"harness": "OpenCode", "default_models": {"OpenCode": self.c.model}}})
-        self.run.report["facts"]["transport"] = "production-openssh-loopback"
+        self.run.report["facts"]["transport"] = "private-tailscale-https"
 
     def pairing(self):
         code = self.code()
@@ -270,7 +272,6 @@ class Scenarios:
                 self.run.own("linger", ssh_config=str(self.p.ssh.config), target=self.p.ssh.target)
                 self.p.ssh.exec('sudo -n loginctl enable-linger "$(id -un)"')
         self.p.reboot()
-        self.c.tunnel(self.p)
         self.ready()
         self.c.request("/v1/me")
         if self.session:

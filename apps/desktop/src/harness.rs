@@ -19,10 +19,11 @@ use serde::{Deserialize, Serialize};
 use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
 
-mod readiness;
+mod new_session;
+pub(crate) mod readiness;
 
 /// One rendered entry in the conversation.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct TurnTiming {
     pub started_at_ms: u64,
     pub finished_at_ms: Option<u64>,
@@ -33,6 +34,9 @@ pub(crate) struct TurnTiming {
     pub usage_before: Option<dunlin_agent::TokenUsage>,
     #[serde(default)]
     pub speaker: Option<Speaker>,
+    /// The failure belongs to this request, not later connection/model errors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,7 +104,7 @@ pub(crate) enum ChatItem {
     },
 }
 
-/// Wall-clock timestamp used to project transcripts into traces.
+/// Wall-clock timestamp used to project transcript activity onto a timeline.
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -260,9 +264,12 @@ fn next_generation() -> u64 {
 pub(crate) struct HarnessState {
     pub pending_remote_session: Option<PendingRemoteSession>,
     pub pending_model: Option<String>,
+    pub inherited_model: Option<new_session::InheritedModel>,
     pub harness: Option<AcpHarness>,
     pub status: HarnessStatus,
     pub transcript: Vec<ChatItem>,
+    /// Invalidates the file projection when a tool snapshot changes in place.
+    pub file_revision: u64,
     transcripts: HashMap<String, Vec<ChatItem>>,
     pub usage: Option<HarnessUsage>,
     pub reported_cost: Option<dunlin_domain::task_budget::Cost>,
@@ -301,6 +308,7 @@ impl Default for HarnessState {
             harness: None,
             pending_remote_session: None,
             pending_model: None,
+            inherited_model: None,
             status: HarnessStatus::Offline,
             models: None,
             modes: None,
@@ -312,6 +320,7 @@ impl Default for HarnessState {
             local_session_loading: false,
             session_metadata_pending: false,
             transcript: Vec::new(),
+            file_revision: 0,
             transcripts: HashMap::new(),
             usage: None,
             reported_cost: None,
@@ -337,6 +346,26 @@ impl Default for HarnessState {
 }
 
 impl HarnessState {
+    fn mark_prompt_failed(&mut self, index: usize, message: &str) {
+        if let Some(ChatItem::User { timing, at_ms, .. }) = self.transcript.get_mut(index) {
+            let timing = timing.get_or_insert_with(|| TurnTiming {
+                started_at_ms: *at_ms,
+                finished_at_ms: Some(now_ms()),
+                ..Default::default()
+            });
+            timing.failure = Some(message.into());
+        }
+    }
+
+    fn fail_and_clear_pending_prompts(&mut self, message: &str) {
+        while let Some(prompt) = self.pending_prompts.pop_front() {
+            if let Some(index) = self.transcript.iter().position(|item| matches!(item,
+                ChatItem::User { text, at_ms, timing: None } if text == &prompt.text && *at_ms == prompt.created_at_ms)) {
+                self.mark_prompt_failed(index, message);
+            }
+        }
+    }
+
     fn accepts_update(&self, session_id: &str, remote: bool) -> bool {
         self.session_id.as_deref() == Some(session_id)
             // Remote session/load clears the view and pins its session ID
@@ -415,6 +444,10 @@ impl HarnessState {
         self.pending_prompts.iter().cloned().collect()
     }
 
+    pub(crate) fn has_queued_prompts(&self) -> bool {
+        !self.pending_prompts.is_empty()
+    }
+
     pub(crate) fn remove_queued_prompt(&mut self, id: u64) -> Option<QueuedPrompt> {
         self.pending_prompts
             .iter()
@@ -465,6 +498,19 @@ impl HarnessState {
 }
 
 impl DunlinApp {
+    pub(crate) fn inherited_new_session_model(
+        &self,
+        target_harness: &str,
+    ) -> Option<new_session::InheritedModel> {
+        new_session::InheritedModel::capture(
+            &self.session_harness(),
+            target_harness,
+            self.harness.models.as_ref(),
+            &self.visible_models(),
+            self.harness.inherited_model.as_ref(),
+        )
+    }
+
     pub(crate) fn coordination_execution(&self) -> Result<dunlin_coordination::Execution, String> {
         if self.project().is_remote() {
             return self.remote_coordination_execution();
@@ -501,7 +547,10 @@ impl DunlinApp {
             configuration: hex::encode(digest),
         })
     }
-    fn clear_unbudgeted_queue_after_error(&mut self) {
+    fn clear_unbudgeted_queue_after_error(&mut self, message: &str) {
+        if let Some((index, _)) = self.harness.active_turn {
+            self.harness.mark_prompt_failed(index, message);
+        }
         if self.task_budgets.error.is_none()
             && self
                 .task_budgets
@@ -509,11 +558,23 @@ impl DunlinApp {
                 .task(&self.session().id)
                 .is_none()
         {
-            self.harness.pending_prompts.clear();
+            self.harness.fail_and_clear_pending_prompts(message);
         }
+    }
+
+    fn fail_queued_connection(&mut self, message: &str) {
+        self.clear_unbudgeted_queue_after_error(message);
+        self.harness.running = false;
+        self.harness.prompt_sent = false;
+        self.finish_streaming();
+        self.update_active_session(|session| session.status = SessionStatus::Failed);
+        self.save_current_transcript();
     }
     /// Start a fresh ACP process or remote connection for the selected project.
     pub(crate) fn connect_harness(&mut self, cx: &mut Context<Self>) {
+        if self.onboarding.blocks_connection() {
+            return;
+        }
         if self.group_cleanup.busy {
             self.file_notice("Wait for generated-folder cleanup to finish", cx);
             return;
@@ -552,6 +613,7 @@ impl DunlinApp {
                 project.path
             );
             self.harness.status = HarnessStatus::Failed(reason.clone());
+            self.fail_queued_connection(&reason);
             logging::error(&reason);
             self.notice = Some(reason);
             cx.notify();
@@ -562,6 +624,7 @@ impl DunlinApp {
             let Some(host) = self.remote_host(&remote_project.host_id) else {
                 let reason = "Remote server is not configured".to_string();
                 self.harness.status = HarnessStatus::Failed(reason.clone());
+                self.fail_queued_connection(&reason);
                 logging::error(&reason);
                 self.notice = Some(reason);
                 cx.notify();
@@ -571,6 +634,7 @@ impl DunlinApp {
                 Ok(token) => token,
                 Err(error) => {
                     self.harness.status = HarnessStatus::Failed(error.clone());
+                    self.fail_queued_connection(&error);
                     logging::error(&error);
                     self.notice = Some(error);
                     cx.notify();
@@ -608,17 +672,25 @@ impl DunlinApp {
         let mut config = match self.local_harness_config(&name) {
             Ok(config) => config,
             Err(error) => {
+                self.clear_unbudgeted_queue_after_error(&error);
                 self.disconnect_harness(cx);
                 let command = harness_command(&name, &self.custom_harness_command);
                 self.harness.missing_command = (!command_available(&command)).then_some(command);
                 self.harness.pending_prompts.clear();
                 self.harness.status = HarnessStatus::Failed(error.clone());
+                self.save_current_transcript();
                 logging::error(&format!("{name} · {error}"));
                 self.set_notice(error, cx);
                 return;
             }
         };
         config.resume_session_id = self.session().acp_session_id.clone();
+        if config.resume_session_id.is_none()
+            && let Some(model) = self.harness.inherited_model.as_ref()
+                .and_then(|model| model.id_for(&name))
+        {
+            config.default_model = Some(model.into());
+        }
         let vault_session = self.attach_vault(&mut config, &project, self.vault_read_only());
         self.plugins.attach_governance_mcp(&mut config, &project);
         self.start_harness(config, None, vault_session, cx);
@@ -1236,6 +1308,12 @@ impl DunlinApp {
                     t.usage = usage;
                 }
                 self.harness.token_baseline = usage;
+                if !matches!(stop_reason.as_str(), "end_turn" | "cancelled")
+                    && let Some((index, _)) = self.harness.active_turn
+                {
+                    self.harness
+                        .mark_prompt_failed(index, &format!("Request ended: {stop_reason}"));
+                }
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
                 self.finish_streaming();
@@ -1251,7 +1329,7 @@ impl DunlinApp {
                 self.harness.clear_connection_operations();
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.clear_unbudgeted_queue_after_error();
+                self.clear_unbudgeted_queue_after_error(&message);
                 self.finish_streaming();
                 self.harness.push_error(message.clone());
                 self.harness.status = HarnessStatus::Failed(message);
@@ -1267,7 +1345,7 @@ impl DunlinApp {
                 self.harness.clear_connection_operations();
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.clear_unbudgeted_queue_after_error();
+                self.clear_unbudgeted_queue_after_error(&reason);
                 self.finish_streaming();
                 self.harness.harness = None;
                 if let Some(session) = self.harness.vault_session.take() {
@@ -1382,33 +1460,30 @@ impl DunlinApp {
         cx.notify();
     }
 
-    /// Re-run a previous user prompt as a new turn.
+    /// Retry only a failed request, never an ordinary completed message.
     pub(crate) fn retry_prompt(
         &mut self,
-        text: String,
+        index: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.composer.update(cx, |state, cx| {
-            state.set_value(text, window, cx);
-            state.focus(window, cx);
-        });
-        self.send_prompt(window, cx);
-    }
-
-    /// Load a previous prompt into the composer for editing without sending it.
-    pub(crate) fn edit_prompt(
-        &mut self,
-        text: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.composer.update(cx, |state, cx| {
-            state.set_value(text, window, cx);
-            state.focus(window, cx);
-        });
-        self.queue_open = false;
-        self.notice = Some("Editing a previous prompt · send to re-run it".into());
+        if self.chat_controls_busy() || self.harness.has_queued_prompts() || self.group_cleanup.busy
+        {
+            return;
+        }
+        let Some(ChatItem::User { text, .. }) = self.harness.transcript.get(index) else {
+            return;
+        };
+        if crate::chat_presentation::prompt_failure(&self.harness.transcript, index).is_none() {
+            return;
+        }
+        let text = text.clone();
+        // Preserve any new draft already in the composer. A retry is an
+        // explicit new attempt, not an edit of the historical request.
+        if self.submit_prompt(text, cx) {
+            self.composer
+                .update(cx, |state, cx| state.focus(window, cx));
+        }
         cx.notify();
     }
 
@@ -1468,6 +1543,7 @@ impl DunlinApp {
         let branch = self.project().branch.clone();
         self.update_active_session(|session| {
             session.workspace = Some(workspace);
+            session.updated_at = chrono::Utc::now().to_rfc3339();
             session.branch = branch;
             session.status = SessionStatus::Running;
             session.summary = summary;
@@ -1563,6 +1639,10 @@ impl DunlinApp {
         if option_id.as_ref().is_some_and(|id| self.effective_permission_mode() == PermissionMode::ReadOnly && self.harness.transcript.iter().any(|item| matches!(item, ChatItem::Permission { request_id: request, options, .. } if request == request_id && options.iter().any(|o| &o.id == id && matches!(o.kind, PermissionKind::AllowOnce | PermissionKind::AllowAlways))))) {
             self.set_notice("Read-only policy does not allow approving this operation", cx); return;
         }
+        let approved = option_id.as_ref().is_some_and(|choice| self.harness.transcript.iter().any(|item| {
+            matches!(item, ChatItem::Permission { request_id: id, options, .. } if id == request_id
+                && options.iter().any(|option| &option.id == choice && matches!(option.kind, PermissionKind::AllowOnce | PermissionKind::AllowAlways)))
+        }));
         if let Some(harness) = self.harness.harness.as_ref() {
             harness.respond_permission(request_id.to_string(), option_id);
         }
@@ -1582,6 +1662,7 @@ impl DunlinApp {
         self.coordination_permission_resolved();
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
+            if approved { session.updated_at = chrono::Utc::now().to_rfc3339(); }
         });
         self.save_current_transcript();
         self.notice = Some(label);
@@ -1619,7 +1700,6 @@ impl DunlinApp {
         self.harness.reported_cost = None;
         self.harness.missing_command = None;
         self.selected_node = None;
-        self.selected_span = None;
         let loaded = self.harness.transcripts.remove(session_id).or_else(|| {
             self.store.as_ref().and_then(|store| {
                 match store.load_transcript::<Vec<ChatItem>>(session_id) {
@@ -1645,6 +1725,7 @@ impl DunlinApp {
         self.harness.running = false;
         self.harness.usage = None;
         self.harness.models = None;
+        self.harness.inherited_model = None;
         self.harness.modes = None;
         self.harness.mode_changing = false;
         self.harness.config_changing = false;
@@ -1721,8 +1802,10 @@ impl DunlinApp {
             if let Some(id) = existing {
                 harness.load_session_with_roots(id, path, roots);
             } else {
-                let model = settings
-                    .default_model(&self.session_harness())
+                let name = self.session_harness();
+                let model = self.harness.inherited_model.as_ref()
+                    .and_then(|model| model.id_for(&name))
+                    .or_else(|| settings.default_model(&name))
                     .map(str::to_owned);
                 harness.new_session_with_roots(path, roots, model);
             }
@@ -1826,6 +1909,7 @@ impl DunlinApp {
                         // final counters must not be charged to a later request.
                         usage_before: self.harness.token_baseline.take(),
                         speaker: Some(speaker),
+                        failure: None,
                     });
                 }
                 self.harness.active_turn = Some((index, Instant::now()));
@@ -1857,13 +1941,20 @@ impl DunlinApp {
                 }
             });
         } else {
+            let message = "Could not send the prompt: the harness is not running.";
+            if let Some(index) = self.harness.transcript.iter().position(|item| matches!(item,
+                ChatItem::User { text: body, at_ms, timing: None } if body == &text && *at_ms == prompt.created_at_ms)) {
+                self.harness.mark_prompt_failed(index, message);
+            }
             self.harness.transcript.push(ChatItem::Error {
                 message: "Could not send the prompt: the harness is not running.".into(),
                 at_ms: now_ms(),
             });
             self.harness.running = false;
             self.harness.prompt_sent = false;
-            self.harness.pending_prompts.clear();
+            self.harness.fail_and_clear_pending_prompts(message);
+            self.update_active_session(|session| session.status = SessionStatus::Failed);
+            self.save_current_transcript();
         }
     }
 
@@ -1987,7 +2078,8 @@ impl DunlinApp {
                     self.harness.session_id = None;
                     self.harness.running = false;
                     self.harness.prompt_sent = false;
-                    self.clear_unbudgeted_queue_after_error();
+                    self.clear_unbudgeted_queue_after_error(&message);
+                    self.save_current_transcript();
                     self.update_active_session(|session| {
                         session.status = SessionStatus::Interrupted
                     });
@@ -2096,6 +2188,12 @@ impl DunlinApp {
                         timing.usage = usage;
                     }
                     self.harness.token_baseline = usage;
+                    if !matches!(stop_reason.as_str(), "end_turn" | "cancelled")
+                        && let Some((index, _)) = self.harness.active_turn
+                    {
+                        self.harness
+                            .mark_prompt_failed(index, &format!("Request ended: {stop_reason}"));
+                    }
                     self.harness.running = false;
                     self.harness.prompt_sent = false;
                     self.finish_streaming();
@@ -2140,7 +2238,7 @@ impl DunlinApp {
                 let was_running = self.harness.running;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.clear_unbudgeted_queue_after_error();
+                self.clear_unbudgeted_queue_after_error(&message);
                 self.finish_streaming();
                 if message.contains("Could not load session") {
                     self.harness.session_id = None;
@@ -2205,7 +2303,7 @@ impl DunlinApp {
                 self.harness.session_id = None;
                 self.harness.running = false;
                 self.harness.prompt_sent = false;
-                self.clear_unbudgeted_queue_after_error();
+                self.clear_unbudgeted_queue_after_error(&reason);
                 self.finish_streaming();
                 self.harness.status = HarnessStatus::Exited(reason.clone());
                 self.update_active_session(|session| {
@@ -2242,6 +2340,14 @@ impl DunlinApp {
     }
 
     fn apply_update(&mut self, update: HarnessUpdate) {
+        if matches!(
+            &update,
+            HarnessUpdate::ToolCall(_)
+                | HarnessUpdate::ToolCallUpdate(_)
+                | HarnessUpdate::Child { .. }
+        ) {
+            self.harness.file_revision = self.harness.file_revision.wrapping_add(1);
+        }
         match update {
             HarnessUpdate::MessageChunk { id, text, thought } => {
                 append_identified(
@@ -2360,6 +2466,12 @@ impl DunlinApp {
     }
 
     fn apply_models(&mut self, mut state: Option<dunlin_agent::SessionModels>) {
+        if state.as_ref().is_some_and(|models| {
+            self.harness.inherited_model.as_ref()
+                .is_some_and(|inherited| inherited.choice.id == models.current)
+        }) {
+            self.harness.inherited_model = None;
+        }
         if let Some(models) = state.as_mut() {
             if models.choices.is_empty()
                 && let Some(previous) = self.harness.models.as_ref()
@@ -2591,30 +2703,10 @@ impl DunlinApp {
             if view.id != delta.id {
                 continue;
             }
-            if let Some(title) = delta.title {
-                view.title = title;
-            }
-            if let Some(kind) = delta.kind {
-                view.kind = kind;
-            }
-            if let Some(status) = delta.status {
-                view.status = status;
-            }
-            if let Some(detail) = delta.detail {
-                view.detail = detail;
-            }
-            if let Some(additions) = delta.additions {
-                view.additions = additions;
-            }
-            if let Some(deletions) = delta.deletions {
-                view.deletions = deletions;
-            }
-            if let Some(diff) = delta.diff {
-                view.diff = Some(diff);
-            }
             if finished && let Some(started) = self.harness.started_tools.remove(&delta.id) {
                 *duration_ms = started.elapsed().as_millis() as u64;
             }
+            view.apply(delta);
             return;
         }
     }
@@ -2726,7 +2818,6 @@ impl DunlinApp {
             return;
         };
         update(session);
-        session.updated_at = chrono::Utc::now().to_rfc3339();
         let stored = session.clone();
         if let Some(entry) = self
             .all_sessions
@@ -2959,19 +3050,23 @@ fn append_child(
             at_ms,
         }),
         HarnessUpdate::ToolCallUpdate(delta) => {
-            if let Some(ChatItem::Tool { view, .. }) = items
+            if let Some(ChatItem::Tool {
+                view,
+                duration_ms,
+                at_ms: started,
+                ..
+            }) = items
                 .iter_mut()
                 .find(|item| matches!(item, ChatItem::Tool {view,..} if view.id == delta.id))
             {
-                if let Some(title) = delta.title {
-                    view.title = title;
+                if delta
+                    .status
+                    .is_some_and(|status| matches!(status, ToolStatus::Done | ToolStatus::Failed))
+                    && !matches!(view.status, ToolStatus::Done | ToolStatus::Failed)
+                {
+                    *duration_ms = at_ms.saturating_sub(*started);
                 }
-                if let Some(status) = delta.status {
-                    view.status = status;
-                }
-                if let Some(detail) = delta.detail {
-                    view.detail = detail;
-                }
+                view.apply(delta);
             }
         }
         HarnessUpdate::Plan(plan) => items.push(ChatItem::Plan { items: plan, at_ms }),
@@ -3006,7 +3101,7 @@ fn session_title(prompt: &str) -> String {
     }
 }
 
-/// Collapse a prompt into the one-line description shown on graph and trace roots.
+/// Collapse a prompt into the one-line description shown on graph roots.
 fn session_summary(prompt: &str) -> String {
     let text = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
     if text.chars().count() > 180 {
@@ -3153,6 +3248,7 @@ mod tests {
                 usage: None,
                 usage_before: None,
                 speaker: None,
+                failure: None,
             }),
         });
         state.transcript.push(ChatItem::User {
@@ -3188,6 +3284,43 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn failed_delivery_is_persisted_without_fabricating_unsent_duration() {
+        let mut state = HarnessState::default();
+        state.transcript.push(ChatItem::User {
+            text: "completed".into(),
+            at_ms: 1,
+            timing: Some(super::TurnTiming {
+                started_at_ms: 1,
+                finished_at_ms: Some(2),
+                elapsed_ms: Some(1),
+                ..Default::default()
+            }),
+        });
+        for _ in 0..2 {
+            let queued = state.enqueue_prompt("same request".into());
+            state.transcript.push(ChatItem::User {
+                text: queued.text,
+                at_ms: queued.created_at_ms,
+                timing: None,
+            });
+        }
+        state.fail_and_clear_pending_prompts("Connection unavailable");
+        assert!(state.pending_prompts.is_empty());
+        let saved = serde_json::to_vec(&state.transcript).unwrap();
+        let restored: Vec<ChatItem> = serde_json::from_slice(&saved).unwrap();
+        assert!(crate::chat_presentation::prompt_failure(&restored, 0).is_none());
+        for index in [1, 2] {
+            assert_eq!(
+                crate::chat_presentation::prompt_failure(&restored, index),
+                Some("Connection unavailable")
+            );
+            assert!(
+                matches!(&restored[index], ChatItem::User { timing: Some(timing), .. } if timing.elapsed_ms.is_none())
+            );
+        }
     }
 
     #[test]
@@ -3254,6 +3387,47 @@ mod tests {
         assert!(should_restart(&ready, true, 0));
         assert!(!should_restart(&ready, true, 1));
         assert!(!should_restart(&ready, false, 0));
+    }
+
+    #[test]
+    fn child_tool_deltas_keep_file_changes_and_the_first_completion_time() {
+        use super::append_child;
+        use dunlin_agent::{HarnessUpdate, ToolCallDelta, ToolCallView};
+        let view: ToolCallView = serde_json::from_value(serde_json::json!({
+            "id":"edit", "title":"Edit", "kind":"Edit", "status":"Running", "detail":"", "locations":[], "additions":0, "deletions":0
+        })).unwrap();
+        let mut items = Vec::new();
+        append_child(
+            &mut items,
+            "child".into(),
+            "root".into(),
+            None,
+            HarnessUpdate::ToolCall(view),
+            1000,
+        );
+        let delta: ToolCallDelta = serde_json::from_value(serde_json::json!({
+            "id":"edit", "status":"Done", "additions":1, "deletions":0, "locations":["a.rs"],
+            "file_changes":[{"path":"a.rs", "additions":1, "deletions":0, "diff":"--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1 @@\n+line\n"}]
+        })).unwrap();
+        append_child(
+            &mut items,
+            "child".into(),
+            "root".into(),
+            None,
+            HarnessUpdate::ToolCallUpdate(delta.clone()),
+            2000,
+        );
+        append_child(
+            &mut items,
+            "child".into(),
+            "root".into(),
+            None,
+            HarnessUpdate::ToolCallUpdate(delta),
+            3000,
+        );
+        let data = crate::timeline::project(&items);
+        assert_eq!(data.totals(None), (1, 0, 1));
+        assert_eq!(data.edits[0].at_ms, 1000);
     }
 
     #[test]

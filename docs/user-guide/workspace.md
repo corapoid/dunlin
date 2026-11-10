@@ -6,16 +6,66 @@
 The title-bar project selector switches projects. Use a project's sidebar context
 menu for settings, trust, pinning, grouping, locating and removal.
 
+The **+** beside **SWITCH PROJECT** inserts a draft at the top of the selector.
+Type a name to update its monogram live; **Enter** confirms and **Escape** cancels.
+Confirmation creates an empty local project under Dunlin's data directory using
+an opaque directory ID (not the display name). It is not a standalone chat, does
+not initialize Git, and does not switch away from unsaved work. Click the new row
+to open it. Use project import for an existing folder or repository.
+
 Groups are logical organization, not parent filesystem grants. Drag a project
 onto a group to change membership without moving files. Nested groups reject
 cycles; deleting a group promotes direct members, with guarded Undo. Group agents
 use a frozen set of explicitly trusted project roots, not every future member.
 See [collection/group contracts](../reference/collection-import.md).
 
+The group settings dialog uses a scrolling form with fixed actions. **Delete
+group…** confirms before removing the group, preserving project files and history
+and promoting projects/subgroups one level. Cancel retains the settings draft.
+
 Removing a project removes Dunlin's local record/history, not repository files;
 it does not delete a project from its relay. Conversation/project deletion is not
 a backup strategy. [Standalone chats](standalone-chat-and-worktrees.md) remain
 separate from repository projects.
+
+### Clean generated project data
+
+Right-click a project and choose **Clean project…**, or right-click a group and
+choose **Clean group…**. These actions are also available in project/group
+settings. Group cleanup includes
+projects in subgroups. This is separate from removing a project from Dunlin.
+
+The background scan shows recognized generated folders, their estimated sizes,
+and checkboxes. Use **Select all / Select none** or choose individual folders;
+the selected count and size update before **Move selected to Trash…** asks for
+confirmation. Cancel, including Escape during inspection/review, changes no files.
+
+- Dependencies: `node_modules`.
+- Caches: `.turbo`, `.pytest_cache`, `__pycache__`, `.next/cache`.
+- Builds: Rust `target` beside `Cargo.toml`; JS `dist`, `build`, `.next`, `.nuxt`,
+  `.output` and `.svelte-kit` beside `package.json`, including monorepo packages.
+
+Only folders ignored by Git, containing no tracked files, are offered. Generic
+`build`/`dist` names without a matching project manifest are not enough. Scans do
+not follow symlinks, cross mount points, include Git metadata/nested repositories,
+or run clean scripts from the project. Incomplete inspections are skipped.
+Local trusted Git repository roots are supported; remote, untrusted, missing and
+non-repository projects are reported as skipped without blocking other group
+members. Scanning has bounded entry/depth/time limits. Sizes are logical file-size
+estimates, not guaranteed disk savings.
+
+Save edited files and stop agents, terminal sessions and repository operations
+before cleanup. Stop external build/install tools too; Dunlin cannot detect all
+external processes. Close tabs inside selected folders. Membership, trust, paths,
+Git eligibility and folder identities are checked again before moving anything.
+The result lists folders moved to Trash and skipped items with reasons, including
+partial system-Trash failures. Dependencies/build outputs must be recreated before
+working on the project again. All contents of a selected folder move together,
+including any custom files you placed inside it.
+
+**Cleanup uses system Trash only.** Folders can be restored from Trash; disk space
+is reclaimed only after you empty it yourself. Dunlin never empties Trash and has
+no permanent-delete cleanup mode.
 
 ## Navigation and tabs
 
@@ -37,7 +87,7 @@ separate from repository projects.
   an installed, enabled audit skill for this project or globally.
   **⌘B** collapses the entire sidebar, including this
   footer; no separate navigation rail remains.
-- **Chat / Graph / Trace** appears beside the user avatar when a conversation is
+- **Chat / Graph / Timeline** appears beside the user avatar when a conversation is
   active. The avatar menu opens below the avatar and contains appearance controls,
   Minimal view and, when multiple GitHub accounts are logged into `gh`, an account
   switcher. Switching changes the active `github.com` CLI account; credentials
@@ -53,12 +103,14 @@ separate from repository projects.
 - Git sync and change counts remain in the status bar in every workspace view,
   including Chat. Sync actions are shown when a configured upstream is known.
 - Source Control keeps its commit controls fixed above a virtualized change list;
-  only visible file rows are built. Stage all is a compact toolbar action; Unstage
-  all and Discard all changes are in the adjacent menu (discard still confirms).
-- Chat / Graph / Trace and AI / Manual commit use flat sliding selection surfaces,
+  only visible file rows are built. **Stage all** becomes **Unstage all** when
+  every change is staged. The adjacent ellipsis menu includes Unstage all and
+  Discard all changes (discard still confirms). File actions align to the right.
+- Chat / Graph / Timeline and AI / Manual commit use flat sliding selection surfaces,
   without a glass lens or press zoom. Reduced motion disables the sliding animation.
 - **Minimal view** keeps the avatar menu unchanged while simplifying session
-  lists to one-line rows and tightening Project workspace entries. Session
+  lists to one-line rows and tightening Project workspace entries and the
+  project selector (including both project and group rows). Session
   metadata remains available in tooltips and context menus.
 - **⌘N** opens another conversation tab. Closing one hides it; reopen saved history
   from Sessions. [Session scopes](session-list.md) keep general and project history separate.

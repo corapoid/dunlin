@@ -62,6 +62,8 @@ pub(crate) fn init(cx: &mut App) {
 /// The content format of the text view.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum TextViewFormat {
+    /// Literal text with whitespace preserved.
+    Plain,
     /// Markdown view
     Markdown,
     /// HTML view
@@ -180,6 +182,11 @@ impl TextViewState {
     /// Create a HTML TextViewState.
     pub fn html(text: &str, cx: &mut Context<Self>) -> Self {
         Self::new(TextViewFormat::Html, text, cx)
+    }
+
+    /// Creates selectable literal text without parsing markup or collapsing whitespace.
+    pub fn plain(text: &str, cx: &mut Context<Self>) -> Self {
+        Self::new(TextViewFormat::Plain, text, cx)
     }
 
     /// Create a new TextViewState.
@@ -441,7 +448,7 @@ impl TextViewState {
     fn effective_format(&self) -> SelectionFormat {
         match self.format {
             TextViewFormat::Markdown => self.selection_format,
-            TextViewFormat::Html => SelectionFormat::Plain,
+            TextViewFormat::Html | TextViewFormat::Plain => SelectionFormat::Plain,
         }
     }
 
@@ -1380,6 +1387,7 @@ fn parse_content(
     let new_document = match format {
         TextViewFormat::Markdown => format::markdown::parse(&source, &mut node_cx),
         TextViewFormat::Html => format::html::parse(&source, &mut node_cx),
+        TextViewFormat::Plain => format::plain::parse(&source),
     }?;
 
     if options.append {

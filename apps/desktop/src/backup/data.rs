@@ -31,6 +31,7 @@ macro_rules! preferences {
             chat_duration,
             chat_logo,
             appearance,
+            skin,
             notifications_enabled,
             show_shortcut_hints,
             show_file_sizes,
@@ -437,6 +438,42 @@ pub(super) fn prepare(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn free_endpoint_consent_is_explicit_local_and_not_portable() {
+        let legacy: StoredSettings = serde_json::from_str("{}").unwrap();
+        assert!(!legacy.opencode_free_consent);
+        let accepted = StoredSettings {
+            opencode_free_consent: true,
+            ..Default::default()
+        };
+        let stored = serde_json::to_value(&accepted).unwrap();
+        assert!(
+            serde_json::from_value::<StoredSettings>(stored)
+                .unwrap()
+                .opencode_free_consent
+        );
+        let exported = portable(&accepted).unwrap();
+        assert!(exported.get("opencode_free_consent").is_none());
+        assert!(
+            !merge_settings(&legacy, &exported)
+                .unwrap()
+                .opencode_free_consent
+        );
+        assert!(
+            merge_settings(&accepted, &exported)
+                .unwrap()
+                .opencode_free_consent
+        );
+        for value in [true, false] {
+            assert!(
+                merge_settings(
+                    &legacy,
+                    &serde_json::json!({"opencode_free_consent": value})
+                )
+                .is_err()
+            );
+        }
+    }
     fn fixture() -> Backup {
         Backup::parse(br#"{"format":"dunlin-backup","version":1,"catalog":{"groups":[{"id":"child","name":"Child","parent_id":"root","tone":"Blue"},{"id":"root","name":"Root","parent_id":null,"tone":"Teal"}],"projects":[{"name":"Repo","url":"https://gitlab.com/g/sub/r","group_id":"child","tone":"Green","pinned":true}]}}"#).unwrap()
     }
@@ -445,7 +482,7 @@ mod tests {
         let settings = StoredSettings {
             custom_harness_command: "/private/secret --token=secret".into(),
             hidden_harnesses: vec!["Claude Code".into()],
-            terminal_ssh_path: "/private/key".into(),
+            _legacy_terminal_ssh_path: "/private/key".into(),
             watched_project_folders: vec!["/work/local".into()],
             permission_mode: dunlin_domain::PermissionMode::AutoApprove,
             ..Default::default()
@@ -643,5 +680,26 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn portable_skin_roundtrips_and_old_backups_preserve_the_current_skin() {
+        use crate::app::Appearance;
+        use dunlin_ui::Skin;
+        for skin in Skin::ALL {
+            let current = StoredSettings {
+                skin,
+                appearance: Some(Appearance::Dark),
+                ..Default::default()
+            };
+            let exported = portable(&current).unwrap();
+            let restored = merge_settings(&StoredSettings::default(), &exported).unwrap();
+            assert_eq!(restored.skin, skin);
+            assert_eq!(restored.appearance, Some(Appearance::Dark));
+            let merged =
+                merge_settings(&current, &serde_json::json!({"appearance":"Light"})).unwrap();
+            assert_eq!(merged.skin, skin);
+            assert_eq!(merged.appearance, Some(Appearance::Light));
+        }
     }
 }

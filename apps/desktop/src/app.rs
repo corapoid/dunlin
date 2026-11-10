@@ -66,7 +66,7 @@ impl SettingsTab {
             SettingsTab::Secrets => "Credentials",
             SettingsTab::Extensions => "Extensions",
             SettingsTab::Permissions => "Permissions",
-            SettingsTab::Remote => "Remote & SSH",
+            SettingsTab::Remote => "Remote · Tailscale",
             SettingsTab::Editor => "Editor & Terminal",
             SettingsTab::Usage => "Usage & Limits",
             SettingsTab::Data => "Data & Backup",
@@ -172,12 +172,15 @@ pub(crate) struct StoredSettings {
     pub dark: bool,
     #[serde(default)]
     pub appearance: Option<Appearance>,
+    pub skin: dunlin_ui::Skin,
     pub view: MainView,
     pub section: SidebarSection,
     #[serde(default)]
     pub sidebar_tab: Option<crate::sidebar_layout::Tab>,
     pub sidebar_collapsed: bool,
     pub workspace_navigation_collapsed: bool,
+    pub general_sessions_collapsed: bool,
+    pub project_sessions_collapsed: bool,
     pub notifications_enabled: bool,
     pub show_shortcut_hints: bool,
     pub show_file_sizes: bool,
@@ -192,6 +195,7 @@ pub(crate) struct StoredSettings {
     pub show_project_branches: bool,
     pub project_list: crate::project_catalog::Preferences,
     pub opencode_provider: Option<String>,
+    pub opencode_free_consent: bool,
     pub recent_models: Vec<crate::providers::RecentModel>,
     pub group_contexts: HashMap<String, crate::project_groups::GroupContext>,
     pub account_usage_collapsed: bool,
@@ -208,6 +212,7 @@ pub(crate) struct StoredSettings {
     pub billing_budget_usd: Option<f32>,
     pub billing_alerts: bool,
     pub onboarding_step: u8,
+    pub pending_adapter_install: Option<crate::onboarding::Plan>,
     pub density: UiDensity,
     pub reduce_motion: bool,
     #[serde(default)]
@@ -222,10 +227,10 @@ pub(crate) struct StoredSettings {
     pub terminal_dock: TerminalDock,
     #[serde(default = "default_shell_integration")]
     pub shell_integration: bool,
-    #[serde(default)]
-    pub terminal_ssh_target: String,
-    #[serde(default)]
-    pub terminal_ssh_path: String,
+    #[serde(default, skip_serializing, rename="terminal_ssh_target")]
+    pub _legacy_terminal_ssh_target: String,
+    #[serde(default, skip_serializing, rename="terminal_ssh_path")]
+    pub _legacy_terminal_ssh_path: String,
     /// Bundled packs are enabled by default; external packs become enabled only
     /// after the user toggles them. This list is the explicit opt-out.
     #[serde(default)]
@@ -297,11 +302,14 @@ impl Default for StoredSettings {
             chat_logo: true,
             dark: true,
             appearance: Some(Appearance::System),
+            skin: dunlin_ui::Skin::Default,
             view: MainView::Chat,
             section: SidebarSection::Files,
             sidebar_tab: None,
             sidebar_collapsed: false,
             workspace_navigation_collapsed: false,
+            general_sessions_collapsed: false,
+            project_sessions_collapsed: false,
             last_project_id: None,
             last_session_id: None,
             remote_hosts: Vec::new(),
@@ -313,6 +321,7 @@ impl Default for StoredSettings {
             show_project_branches: true,
             project_list: Default::default(),
             opencode_provider: Some(crate::providers::GO.into()),
+            opencode_free_consent: false,
             recent_models: Vec::new(),
             group_contexts: HashMap::new(),
             account_usage_collapsed: false,
@@ -326,6 +335,7 @@ impl Default for StoredSettings {
             billing_budget_usd: None,
             billing_alerts: true,
             onboarding_step: 0,
+            pending_adapter_install: None,
             density: UiDensity::default(),
             reduce_motion: false,
             run_history: Vec::new(),
@@ -334,52 +344,13 @@ impl Default for StoredSettings {
             bottom_panel_width: default_bottom_panel_width(),
             terminal_dock: TerminalDock::Bottom,
             shell_integration: default_shell_integration(),
-            terminal_ssh_target: String::new(),
-            terminal_ssh_path: String::new(),
+            _legacy_terminal_ssh_target: String::new(),
+            _legacy_terminal_ssh_path: String::new(),
             disabled_plugins: Vec::new(),
             enabled_plugins: Vec::new(),
             project_disabled_plugins: HashMap::new(),
             project_enabled_plugins: HashMap::new(),
             spec_tools_enabled: true,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TraceFilter {
-    All,
-    Agent,
-    Llm,
-    Tool,
-    Permission,
-}
-
-impl TraceFilter {
-    pub const ALL: [TraceFilter; 5] = [
-        TraceFilter::All,
-        TraceFilter::Agent,
-        TraceFilter::Llm,
-        TraceFilter::Tool,
-        TraceFilter::Permission,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            TraceFilter::All => "All",
-            TraceFilter::Agent => "Agents",
-            TraceFilter::Llm => "LLM",
-            TraceFilter::Tool => "Tools",
-            TraceFilter::Permission => "Permissions",
-        }
-    }
-
-    pub fn matches(self, kind: SpanKind) -> bool {
-        match self {
-            TraceFilter::All => true,
-            TraceFilter::Agent => matches!(kind, SpanKind::Agent | SpanKind::Turn),
-            TraceFilter::Llm => kind == SpanKind::Llm,
-            TraceFilter::Tool => kind == SpanKind::Tool,
-            TraceFilter::Permission => matches!(kind, SpanKind::Permission | SpanKind::Waiting),
         }
     }
 }
@@ -528,7 +499,6 @@ pub(crate) enum Command {
     Checks,
     Context,
     Review,
-    CopyTrace,
     SaveClipboardArtifact,
     SaveFileArtifact,
     Pack(usize),
@@ -591,6 +561,7 @@ pub(crate) struct DunlinApp {
     pub watched_project_folders: Vec<PathBuf>,
     pub session_list: crate::session_list::State,
     pub user_profile: crate::user_profile::State,
+    pub connection_map: crate::connection_map::State,
     pub remote_connection: crate::remote_connection::State,
     pub group_cleanup: crate::group_cleanup::State,
     pub session_import: crate::session_import::State,
@@ -616,9 +587,6 @@ pub(crate) struct DunlinApp {
     pub spec: crate::spec::State,
     pub knowledge: crate::knowledge::State,
     pub plugins: crate::plugins::State,
-    pub ssh_hosts: Vec<dunlin_domain::SshHost>,
-    pub ssh_status: std::collections::HashMap<String, String>,
-    pub ssh_tunnels: std::collections::HashMap<String, dunlin_ssh::Tunnel>,
     pub task_budgets: crate::task_budgets::State,
     pub coordination: crate::coordination::State,
     pub subtask_worktrees: crate::subtask_worktrees::State,
@@ -655,6 +623,7 @@ pub(crate) struct DunlinApp {
     pub remote_billing_error: Option<String>,
     pub onboarding_step: u8,
     pub onboarding_show_all_harnesses: bool,
+    pub onboarding: crate::onboarding::State,
     pub harness_setup: Option<String>,
     pub harness_setup_notice: Option<String>,
     pub harness_scanning: bool,
@@ -663,6 +632,8 @@ pub(crate) struct DunlinApp {
     pub factory_resetting: bool,
     pub density: UiDensity,
     pub appearance: Appearance,
+    pub skin: dunlin_ui::Skin,
+    skin_window_background: Option<WindowBackgroundAppearance>,
     pub settings_offset: Point<Pixels>,
     pub settings_drag: Option<(Point<Pixels>, Point<Pixels>)>,
     pub reduce_motion: bool,
@@ -675,8 +646,6 @@ pub(crate) struct DunlinApp {
     pub terminal: crate::terminal::State,
     pub run: crate::run::State,
     pub shell_integration: bool,
-    pub terminal_ssh_target: String,
-    pub terminal_ssh_path: String,
     pub bottom_panel: BottomPanel,
     pub bottom_panel_height: f32,
     pub bottom_panel_width: f32,
@@ -721,10 +690,11 @@ pub(crate) struct DunlinApp {
     _terminal_search_subscription: Subscription,
 
     pub focus_handle: FocusHandle,
-    /// Tab stop and active-descendant owner for the graph/trace tree. Keeping
+    /// Tab stop and active-descendant owner for the graph tree. Keeping
     /// one composite focus handle means arrow keys never steal the search box.
     pub activity_focus: FocusHandle,
     pub command_open: bool,
+    pub command_epoch: u64,
     pub command_query: Entity<InputState>,
     pub command_projects_only: bool,
     pub command_text: String,
@@ -740,8 +710,11 @@ pub(crate) struct DunlinApp {
     pub custom_harness_command: String,
     pub permission_mode: PermissionMode,
     pub project_menu_open: bool,
+    pub project_creation: crate::project_creation::State,
     pub sidebar_collapsed: bool,
     pub workspace_navigation_collapsed: bool,
+    pub general_sessions_collapsed: bool,
+    pub project_sessions_collapsed: bool,
     pub pending_delete: Option<PendingDelete>,
     pub diff_view: Option<DiffView>,
     pub auto_connect: bool,
@@ -790,7 +763,6 @@ pub(crate) struct DunlinApp {
     _activation_subscription: Option<Subscription>,
     _window_bounds_subscription: Option<Subscription>,
     pub pending_editor: Option<PendingEditor>,
-    pub selected_span: Option<String>,
     pub selected_node: Option<String>,
     pub activity: crate::activity::State,
     pub reasoning_open: bool,
@@ -802,7 +774,6 @@ pub(crate) struct DunlinApp {
     pub expanded_tool: Option<usize>,
     pub chat_visible_items: usize,
     pub chat_scroll: crate::chat_scroll::ChatScroll,
-    pub trace_filter: TraceFilter,
 
     pub file_tree: FileTree,
     file_watcher: Option<watch::ProjectWatcher>,
@@ -824,6 +795,8 @@ pub(crate) struct DunlinApp {
     pub provider_catalog: crate::providers::Catalog,
     pub mcp: crate::mcp::Catalog,
     pub provider_auth: Option<crate::provider_auth::AuthDialog>,
+    pub free_endpoint_dialog: Option<crate::free_endpoint_consent::Dialog>,
+    pub opencode_free_consent: bool,
     pub opencode_provider: Option<String>,
     pub recent_models: Vec<crate::providers::RecentModel>,
 }
@@ -887,10 +860,6 @@ impl DunlinApp {
         }
         let vault_start = stored.vault_enabled && store.is_some();
         let (project_groups, projects, mut all_sessions) = snapshot.unwrap_or_default();
-        let ssh_hosts = store
-            .as_ref()
-            .and_then(|store| store.ssh_hosts().ok())
-            .unwrap_or_default();
         let fallback_project = Project {
             id: "none".into(),
             name: "Welcome".into(),
@@ -991,7 +960,7 @@ impl DunlinApp {
 
         let activity_search = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Search graph / trace…")
+                .placeholder("Search graph…")
                 .clean_on_escape()
         });
         let activity_search_subscription = cx.subscribe_in(
@@ -1188,6 +1157,7 @@ impl DunlinApp {
             watched_project_folders: stored.watched_project_folders.clone(),
             session_list: Default::default(),
             user_profile: Default::default(),
+            connection_map: Default::default(),
             remote_connection: Default::default(),
             group_cleanup: Default::default(),
             session_import: crate::session_import::State::load(store.as_ref()),
@@ -1212,9 +1182,6 @@ impl DunlinApp {
             git_history: Default::default(),
             spec: Default::default(),
             knowledge: Default::default(),
-            ssh_hosts,
-            ssh_status: std::collections::HashMap::new(),
-            ssh_tunnels: std::collections::HashMap::new(),
             plugins: crate::plugins::State::new(
                 stored.disabled_plugins.clone(),
                 stored.enabled_plugins.clone(),
@@ -1267,6 +1234,7 @@ impl DunlinApp {
             qa_error: None,
             onboarding_step: stored.onboarding_step,
             onboarding_show_all_harnesses: false,
+            onboarding: crate::onboarding::State::restore(stored.pending_adapter_install.clone()),
             harness_setup: None,
             harness_setup_notice: None,
             harness_scanning: false,
@@ -1274,6 +1242,8 @@ impl DunlinApp {
             permissions_refreshing: false,
             factory_resetting: false,
             density: stored.density,
+            skin: stored.skin,
+            skin_window_background: None,
             appearance: stored.appearance.unwrap_or(if stored.dark {
                 Appearance::Dark
             } else {
@@ -1289,8 +1259,6 @@ impl DunlinApp {
             bottom_panel_width: stored.bottom_panel_width,
             terminal_dock: stored.terminal_dock,
             shell_integration: stored.shell_integration,
-            terminal_ssh_target: stored.terminal_ssh_target.clone(),
-            terminal_ssh_path: stored.terminal_ssh_path.clone(),
             terminal_resize: None,
             sidebar_motion: Default::default(),
             overlay_backdrop: crate::effects::for_window(window, cx),
@@ -1336,6 +1304,7 @@ impl DunlinApp {
             focus_handle,
             activity_focus,
             command_open: false,
+            command_epoch: 0,
             command_query,
             command_projects_only: false,
             command_text: String::new(),
@@ -1352,8 +1321,11 @@ impl DunlinApp {
             custom_harness_command: stored.custom_harness_command.clone(),
             permission_mode: stored.permission_mode,
             project_menu_open: false,
+            project_creation: Default::default(),
             sidebar_collapsed: stored.sidebar_collapsed,
             workspace_navigation_collapsed: stored.workspace_navigation_collapsed,
+            general_sessions_collapsed: stored.general_sessions_collapsed,
+            project_sessions_collapsed: stored.project_sessions_collapsed,
             pending_delete: None,
             diff_view: None,
             auto_connect: stored.auto_connect,
@@ -1401,7 +1373,6 @@ impl DunlinApp {
             _activation_subscription: None,
             _window_bounds_subscription: None,
             pending_editor: None,
-            selected_span: None,
             selected_node: None,
             activity: Default::default(),
             reasoning_open: stored.reasoning_open,
@@ -1413,7 +1384,6 @@ impl DunlinApp {
             expanded_tool: None,
             chat_visible_items: CHAT_WINDOW,
             chat_scroll: crate::chat_scroll::ChatScroll::default(),
-            trace_filter: TraceFilter::All,
             file_tree,
             file_watcher: None,
             watcher_root: None,
@@ -1432,11 +1402,14 @@ impl DunlinApp {
             provider_catalog: crate::providers::Catalog::default(),
             mcp: crate::mcp::Catalog::default(),
             provider_auth: None,
+            free_endpoint_dialog: None,
+            opencode_free_consent: stored.opencode_free_consent,
             opencode_provider: stored.opencode_provider.clone(),
             recent_models: stored.recent_models.clone(),
         };
 
         cx.set_window_appearance(app.appearance.native());
+        dunlin_ui::theme::set_skin(app.skin, cx);
         dunlin_ui::set_motion_preference(app.reduce_motion, cx);
         dunlin_ui::theme::set_mode(
             app.appearance.mode(cx.window_appearance()),
@@ -1547,6 +1520,7 @@ impl DunlinApp {
         }
         app.persist_settings(cx);
         app.refresh_usage(cx);
+        app.poll_host_presence(cx);
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -1560,6 +1534,7 @@ impl DunlinApp {
                         this.refresh_project_icons(cx);
                         this.poll_task_budgets(cx);
                         this.poll_coordination(cx);
+                        this.poll_host_presence(cx);
                         this.advance_comparisons(cx);
                         this.resume_visible_queue(cx);
                         this.advance_ai_commit(cx);
@@ -1962,14 +1937,12 @@ impl DunlinApp {
         self.harness.local_session_loading = true;
         match action {
             PendingRemoteSession::New => {
-                let model = self
-                    .resolved_project_settings(self.project())
-                    .ok()
-                    .and_then(|settings| {
-                        settings
-                            .default_model(&self.session_harness())
-                            .map(str::to_string)
-                    });
+                let name = self.session_harness();
+                let model = self.harness.inherited_model.as_ref()
+                    .and_then(|model| model.id_for(&name))
+                    .map(str::to_owned)
+                    .or_else(|| self.resolved_project_settings(self.project()).ok()
+                        .and_then(|settings| settings.default_model(&name).map(str::to_owned)));
                 self.harness.pending_model = model.clone();
                 harness.new_session_with_roots(cwd, roots, model);
             }
@@ -2024,11 +1997,11 @@ impl DunlinApp {
                 keywords: "subagents orchestration nodes".into(),
             },
             CommandItem {
-                command: Command::View(MainView::Trace),
-                label: "Go to Trace".into(),
+                command: Command::View(MainView::Timeline),
+                label: "Go to File Timeline".into(),
                 hint: Some("⌘3".into()),
                 icon: IconName::ChartNoAxesGantt,
-                keywords: "waterfall spans timings cost".into(),
+                keywords: "files edits changes additions deletions timeline".into(),
             },
             CommandItem {
                 command: Command::ToggleTerminal,
@@ -2322,13 +2295,6 @@ impl DunlinApp {
                 keywords: "artifact evidence file capture".into(),
             },
             CommandItem {
-                command: Command::CopyTrace,
-                label: "Copy Trace JSON".into(),
-                hint: None,
-                icon: IconName::Copy,
-                keywords: "export spans waterfall diagnostics".into(),
-            },
-            CommandItem {
                 command: Command::ToggleTheme,
                 label: "Toggle Light / Dark".into(),
                 hint: Some("⌘⇧L".into()),
@@ -2470,6 +2436,9 @@ impl DunlinApp {
         self.command_projects_only = projects_only;
         if !projects_only {
             self.refresh_global_search();
+        }
+        if !self.command_open {
+            self.command_epoch = self.command_epoch.wrapping_add(1);
         }
         self.command_open = true;
         self.command_text.clear();
@@ -2665,17 +2634,6 @@ impl DunlinApp {
             Command::Review => self.open_task_review(window, cx),
             Command::SaveClipboardArtifact => self.save_clipboard_artifact(cx),
             Command::SaveFileArtifact => self.save_file_artifact(cx),
-            Command::CopyTrace => {
-                let session = self.session().clone();
-                let spans = projection::spans(&self.harness.transcript, &session);
-                if spans.is_empty() {
-                    self.set_notice("No trace to copy yet", cx);
-                } else {
-                    let json = serde_json::to_string_pretty(&spans).unwrap_or_default();
-                    cx.write_to_clipboard(ClipboardItem::new_string(json));
-                    self.set_notice("Copied trace JSON", cx);
-                }
-            }
             Command::Pack(index) => {
                 let entry = self.pack_command_entries().into_iter().nth(index);
                 if let Some(entry) = entry {
@@ -3169,35 +3127,6 @@ impl DunlinApp {
         cx.notify();
     }
 
-    pub(crate) fn set_project_permission(
-        &mut self,
-        index: usize,
-        mode: Option<PermissionMode>,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(project) = self.projects.get_mut(index) {
-            project.settings.permission_mode = mode;
-        }
-        self.store_project_settings(index);
-        self.persist_settings(cx);
-        self.sync_vault_read_only();
-        self.notice = Some("Project permission mode updated".into());
-        cx.notify();
-    }
-
-    pub(crate) fn reset_project_settings(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.reset_project_color_picker();
-        self.project_runtime_draft = None;
-        if let Some(project) = self.projects.get_mut(index) {
-            project.settings = ProjectSettings::default();
-        }
-        self.store_project_settings(index);
-        self.persist_settings(cx);
-        self.sync_vault_read_only();
-        self.notice = Some("Project overrides cleared".into());
-        cx.notify();
-    }
-
     pub(crate) fn assign_project_group(
         &mut self,
         index: usize,
@@ -3316,6 +3245,7 @@ impl DunlinApp {
                             user_role: pair.user.role,
                             device_id: pair.device_id,
                         });
+                        this.poll_host_presence(cx);
                         this.persist_settings(cx);
                         this.notice = Some("Paired this Mac with the relay".into());
                         this.remote_connection.open = false;
@@ -3351,6 +3281,7 @@ impl DunlinApp {
             self.disconnect_harness(cx);
         }
         self.remote_hosts.retain(|host| host.id != id);
+        self.poll_host_presence(cx);
         self.remote_tokens.remove(id);
         self.remote_usages.remove(id);
         remote::delete_token(id);
@@ -3702,13 +3633,25 @@ impl DunlinApp {
         if self.harness.local_session_loading
             || self.harness.session_metadata_pending
             || self.harness.status.is_busy()
+            || self.harness.model_changing
         {
-            self.set_notice("Wait for the harness to finish connecting", cx);
+            self.set_notice(if self.harness.model_changing {
+                "Wait for the model change to finish"
+            } else {
+                "Wait for the harness to finish connecting"
+            }, cx);
             return;
         }
+        let new_harness = if self.project().is_remote() {
+            self.session_harness()
+        } else {
+            self.effective_harness()
+        };
+        let inherited_model = self.inherited_new_session_model(&new_harness);
         let project_id = self.project().id.clone();
         if let Some(remote_project) = self.project().remote.clone() {
             self.park_current_runtime(cx);
+            self.harness.inherited_model = inherited_model.clone();
             self.reset_mcp_for_navigation();
             let pending = SessionSummary {
                 workspace: Some(self.project().path.clone()),
@@ -3716,8 +3659,8 @@ impl DunlinApp {
                 project_id,
                 title: "New session".into(),
                 status: SessionStatus::Idle,
-                harness: "Remote".into(),
-                model: "Auto".into(),
+                harness: new_harness,
+                model: inherited_model.as_ref().map(|model| model.choice.name.clone()).unwrap_or_else(|| "Auto".into()),
                 branch: None,
                 updated_at: chrono::Utc::now().to_rfc3339(),
                 cost_usd: 0.0,
@@ -3741,7 +3684,6 @@ impl DunlinApp {
             self.harness.session_id = None;
             self.harness.running = false;
             self.selected_node = None;
-            self.selected_span = None;
             self.harness.pending_remote_session = Some(PendingRemoteSession::New);
             let group_roots = self.session_remote_roots();
 
@@ -3768,7 +3710,10 @@ impl DunlinApp {
         }
 
         let branch = self.project().branch.clone();
-        let mut session = blank_session(&project_id, &self.effective_harness(), branch);
+        let mut session = blank_session(&project_id, &new_harness, branch);
+        if let Some(model) = &inherited_model {
+            session.model = model.choice.name.clone();
+        }
         session.workspace = Some(self.project().path.clone());
         self.park_current_runtime(cx);
         self.reset_mcp_for_navigation();
@@ -3780,6 +3725,7 @@ impl DunlinApp {
             self.group_contexts.insert(session.id.clone(), context);
         }
         self.load_transcript(&session.id);
+        self.harness.inherited_model = inherited_model;
         self.harness.session_id = None;
         self.harness.running = false;
 
@@ -3789,7 +3735,6 @@ impl DunlinApp {
 
         self.set_view(MainView::Chat, cx);
         self.selected_node = None;
-        self.selected_span = None;
         self.notice = Some("Created a new session".into());
         self.ensure_usage(cx);
         // set_view only saves when the view changes; a new conversation must
@@ -3904,7 +3849,6 @@ impl DunlinApp {
         self.session_import.pending.clear();
         self.session_import.notices.clear();
         self.sessions.clear();
-        self.selected_span = None;
         self.selected_node = None;
         self.expanded_tool = None;
 
@@ -4174,7 +4118,6 @@ impl DunlinApp {
     fn activity_selected(&self) -> Option<&str> {
         match self.view {
             MainView::Graph => self.selected_node.as_deref(),
-            MainView::Trace => self.selected_span.as_deref(),
             _ => None,
         }
     }
@@ -4183,11 +4126,6 @@ impl DunlinApp {
         match self.view {
             MainView::Graph => {
                 self.selected_node = id;
-                self.selected_span = None;
-            }
-            MainView::Trace => {
-                self.selected_span = id;
-                self.selected_node = None;
             }
             _ => {}
         }
@@ -4202,18 +4140,6 @@ impl DunlinApp {
                 crate::activity::filter_graph_nodes(nodes, &self.activity_query)
                     .into_iter()
                     .map(|node| node.id)
-                    .collect()
-            }
-            MainView::Trace => {
-                let spans = projection::spans(&self.harness.transcript, self.session());
-                let spans = crate::activity::filter_spans(spans, &self.activity_query);
-                let rows = crate::activity::trace_row_indices(
-                    &spans,
-                    &self.activity.spans_expanded,
-                    self.trace_filter,
-                );
-                rows.into_iter()
-                    .filter_map(|index| spans.get(index).map(|span| span.id.clone()))
                     .collect()
             }
             _ => Vec::new(),
@@ -4258,7 +4184,7 @@ impl DunlinApp {
         cx.notify();
     }
 
-    /// Scroll the selected graph node or trace row into view. Virtualization is
+    /// Scroll the selected graph node into view. Virtualization is
     /// only honest when keyboard selection cannot move focus to an offscreen row.
     fn activity_reveal_selection(&mut self, cx: &mut Context<Self>) {
         match self.view {
@@ -4291,18 +4217,6 @@ impl DunlinApp {
                     .graph_scroll
                     .set_offset(point(px(-target_x), px(-target_y)));
             }
-            MainView::Trace => {
-                let ids = self.activity_visible_ids();
-                if let Some(index) = self
-                    .selected_span
-                    .as_deref()
-                    .and_then(|id| ids.iter().position(|candidate| candidate == id))
-                {
-                    self.activity
-                        .trace_scroll
-                        .scroll_to_item(index, ScrollStrategy::Nearest);
-                }
-            }
             _ => {}
         }
         cx.notify();
@@ -4319,14 +4233,6 @@ impl DunlinApp {
                     && !self.activity.agents_expanded.remove(&id)
                 {
                     self.activity.agents_expanded.insert(id);
-                }
-            }
-            MainView::Trace => {
-                if let Some(id) = self.selected_span.clone()
-                    && id != "root"
-                    && !self.activity.spans_expanded.remove(&id)
-                {
-                    self.activity.spans_expanded.insert(id);
                 }
             }
             _ => return,
@@ -4366,27 +4272,6 @@ impl DunlinApp {
                     self.activity.agents_expanded.insert(id);
                 }
             }
-            MainView::Trace => {
-                let Some(id) = self.selected_span.clone() else {
-                    return;
-                };
-                let spans = projection::spans(&self.harness.transcript, self.session());
-                let has_children = spans.iter().any(|span| span.parent.as_deref() == Some(&id));
-                if !has_children {
-                    return;
-                }
-                if id == "root" || self.activity.spans_expanded.contains(&id) {
-                    let next = spans
-                        .iter()
-                        .find(|span| span.parent.as_deref() == Some(&id))
-                        .map(|span| span.id.clone());
-                    if let Some(next) = next {
-                        self.set_activity_selection(Some(next));
-                    }
-                } else {
-                    self.activity.spans_expanded.insert(id);
-                }
-            }
             _ => return,
         }
         self.activity_focus.focus(window, cx);
@@ -4420,25 +4305,6 @@ impl DunlinApp {
                     self.set_activity_selection(next);
                 }
             }
-            MainView::Trace => {
-                let Some(id) = self.selected_span.clone() else {
-                    return;
-                };
-                if id != "root" && self.activity.spans_expanded.remove(&id) {
-                    // Keep the selected request visible.
-                } else {
-                    let spans = projection::spans(&self.harness.transcript, self.session());
-                    let parent = spans
-                        .iter()
-                        .find(|span| span.id == id)
-                        .and_then(|span| span.parent.clone());
-                    let visible = self.activity_visible_ids();
-                    let next = parent
-                        .filter(|parent| visible.iter().any(|id| id == parent))
-                        .or_else(|| visible.first().cloned());
-                    self.set_activity_selection(next);
-                }
-            }
             _ => return,
         }
         self.activity_focus.focus(window, cx);
@@ -4452,11 +4318,31 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.onboarding.setup.is_some() {
+            cx.stop_propagation();
+            return;
+        }
         if self.factory_resetting {
             cx.stop_propagation();
             return;
         }
+        if self.group_cleanup.dialog.is_some() {
+            if event.keystroke.key == "escape" {
+                self.close_cleanup(window, cx);
+                cx.stop_propagation();
+            }
+            // Focused checkboxes/buttons own Space, Enter and Tab. Enter on the
+            // dialog itself must not confirm cleanup.
+            return;
+        }
         if self.user_profile.menu_open {
+            return;
+        }
+        if self.free_endpoint_dialog.is_some() {
+            if event.keystroke.key == "escape" {
+                self.close_free_endpoint_consent(cx);
+            }
+            // Let focused switches and buttons own Space/Enter/Tab.
             return;
         }
         if event.keystroke.key == "escape"
@@ -4466,6 +4352,7 @@ impl DunlinApp {
                 || self.remote_picker.is_some())
         {
             self.project_menu_open = false;
+            self.project_creation.editing = false;
             self.context_menu = None;
             self.remote_picker = None;
             self.focus_handle.focus(window, cx);
@@ -4479,6 +4366,16 @@ impl DunlinApp {
                 cx.stop_propagation();
             }
             return;
+        }
+        if self.project_menu_open && self.project_creation.editing {
+            if event.keystroke.key == "enter" {
+                self.confirm_inline_project(cx);
+                if !self.project_creation.editing {
+                    self.focus_handle.focus(window, cx);
+                }
+                cx.stop_propagation();
+            }
+            return; // The inline name owns typing, selection and clipboard shortcuts.
         }
         if self.project_group_editor.is_some() {
             if event.keystroke.key == "escape" {
@@ -4710,7 +4607,7 @@ impl DunlinApp {
         }
 
         if !platform
-            && matches!(self.view, MainView::Graph | MainView::Trace)
+            && self.view == MainView::Graph
             && !self.has_modal_overlay()
             && (self.activity_focus.is_focused(window) || self.focus_handle.is_focused(window))
             && !self
@@ -4768,7 +4665,6 @@ impl DunlinApp {
                 "escape" => {
                     self.activity_focus.focus(window, cx);
                     self.selected_node = None;
-                    self.selected_span = None;
                     cx.notify();
                     cx.stop_propagation();
                     return;
@@ -4827,7 +4723,7 @@ impl DunlinApp {
                     true
                 }
                 "3" => {
-                    self.set_view(MainView::Trace, cx);
+                    self.set_view(MainView::Timeline, cx);
                     true
                 }
                 "b" => {
@@ -5657,19 +5553,47 @@ impl DunlinApp {
         .detach();
     }
 
-    /// Jump from a trace span to the transcript entry that produced it.
-    pub(crate) fn open_span_in_chat(&mut self, span_id: &str, cx: &mut Context<Self>) {
+    /// Jump from a timeline edit to the transcript entry that produced it.
+    pub(crate) fn open_timeline_in_chat(&mut self, index: usize, cx: &mut Context<Self>) {
         self.set_view(MainView::Chat, cx);
-        self.expanded_tool = span_id
-            .strip_prefix("item-")
-            .and_then(|index| index.parse::<usize>().ok())
-            .filter(|index| {
-                matches!(
-                    self.harness.transcript.get(*index),
-                    Some(harness::ChatItem::Tool { .. })
-                )
-            });
-        self.set_notice("Opened the trace in chat", cx);
+        self.chat_visible_items = self
+            .chat_visible_items
+            .max(self.harness.transcript.len().saturating_sub(index));
+        self.expanded_tool = Some(index).filter(|index| {
+            matches!(
+                self.harness.transcript.get(*index),
+                Some(harness::ChatItem::Tool { .. } | harness::ChatItem::Child { .. })
+            )
+        });
+        self.chat_scroll.reveal_item(index);
+        self.set_notice("Opened the edit in chat", cx);
+    }
+
+    /// Open the recorded patch, never today's working-tree version of the file.
+    pub(crate) fn open_timeline_diff(&mut self, path: &str, patch: &str, cx: &mut Context<Self>) {
+        match DiffFile::parse(patch) {
+            Ok(files) if !files.is_empty() => {
+                self.diff_state
+                    .update(cx, |state, cx| state.set_files(files, cx));
+                self.diff_view = Some(DiffView {
+                    request: uuid::Uuid::now_v7(),
+                    path: path.into(),
+                    name: Path::new(path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(path)
+                        .into(),
+                    staged: false,
+                    state: self.diff_state.clone(),
+                    error: None,
+                });
+                cx.notify();
+            }
+            Ok(_) => self.set_notice("This edit has no text diff", cx),
+            Err(error) => {
+                self.set_notice(format!("Could not read the recorded patch: {error}"), cx)
+            }
+        }
     }
 
     pub(crate) fn close_diff(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -5820,6 +5744,13 @@ impl DunlinApp {
         }
     }
 
+    pub(crate) fn set_skin(&mut self, skin: dunlin_ui::Skin, cx: &mut Context<Self>) {
+        self.skin = skin;
+        dunlin_ui::theme::set_skin(skin, cx);
+        self.persist_settings(cx);
+        cx.notify();
+    }
+
     pub(crate) fn set_appearance(
         &mut self,
         appearance: Appearance,
@@ -5905,6 +5836,7 @@ impl DunlinApp {
             chat_logo: self.chat_logo,
             dark: cx.theme().is_dark(),
             appearance: Some(self.appearance),
+            skin: self.skin,
             view: self.view,
             section: self.section,
             sidebar_tab: Some(self.sidebar_tab),
@@ -5929,7 +5861,10 @@ impl DunlinApp {
             project_list: self.project_list.clone(),
             sidebar_collapsed: self.sidebar_collapsed,
             workspace_navigation_collapsed: self.workspace_navigation_collapsed,
+            general_sessions_collapsed: self.general_sessions_collapsed,
+            project_sessions_collapsed: self.project_sessions_collapsed,
             opencode_provider: self.opencode_provider.clone(),
+            opencode_free_consent: self.opencode_free_consent,
             recent_models: self.recent_models.clone(),
             group_contexts: self.group_contexts.clone(),
             account_usage_collapsed: self.account_usage_collapsed,
@@ -5943,6 +5878,7 @@ impl DunlinApp {
             billing_budget_usd: self.billing_budget_usd,
             billing_alerts: self.billing_alerts,
             onboarding_step: self.onboarding_step,
+            pending_adapter_install: self.onboarding.plan.clone(),
             density: self.density,
             reduce_motion: self.reduce_motion,
             run_history: self.run.history.clone(),
@@ -5951,8 +5887,8 @@ impl DunlinApp {
             bottom_panel_width: self.bottom_panel_width,
             terminal_dock: self.terminal_dock,
             shell_integration: self.shell_integration,
-            terminal_ssh_target: self.terminal_ssh_target.clone(),
-            terminal_ssh_path: self.terminal_ssh_path.clone(),
+            _legacy_terminal_ssh_target: String::new(),
+            _legacy_terminal_ssh_path: String::new(),
             disabled_plugins: self.plugins.disabled(),
             enabled_plugins: self.plugins.enabled(),
             project_disabled_plugins: self.plugins.project_disabled(),
@@ -6645,10 +6581,22 @@ impl Render for DunlinApp {
             crate::platform::set_dock_badge(badge.as_deref());
             self.last_dock_badge = badge;
         }
+        self.advance_onboarding(cx);
         let p = palette(cx);
-        let show_sidebar = !self.sidebar_collapsed;
+        let welcome = self.onboarding_visible();
+        let reveal = self
+            .onboarding
+            .reveal
+            .map(|started| (started.elapsed().as_secs_f32() / 0.4).min(1.))
+            .unwrap_or(1.);
+        let reveal = if self.reduce_motion || cx.reduce_motion() {
+            1.
+        } else {
+            1. - (1. - reveal).powi(3)
+        };
+        let show_sidebar = !welcome && !self.sidebar_collapsed;
         let (sidebar_fraction, moving) = self.sidebar_motion.sample(show_sidebar);
-        if moving {
+        if moving || (!welcome && reveal < 1.) {
             let entity = cx.entity().downgrade();
             window.on_next_frame(move |_, cx| {
                 let _ = entity.update(cx, |_, cx| cx.notify());
@@ -6656,10 +6604,14 @@ impl Render for DunlinApp {
             window.request_animation_frame();
         }
         let titlebar = views::titlebar::render(self, window, cx);
-        let sidebar = views::sidebar::render(self, window, cx);
+        let sidebar = if welcome {
+            div().into_any_element()
+        } else {
+            views::sidebar::render(self, window, cx)
+        };
         let main_panel = self.main_panel(window, cx);
-        let dock =
-            (self.bottom_panel != BottomPanel::Hidden).then(|| self.bottom_panel_view(window, cx));
+        let dock = (!welcome && self.bottom_panel != BottomPanel::Hidden)
+            .then(|| self.bottom_panel_view(window, cx));
         let dock_position = self.terminal_dock;
         let workspace = match (dock, dock_position) {
             (Some(dock), TerminalDock::Bottom) => div()
@@ -6689,7 +6641,7 @@ impl Render for DunlinApp {
                 .into_any_element(),
             (None, _) => main_panel,
         };
-        let status_bar = if self.projects.is_empty() {
+        let status_bar = if welcome {
             None
         } else {
             Some(self.status_bar(cx))
@@ -6702,6 +6654,13 @@ impl Render for DunlinApp {
             .flatten();
 
         let chrome = chrome_background(p, crate::platform::reduce_transparency());
+        let material = self
+            .skin
+            .window_background(crate::platform::reduce_transparency());
+        if self.skin_window_background != Some(material) {
+            window.set_background_appearance(material);
+            self.skin_window_background = Some(material);
+        }
 
         div()
             .relative()
@@ -6709,8 +6668,10 @@ impl Render for DunlinApp {
             .flex_col()
             .size_full()
             .bg(chrome)
+            .opacity(if welcome { 1. } else { reveal })
             .text_color(p.fg)
             .font_family(dunlin_ui::theme::ui_font())
+            .children(grain_layer(p, 0.))
             .child(self.overlay_backdrop.begin())
             .track_focus(&self.focus_handle)
             .on_action(
@@ -6723,140 +6684,143 @@ impl Render for DunlinApp {
                     this.navigate_history(true, window, cx);
                 }),
             )
-            .when(!self.factory_resetting, |root| {
-                root.on_action(
-                    cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
-                        if !this.dismiss_history_for_menu(cx) {
-                            return;
-                        }
-                        this.branch_ui.dismiss();
-                        this.settings_open = true;
-                        this.settings_tab = SettingsTab::General;
-                        cx.notify();
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
-                        this.open_folder(cx)
-                    }),
-                )
-                .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
-                    if !this.dismiss_history_for_menu(cx) {
-                        return;
-                    }
-                    this.section = SidebarSection::Dashboard;
-                    this.settings_open = false;
-                    cx.notify();
-                }))
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
-                        if !this.dismiss_history_for_menu(cx) {
-                            return;
-                        }
-                        this.section = SidebarSection::Projects;
-                        this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
-                        cx.notify();
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::Security, _, cx| {
-                        if !this.dismiss_history_for_menu(cx) {
-                            return;
-                        }
-                        this.settings_open = true;
-                        this.settings_tab = SettingsTab::Security;
-                        cx.notify();
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
-                        this.sidebar_collapsed = !this.sidebar_collapsed;
-                        this.persist_settings(cx);
-                        cx.notify();
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
-                        if !this.dismiss_history_for_menu(cx) {
-                            return;
-                        }
-                        this.open_palette(window, cx)
-                    }),
-                )
-                .on_action(cx.listener(
-                    |this, _: &crate::native_menu::ProjectSearch, window, cx| {
-                        this.open_project_search(window, cx);
-                    },
-                ))
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::IncreaseText, _, cx| {
-                        if !this.has_modal_overlay() {
-                            crate::workspace_text::adjust(0.1, cx);
-                            cx.notify();
-                        }
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::DecreaseText, _, cx| {
-                        if !this.has_modal_overlay() {
-                            crate::workspace_text::adjust(-0.1, cx);
-                            cx.notify();
-                        }
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::ResetText, _, cx| {
-                        if !this.has_modal_overlay() {
-                            crate::workspace_text::reset(cx);
-                            cx.notify();
-                        }
-                    }),
-                )
-                .when(!self.projects.is_empty(), |root| {
-                    root.on_action(cx.listener(
-                        |this, _: &crate::native_menu::NewSession, _, cx| {
+            .when(
+                !self.factory_resetting && self.onboarding.setup.is_none(),
+                |root| {
+                    root.on_action(
+                        cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
                             if !this.dismiss_history_for_menu(cx) {
                                 return;
                             }
-                            this.new_session(cx)
-                        },
-                    ))
-                    .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
-                        this.save_all_tabs(cx);
+                            this.branch_ui.dismiss();
+                            this.settings_open = true;
+                            this.settings_tab = SettingsTab::General;
+                            cx.notify();
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
+                            this.open_folder(cx)
+                        }),
+                    )
+                    .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
+                        if !this.dismiss_history_for_menu(cx) {
+                            return;
+                        }
+                        this.section = SidebarSection::Dashboard;
+                        this.settings_open = false;
+                        cx.notify();
                     }))
-                    .on_action(cx.listener(
-                        |this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
                             if !this.dismiss_history_for_menu(cx) {
                                 return;
                             }
-                            this.open_project_settings(this.selected_project, cx)
-                        },
-                    ))
-                    .on_action(cx.listener(
-                        |this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                            this.section = SidebarSection::Projects;
+                            this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
+                            cx.notify();
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::Security, _, cx| {
                             if !this.dismiss_history_for_menu(cx) {
                                 return;
                             }
-                            this.open_branch_picker(&this.project().id.clone(), window, cx)
-                        },
-                    ))
+                            this.settings_open = true;
+                            this.settings_tab = SettingsTab::Security;
+                            cx.notify();
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
+                            this.sidebar_collapsed = !this.sidebar_collapsed;
+                            this.persist_settings(cx);
+                            cx.notify();
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
+                            if !this.dismiss_history_for_menu(cx) {
+                                return;
+                            }
+                            this.open_palette(window, cx)
+                        }),
+                    )
                     .on_action(cx.listener(
-                        |this, _: &crate::native_menu::RefreshGit, _, cx| {
-                            this.refresh_git_status(cx)
+                        |this, _: &crate::native_menu::ProjectSearch, window, cx| {
+                            this.open_project_search(window, cx);
                         },
                     ))
-                })
-                .when(
-                    !self.projects.is_empty() && self.project().trusted,
-                    |root| {
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::IncreaseText, _, cx| {
+                            if !this.has_modal_overlay() {
+                                crate::workspace_text::adjust(0.1, cx);
+                                cx.notify();
+                            }
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::DecreaseText, _, cx| {
+                            if !this.has_modal_overlay() {
+                                crate::workspace_text::adjust(-0.1, cx);
+                                cx.notify();
+                            }
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::ResetText, _, cx| {
+                            if !this.has_modal_overlay() {
+                                crate::workspace_text::reset(cx);
+                                cx.notify();
+                            }
+                        }),
+                    )
+                    .when(!self.projects.is_empty(), |root| {
                         root.on_action(cx.listener(
-                            |this, _: &crate::native_menu::GitHistory, window, cx| {
-                                this.open_git_history(window, cx)
+                            |this, _: &crate::native_menu::NewSession, _, cx| {
+                                if !this.dismiss_history_for_menu(cx) {
+                                    return;
+                                }
+                                this.new_session(cx)
                             },
                         ))
-                    },
-                )
-            })
+                        .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
+                            this.save_all_tabs(cx);
+                        }))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                                if !this.dismiss_history_for_menu(cx) {
+                                    return;
+                                }
+                                this.open_project_settings(this.selected_project, cx)
+                            },
+                        ))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                                if !this.dismiss_history_for_menu(cx) {
+                                    return;
+                                }
+                                this.open_branch_picker(&this.project().id.clone(), window, cx)
+                            },
+                        ))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::RefreshGit, _, cx| {
+                                this.refresh_git_status(cx)
+                            },
+                        ))
+                    })
+                    .when(
+                        !self.projects.is_empty() && self.project().trusted,
+                        |root| {
+                            root.on_action(cx.listener(
+                                |this, _: &crate::native_menu::GitHistory, window, cx| {
+                                    this.open_git_history(window, cx)
+                                },
+                            ))
+                        },
+                    )
+                },
+            )
             .capture_key_down(cx.listener(Self::on_key_down))
             .key_context(
                 if self.view == MainView::Chat
@@ -6968,7 +6932,7 @@ impl Render for DunlinApp {
                     .w_full()
                     .pr(px(dunlin_ui::scale::WORKSPACE_INSET))
                     .pl(px(dunlin_ui::scale::WORKSPACE_INSET))
-                    .when(sidebar_fraction > 0., |this| {
+                    .when(!welcome && sidebar_fraction > 0., |this| {
                         this.child(
                             div()
                                 .w(px(crate::sidebar_layout::width(

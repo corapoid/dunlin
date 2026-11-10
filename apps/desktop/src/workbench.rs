@@ -49,7 +49,10 @@ pub(crate) fn empty_workspace(cx: &mut Context<DunlinApp>) -> AnyElement {
         .child(
             dunlin_ui::action_button("reopen-chat-tab")
                 .label("Open Chat")
-                .on_click(cx.listener(|this, _, window, cx| this.show_chat_tab(window, cx))),
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.workbench.chat_reveal = Some(std::time::Instant::now());
+                    this.show_chat_tab(window, cx);
+                })),
         )
         .into_any_element()
 }
@@ -127,6 +130,7 @@ fn preview_fit() -> ObjectFit {
 
 #[derive(Default)]
 pub(crate) struct State {
+    pub chat_reveal: Option<std::time::Instant>,
     pub panes: crate::workspace_panes::State,
     pub tabs: Vec<Tab>,
     pub active: Option<String>,

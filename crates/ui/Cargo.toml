@@ -8,6 +8,8 @@ license.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+serde.workspace = true
+image = { version = "0.25", default-features = false }
 unicode-segmentation = "1.13.3"
 
 [dev-dependencies]

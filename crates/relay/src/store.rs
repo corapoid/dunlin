@@ -11,6 +11,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 use crate::auth;
+mod linear;
+pub(crate) mod jobs;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -108,7 +110,7 @@ impl Store {
         }
         let connection = Connection::open(path)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.pragma_update(None, "synchronous", "NORMAL")?;
+        connection.pragma_update(None, "synchronous", "FULL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.busy_timeout(Duration::from_secs(5))?;
         let store = Self { connection };
@@ -263,6 +265,40 @@ impl Store {
         if version < 6 {
             let transaction = self.connection.unchecked_transaction()?;
             transaction.execute_batch("ALTER TABLE transcripts ADD COLUMN revision INTEGER NOT NULL DEFAULT 0; PRAGMA user_version = 6;")?;
+            transaction.commit()?;
+        }
+        if version < 7 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS linear_integrations (
+                    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    credential_id TEXT NOT NULL UNIQUE,
+                    revision TEXT NOT NULL,
+                    filter TEXT NOT NULL,
+                    inbox TEXT NOT NULL,
+                    attempted_at INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS linear_credential_cleanup (credential_id TEXT PRIMARY KEY);
+                PRAGMA user_version = 7;"
+            )?;
+            transaction.commit()?;
+        }
+        if version < 8 {
+            let transaction=self.connection.unchecked_transaction()?;
+            transaction.execute_batch("CREATE TABLE IF NOT EXISTS relay_jobs (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,
+                owner TEXT NOT NULL REFERENCES users(id),project TEXT NOT NULL REFERENCES projects(id),
+                issue TEXT NOT NULL,idem TEXT NOT NULL,fingerprint TEXT NOT NULL,task TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued',cancel INTEGER NOT NULL DEFAULT 0,
+                report TEXT NOT NULL DEFAULT '',checkout_project TEXT,branch TEXT,
+                sync_state TEXT NOT NULL DEFAULT 'none',sync_error TEXT,sync_after INTEGER NOT NULL DEFAULT 0,position INTEGER NOT NULL,
+                UNIQUE(owner,idem));
+                CREATE UNIQUE INDEX IF NOT EXISTS relay_jobs_one_runner ON relay_jobs((1)) WHERE status IN ('preparing','running');
+                CREATE UNIQUE INDEX IF NOT EXISTS relay_jobs_active_issue ON relay_jobs(issue) WHERE status IN ('queued','preparing','running','unknown');
+                CREATE TABLE IF NOT EXISTS relay_queue_state (id INTEGER PRIMARY KEY CHECK(id=1),paused INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS relay_job_approvals (owner TEXT NOT NULL,idem TEXT NOT NULL,fingerprint TEXT NOT NULL,job TEXT NOT NULL,PRIMARY KEY(owner,idem));
+                INSERT OR IGNORE INTO relay_queue_state VALUES (1,0);
+                PRAGMA user_version=8;")?;
             transaction.commit()?;
         }
         Ok(())
@@ -631,6 +667,27 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Read current authority without extending last-seen time. Presence must
+    /// stop exposing revoked devices, deleted users and stale role information.
+    pub fn active_device_user(&self, device_id: &str) -> Result<Option<User>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT u.id, u.name, u.role FROM devices d
+                 JOIN users u ON u.id = d.user_id
+                 WHERE d.id = ?1 AND d.revoked_at IS NULL",
+                [device_id],
+                |row| {
+                    Ok(User {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        role: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     pub fn revoke_device(&self, id: &str) -> Result<()> {

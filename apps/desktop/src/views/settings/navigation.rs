@@ -67,7 +67,7 @@ impl SettingsTab {
             Self::Permissions => "Agent approval policy and separate macOS permissions.",
             Self::Secrets => "Keychain storage, scoped agent access and credential policies.",
             Self::Security => "Configure audit tools or inspect project audits and evidence.",
-            Self::Remote => "Paired servers, SSH hosts and explicit server management.",
+            Self::Remote => "Tailscale servers, connected users and server-managed task queues.",
             Self::Usage => "Subscription limits, local cost evidence and budget alerts.",
             Self::Data => "Portable export/import, local storage and recovery.",
             Self::Advanced => "Agent logs, environment diagnostics and application version.",
@@ -80,7 +80,7 @@ impl SettingsTab {
                 "startup destination dashboard last project restore session history notification desktop macos allow"
             }
             Self::Design => {
-                "design appearance theme system light dark font interface density comfortable compact reduce motion animation shortcut hints keyboard accessibility"
+                "design appearance theme skin default solid grain texture transparency opaque system light dark font interface density comfortable compact reduce motion animation shortcut hints keyboard accessibility gpu acceleration metal renderer graphics hardware"
             }
             Self::Sidebar => {
                 "sidebar workspace dashboard live agents activity heatmap explorer file sizes project list branch language topics wrap information info preview sort import github gitlab gh glab cli tracked watched folder"
@@ -92,7 +92,7 @@ impl SettingsTab {
                 "editor terminal code font size typography word wrap autosave minimap inline blame shell integration zsh bash"
             }
             Self::Harnesses => {
-                "harness adapter agents acp default opencode claude codex gemini copilot cursor qwen auggie kiro openclaw hermes qoder connect auto-connect restart crash import sessions portable"
+                "harness adapter agents acp default opencode claude codex gemini copilot cursor qwen auggie kiro openclaw hermes qoder connect auto-connect restart crash import sessions portable free endpoints consent privacy training retention"
             }
             Self::Skills => {
                 "skills instructions library catalog install uninstall disable enable edit global project github import folder bundle spec kit plugin builder"
@@ -127,7 +127,9 @@ impl SettingsTab {
     pub(crate) fn matches_search(self, query: &str) -> bool {
         let names = match self {
             Self::General => "Startup destination Restore the last session Desktop notifications",
-            Self::Design => "UI font Interface density Show keyboard shortcut hints Reduce motion",
+            Self::Design => {
+                "UI font Interface density Show keyboard shortcut hints Reduce motion GPU acceleration Metal"
+            }
             Self::Sidebar => {
                 "Live agents Activity Show branch names Show primary language Show repository topics Wrap project names Project information Sort Show file sizes Project discovery Git hosting"
             }
@@ -138,7 +140,7 @@ impl SettingsTab {
                 "Code font Font size Word wrap Autosave File minimap Inline blame Shell integration"
             }
             Self::Harnesses => {
-                "Local agents Install Default agent Set default Scan again Default for new conversations Auto-connect Connect automatically Restart on crash Import sessions Last import Refresh"
+                "Local agents Install Default agent Set default Scan again Default for new conversations Auto-connect Connect automatically Restart on crash Import sessions Last import Refresh OpenCode Free privacy Allow Free endpoints consent training provider account settings"
             }
             Self::Skills => {
                 "Available skills Installed skills Install Enable Disable Edit Install globally Add skill Scan harness folders Import from GitHub Import folder Project copies"
@@ -156,7 +158,7 @@ impl SettingsTab {
                 "Enable Security tools Audit skill and artifacts Explicit tools Configuration Project audits Tool availability Run sandboxed check"
             }
             Self::Remote => {
-                "Paired servers Connect to server Manage server Add project Remove remote host Server setup SSH hosts Import config Bootstrap relay"
+                "Tailscale Paired servers Connect to server Manage server Add project Remove remote host Server setup Linear tasks queue"
             }
             Self::Usage => {
                 "Monthly alert budget Budget alerts Subscription limits Limits & alerts Cost report Local billing Scan logs Sync evidence Relay evidence"
@@ -286,6 +288,10 @@ mod tests {
             ("backup export", SettingsTab::Data),
             ("SIDEBAR sort", SettingsTab::Sidebar),
             ("terminal shell", SettingsTab::Editor),
+            ("skin grain", SettingsTab::Design),
+            ("skin solid", SettingsTab::Design),
+            ("skin default", SettingsTab::Design),
+            ("transparency", SettingsTab::Design),
             ("logs zip", SettingsTab::Advanced),
         ] {
             assert!(tab.matches_search(query), "{query}");

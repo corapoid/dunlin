@@ -75,6 +75,18 @@ impl TextView {
             stream_fade: None,
         }
     }
+    /// Creates literal selectable text without interpreting markup or collapsing whitespace.
+    pub fn plain(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
+        let id = id.into();
+        Self {
+            id: id.clone(),
+            inner: gpui_base::TextView::plain(id, text),
+            text_style: None,
+            motion: None,
+            stream_fade: None,
+        }
+    }
+
     /// Creates a text view that parses `text` as HTML.
     pub fn html(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
         let id = id.into();

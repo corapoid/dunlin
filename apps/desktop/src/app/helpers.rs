@@ -297,19 +297,6 @@ pub(crate) fn agent_status_palette(p: &Palette, status: AgentStatus) -> (Hsla, H
     }
 }
 
-pub(crate) fn span_color(p: &Palette, kind: SpanKind) -> Hsla {
-    match kind {
-        SpanKind::Agent => p.blue,
-        SpanKind::Turn => p.fg.opacity(0.72),
-        SpanKind::Llm => p.violet,
-        SpanKind::Tool => p.teal,
-        SpanKind::Permission => p.amber,
-        SpanKind::Waiting => p.muted_fg,
-        SpanKind::Handoff => p.green,
-        SpanKind::Compaction => p.red,
-    }
-}
-
 pub(crate) fn tool_icon(kind: ToolKind) -> IconName {
     match kind {
         ToolKind::Read => IconName::FileText,

@@ -1,9 +1,9 @@
 # Terminal and Run — implementation and boundaries
 
-Status: **local and relay PTY, SSH, tabs and splits, mouse selection,
+Status: **local and relay PTY, tabs and splits, mouse selection,
 scrollback, shell integration (OSC 133/7), OSC 8 and Run from manifests.**
 
-Manual GUI/IME/bidi acceptance, a real relay/SSH host and unusual prompts
+Manual GUI/IME/bidi acceptance, a real Tailscale relay host and unusual prompts
 remain a separate QA matrix.
 
 ## Terminal
@@ -64,7 +64,7 @@ remain a separate QA matrix.
 ### Splits
 
 - The `◫`/`⬓` buttons or `⌘⇧D`/`⌘D` split the active pane right/down and
-  start an independent shell in the new pane (local, relay or SSH — according
+  start an independent shell in the new pane (local or relay — according
   to the project). A split does not duplicate the session: the old tab stays in the left/top
   pane, the new one in the right/bottom.
 - The split is a tree with a 0.5 ratio, bounded to 0.15–0.85. The split
@@ -98,7 +98,7 @@ remain a separate QA matrix.
   buffer/scrollback, not stored as a hidden copy. An unknown shell
   (e.g. fish) works without integration and without an error; the user can disable it
   if their own prompt uses `ZDOTDIR`/`PROMPT_COMMAND` in an unusual way.
-- Integration is not installed in the remote SSH shell; if the host emits
+- Integration is not installed automatically in the remote shell; if the host emits
   OSC 133/7 itself, the UI shows them.
 
 ### Relay transport
@@ -120,27 +120,16 @@ remain a separate QA matrix.
   is the capability boundary; do not grant it to people who cannot
   execute code on that host.
 
-### SSH transport v1
+### Remote connectivity
 
-- The **SSH** button in the terminal toolbar opens a `user@host` bar (alias
-  from `~/.ssh/config`) and an optional remote path. `Connect` starts the local
-  `/usr/bin/ssh -tt` in a PTY; there is no own cryptography client or key
-  copying.
-- Used: `ControlMaster=auto`, a private `ControlPath` in a `0700` directory,
-  `ControlPersist=60` and `ConnectTimeout=15`. Authentication, agent, keys and
-  `known_hosts` are handled by OpenSSH; a new host key requires explicit
-  acceptance in the terminal. The target is validated (no options/spaces), and the remote
-  path is single-quoted before `cd`.
-- Project env and Dunlin tokens are not sent to the host. This terminal entry is
-  distinct from the implemented **Settings → Remote & SSH** host manager, which
-  supports Keychain passphrases, relay bootstrap and loopback tunnels. See
-  [SSH administration](../administration/ssh.md); real-host acceptance remains pending.
+Remote terminals use relay PTY over private Tailscale HTTPS/WSS. SSH terminal,
+bootstrap and tunnel controls have been removed. See [relay setup](../administration/relay-setup.md).
 
 ### Security and remoteness
 
 The local terminal runs project code with user privileges. It is not a
 sandbox. The project must be trusted. For a relay project the UI uses only the
-relay grant; SSH requires an explicit target and user decision. Closing the window
+relay grant and its Tailscale connection. Closing the window
 or tab ends the process; there is no hidden replay.
 
 ## Run
@@ -182,4 +171,4 @@ or tab ends the process; there is no hidden replay.
   --all --check`, Clippy `-D warnings` for changed packages and
   `git diff --check` passed in that run; these are not fresh results for this checkout.
 - Manual GUI, IME/bidi, mouse drag in splits, fast output, SIGINT,
-  a real relay/SSH host and unusual prompts remain to be done.
+  a real Tailscale relay host and unusual prompts remain to be done.

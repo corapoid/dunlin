@@ -2,15 +2,16 @@
 use dunlin_domain::{GroupSettings, PermissionMode, ResolvedSettings, SettingSource};
 use dunlin_ui::{
     component::{
-        Disableable, Sizable,
+        Disableable,
         button::ButtonVariants,
-        input::{Editor, EditorState, InputState},
+        input::InputState,
+        menu::{DropdownMenu, PopupMenuItem},
     },
     prelude::FluentBuilder as _,
     *,
 };
 
-use crate::app::DunlinApp;
+use crate::app::{DunlinApp, tone_color};
 
 pub(crate) struct Draft {
     pub group_id: String,
@@ -18,8 +19,8 @@ pub(crate) struct Draft {
     settings: GroupSettings,
     model_harness: String,
     model: Entity<InputState>,
-    environment: Entity<EditorState>,
     focus: FocusHandle,
+    pub(crate) scroll: ScrollHandle,
     error: Option<String>,
 }
 
@@ -47,8 +48,7 @@ pub(crate) fn source_label(this: &DunlinApp, source: &SettingSource) -> String {
     }
 }
 
-/// Expose each effective value's source, but never paint inherited env values
-/// into a summary or copy them into a descendant's editable override fields.
+/// Show the source of harness/model defaults without exposing hidden settings.
 pub(crate) fn render_sources(
     this: &DunlinApp,
     resolved: &ResolvedSettings,
@@ -56,10 +56,9 @@ pub(crate) fn render_sources(
 ) -> AnyElement {
     let p = palette(cx);
     let model = resolved.default_models.get(&resolved.harness.value);
-    let mut rows = div()
+    let rows = div()
         .id("settings-value-sources")
-        .max_h(px(140.))
-        .overflow_y_scroll()
+        .flex_shrink_0()
         .flex()
         .flex_col()
         .gap(px(4.))
@@ -69,11 +68,6 @@ pub(crate) fn render_sources(
             "Harness: {} · {}",
             resolved.harness.value,
             source_label(this, &resolved.harness.source)
-        ))
-        .child(format!(
-            "Permissions: {} · {}",
-            resolved.permission_mode.value.label(),
-            source_label(this, &resolved.permission_mode.source)
         ))
         .child(
             model
@@ -86,12 +80,6 @@ pub(crate) fn render_sources(
                 })
                 .unwrap_or_else(|| "Model: harness default".into()),
         );
-    for (name, value) in &resolved.environment {
-        rows = rows.child(format!(
-            "Env {name} · {}",
-            source_label(this, &value.source)
-        ));
-    }
     rows.into_any_element()
 }
 
@@ -99,11 +87,9 @@ fn updated_settings(
     settings: &GroupSettings,
     harness: &str,
     model: &str,
-    environment: &str,
 ) -> Result<GroupSettings, String> {
     let mut settings = settings.clone();
     settings.set_default_model(harness, model)?;
-    settings.environment = dunlin_domain::parse_project_environment(environment)?;
     Ok(settings)
 }
 
@@ -171,11 +157,6 @@ impl DunlinApp {
         let model = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Blank = inherit model (otherwise ACP wire ID)")
         });
-        let environment = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .language("plain")
-                .soft_wrap(true)
-        });
         model.update(cx, |state, cx| {
             state.set_value(
                 group
@@ -186,22 +167,14 @@ impl DunlinApp {
                 cx,
             )
         });
-        let text = group
-            .settings
-            .environment
-            .iter()
-            .map(|(name, value)| format!("{name}={value}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        environment.update(cx, |state, cx| state.set_value(text, window, cx));
         self.group_settings_draft = Some(Draft {
             focus: cx.focus_handle(),
+            scroll: ScrollHandle::new(),
             group_id: id.into(),
             tone: group.tone,
             settings: group.settings.clone(),
             model_harness,
             model,
-            environment,
             error: None,
         });
         self.group_prompt = None;
@@ -215,6 +188,39 @@ impl DunlinApp {
     pub(crate) fn close_group_settings(&mut self, cx: &mut Context<Self>) {
         self.group_settings_draft = None;
         cx.notify();
+    }
+
+    fn confirm_delete_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(draft) = &self.group_settings_draft else {
+            return;
+        };
+        let id = draft.group_id.clone();
+        let Some(group) = self.project_groups.iter().find(|group| group.id == id) else {
+            return;
+        };
+        let answer = window.prompt(PromptLevel::Warning, &format!("Delete group ‘{}’?", group.name),
+            Some("Projects and subgroups will move up one level. No files or conversations are deleted. Unsaved group settings will be discarded. You can undo the group deletion."),
+            &["Cancel", "Delete group"], cx);
+        let answer = self.overlay_backdrop.track_native(answer, cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.await != Ok(1) {
+                return;
+            }
+            let _ = this.update(cx, |this, cx| {
+                if this
+                    .group_settings_draft
+                    .as_ref()
+                    .is_none_or(|draft| draft.group_id != id)
+                {
+                    return;
+                }
+                this.delete_project_group(&id, cx);
+                if !this.project_groups.iter().any(|group| group.id == id) {
+                    this.close_group_settings(cx);
+                }
+            });
+        })
+        .detach();
     }
 
     fn select_group_harness(
@@ -285,7 +291,6 @@ impl DunlinApp {
             &draft.settings,
             &draft.model_harness,
             &draft.model.read(cx).value(),
-            &draft.environment.read(cx).value(),
         )
         .and_then(|settings| {
             validate_update(
@@ -322,23 +327,10 @@ impl DunlinApp {
         self.group_settings_draft = None;
         self.refresh_project_icons(cx);
         self.sync_vault_read_only();
-        self.set_notice("Group defaults saved · client permissions apply to following requests; harness/model to new conversations; environment at the next local connection. No agents restarted.", cx);
-    }
-
-    fn reset_group_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(draft) = &mut self.group_settings_draft else {
-            return;
-        };
-        let icon = draft.settings.icon.clone();
-        draft.settings = GroupSettings::default();
-        draft.settings.icon = icon;
-        draft
-            .model
-            .update(cx, |state, cx| state.set_value("", window, cx));
-        draft
-            .environment
-            .update(cx, |state, cx| state.set_value("", window, cx));
-        self.select_group_harness(None, window, cx);
+        self.set_notice(
+            "Group defaults saved · harness/model apply to new conversations. No agents restarted.",
+            cx,
+        );
     }
 
     fn choose_group_icon(&mut self, cx: &mut Context<Self>) {
@@ -430,6 +422,56 @@ impl DunlinApp {
     }
 }
 
+/// One compact harness dropdown shared by project and group forms.
+pub(crate) fn harness_picker(
+    this: &DunlinApp,
+    id: &'static str,
+    selected: Option<&str>,
+    disabled: bool,
+    cx: &mut Context<DunlinApp>,
+    on_select: impl Fn(&mut DunlinApp, Option<String>, &mut Window, &mut Context<DunlinApp>) + 'static,
+) -> AnyElement {
+    let selected = selected.map(str::to_owned);
+    let mut options = vec![None];
+    options.extend(
+        crate::harness_discovery::catalog_names()
+            .chain(std::iter::once("Custom ACP"))
+            .filter(|name| this.harness_visible(name))
+            .map(|name| Some(name.to_owned())),
+    );
+    if selected.is_some() && !options.contains(&selected) {
+        options.push(selected.clone());
+    }
+    let app = cx.entity().downgrade();
+    let on_select = std::rc::Rc::new(on_select);
+    dunlin_ui::settings::button(id)
+        .label(selected.clone().unwrap_or_else(|| "Inherit".into()))
+        .accessibility_label("Default harness")
+        .w(px(220.))
+        .max_w_full()
+        .dropdown_caret(true)
+        .disabled(disabled)
+        .relative()
+        .children(probe(id))
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, _| {
+            for name in &options {
+                let app = app.clone();
+                let on_select = on_select.clone();
+                let name = name.clone();
+                menu = menu.item(
+                    PopupMenuItem::new(name.clone().unwrap_or_else(|| "Inherit".into()))
+                        .checked(name == selected)
+                        .on_click(move |_, window, cx| {
+                            let _ = app
+                                .update(cx, |this, cx| on_select(this, name.clone(), window, cx));
+                        }),
+                );
+            }
+            menu
+        })
+        .into_any_element()
+}
+
 pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
     let Some(draft) = &this.group_settings_draft else {
@@ -438,47 +480,80 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let Some(group) = this.project_groups.iter().find(|g| g.id == draft.group_id) else {
         return div().into_any_element();
     };
-    let mut colors = div().flex().flex_wrap().gap(px(6.));
-    for tone in [
-        dunlin_domain::ProjectTone::Blue,
-        dunlin_domain::ProjectTone::Green,
-        dunlin_domain::ProjectTone::Violet,
-        dunlin_domain::ProjectTone::Amber,
-        dunlin_domain::ProjectTone::Rose,
-        dunlin_domain::ProjectTone::Teal,
-    ] {
-        let button = dunlin_ui::button(format!("group-color:{tone:?}"))
-            .label(format!("{tone:?}"))
-            .when(draft.tone == tone, |b| b.primary())
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if let Some(draft) = &mut this.group_settings_draft {
-                    draft.tone = tone;
-                }
-                cx.notify();
-            }));
-        #[cfg(debug_assertions)]
-        let button = button
-            .relative()
-            .when(tone == dunlin_domain::ProjectTone::Teal, |b| {
-                b.children(crate::workspace_ui_smoke::probe("group-color-teal"))
-            });
-        colors = colors.child(button);
-    }
+    let app = cx.entity().downgrade();
+    let colors = dunlin_ui::settings::button("group-color-picker")
+        .child(dot(tone_color(&p, draft.tone), 12.))
+        .label(format!("{:?}", draft.tone))
+        .accessibility_label("Group dot color")
+        .w(px(180.))
+        .max_w_full()
+        .dropdown_caret(true)
+        .relative()
+        .children(probe("group-color-picker"))
+        .dropdown_menu_with_anchor(Anchor::BottomLeft, move |mut menu, _, cx| {
+            let Some(entity) = app.upgrade() else {
+                return menu;
+            };
+            let Some(draft) = &entity.read(cx).group_settings_draft else {
+                return menu;
+            };
+            let selected = draft.tone;
+            for tone in [
+                dunlin_domain::ProjectTone::Blue,
+                dunlin_domain::ProjectTone::Green,
+                dunlin_domain::ProjectTone::Violet,
+                dunlin_domain::ProjectTone::Amber,
+                dunlin_domain::ProjectTone::Rose,
+                dunlin_domain::ProjectTone::Teal,
+            ] {
+                let app = app.clone();
+                menu = menu.item(
+                    crate::effects::menu_item(move |_, cx| {
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .min_w(px(130.))
+                            .child(dot(tone_color(&palette(cx), tone), 12.))
+                            .child(format!("{tone:?}"))
+                            .relative()
+                            .when(tone == dunlin_domain::ProjectTone::Teal, |row| {
+                                row.children(probe("group-color-teal"))
+                            })
+                    })
+                    .checked(tone == selected)
+                    .on_click(move |_, _, cx| {
+                        let _ = app.update(cx, |this, cx| {
+                            if let Some(draft) = &mut this.group_settings_draft {
+                                draft.tone = tone;
+                            }
+                            cx.notify();
+                        });
+                    }),
+                );
+            }
+            menu
+        });
     let mut icons = div().flex().flex_wrap().gap(px(6.));
     for (value, label) in [
         (None, "Color dot"),
         (Some("aws-lambda"), "AWS Lambda"),
         (Some("kubernetes"), "Kubernetes"),
     ] {
-        let button = dunlin_ui::button(format!("group-icon:{label}"))
-            .label(label)
-            .when(draft.settings.icon.as_deref() == value, |b| b.primary())
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if let Some(draft) = &mut this.group_settings_draft {
-                    draft.settings.icon = value.map(str::to_string);
-                }
-                cx.notify();
-            }));
+        let button = dunlin_ui::settings::segment(
+            format!("group-icon:{label}"),
+            label,
+            draft.settings.icon.as_deref() == value,
+        )
+        .child(crate::project_icons::group_choice_icon(
+            value, draft.tone, 18., &p,
+        ))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if let Some(draft) = &mut this.group_settings_draft {
+                draft.settings.icon = value.map(str::to_string);
+            }
+            cx.notify();
+        }));
         #[cfg(debug_assertions)]
         let button =
             button
@@ -493,7 +568,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         icons = icons.child(button);
     }
     icons = icons.child(
-        dunlin_ui::action_button("group-icon-custom")
+        dunlin_ui::settings::button("group-icon-custom")
             .label(
                 if draft
                     .settings
@@ -508,54 +583,18 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             )
             .on_click(cx.listener(|this, _, _, cx| this.choose_group_icon(cx))),
     );
-    let mut harnesses = div().flex().flex_wrap().gap(px(5.));
-    let mut harness_options = vec![None];
-    harness_options.extend(crate::harness_discovery::catalog_names().map(Some));
-    harness_options.push(Some("Custom ACP"));
-    for name in harness_options {
-        if name.is_some_and(|name| !this.harness_visible(name)) {
-            continue;
-        }
-        let selected = draft.settings.harness.as_deref() == name;
-        harnesses = harnesses.child(
-            dunlin_ui::button(format!("group-harness-{}", name.unwrap_or("inherit")))
-                .small()
-                .label(name.unwrap_or("Inherit"))
-                .when(selected, |b| b.primary())
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.select_group_harness(name.map(str::to_owned), window, cx)
-                })),
-        );
-    }
-    let mut permissions = div().flex().flex_wrap().gap(px(5.));
-    for mode in [
-        None,
-        Some(PermissionMode::Ask),
-        Some(PermissionMode::ReadOnly),
-        Some(PermissionMode::AutoApprove),
-    ] {
-        let selected = draft.settings.permission_mode == mode;
-        permissions = permissions.child(
-            dunlin_ui::button(format!(
-                "group-permissions-{}",
-                mode.map(|m| m.label()).unwrap_or("inherit")
-            ))
-            .small()
-            .label(mode.map(|m| m.label()).unwrap_or("Inherit"))
-            .when(selected, |b| b.primary())
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if let Some(draft) = &mut this.group_settings_draft {
-                    draft.settings.permission_mode = mode;
-                }
-                cx.notify();
-            })),
-        );
-    }
+    let harnesses = harness_picker(
+        this,
+        "group-harness-picker",
+        draft.settings.harness.as_deref(),
+        false,
+        cx,
+        |this, harness, window, cx| this.select_group_harness(harness, window, cx),
+    );
     let preview = updated_settings(
         &draft.settings,
         &draft.model_harness,
         &draft.model.read(cx).value(),
-        &draft.environment.read(cx).value(),
     )
     .and_then(|settings| {
         let mut groups = this.project_groups.clone();
@@ -571,7 +610,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             this.permission_mode,
         )
     });
-    let save = dunlin_ui::action_button("save-group-settings")
+    let save = dunlin_ui::settings::button("save-group-settings")
         .primary()
         .label("Save group settings")
         .on_click(cx.listener(|this, _, _, cx| this.save_group_settings(cx)));
@@ -580,43 +619,130 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
     let save = save
         .relative()
         .children(crate::workspace_ui_smoke::probe("group-settings-save"));
-    div().id("group-settings-overlay").absolute().inset_0().size_full().flex().items_center().justify_center()
+    let content = div().w_full().min_w(px(0.)).p(px(18.)).flex().flex_col().gap(px(16.))
+        .child(dunlin_ui::settings::notice("Group scope · this Mac. Changes remain drafts until Save. Cancel discards them. Defaults inherit from parent groups, then global settings.", p))
+        .child(dunlin_ui::settings::field("Group appearance", icons, p))
+        .child(dunlin_ui::settings::field("Dot color · used when no image is selected", colors, p))
+        .child(dunlin_ui::settings::description("Inherited by projects and subgroups unless overridden. Harness/model defaults apply to new conversations. No agents are restarted.", p))
+        .child(dunlin_ui::settings::field("Default harness", harnesses, p))
+        .child(dunlin_ui::settings::field(&format!("Default model · {} · blank = inherit", draft.model_harness), dunlin_ui::settings::input(&draft.model, p).aria_label("Group default model"), p))
+        .child(match preview { Ok(resolved) => render_sources(this, &resolved, cx), Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element() })
+        .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
+        .child(dunlin_ui::settings::actions()
+            .child(dunlin_ui::settings::button("group-clear").label(if this.group_cleanup.busy { "Inspecting…" } else { "Clean group…" })
+                .relative().children(crate::gui_probe::marker("group-clear"))
+                .disabled(this.group_cleanup.busy)
+                .tooltip("Review generated dependencies, caches and builds with sizes, then move selected folders to system Trash.")
+                .on_click(cx.listener(move |this, _, window, cx| this.preview_group_cleanup(cleanup_group.clone(), window, cx)))));
+    div()
+        .id("group-settings-overlay")
+        .absolute()
+        .inset_0()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(px(16.))
         .on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx)))
-        .child(div().id("group-settings-panel").role(Role::Dialog).aria_label("Group settings").tab_group().w(px(620.)).max_w(relative(0.95)).max_h(relative(0.85)).overflow_hidden()
-            .child(crate::effects::panel_probe(&this.overlay_backdrop, SurfaceGeometry::DIALOG, false))
-            .rounded(px(SurfaceGeometry::DIALOG.radius)).border(px(SurfaceGeometry::DIALOG.border)).border_color(p.border_strong).bg(p.card).text_color(p.fg).flex().flex_col()
-            .on_click(|_, _, cx| cx.stop_propagation())
-            .track_focus(&draft.focus)
-            .child(div().id("group-settings-content").min_h(px(0.)).overflow_y_scroll().p(px(16.)).flex().flex_col().gap(px(10.))
-            .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(format!("Group settings · {}", group.name)))
-            .child(dunlin_ui::settings::notice("Group scope · this Mac. All choices in this form are drafts until Save group settings. Cancel discards them. Defaults inherit from parent groups, then global settings.", p))
-            .child(div().text_size(px(12.)).font_weight(FontWeight::MEDIUM).child("Group appearance"))
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Choose a logo or your own image instead of the dot, or keep a color dot."))
-            .child(icons)
-            .child(div().text_size(px(11.)).child("Dot color · used when no image is selected"))
-            .child(colors)
-            .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Inherited by projects in this group and its subgroups unless overridden. No files are moved and no agents are restarted. Approval changes affect following requests, including existing group conversations (strictest member policy wins)."))
-            .child(div().text_size(px(11.)).child("Default harness"))
-            .child(harnesses)
-            .child(div().text_size(px(11.)).child("Client permissions"))
-            .child(permissions)
-            .child(div().text_size(px(11.)).child(format!("Default model · {} · blank = inherit", draft.model_harness)))
-            .child(dunlin_ui::input(&draft.model).aria_label("Group default model"))
-            .child(div().text_size(px(11.)).child("Local environment overrides · NAME=value; omitted keys inherit"))
-            .child(div().h(px(120.)).overflow_hidden().child(Editor::new(&draft.environment).aria_label("Group environment overrides").h_full()))
-            .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Values are literal and stored unencrypted locally, not in Keychain. Do not paste secrets. Environment/model defaults are not forwarded to relay; env applies at the next local connection."))
-            .child(match preview { Ok(resolved) => render_sources(this, &resolved, cx), Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element() })
-            .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error))))
-            .child(div().p(px(16.)).border_t_1().border_color(p.border).flex_shrink_0().flex().flex_wrap().gap(px(7.))
-                .child(dunlin_ui::action_button("reset-group-defaults").label("Reset to inherited").on_click(cx.listener(|this, _, window, cx| this.reset_group_draft(window, cx))))
-                .child(dunlin_ui::action_button("group-clear").label(if this.group_cleanup.busy { "Inspecting…" } else { "Clear…" })
-                    .disabled(this.group_cleanup.busy)
-                    .tooltip("Review ignored dependency/cache folders, then move them to Trash. Never removes source or tracked files.")
-                    .on_click(cx.listener(move |this, _, window, cx| this.preview_group_cleanup(cleanup_group.clone(), window, cx))))
-                .child(div().flex_1())
-                .child(dunlin_ui::action_button("cancel-group-settings").label("Cancel").on_click(cx.listener(|this, _, _, cx| this.close_group_settings(cx))))
-                .child(save)))
+        .child(
+            dialog_surface(p)
+                .id("group-settings-panel")
+                .relative()
+                .role(Role::Dialog)
+                .aria_label("Group settings")
+                .tab_group()
+                .w(px(700.))
+                .max_w_full()
+                .h(relative(0.85))
+                .min_h(px(0.))
+                .p(px(0.))
+                .gap(px(0.))
+                .overflow_hidden()
+                .children(probe("group-settings-panel"))
+                .child(crate::effects::panel_probe(
+                    &this.overlay_backdrop,
+                    SurfaceGeometry::DIALOG,
+                    false,
+                ))
+                .on_click(|_, _, cx| cx.stop_propagation())
+                .track_focus(&draft.focus)
+                .child(
+                    div()
+                        .p(px(18.))
+                        .flex_shrink_0()
+                        .border_b_1()
+                        .border_color(p.border)
+                        .child(
+                            div()
+                                .text_size(px(dunlin_ui::settings::Tokens::TITLE_SIZE))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(format!("Group settings · {}", group.name)),
+                        ),
+                )
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .min_h(px(0.))
+                        .child(
+                            div()
+                                .id("group-settings-content")
+                                .h_full()
+                                .overflow_y_scroll()
+                                .track_scroll(&draft.scroll)
+                                .relative()
+                                .children(probe("group-settings-scroll"))
+                                .child(content),
+                        )
+                        .child(
+                            gpui_kit::base::Scrollbar::vertical(&draft.scroll)
+                                .mode(gpui_kit::base::ScrollbarMode::Always)
+                                .viewport_from_layout(),
+                        ),
+                )
+                .child(
+                    dunlin_ui::settings::actions()
+                        .p(px(16.))
+                        .border_t_1()
+                        .border_color(p.border)
+                        .flex_shrink_0()
+                        .relative()
+                        .children(probe("group-settings-actions"))
+                        .child(
+                            dunlin_ui::settings::button("delete-settings-group")
+                                .danger()
+                                .outline()
+                                .label("Delete group…")
+                                .relative()
+                                .children(probe("group-settings-delete"))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.confirm_delete_group(window, cx)
+                                })),
+                        )
+                        .child(div().flex_1())
+                        .child(
+                            dunlin_ui::settings::button("cancel-group-settings")
+                                .label("Cancel")
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| this.close_group_settings(cx)),
+                                ),
+                        )
+                        .child(save),
+                ),
+        )
         .into_any_element()
+}
+
+fn probe(name: &'static str) -> Option<AnyElement> {
+    #[cfg(debug_assertions)]
+    {
+        crate::workspace_ui_smoke::probe(name)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = name;
+        None
+    }
 }
 
 #[cfg(test)]
@@ -632,14 +758,15 @@ mod tests {
             ..Default::default()
         };
         original.set_default_model("Claude Code", "keep").unwrap();
-        let edited = updated_settings(&original, "OpenCode", "new", "LANG=pl_PL.UTF-8").unwrap();
+        original.environment =
+            dunlin_domain::parse_project_environment("LANG=pl_PL.UTF-8").unwrap();
+        let edited = updated_settings(&original, "OpenCode", "new").unwrap();
         assert_eq!(edited.default_model("Claude Code"), Some("keep"));
         assert_eq!(edited.permission_mode, Some(PermissionMode::ReadOnly));
-        assert!(original.environment.is_empty());
-        let cleared = updated_settings(&edited, "OpenCode", "", "").unwrap();
-        assert!(cleared.environment.is_empty());
+        assert_eq!(edited.environment, original.environment);
+        let cleared = updated_settings(&edited, "OpenCode", "").unwrap();
+        assert_eq!(cleared.environment, original.environment);
         assert_eq!(cleared.default_model("OpenCode"), None);
-        assert!(updated_settings(&edited, "OpenCode", "new", "bad").is_err());
         assert!(
             validate_update(
                 "missing",

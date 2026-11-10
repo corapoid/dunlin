@@ -9,7 +9,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPERS = ("dunlin-knowledge-mcp", "dunlin-ssh-askpass", "dunlin-relay")
+HELPERS = ("dunlin-knowledge-mcp", "dunlin-relay")
 
 
 class BundleMacosTests(unittest.TestCase):
@@ -71,7 +71,7 @@ class BundleMacosTests(unittest.TestCase):
         self.bundle("--dev")
         args = json.loads((self.root / "cargo.json").read_text())
         self.assertEqual(args, ["build", "-p", "dunlin", "-p", "dunlin-knowledge-mcp",
-                                "-p", "dunlin-ssh", "-p", "dunlin-relay", "--locked"])
+                                "-p", "dunlin-relay", "--locked"])
         self.assert_profile("debug")
 
     def test_build_preserves_release_profile(self):

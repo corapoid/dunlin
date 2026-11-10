@@ -170,7 +170,7 @@ pub(super) fn render(
                 #[cfg(debug_assertions)]
                 {
                     crate::workspace_ui_smoke::probe(
-                        ["view-label-chat", "view-label-graph", "view-label-trace"][index],
+                        ["view-label-chat", "view-label-graph", "view-label-timeline"][index],
                     )
                 }
                 #[cfg(not(debug_assertions))]

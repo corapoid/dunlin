@@ -26,6 +26,12 @@ session.id --owner selection--> project --id lookup--> history [proven]
 
 - General conversations are visible across known projects; ordinary sessions from
   unrelated repositories are not. Group sessions appear once, in General.
+- Each scope heading independently collapses its list, with the choices remembered
+  between launches. Empty scopes do not reserve half the sidebar.
+- Opening history and loading connection/model metadata preserve its timestamp
+  and position, including the temporary Connecting state in the project view.
+  A newly submitted user message or an approved pending operation updates activity
+  and moves it up. Merely opening, loading or declining a request does not.
 - A repository merely belonging to a group does not make all its sessions general.
   Standalone chats with explicit repository context are still standalone chats.
 - Reads use the local `all_sessions` snapshot and stored group contexts; no schema

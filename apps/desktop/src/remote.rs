@@ -188,6 +188,10 @@ pub(crate) fn validate_relay_url(url: &str) -> Result<Url, String> {
                 .into(),
         );
     }
+    if !(cfg!(debug_assertions) && loopback)
+        && (url.scheme()!="https" || !url.host_str().is_some_and(dunlin_domain::relay::tailscale_hostname)) {
+        return Err("Use the server's private Tailscale Serve HTTPS address (*.ts.net). SSH tunnels and direct host connections are no longer supported.".into());
+    }
     Ok(url)
 }
 
@@ -1366,7 +1370,8 @@ mod tests {
 
     #[test]
     fn relay_urls_require_tls_off_loopback() {
-        assert!(validate_relay_url("https://relay.example.test").is_ok());
+        assert!(validate_relay_url("https://relay.tail123.ts.net").is_ok());
+        assert!(validate_relay_url("https://relay.example.test").is_err());
         assert!(validate_relay_url("http://127.0.0.1:8787").is_ok());
         assert!(validate_relay_url("http://localhost:8787").is_ok());
         assert!(validate_relay_url("http://192.168.1.10:8787").is_err());

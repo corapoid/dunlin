@@ -111,34 +111,4 @@ class Client:
                                         "expected": expected, **options})
 
     def tunnel(self, provider, *, port=8787, bootstrap=None, config=None):
-        config = str(config or provider.ssh.config)
-        # Keep the Unix socket short enough for macOS sockaddr_un. Identity is
-        # journaled before starting; cleanup never guesses a socket pathname.
-        digest = hashlib.sha256(self.run.id.encode()).hexdigest()[:16]
-        socket = str(Path(os.environ.get("TMPDIR", "/tmp")) / f"de-{digest}.sock")
-        self.run.own("ssh-master", config=config, socket=socket, target=provider.ssh.target)
-        payload = {"ssh_config": config, "control_socket": socket,
-                   "host": {"id": self.run.id, "name": "Manual fixture", "target": provider.ssh.target,
-                            "user": "admin", "port": 0, "identity": None, "relay_port": port,
-                            "local_port": 0, "host_key": "", "created_at": 0}}
-        if bootstrap:
-            payload["relay_binary"] = str(bootstrap)
-        log_path = self.run.directory / f"tunnel-{len(self.run.processes)}.log"
-        log = log_path.open("wb")
-        process = subprocess.Popen([self.binary, "--remote-e2e"], env=self.env,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
-                                   start_new_session=True)
-        log.close()
-        self.run.processes.append(process)
-        process.stdin.write((json.dumps(self.manifest("bootstrap" if bootstrap else "tunnel", payload=payload)) + "\n").encode())
-        process.stdin.flush()
-        if not select.select([process.stdout], [], [], 60)[0]:
-            stop(process)
-            raise TimeoutError("Production SSH tunnel/bootstrap did not report readiness")
-        line = process.stdout.readline()
-        if not line:
-            process.wait(timeout=5)
-            raise RuntimeError("Production SSH tunnel/bootstrap failed: " + self.run.redact(log_path.read_text()[-3000:]))
-        result = json.loads(line)
-        self.url = result["url"]
-        return result
+        raise Blocked("SSH relay transport was removed. Use an explicit private Tailscale HTTPS --endpoint.")

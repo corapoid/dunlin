@@ -8,6 +8,9 @@ fn stale_terminal_and_run_main_views_migrate_to_chat_instead_of_failing_settings
     let settings: StoredSettings =
         serde_json::from_str(r#"{"view":"Graph","default_view":"Trace"}"#).unwrap();
     assert_eq!(settings.view, MainView::Graph);
+    let legacy: StoredSettings = serde_json::from_str(r#"{"view":"Trace"}"#).unwrap();
+    assert_eq!(legacy.view, MainView::Timeline);
+    assert_eq!(serde_json::to_value(&legacy).unwrap()["view"], "Timeline");
     assert!(
         serde_json::to_value(&settings)
             .unwrap()

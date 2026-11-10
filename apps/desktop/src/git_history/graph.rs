@@ -42,6 +42,7 @@ fn cell(
     width: f32,
     highlighted: Option<usize>,
     selected: bool,
+    hovered: bool,
     merge: bool,
     p: Palette,
 ) -> AnyElement {
@@ -109,7 +110,7 @@ fn cell(
                     BorderStyle::default(),
                 ));
             };
-            if selected || highlighted == Some(row.color) {
+            if selected || hovered {
                 dot(7., node_color.opacity(0.18));
             }
             dot(if merge || selected { 4.7 } else { 3.4 }, node_color);
@@ -217,6 +218,7 @@ pub(super) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                     width,
                                     highlighted,
                                     selected,
+                                    view.hovered == Some(i),
                                     commit.parents.len() > 1,
                                     p,
                                 ),

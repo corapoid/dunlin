@@ -20,16 +20,14 @@ TLS_CHECKS = ["tls-setup", "tls-positive", "tls-untrusted", "tls-wrong-name", "t
 RESILIENCE = ["network", "uncertain-write", "acp-reset", "service-restart", "service-crash", "reboot", "namespace-failure"]
 PROFILES = {
     "linux-core": CORE,
-    "linux-ssh": ["bootstrap", "ssh-host-key", "ssh-bad-key", "ssh-port-conflict"],
     "linux-tls": TLS_CHECKS,
     "linux-ui": ["ui"],
     "linux-resilience": ["acp", *RESILIENCE],
     "linux-keyring": ["keyring"],
     "linux-install": ["installer"],
     "linux-upgrade": ["upgrade"],
-    "linux-full": [*CORE, "bootstrap", "ssh-host-key", "ssh-bad-key", "ssh-port-conflict",
-                   *TLS_CHECKS, "ui", *RESILIENCE, "keyring", "installer", "upgrade"],
-    "macos-full": [*CORE, "bootstrap", *TLS_CHECKS, "ui", "network", "acp-reset",
+    "linux-full": [*CORE, *TLS_CHECKS, "ui", *RESILIENCE, "keyring", "installer", "upgrade"],
+    "macos-full": [*CORE, *TLS_CHECKS, "ui", "network", "acp-reset",
                    "service-restart", "service-crash", "reboot", "keyring", "installer", "upgrade"],
     "remote-host": [*CORE, "public-endpoint", "service-restart"],
 }
@@ -67,7 +65,7 @@ def parser():
         command_parser.add_argument("--release-version")
         command_parser.add_argument("--published-installer", action="store_true",
                                     help="Use immutable published harness assets instead of the candidate HTTPS fixture")
-        command_parser.add_argument("--endpoint", help="Real HTTPS endpoint forwarding to this disposable relay")
+        command_parser.add_argument("--endpoint", help="Private Tailscale Serve HTTPS (*.ts.net) endpoint for this disposable relay")
         command_parser.add_argument("--allow-keychain", action="store_true")
         command_parser.add_argument("--allow-reboot", action="store_true")
         command_parser.add_argument("--allow-system-changes", action="store_true")
@@ -227,11 +225,12 @@ def main(argv=None):
             run.report["environment_retained"] = True
             raise Prepared()
         client = Client(run, options.binary, model)
+        client.url = options.endpoint or ""
         scenarios = Scenarios(provider, client)
         if not run.check("connection.initialize", scenarios.initialize):
             raise Blocked("Cannot run scenarios without an authenticated deployed server")
         tls = TLS(scenarios)
-        from . import ssh_checks, upgrades
+        from . import upgrades
         checks = {
             "pairing": scenarios.pairing, "pairing-expiry": scenarios.expiry, "grants": scenarios.grants,
             "files": scenarios.files, "transfers": scenarios.transfers, "history-transfer": scenarios.history_transfer,
@@ -239,7 +238,7 @@ def main(argv=None):
             "acp": scenarios.acp, "resume": scenarios.resume,
             "permission-allow": lambda: scenarios.permissions(True), "permission-deny": lambda: scenarios.permissions(False),
             "cancel": scenarios.cancel, "concurrent": scenarios.concurrent, "terminal": scenarios.terminal,
-            "bootstrap": scenarios.bootstrap, "network": scenarios.network, "acp-reset": scenarios.acp_reset,
+            "network": scenarios.network, "acp-reset": scenarios.acp_reset,
             "uncertain-write": scenarios.uncertain_write,
             "service-restart": scenarios.restart, "service-crash": lambda: scenarios.restart(True),
             "reboot": scenarios.reboot, "namespace-failure": scenarios.namespace_failure,
@@ -248,7 +247,6 @@ def main(argv=None):
             "tls-setup": tls.certificates, "tls-positive": tls.positive,
             "tls-upgrade-rejected": tls.rejected_upgrade,
             **{f"tls-{variant}": (lambda variant=variant: tls.negative(variant)) for variant in ("untrusted", "wrong-name", "expired")},
-            **{f"ssh-{name}": (lambda name=name: ssh_checks.run(scenarios, name)) for name in ("host-key", "bad-key", "port-conflict")},
         }
         tls_ready = False
         for name in selected:

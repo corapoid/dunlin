@@ -1,25 +1,19 @@
 //! View-only disclosure, virtualization and export. Never changes the recorded
 //! transcript.
-use crate::app::TraceFilter;
-use dunlin_domain::{AgentKind, AgentNode, AgentStatus, SpanKind, TraceSpan};
-use dunlin_ui::{ScrollHandle, UniformListScrollHandle};
+use dunlin_domain::{AgentKind, AgentNode, AgentStatus};
+use dunlin_ui::ScrollHandle;
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct State {
     session: String,
     pub agents_expanded: HashSet<String>,
-    pub spans_expanded: HashSet<String>,
     pub graph_zoom: f32,
-    pub trace_zoom: f32,
     /// First paint of a session centres the root instead of starting at the
     /// far-left of a wide fan-out.
     pub graph_centered: bool,
     /// The graph is a 2D canvas; this handle supplies both the scroll offset used
     /// for viewport culling and the maximum extent used by Fit and reveal.
     pub graph_scroll: ScrollHandle,
-    /// The trace uses a uniform virtual list, so this handle also carries the
-    /// deferred scroll-to-row request without rebuilding every row element.
-    pub trace_scroll: UniformListScrollHandle,
 }
 
 impl Default for State {
@@ -27,12 +21,9 @@ impl Default for State {
         Self {
             session: String::new(),
             agents_expanded: HashSet::new(),
-            spans_expanded: HashSet::new(),
             graph_zoom: 1.,
-            trace_zoom: 1.,
             graph_centered: false,
             graph_scroll: ScrollHandle::new(),
-            trace_scroll: UniformListScrollHandle::new(),
         }
     }
 }
@@ -104,37 +95,6 @@ pub(crate) fn filter_graph_nodes(nodes: Vec<AgentNode>, query: &str) -> Vec<Agen
         .collect()
 }
 
-pub(crate) fn filter_spans(spans: Vec<TraceSpan>, query: &str) -> Vec<TraceSpan> {
-    let query = query.trim().to_ascii_lowercase();
-    if query.is_empty() {
-        return spans;
-    }
-    let matches = |span: &TraceSpan| {
-        span.name.to_ascii_lowercase().contains(&query)
-            || span.agent.to_ascii_lowercase().contains(&query)
-            || span.detail.to_ascii_lowercase().contains(&query)
-    };
-    let by_id: HashMap<&str, &TraceSpan> =
-        spans.iter().map(|span| (span.id.as_str(), span)).collect();
-    let mut keep = HashSet::new();
-    for span in spans.iter().filter(|span| matches(span)) {
-        keep.insert(span.id.clone());
-        let mut parent = span.parent.as_deref();
-        for _ in 0..=spans.len() {
-            let Some(id) = parent else { break };
-            if !keep.insert(id.to_string()) {
-                break;
-            }
-            parent = by_id.get(id).and_then(|span| span.parent.as_deref());
-        }
-    }
-    drop(by_id);
-    spans
-        .into_iter()
-        .filter(|span| keep.contains(&span.id))
-        .collect()
-}
-
 pub(crate) fn graph_size(nodes: &[AgentNode]) -> (f32, f32) {
     (
         nodes
@@ -162,63 +122,6 @@ pub(crate) fn graph_extent(nodes: &[AgentNode]) -> (f32, f32) {
             .map(|n| n.y + n.height + 60.)
             .fold(1.0, f32::max),
     )
-}
-
-/// Return indices into `spans` in waterfall order. The uniform list renders
-/// only the requested slice, so this avoids cloning every span on each frame.
-pub(crate) fn trace_row_indices(
-    spans: &[TraceSpan],
-    expanded: &HashSet<String>,
-    filter: TraceFilter,
-) -> Vec<usize> {
-    let by_id: HashMap<_, _> = spans
-        .iter()
-        .enumerate()
-        .map(|(index, span)| (span.id.as_str(), index))
-        .collect();
-    let mut relevant = HashSet::new();
-    for span in spans.iter().filter(|span| filter.matches(span.kind)) {
-        let mut current = Some(span);
-        for _ in 0..=spans.len() {
-            let Some(span) = current else {
-                break;
-            };
-            if !relevant.insert(span.id.as_str()) {
-                break;
-            }
-            current = span
-                .parent
-                .as_deref()
-                .and_then(|id| by_id.get(id).and_then(|index| spans.get(*index)));
-        }
-    }
-    let mut children: HashMap<Option<&str>, Vec<usize>> = HashMap::new();
-    for (index, span) in spans.iter().enumerate() {
-        children
-            .entry(span.parent.as_deref())
-            .or_default()
-            .push(index);
-    }
-    for rows in children.values_mut() {
-        rows.sort_by_key(|index| (spans[*index].start_ms, *index));
-    }
-    let mut stack = children.get(&None).cloned().unwrap_or_default();
-    stack.reverse();
-    let mut seen = HashSet::new();
-    let mut output = Vec::new();
-    while let Some(index) = stack.pop() {
-        let span = &spans[index];
-        if !relevant.contains(span.id.as_str()) || !seen.insert(index) {
-            continue;
-        }
-        output.push(index);
-        if (span.id == "root" || expanded.contains(&span.id))
-            && let Some(children) = children.get(&Some(span.id.as_str()))
-        {
-            stack.extend(children.iter().rev().copied());
-        }
-    }
-    output
 }
 
 /// A world-space rectangle used to cull an arbitrarily large graph before any
@@ -405,28 +308,6 @@ pub(crate) fn graph_a11y_meta(nodes: &[AgentNode]) -> HashMap<&str, NodeA11yMeta
     meta
 }
 
-/// Sibling position/count for the rows that are actually visible. A global
-/// waterfall index is not a valid tree position because collapsed and filtered
-/// children are absent from the virtual list.
-pub(crate) fn trace_a11y_positions(
-    spans: &[TraceSpan],
-    rows: &[usize],
-) -> HashMap<usize, (usize, usize)> {
-    let mut totals: HashMap<Option<&str>, usize> = HashMap::new();
-    for index in rows {
-        *totals.entry(spans[*index].parent.as_deref()).or_default() += 1;
-    }
-    let mut seen: HashMap<Option<&str>, usize> = HashMap::new();
-    let mut output = HashMap::with_capacity(rows.len());
-    for index in rows {
-        let parent = spans[*index].parent.as_deref();
-        let position = seen.entry(parent).or_insert(0);
-        *position += 1;
-        output.insert(*index, (*position, totals[&parent]));
-    }
-    output
-}
-
 pub(crate) fn node_label(node: &AgentNode) -> String {
     format!(
         "{}, {}, {}, {}",
@@ -454,36 +335,6 @@ pub(crate) fn node_description(node: &AgentNode) -> String {
         node.harness,
         node.cost_usd,
         tools
-    )
-}
-
-pub(crate) fn span_label(span: &TraceSpan) -> String {
-    let duration = if span.duration_known {
-        crate::app::format_ms(span.duration_ms)
-    } else {
-        "unknown duration".into()
-    };
-    format!(
-        "{}, {}, {}, {}, {}",
-        short(&span.name, 90),
-        span.kind.label(),
-        span.agent,
-        span.status.label(),
-        duration
-    )
-}
-
-pub(crate) fn span_description(span: &TraceSpan) -> String {
-    let tokens = span
-        .tokens
-        .map(|tokens| format!("{} tokens", crate::app::format_tokens(tokens)))
-        .unwrap_or_else(|| "tokens not reported".into());
-    format!(
-        "{} · depth {} · ${:.2} · {}",
-        short(&span.detail, 180),
-        span.depth,
-        span.cost_usd,
-        tokens
     )
 }
 
@@ -673,20 +524,9 @@ pub(crate) fn graph_svg(nodes: &[AgentNode], title: &str, dark: bool) -> String 
     svg
 }
 
-pub(crate) fn token_label(tokens: Option<u64>) -> String {
-    tokens
-        .map(|n| format!("{} tok", crate::app::format_tokens(n)))
-        .unwrap_or_else(|| "— tok".into())
-}
-
-pub(crate) fn is_request(span: &TraceSpan) -> bool {
-    span.kind == SpanKind::Turn && span.parent.as_deref() == Some("root")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dunlin_domain::SpanStatus;
 
     fn node(id: &str, parent: Option<&str>, kind: AgentKind) -> AgentNode {
         AgentNode {
@@ -707,26 +547,8 @@ mod tests {
             height: 128.,
         }
     }
-    fn span(id: &str, parent: Option<&str>, kind: SpanKind) -> TraceSpan {
-        TraceSpan {
-            id: id.into(),
-            parent: parent.map(str::to_string),
-            name: id.into(),
-            agent: "Mock".into(),
-            kind,
-            status: SpanStatus::Done,
-            start_ms: 0,
-            duration_ms: 100,
-            duration_known: true,
-            depth: 0,
-            cost_usd: 0.,
-            tokens: None,
-            detail: "".into(),
-        }
-    }
-
     #[test]
-    fn graph_and_trace_search_keep_ancestor_context_and_ignore_empty_queries() {
+    fn graph_search_keeps_ancestor_context_and_ignores_empty_queries() {
         let all = vec![
             node("root", None, AgentKind::Orchestrator),
             node("child", Some("root"), AgentKind::Subagent),
@@ -739,19 +561,6 @@ mod tests {
             ["root", "child"]
         );
         assert!(filter_graph_nodes(all.clone(), "missing").is_empty());
-
-        let spans = vec![
-            span("root", None, SpanKind::Turn),
-            span("child", Some("root"), SpanKind::Tool),
-            span("other", Some("root"), SpanKind::Llm),
-        ];
-        let filtered = filter_spans(spans.clone(), "child");
-        assert_eq!(
-            filtered.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
-            ["root", "child"]
-        );
-        assert_eq!(filter_spans(spans.clone(), "").len(), 3);
-        assert!(filter_spans(spans, "missing").is_empty());
     }
 
     #[test]
@@ -777,39 +586,13 @@ mod tests {
     }
 
     #[test]
-    fn trace_defaults_to_requests_and_keeps_their_children_grouped_when_filtered() {
-        // Projection emits request rows before event rows; rendering must group by parent.
-        let all = vec![
-            span("root", None, SpanKind::Agent),
-            span("r1", Some("root"), SpanKind::Turn),
-            span("r2", Some("root"), SpanKind::Turn),
-            span("t1", Some("r1"), SpanKind::Tool),
-            span("t2", Some("r2"), SpanKind::Tool),
-        ];
-        let ids = |rows: Vec<usize>| {
-            rows.into_iter()
-                .map(|index| all[index].id.as_str())
-                .collect::<Vec<_>>()
-        };
-        let rows = trace_row_indices(&all, &HashSet::new(), TraceFilter::All);
-        assert_eq!(ids(rows), ["root", "r1", "r2"]);
-        let rows = trace_row_indices(&all, &HashSet::from(["r1".into()]), TraceFilter::All);
-        assert_eq!(ids(rows), ["root", "r1", "t1", "r2"]);
-        let rows = trace_row_indices(&all, &HashSet::from(["r1".into()]), TraceFilter::Tool);
-        assert_eq!(ids(rows), ["root", "r1", "t1", "r2"]);
-    }
-
-    #[test]
-    fn session_switches_reset_disclosure_and_unknown_tokens_are_not_zero() {
+    fn session_switches_reset_disclosure() {
         let mut state = State::default();
         assert!(state.prepare("one"));
         state.agents_expanded.insert("root".into());
-        state.spans_expanded.insert("turn-0".into());
         assert!(!state.prepare("one"));
         assert!(state.prepare("two"));
-        assert!(state.agents_expanded.is_empty() && state.spans_expanded.is_empty());
-        assert_eq!(token_label(None), "— tok");
-        assert_eq!(token_label(Some(0)), "0 tok");
+        assert!(state.agents_expanded.is_empty());
     }
 
     #[test]
@@ -928,16 +711,6 @@ mod tests {
         assert!(label.contains("Waiting"));
         assert!(label.chars().count() < 120);
         assert!(node_description(&agent).chars().count() < 320);
-
-        let mut span = span("request", Some("root"), SpanKind::Turn);
-        span.status = SpanStatus::Running;
-        span.duration_known = false;
-        let label = span_label(&span);
-        assert!(label.contains("running"));
-        assert!(label.contains("unknown duration"));
-        let description = span_description(&span);
-        assert!(description.contains("tokens not reported"));
-        assert!(!description.contains("0 tokens"));
     }
 
     #[test]
@@ -962,43 +735,5 @@ mod tests {
         assert_eq!(fit_zoom(100.0, 100.0, 1_000.0, 800.0, 0.5, 1.8), 1.8);
         assert_eq!(fit_zoom(f32::NAN, 1.0, 1.0, 1.0, 0.5, 1.8), 1.0);
         assert_eq!(fit_zoom(1_000.0, 1_000.0, 2_000.0, 500.0, 0.5, 1.8), 0.5);
-    }
-
-    #[test]
-    fn trace_tree_positions_count_only_visible_siblings() {
-        let spans = vec![
-            span("root", None, SpanKind::Agent),
-            span("r1", Some("root"), SpanKind::Turn),
-            span("r2", Some("root"), SpanKind::Turn),
-            span("t1", Some("r1"), SpanKind::Tool),
-            span("t2", Some("r2"), SpanKind::Tool),
-        ];
-        let rows = trace_row_indices(&spans, &HashSet::from(["r1".into()]), TraceFilter::All);
-        assert_eq!(
-            rows.iter()
-                .map(|index| spans[*index].id.as_str())
-                .collect::<Vec<_>>(),
-            ["root", "r1", "t1", "r2"]
-        );
-        let positions = trace_a11y_positions(&spans, &rows);
-        assert_eq!(positions[&0], (1, 1));
-        assert_eq!(positions[&1], (1, 2));
-        assert_eq!(positions[&2], (2, 2));
-        assert_eq!(positions[&3], (1, 1));
-    }
-
-    #[test]
-    fn ten_thousand_trace_rows_are_indexed_without_cloning_every_span() {
-        let mut spans = vec![span("root", None, SpanKind::Agent)];
-        for index in 0..10_000 {
-            let mut row = span(&format!("turn-{index}"), Some("root"), SpanKind::Turn);
-            row.start_ms = index;
-            spans.push(row);
-        }
-        let rows = trace_row_indices(&spans, &HashSet::new(), TraceFilter::All);
-        assert_eq!(rows.len(), 10_001);
-        assert_eq!(spans[rows[0]].id, "root");
-        assert_eq!(spans[rows[1]].id, "turn-0");
-        assert_eq!(spans[*rows.last().unwrap()].id, "turn-9999");
     }
 }

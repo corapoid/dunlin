@@ -39,6 +39,22 @@ fn raster(format: image::ImageFormat, width: u32, height: u32) -> Vec<u8> {
 const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100"><rect width="400" height="100" fill="red"/></svg>"#;
 
 #[test]
+fn inline_project_identity_tracks_the_current_draft_name() {
+    for (value, expected) in [
+        ("", ""),
+        ("n", "N"),
+        ("New", "N"),
+        ("New project", "NP"),
+        ("Żółty projekt", "ŻP"),
+    ] {
+        assert_eq!(
+            monogram(&crate::project_creation::preview(value).name),
+            expected
+        );
+    }
+}
+
+#[test]
 fn group_logos_and_custom_icons_decode_to_bounded_embedded_rasters() {
     for name in ["aws-lambda", "kubernetes"] {
         let image = super::group_image(name).unwrap();

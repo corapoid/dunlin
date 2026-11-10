@@ -64,6 +64,7 @@ pub fn set_font_families(ui: &str, code: &str, cx: &mut App) {
 /// Semantic colours used across Dunlin, in addition to the GPUI Kit theme.
 #[derive(Clone, Copy)]
 pub struct Palette {
+    pub skin: crate::Skin,
     pub bg: Hsla,
     pub panel: Hsla,
     pub chrome: Hsla,
@@ -139,6 +140,7 @@ fn semantic_button_state(fill: Hsla, factor: f32) -> Hsla {
 
 pub fn light() -> Palette {
     Palette {
+        skin: crate::Skin::Default,
         bg: h(0xe3e7ee),
         panel: h(0xeeeeee),
         chrome: h(0xeeeeee).opacity(0.84),
@@ -178,6 +180,7 @@ pub fn light() -> Palette {
 
 pub fn dark() -> Palette {
     Palette {
+        skin: crate::Skin::Default,
         bg: h(0x191d25),
         panel: h(0x1c2025),
         chrome: h(0x1c2025).opacity(0.82),
@@ -215,6 +218,91 @@ pub fn dark() -> Palette {
     }
 }
 
+#[derive(Default)]
+struct ActiveSkin(crate::Skin);
+impl Global for ActiveSkin {}
+
+/// Resolve all six skin/appearance combinations without changing the original palettes.
+pub fn for_skin(skin: crate::Skin, dark_mode: bool) -> Palette {
+    let mut p = if dark_mode { dark() } else { light() };
+    p.skin = skin;
+    match skin {
+        crate::Skin::Default => {}
+        crate::Skin::Solid => {
+            if dark_mode {
+                p.bg = h(0x11151c);
+                p.panel = h(0x141820);
+                p.card = h(0x2d3542);
+                p.border = h(0x515f73);
+                p.border_strong = h(0x8899b3);
+                p.muted_fg = h(0xbdc7d6);
+                p.muted = h(0x343d4b);
+                p.subtle = h(0x3d4a5e);
+                p.accent = h(0x43526b);
+                p.hover = h(0x414f65);
+            } else {
+                p.bg = h(0xc7c7c7);
+                p.panel = h(0xbdbdbd);
+                p.card = h(0xe2e2e2);
+                p.border = h(0xa2a2a2);
+                p.border_strong = h(0x6c6c6c);
+                p.fg = h(0x202020);
+                p.muted_fg = h(0x444444);
+                p.muted = h(0xc3c3c3);
+                p.subtle = h(0xc9c9c9);
+                p.accent = h(0xb2b2b2);
+                p.hover = h(0xbcbcbc);
+            }
+            p.sidebar = p.panel;
+            p.titlebar = p.panel;
+            p.statusbar = p.panel;
+            p.chrome = p.panel;
+        }
+        crate::Skin::Grain => {
+            if dark_mode {
+                p.bg = h(0x060b15);
+                p.panel = h(0x091120);
+                p.card = h(0x1b3152);
+                p.border = h(0x3b557a);
+                p.border_strong = h(0x8095b4);
+                p.fg = h(0xe8eef9);
+                p.muted_fg = h(0xb1c0d9);
+                p.muted = h(0x233858);
+                p.subtle = h(0x2a4163);
+                p.accent = h(0x304e73);
+                p.hover = h(0x2c4668);
+            } else {
+                p.bg = h(0xe1e3e6);
+                p.panel = h(0xdbdee2);
+                p.card = h(0xeceef1);
+                p.border = h(0xc9cdd3);
+                p.border_strong = h(0x7a828e);
+                p.fg = h(0x292e36);
+                p.muted_fg = h(0x4b5563);
+                p.muted = h(0xdddfe4);
+                p.subtle = h(0xe2e5e9);
+                p.accent = h(0xcdd3dc);
+                p.hover = h(0xd6dbe2);
+            }
+            p.chrome = p.panel.opacity(0.97);
+            p.sidebar = p.panel;
+            p.titlebar = p.panel;
+            p.statusbar = p.panel;
+            p.accent_fg = p.fg;
+        }
+    }
+    p
+}
+
+pub fn set_skin(skin: crate::Skin, cx: &mut App) {
+    cx.set_global(ActiveSkin(skin));
+    let state = cx.default_global::<ThemeTransition>();
+    state.generation += 1;
+    state.palette = None;
+    apply(cx);
+    cx.refresh_windows();
+}
+
 pub fn palette(cx: &App) -> Palette {
     if let Some(palette) = cx
         .try_global::<ThemeTransition>()
@@ -222,11 +310,12 @@ pub fn palette(cx: &App) -> Palette {
     {
         return palette;
     }
-    if cx.theme().is_dark() {
-        dark()
-    } else {
-        light()
-    }
+    for_skin(
+        cx.try_global::<ActiveSkin>()
+            .map(|s| s.0)
+            .unwrap_or_default(),
+        cx.theme().is_dark(),
+    )
 }
 
 #[derive(Default)]
@@ -237,6 +326,14 @@ struct ThemeTransition {
 impl Global for ThemeTransition {}
 
 impl Palette {
+    /// Floating widgets preserve Default's tint; new skins keep content opaque.
+    pub fn floating_surface(self, default_opacity: f32) -> Hsla {
+        match self.skin {
+            crate::Skin::Default => self.card.opacity(default_opacity),
+            crate::Skin::Solid | crate::Skin::Grain => self.card,
+        }
+    }
+
     fn mix(self, target: Self, progress: f32) -> Self {
         if progress <= 0. {
             return self;
@@ -246,7 +343,7 @@ impl Palette {
         }
         macro_rules! colors {
             ($($field:ident),+ $(,)?) => {
-                Self { $($field: self.$field.mix_oklab(target.$field, 1. - progress)),+ }
+                Self { skin: target.skin, $($field: self.$field.mix_oklab(target.$field, 1. - progress)),+ }
             };
         }
         colors!(
@@ -311,6 +408,141 @@ mod palette_contrast_tests {
         let a = luminance(a);
         let b = luminance(b);
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+    #[test]
+    fn all_skins_keep_reading_surfaces_opaque_and_text_accessible() {
+        for skin in crate::Skin::ALL {
+            for dark in [false, true] {
+                let p = for_skin(skin, dark);
+                assert_eq!(p.skin, skin);
+                for surface in [p.bg, p.panel, p.card, p.subtle, p.hover, p.accent] {
+                    assert_eq!(surface.a, 1.);
+                    assert!(contrast(p.fg, surface) >= 7., "{skin:?}, dark={dark}");
+                }
+                for surface in [p.bg, p.panel, p.card, p.subtle] {
+                    assert!(
+                        contrast(p.muted_fg, surface) >= 4.5,
+                        "{skin:?}, dark={dark}"
+                    );
+                }
+                assert!(contrast(p.border_strong, p.card) >= 3.);
+                assert_eq!(crate::chrome_background(p, true).a, 1.);
+                if skin == crate::Skin::Solid {
+                    assert_eq!(p.chrome.a, 1.);
+                }
+                if skin == crate::Skin::Grain {
+                    assert_eq!(p.chrome.a, 0.97);
+                }
+                if skin != crate::Skin::Default {
+                    assert_eq!(p.floating_surface(0.88).a, 1.);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn default_skin_preserves_existing_palettes() {
+        assert_eq!(for_skin(crate::Skin::Default, false).chrome, light().chrome);
+        assert_eq!(for_skin(crate::Skin::Default, true).chrome, dark().chrome);
+        assert_eq!(for_skin(crate::Skin::Default, false).card, light().card);
+        assert_eq!(for_skin(crate::Skin::Default, true).card, dark().card);
+    }
+
+    #[test]
+    fn solid_light_uses_darker_neutral_grays_with_separate_reading_surfaces() {
+        let p = for_skin(crate::Skin::Solid, false);
+        for color in [
+            p.bg,
+            p.panel,
+            p.card,
+            p.chrome,
+            p.sidebar,
+            p.titlebar,
+            p.statusbar,
+            p.subtle,
+            p.muted,
+            p.hover,
+            p.accent,
+            p.border,
+            p.border_strong,
+        ] {
+            let color: Rgba = color.into();
+            assert!((color.r - color.g).abs() < 0.001);
+            assert!((color.g - color.b).abs() < 0.001);
+            assert_eq!(color.a, 1.);
+        }
+        assert!((0.45..0.65).contains(&luminance(p.bg)));
+        assert_eq!(p.panel, h(0xbdbdbd));
+        assert!(luminance(p.card) > luminance(p.panel));
+    }
+
+    #[test]
+    fn solid_and_dark_grain_keep_chrome_content_and_composer_visibly_separate() {
+        for (skin, dark) in [
+            (crate::Skin::Solid, false),
+            (crate::Skin::Solid, true),
+            (crate::Skin::Grain, true),
+        ] {
+            let p = for_skin(skin, dark);
+            assert!(
+                contrast(p.panel, p.card) >= 1.4,
+                "{skin:?}, dark={dark}: chrome/content"
+            );
+            assert!(
+                contrast(p.card, p.subtle) >= 1.25,
+                "{skin:?}, dark={dark}: content/composer"
+            );
+            for surface in [p.panel, p.card, p.subtle, p.accent, p.hover] {
+                assert!(contrast(p.fg, surface) >= 7.);
+                assert!(contrast(p.muted_fg, surface) >= 4.5);
+            }
+        }
+    }
+
+    #[test]
+    fn grain_uses_deep_midnight_navy_and_cool_gray_light_surfaces() {
+        let p = for_skin(crate::Skin::Grain, true);
+        for color in [p.bg, p.panel, p.card, p.subtle, p.muted, p.accent, p.hover] {
+            let color: Rgba = color.into();
+            assert!(color.b > color.g && color.g > color.r);
+        }
+        assert!(luminance(p.bg) < 0.004);
+        assert!(luminance(p.card) > luminance(p.panel));
+        assert_eq!(p.chrome.a, 0.97);
+        let light = for_skin(crate::Skin::Grain, false);
+        assert_eq!(light.bg, h(0xe1e3e6));
+        assert_eq!(light.panel, h(0xdbdee2));
+        assert_eq!(light.card, h(0xeceef1));
+        for color in [light.bg, light.panel, light.card] {
+            let color: Rgba = color.into();
+            assert!(color.b >= color.g && color.g >= color.r);
+            assert!(color.b - color.r < 0.04);
+        }
+    }
+
+    #[test]
+    fn grain_chrome_keeps_readable_text_over_extreme_backdrops_and_noise() {
+        for dark in [false, true] {
+            let p = for_skin(crate::Skin::Grain, dark);
+            let tint: Rgba = p.chrome.into();
+            for backdrop in [0., 1.] {
+                for noise in [0., 1.] {
+                    let channel = |c: f32| {
+                        let base = c * tint.a + backdrop * (1. - tint.a);
+                        base * (1. - 9. / 255.) + noise * (9. / 255.)
+                    };
+                    let background = Rgba {
+                        r: channel(tint.r),
+                        g: channel(tint.g),
+                        b: channel(tint.b),
+                        a: 1.,
+                    }
+                    .into();
+                    assert!(contrast(p.fg, background) >= 7.);
+                    assert!(contrast(p.muted_fg, background) >= 4.5);
+                }
+            }
+        }
     }
     #[test]
     fn both_palettes_keep_quiet_dividers_and_accessible_inputs() {

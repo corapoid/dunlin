@@ -32,7 +32,9 @@ printf '  Your workspace. Anywhere.\n\n'
 yesno 'Install or update the Dunlin server?' || exit 0
 ask 'Server name [dunlin-server]:'; NAME=${REPLY:-dunlin-server}
 [[ "$NAME" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$ ]] || fail 'Use a name of 1–63 letters, digits and hyphens.'
-TAILSCALE=no; yesno 'Install/update Tailscale and connect to your private network?' && TAILSCALE=yes
+printf 'Tailscale is required for remote access. The installer will configure private HTTPS Serve, never Funnel.\n'
+yesno 'Install/update Tailscale and connect to your private network?' || exit 0
+TAILSCALE=yes
 AUTOSTART=no; yesno 'Start the relay automatically as your user?' && AUTOSTART=yes
 GIT_TOOLS=no; yesno 'Install GitHub and GitLab command-line tools for remote authorization?' && GIT_TOOLS=yes
 ask 'Harnesses: 1 OpenCode, 2 Codex, 3 Claude Code (comma separated; Enter for none):'

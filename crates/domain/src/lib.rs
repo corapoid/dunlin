@@ -8,6 +8,9 @@
 use serde::{Deserialize, Serialize};
 
 mod project_settings;
+pub mod presence;
+pub mod relay;
+pub mod jobs;
 pub mod task_budget;
 pub mod vault;
 pub use project_settings::{
@@ -25,17 +28,19 @@ pub enum MainView {
     #[serde(alias = "Terminal", alias = "Run")]
     Chat,
     Graph,
-    Trace,
+    /// Replace the retired Trace surface without breaking saved workspace views.
+    #[serde(alias = "Trace")]
+    Timeline,
 }
 
 impl MainView {
-    pub const ALL: [MainView; 3] = [MainView::Chat, MainView::Graph, MainView::Trace];
+    pub const ALL: [MainView; 3] = [MainView::Chat, MainView::Graph, MainView::Timeline];
 
     pub fn label(self) -> &'static str {
         match self {
             MainView::Chat => "Chat",
             MainView::Graph => "Graph",
-            MainView::Trace => "Trace",
+            MainView::Timeline => "Timeline",
         }
     }
 }

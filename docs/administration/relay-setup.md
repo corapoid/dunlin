@@ -85,7 +85,7 @@ adapter so these setup commands are available.
 
 ## Tailscale
 
-Tailscale is selected by default but can be skipped. The installer obtains the
+Tailscale is required; declining its configuration cancels installation. The installer obtains the
 latest stable official macOS standalone package or updates the Linux package.
 It will not replace an existing incompatible macOS variant. Existing Serve
 routes for another service are not overwritten.
@@ -95,11 +95,18 @@ create that private network; no router port forwarding is required. Tailnet
 policies and device approval still apply. Tailscale Serve provides private
 HTTPS; Funnel is not enabled by this installer. Serve may ask the tailnet
 administrator to enable HTTPS certificates. The relay itself listens only on
-`127.0.0.1:8787` by default.
+`127.0.0.1:8787` by default; public/interface binds are rejected. Use a numeric
+loopback address (`127.0.0.1` or `::1`) behind Serve.
 
-In the client, Settings → Remote & SSH offers Tailscale download, opening the installed
+In the client, Settings → Remote · Tailscale offers Tailscale download, opening the installed
 app/sign-in and a state check. The client uses the operating system's Tailscale
 connection, not a second embedded VPN.
+
+Use a private `https://<server>.<tailnet>.ts.net` Serve endpoint. Release clients
+reject direct hosts, public HTTPS endpoints and SSH tunnels. Loopback transport
+is available only in debug builds for local fixtures. A `.ts.net` hostname is
+not proof that Funnel is disabled: verify Serve/Funnel configuration and tailnet
+ACLs on the server. Existing SSH keys and legacy local profiles are not erased.
 
 macOS launch agents and the standalone Tailscale app start after user login.
 On Linux, a user systemd service can start before login after explicitly enabling

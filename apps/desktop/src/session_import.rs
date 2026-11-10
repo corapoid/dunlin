@@ -1101,6 +1101,7 @@ mod tests {
                 additions,
                 deletions,
                 diff: (additions > 0).then(|| "+line".into()),
+                file_changes: Vec::new(),
             },
             duration_ms: 0,
             at_ms: 10,
@@ -1121,6 +1122,7 @@ mod tests {
             }),
             usage_before: Some(TokenUsage::default()),
             speaker: None,
+            failure: None,
         };
         let mut existing = vec![
             ChatItem::User {

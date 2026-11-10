@@ -21,6 +21,27 @@ use dunlin_workspace::tree::FileEntry;
 
 mod navigation;
 
+fn sidebar_probe(name: &'static str) -> Option<AnyElement> {
+    #[cfg(debug_assertions)]
+    {
+        crate::workspace_ui_smoke::probe(name)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = name;
+        None
+    }
+}
+
+fn sidebar_heading(label: impl Into<SharedString>, p: &Palette) -> Div {
+    div()
+        .text_size(px(11.))
+        .font_family(dunlin_ui::theme::code_font())
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(p.muted_fg)
+        .child(label.into())
+}
+
 pub(crate) fn render(
     this: &mut DunlinApp,
     _window: &mut Window,
@@ -113,21 +134,27 @@ pub(crate) fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) ->
     let project = this.project();
     let missing = !project.is_remote() && !Path::new(&project.path).is_dir();
 
-    action_row(
+    titlebar_field(
         "project-switcher",
         format!("Switch project: {}", project.name),
+        p,
     )
     .toggled(this.project_menu_open)
-    .h(px(30.))
+    .w_full()
     .max_w(px(310.))
     .flex_shrink_0()
-    .px(px(10.))
-    .rounded(px(dunlin_ui::radii::FOLDER_TAB))
-    .border_1()
-    .border_color(p.fg.opacity(0.06))
-    .bg(p.fg.opacity(0.035))
+    .relative()
+    .children({
+        #[cfg(debug_assertions)]
+        { crate::workspace_ui_smoke::probe("project-switcher") }
+        #[cfg(not(debug_assertions))]
+        { None::<AnyElement> }
+    })
     .on_click(cx.listener(|this, _, _, cx| {
         this.project_menu_open = !this.project_menu_open;
+        if !this.project_menu_open {
+            this.project_creation.editing = false;
+        }
         cx.notify();
     }))
     .child(crate::project_icons::render(this, project, 20., &p))
@@ -278,14 +305,7 @@ fn section_header(
         .flex()
         .items_center()
         .gap(px(6.))
-        .child(
-            div()
-                .text_size(px(11.0))
-                .font_family(dunlin_ui::theme::code_font())
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.muted_fg)
-                .child(title.to_uppercase()),
-        )
+        .child(sidebar_heading(title.to_uppercase(), &p))
         .when_some(count, |this, count| {
             this.child(
                 div()
@@ -607,17 +627,7 @@ fn project_sessions(
     if sessions.is_empty() {
         return div().into_any_element();
     }
-    sessions.sort_by(|a, b| {
-        let running = |id: &str| live.iter().any(|(_, session, _)| session == id);
-        let time = |s: &SessionSummary| {
-            chrono::DateTime::parse_from_rfc3339(&s.updated_at)
-                .map(|d| d.timestamp_millis())
-                .unwrap_or(0)
-        };
-        running(&b.id)
-            .cmp(&running(&a.id))
-            .then_with(|| time(b).cmp(&time(a)))
-    });
+    sessions.sort_by_cached_key(|session| crate::session_list::recency_key(session));
     let mut rows = div()
         .ml(px(25.))
         .pl(px(8.))
@@ -806,6 +816,17 @@ fn projects_context(
                     move |_, window, cx| {
                         let _ = rename.update(cx, |this, cx| {
                             this.open_group_settings(&rename_id, window, cx)
+                        });
+                    },
+                ),
+            );
+            let clean = app.clone();
+            let clean_id = id.clone();
+            menu = menu.item(
+                menu_item(|_, _| div().px(px(4.)).py(px(3.)).child("Clean group…")).on_click(
+                    move |_, window, cx| {
+                        let _ = clean.update(cx, |this, cx| {
+                            this.preview_group_cleanup(clean_id.clone(), window, cx)
                         });
                     },
                 ),
@@ -2212,72 +2233,84 @@ fn source_control_body(
                 .flex()
                 .items_center()
                 .gap(px(5.))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .font_family(dunlin_ui::theme::code_font())
-                        .text_color(p.muted_fg)
-                        .child("CHANGES"),
-                )
+                .child(sidebar_heading("CHANGES", &p))
                 .child(div().flex_1())
                 .child(
                     toolbar_button("stage-all")
-                        .label("Stage all")
+                        .relative()
+                        .children(sidebar_probe(
+                            if crate::source_control::unstage_all(changes) {
+                                "unstage-all-action"
+                            } else {
+                                "stage-all-action"
+                            },
+                        ))
+                        .label(if crate::source_control::unstage_all(changes) {
+                            "Unstage all"
+                        } else {
+                            "Stage all"
+                        })
                         .disabled(changes.is_empty())
-                        .on_click(cx.listener(|this, _, _, cx| this.stage_all_changes(cx))),
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if crate::source_control::unstage_all(&this.git.changes) {
+                                this.request_git_action(
+                                    dunlin_workspace::git::operations::Action::UnstageAll,
+                                    window,
+                                    cx,
+                                );
+                            } else {
+                                this.stage_all_changes(cx);
+                            }
+                        })),
                 )
                 .child(
-                    toolbar_button("source-control-actions")
-                        .icon(IconName::Ellipsis)
-                        .accessibility_label("More change actions")
-                        .disabled(changes.is_empty())
-                        .dropdown_menu({
-                            let app = cx.entity().downgrade();
-                            let owner = this.project().id.clone();
-                            move |mut menu, _, cx| {
-                                let Some(entity) = app.upgrade() else {
-                                    return menu;
-                                };
-                                let paths = entity
-                                    .read(cx)
-                                    .git
-                                    .changes
-                                    .iter()
-                                    .map(|c| c.path.clone())
-                                    .collect::<std::collections::BTreeSet<_>>()
-                                    .into_iter()
-                                    .collect();
-                                for (label, action) in [
-                                    (
-                                        "Unstage all",
-                                        dunlin_workspace::git::operations::Action::UnstageAll,
-                                    ),
-                                    (
-                                        "Discard all changes…",
-                                        dunlin_workspace::git::operations::Action::Discard {
-                                            paths,
-                                        },
-                                    ),
-                                ] {
-                                    let app = app.clone();
-                                    let owner = owner.clone();
-                                    menu = menu.item(PopupMenuItem::new(label).on_click(
-                                        move |_, window, cx| {
-                                            let _ = app.update(cx, |this, cx| {
-                                                if this.project().id == owner {
-                                                    this.request_git_action(
-                                                        action.clone(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                }
-                                            });
-                                        },
-                                    ));
-                                }
-                                menu
+                    icon_button(
+                        "source-control-actions",
+                        IconName::Ellipsis,
+                        "More change actions",
+                    )
+                    .disabled(changes.is_empty())
+                    .dropdown_menu({
+                        let app = cx.entity().downgrade();
+                        let owner = this.project().id.clone();
+                        move |mut menu, _, cx| {
+                            let Some(entity) = app.upgrade() else {
+                                return menu;
+                            };
+                            let paths = entity
+                                .read(cx)
+                                .git
+                                .changes
+                                .iter()
+                                .map(|c| c.path.clone())
+                                .collect::<std::collections::BTreeSet<_>>()
+                                .into_iter()
+                                .collect();
+                            for (label, action) in [
+                                (
+                                    "Unstage all",
+                                    dunlin_workspace::git::operations::Action::UnstageAll,
+                                ),
+                                (
+                                    "Discard all changes…",
+                                    dunlin_workspace::git::operations::Action::Discard { paths },
+                                ),
+                            ] {
+                                let app = app.clone();
+                                let owner = owner.clone();
+                                menu = menu.item(PopupMenuItem::new(label).on_click(
+                                    move |_, window, cx| {
+                                        let _ = app.update(cx, |this, cx| {
+                                            if this.project().id == owner {
+                                                this.request_git_action(action.clone(), window, cx);
+                                            }
+                                        });
+                                    },
+                                ));
                             }
-                        }),
+                            menu
+                        }
+                    }),
                 ),
         );
 
@@ -2436,6 +2469,8 @@ fn source_control_row(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp
             IconName::Undo2,
             "Discard working tree changes",
         )
+        .size(px(22.))
+        .flex_shrink_0()
         .on_click(cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
             this.request_discard_file(&discard_path, window, cx);
@@ -2445,7 +2480,10 @@ fn source_control_row(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp
 
     div()
         .id(format!("change:{side}:{path}"))
-        .mx(px(6.))
+        .relative()
+        .children(sidebar_probe("changed-file-row"))
+        .w_full()
+        .min_w(px(0.))
         .px(px(7.))
         .h(px(height))
         .rounded(px(dunlin_ui::radii::ROW))
@@ -2517,6 +2555,8 @@ fn source_control_row(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp
                     "Show working tree diff"
                 },
             )
+            .size(px(22.))
+            .flex_shrink_0()
             .on_click(cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 this.open_diff(&diff_path, staged, cx);
@@ -2532,6 +2572,10 @@ fn source_control_row(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp
                 },
                 if staged { "Unstage file" } else { "Stage file" },
             )
+            .size(px(22.))
+            .flex_shrink_0()
+            .relative()
+            .children(sidebar_probe("changed-file-stage"))
             .on_click(cx.listener(move |this, _, _, cx| {
                 cx.stop_propagation();
                 if staged {
@@ -2673,24 +2717,79 @@ fn sessions_section(
             this.session_scope(session) == Some(scope) && this.session_visible(session)
         })
         .collect();
-    sessions.sort_by_cached_key(|(_, session)| {
-        std::cmp::Reverse(chrono::DateTime::parse_from_rfc3339(&session.updated_at).ok())
-    });
+    sessions.sort_by_cached_key(|(_, session)| crate::session_list::recency_key(session));
 
     let count = sessions.len();
     let title = match scope {
         Scope::General => format!("General sessions · {count}"),
         Scope::Project => format!("Project · {} · {count}", this.project().name),
     };
-    let heading = div()
-        .flex_shrink_0()
-        .px(px(12.))
-        .py(px(8.))
-        .text_size(px(11.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(p.fg)
-        .truncate()
-        .child(title);
+    let collapsed = match scope {
+        Scope::General => this.general_sessions_collapsed,
+        Scope::Project => this.project_sessions_collapsed,
+    };
+    let heading = dunlin_ui::button(match scope {
+        Scope::General => "toggle-general-sessions",
+        Scope::Project => "toggle-project-sessions",
+    })
+    .relative()
+    .children(sidebar_probe(match scope {
+        Scope::General => "toggle-general-sessions",
+        Scope::Project => "toggle-project-sessions",
+    }))
+    .w_full()
+    .justify_start()
+    .accessibility_label(format!(
+        "{} {title}",
+        if collapsed { "Expand" } else { "Collapse" }
+    ))
+    .on_click(cx.listener(move |this, _, _, cx| {
+        match scope {
+            Scope::General => this.general_sessions_collapsed = !this.general_sessions_collapsed,
+            Scope::Project => this.project_sessions_collapsed = !this.project_sessions_collapsed,
+        }
+        this.persist_settings(cx);
+        cx.notify();
+    }))
+    .flex_shrink_0()
+    .px(px(12.))
+    .py(px(8.))
+    .text_size(px(11.))
+    .font_weight(FontWeight::SEMIBOLD)
+    .text_color(p.fg)
+    .truncate()
+    .child(
+        // Button centers its inner content independently of its outer style.
+        // A full-width row keeps both scope headings aligned to the list inset.
+        div()
+            .w_full()
+            .min_w(px(0.))
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(
+                div()
+                    .size(px(12.))
+                    .flex_shrink_0()
+                    .relative()
+                    .children(sidebar_probe(match scope {
+                        Scope::General => "general-sessions-chevron",
+                        Scope::Project => "project-sessions-chevron",
+                    }))
+                    .child(
+                        Icon::new(if collapsed {
+                            IconName::ChevronRight
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .size(px(12.)),
+                    ),
+            )
+            .child(div().flex_1().min_w(px(0.)).truncate().child(title)),
+    );
+    if collapsed {
+        return div().flex_shrink_0().child(heading).into_any_element();
+    }
     let mut list = div()
         .id(match scope {
             Scope::General => "general-sessions-scroll",
@@ -2911,8 +3010,8 @@ fn sessions_section(
     let section = div()
         .flex()
         .flex_col()
-        .flex_1()
-        .flex_basis(px(0.))
+        .when(count > 0, |view| view.flex_1().flex_basis(px(0.)))
+        .when(count == 0, |view| view.flex_shrink_0())
         .min_h(px(0.))
         .overflow_hidden()
         .child(heading)
@@ -3248,7 +3347,11 @@ fn project_menu_row(
         ("project-menu-row", index),
         format!("Switch to {}", project.name),
     )
-    .h(px(42.))
+    .h(px(if this.density == crate::app::UiDensity::Compact {
+        28.
+    } else {
+        42.
+    }))
     .flex_shrink_0()
     .px(px(6.))
     .rounded(px(dunlin_ui::radii::ROW))
@@ -3264,12 +3367,25 @@ fn project_menu_row(
         }
     }))
     .child(div().w(px(12.)).flex_shrink_0())
-    .child(crate::project_icons::render(this, project, 24., p))
+    .child(crate::project_icons::render(
+        this,
+        project,
+        if this.density == crate::app::UiDensity::Compact {
+            18.
+        } else {
+            24.
+        },
+        p,
+    ))
     .child(
         div()
             .flex_1()
             .min_w(px(0.))
-            .text_size(px(13.0))
+            .text_size(px(if this.density == crate::app::UiDensity::Compact {
+                11.5
+            } else {
+                13.
+            }))
             .font_weight(FontWeight::NORMAL)
             .text_color(p.fg)
             .truncate()
@@ -3299,10 +3415,12 @@ fn project_menu_row(
 
 pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     let p = palette(cx);
+    let compact = this.density == crate::app::UiDensity::Compact;
     let mut menu = div()
         .id("project-menu")
         .on_mouse_down_out(cx.listener(|this, _, _, cx| {
             this.project_menu_open = false;
+            this.project_creation.editing = false;
             cx.stop_propagation();
             cx.notify();
         }))
@@ -3316,19 +3434,82 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
         .max_w_full()
         .max_h(relative(0.85))
         .overflow_y_scroll()
-        .p(px(5.))
+        .p(px(if compact { 4. } else { 5. }))
         .flex()
         .flex_col()
-        .gap(px(2.))
+        .gap(px(if compact { 1. } else { 2. }))
         .child(
             div()
                 .px(px(8.))
                 .py(px(5.))
+                .flex()
+                .items_center()
                 .text_size(px(11.0))
                 .font_family(dunlin_ui::theme::code_font())
                 .text_color(p.muted_fg)
-                .child("SWITCH PROJECT"),
+                .child(div().flex_1().child("SWITCH PROJECT"))
+                .child(
+                    icon_button(
+                        "project-menu-create",
+                        IconName::Plus,
+                        "Create a local project",
+                    )
+                    .relative()
+                    .children(sidebar_probe("project-menu-create"))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.begin_inline_project(window, cx)),
+                    ),
+                ),
         );
+
+    if this.project_creation.editing
+        && let Some(input) = &this.project_creation.input
+    {
+        let draft = crate::project_creation::preview(&input.read(cx).value());
+        menu = menu
+            .child(
+                div()
+                    .id("project-menu-draft")
+                    .relative()
+                    .children(sidebar_probe("project-menu-draft"))
+                    .w_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .p(px(7.))
+                    .child(crate::project_icons::render(this, &draft, 26., &p))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .child(dunlin_ui::input(input).aria_label("New project name")),
+                    ),
+            )
+            .child(
+                div()
+                    .px(px(8.))
+                    .text_size(px(10.))
+                    .text_color(p.muted_fg)
+                    .child("Enter to create · Escape to cancel · Stored locally in Dunlin"),
+            );
+    }
+    if let Some(error) = &this.project_creation.error {
+        menu = menu.child(
+            div()
+                .px(px(8.))
+                .text_size(px(11.))
+                .text_color(p.red)
+                .child(error.clone()),
+        );
+    }
+    let recent = this.project_creation.recent.clone();
+    if let Some(index) = this
+        .projects
+        .iter()
+        .position(|project| Some(&project.id) == recent.as_ref())
+    {
+        menu = menu.child(project_menu_row(this, index, cx, &p));
+    }
 
     let groups = this.project_groups.clone();
     for (group_index, _) in crate::project_tree::visible_groups_ordered(
@@ -3349,7 +3530,7 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
                 group.name,
                 if collapsed { "expand" } else { "collapse" }
             ))
-            .h(px(32.))
+            .h(px(if compact { 24. } else { 32. }))
             .flex_shrink_0()
             .px(px(6.))
             .rounded(px(dunlin_ui::radii::ROW))
@@ -3368,12 +3549,17 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
                 .size(px(12.))
                 .text_color(p.muted_fg),
             )
-            .child(crate::project_icons::render_group(this, group, 18., &p))
+            .child(crate::project_icons::render_group(
+                this,
+                group,
+                if compact { 14. } else { 18. },
+                &p,
+            ))
             .child(
                 div()
                     .flex_1()
                     .min_w(px(0.))
-                    .text_size(px(12.))
+                    .text_size(px(if compact { 11. } else { 12. }))
                     .text_color(p.fg)
                     .truncate()
                     .child(group.name.clone()),
@@ -3394,7 +3580,10 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
             .projects
             .iter()
             .enumerate()
-            .filter(|(_, project)| project.group_id.as_deref() == Some(group.id.as_str()))
+            .filter(|(_, project)| {
+                project.group_id.as_deref() == Some(group.id.as_str())
+                    && Some(&project.id) != recent.as_ref()
+            })
             .map(|(index, _)| index)
             .collect();
         indices.sort_by_key(|index| {
@@ -3417,10 +3606,11 @@ pub(crate) fn project_menu(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) ->
         .iter()
         .enumerate()
         .filter(|(_, project)| {
-            project
-                .group_id
-                .as_ref()
-                .is_none_or(|id| !groups.iter().any(|g| &g.id == id))
+            Some(&project.id) != recent.as_ref()
+                && project
+                    .group_id
+                    .as_ref()
+                    .is_none_or(|id| !groups.iter().any(|g| &g.id == id))
         })
         .map(|(index, _)| index)
         .collect();

@@ -1,6 +1,190 @@
 //! Architectural guardrails complement the native control behavior smoke.
 use std::path::Path;
 
+#[test]
+fn group_and_project_forms_use_dropdowns_without_hidden_runtime_controls() {
+    let group = include_str!("group_settings.rs");
+    let form = group.split("pub(crate) fn render(").nth(1).unwrap();
+    assert!(form.contains("group-color-picker"));
+    assert!(form.contains("dropdown_menu_with_anchor"));
+    assert!(form.contains("group_choice_icon("));
+    assert!(form.contains("harness_picker("));
+    for removed in [
+        "Client permissions",
+        "Local environment",
+        "Reset to inherited",
+    ] {
+        assert!(!form.contains(removed));
+    }
+    let overlays = include_str!("app/overlays.rs");
+    let project = overlays
+        .split("fn project_settings_modal(")
+        .nth(1)
+        .unwrap()
+        .split("fn context_menu_overlay(")
+        .next()
+        .unwrap();
+    assert!(project.contains("harness_picker("));
+    assert!(project.contains("preview_project_cleanup("));
+    for removed in [
+        "project-permission",
+        "Reset overrides",
+        "Model & environment",
+    ] {
+        assert!(!project.contains(removed));
+    }
+    let runtime = include_str!("project_runtime_settings.rs")
+        .split("pub(crate) fn render(")
+        .nth(1)
+        .unwrap();
+    assert!(
+        !runtime
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap()
+            .contains("Environment overrides")
+    );
+}
+
+#[test]
+fn project_history_uses_the_same_recency_order_as_the_session_list() {
+    let sidebar = include_str!("views/sidebar.rs");
+    let project = sidebar
+        .split("fn project_sessions(")
+        .nth(1)
+        .unwrap()
+        .split("fn ")
+        .next()
+        .unwrap();
+    assert!(project.contains("session_list::recency_key(session)"));
+    assert!(!project.contains("running(&b.id)"));
+}
+
+#[test]
+fn model_option_controls_and_menu_rows_do_not_add_decorative_icons() {
+    let source = include_str!("views/chat_controls.rs");
+    let options = source
+        .split("pub(crate) fn model_options(")
+        .nth(1)
+        .unwrap()
+        .split("pub(crate) fn options(")
+        .next()
+        .unwrap();
+    assert!(!options.contains(".icon("));
+    assert!(!options.contains("IconName::SlidersHorizontal"));
+    assert!(options.contains("None,"));
+    assert!(source.contains("icon.filter(|_| !branded)"));
+    assert!(options.contains("Action::ConfigOption("));
+}
+
+#[test]
+fn titlebar_fields_and_standard_sidebar_icons_use_shared_controls() {
+    let sidebar = include_str!("views/sidebar.rs");
+    let switcher = sidebar
+        .split("fn project_switcher(")
+        .nth(1)
+        .unwrap()
+        .split("fn section_header(")
+        .next()
+        .unwrap();
+    assert!(switcher.contains("titlebar_field("));
+    assert!(!switcher.contains(".border_1()"));
+    let titlebar = include_str!("views/titlebar.rs");
+    assert!(titlebar.contains("titlebar_field(\"global-search-trigger\""));
+    let navigation = include_str!("views/sidebar/navigation.rs");
+    for icon in [
+        "IconName::LayoutGrid",
+        "IconName::MessageSquare",
+        "IconName::Files",
+    ] {
+        assert!(navigation.contains(icon));
+    }
+    assert!(!navigation.contains("RetroIcon"));
+}
+
+#[test]
+fn search_entrance_animation_restarts_only_on_open_and_honors_reduced_motion() {
+    let palette = include_str!("views/palette.rs");
+    assert!(palette.contains("this.reduce_motion || cx.reduce_motion()"));
+    assert!(palette.contains("Duration::ZERO"));
+    assert!(palette.contains("this.command_epoch"));
+    assert!(palette.contains("search-panel-open"));
+    assert!(palette.contains("search-backdrop-open"));
+    let app = include_str!("app.rs");
+    assert!(app.contains("if !self.command_open {\n            self.command_epoch = self.command_epoch.wrapping_add(1);"));
+}
+
+#[test]
+fn skin_selection_is_a_text_only_dropdown_without_preview_cards() {
+    let source = include_str!("views/settings.rs");
+    let picker = source
+        .split("fn skin_picker(")
+        .nth(1)
+        .unwrap()
+        .split("pub(crate) fn appearance_picker(")
+        .next()
+        .unwrap();
+    assert!(picker.contains("dropdown_menu_with_anchor"));
+    assert!(picker.contains("Skin::ALL"));
+    assert!(picker.contains(".checked(skin == selected)"));
+    for preview in [
+        "grain_layer(",
+        "choice_card(",
+        "for_skin(",
+        "skin.description(",
+    ] {
+        assert!(
+            !picker.contains(preview),
+            "skin selection must not render {preview}"
+        );
+    }
+}
+
+#[test]
+fn free_endpoint_permission_is_gated_at_selection_and_wire_boundary() {
+    let providers = include_str!("providers.rs");
+    let selection = providers.split("fn select_provider(").nth(1).unwrap();
+    assert!(
+        selection.find("!self.opencode_free_consent").unwrap()
+            < selection.find("self.opencode_provider =").unwrap()
+    );
+    let gate = providers
+        .split("fn check_provider_model(")
+        .nth(1)
+        .unwrap()
+        .split("fn reload_provider_models(")
+        .next()
+        .unwrap();
+    assert!(gate.contains("self.selected_provider() == Some(FREE)"));
+    assert!(gate.contains("self.provider_catalog.free_models.contains(id)"));
+    assert!(gate.contains("self.open_free_endpoint_consent(false, cx)"));
+    let harness = include_str!("harness.rs");
+    let dispatch = harness.split("fn dispatch_pending_prompt(").nth(1).unwrap();
+    assert!(
+        dispatch.find("!self.check_provider_model(cx)").unwrap()
+            < dispatch.find("harness.prompt(wire_text)").unwrap()
+    );
+    let dialog = include_str!("free_endpoint_consent.rs");
+    assert!(dialog.contains("accepted: false"));
+    assert!(dialog.contains("if !dialog.accepted"));
+    assert!(dialog.contains(".disabled(!dialog.accepted)"));
+    assert!(dialog.contains("It does not change or verify your OpenCode Console"));
+    assert!(!dialog.contains("submit_automation_prompt("));
+    assert!(!dialog.contains("send_prompt("));
+}
+
+#[test]
+fn group_settings_keep_one_stable_scroll_and_confirm_deletion() {
+    let source = include_str!("group_settings.rs");
+    assert_eq!(source.matches(".overflow_y_scroll()").count(), 1);
+    assert!(source.contains("scroll: ScrollHandle::new()"));
+    assert!(source.contains(".track_scroll(&draft.scroll)"));
+    assert!(source.contains("Scrollbar::vertical(&draft.scroll)"));
+    assert!(source.contains("Delete group…"));
+    assert!(source.contains("if answer.await != Ok(1)"));
+    assert!(source.contains("this.delete_project_group(&id, cx)"));
+}
+
 fn has_literal_radius(source: &str) -> bool {
     // Whitespace-insensitive; covers per-corner methods, not only `.rounded`.
     let source: String = source.chars().filter(|c| !c.is_whitespace()).collect();
@@ -145,7 +329,7 @@ fn audited_settings_and_forms_use_standard_actions_not_quiet_text_buttons() {
     for (name, source) in [
         ("credential settings", include_str!("vault/settings.rs")),
         ("credential panel", include_str!("vault/panel.rs")),
-        ("SSH settings", include_str!("ssh.rs")),
+        ("host task queue", include_str!("jobs_panel.rs")),
         ("provider authorization", include_str!("provider_auth.rs")),
         (
             "project runtime form",
@@ -236,7 +420,7 @@ fn settings_surfaces_share_the_recipe_and_agents_have_one_stateful_action() {
     for (name, source) in [
         ("settings", include_str!("views/settings.rs")),
         ("credentials", include_str!("vault/settings.rs")),
-        ("SSH", include_str!("ssh.rs")),
+        ("host task queue", include_str!("jobs_panel.rs")),
         ("skills", include_str!("skills.rs")),
         ("extensions", include_str!("plugins.rs")),
         ("backup", include_str!("backup.rs")),
@@ -385,6 +569,26 @@ fn workspace_surfaces_share_reading_colors_and_audit_refresh_is_report_scoped() 
     let app = include_str!("app.rs");
     assert!(app.contains("capture_action"));
     assert!(app.contains("OutdentInline"));
+}
+
+#[test]
+fn welcome_is_a_focused_default_choice_and_portable_export_uses_switches() {
+    let welcome = include_str!("onboarding.rs");
+    assert!(welcome.contains("Choose your default harness"));
+    assert!(!welcome.contains("Scan again"));
+    assert!(!welcome.contains("Set default"));
+    assert!(welcome.contains("choice_indicator(active, p)"));
+    assert!(welcome.contains("IconName::ChevronDown"));
+    assert!(welcome.contains("Duration::from_secs(2)"));
+    let backup = include_str!("backup.rs");
+    assert!(backup.contains("dunlin_ui::switch(\"backup-settings\""));
+    assert!(backup.contains("dunlin_ui::switch(\"backup-projects\""));
+    assert!(!backup.contains("dunlin_ui::checkbox(\"backup-settings\""));
+    let portable = include_str!("backup/data.rs");
+    assert!(
+        !portable.contains("pending_adapter_install"),
+        "install consent must never be portable preference data"
+    );
 }
 
 #[test]

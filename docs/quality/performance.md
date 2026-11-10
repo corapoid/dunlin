@@ -17,6 +17,15 @@ falsifiable instead of comparing marketing numbers.
 
 ## Method
 
+Chat scrolling now invalidates the application view only when follow mode changes,
+not for every wheel delta. Ordinary transcript presentation borrows existing text
+and tool payloads rather than cloning the entire history. Normal views bound
+legacy coalescing to the visible window; filtered/quiet views still use owned
+projections. Unit coverage checks borrowing
+with a 1 MB message and stable follow state across 1,000 scroll samples. These are
+allocation/invalidation checks, not a new FPS benchmark; the release measurements
+below predate these changes.
+
 - Launch the packaged app directly with a fresh `DUNLIN_DATA_DIR`.
 - Detect the first on-screen window for that PID with
   `CGWindowListCopyWindowInfo`; report wall time from process spawn.

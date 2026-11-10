@@ -115,7 +115,7 @@ jobs:
 
       - name: Compile app and relay without distributing the app
         run: |
-          cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
+          cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-relay --locked
           ./scripts/bundle-relay.sh --no-build
 
       - name: Upload relay

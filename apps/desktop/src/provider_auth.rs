@@ -1067,7 +1067,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .justify_center()
         .on_click(cx.listener(|this, _, window, cx| this.close_provider_auth(window, cx)))
         .child(
-            div()
+            SurfaceGeometry::AUTH_DIALOG.paint_material(p, p.card, p.border_strong)
                 .id("provider-auth-dialog")
                 .child(crate::effects::panel_probe(
                     &this.overlay_backdrop,
@@ -1077,10 +1077,6 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .w(px(460.))
                 .max_h(px(650.))
                 .overflow_y_scroll()
-                .rounded(px(SurfaceGeometry::AUTH_DIALOG.radius))
-                .border(px(SurfaceGeometry::AUTH_DIALOG.border))
-                .border_color(p.border_strong)
-                .bg(p.card)
                 .p(px(24.))
                 .flex()
                 .flex_col()

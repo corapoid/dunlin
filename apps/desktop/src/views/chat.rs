@@ -16,6 +16,9 @@ use super::chat_controls;
 use crate::app::{DunlinApp, SettingsTab, format_ms, tool_icon};
 use crate::harness::{ChatItem, HarnessStatus, QueuedPrompt};
 
+mod text;
+mod work;
+
 pub(crate) fn render(
     this: &mut DunlinApp,
     window: &mut Window,
@@ -25,9 +28,30 @@ pub(crate) fn render(
     let connection_problem = connection_problem(this, cx);
     let coordination = crate::coordination::cards(this, cx);
     if this.harness.transcript.is_empty() {
+        let progress = if this.reduce_motion || cx.reduce_motion() {
+            1.
+        } else {
+            this.workbench
+                .chat_reveal
+                .map(|start| (start.elapsed().as_secs_f32() / 0.28).min(1.))
+                .unwrap_or(1.)
+        };
+        let reveal = 1. - (1. - progress).powi(3);
+        if progress < 1. {
+            let app = cx.entity().downgrade();
+            window.on_next_frame(move |_, cx| {
+                let _ = app.update(cx, |_, cx| cx.notify());
+            });
+            window.request_animation_frame();
+        } else {
+            this.workbench.chat_reveal = None;
+        }
         let composer = composer(this, window, cx);
         return div()
             .id("chat-start")
+            .relative()
+            .top(px((1. - reveal) * 14.))
+            .opacity(reveal)
             .flex_1()
             .min_h(px(0.))
             .w_full()
@@ -64,7 +88,7 @@ pub(crate) fn render(
             .child(composer)
             .into_any_element();
     }
-    let messages = conversation(this, cx);
+    let messages = conversation(this, window, cx);
     let composer = composer(this, window, cx);
 
     div()
@@ -171,14 +195,27 @@ fn connection_problem(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Option<A
     ).into_any_element())
 }
 
-fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn conversation(
+    this: &mut DunlinApp,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
     let p = palette(cx);
     let session = this.session().id.clone();
     let following = this.chat_scroll.prepare(&session);
+    let reveal = this.chat_scroll.reveal.take();
+    let final_only = this.final_answer_only && this.expanded_tool.is_none();
     let scroll_probe = this.chat_scroll.handle.clone();
+    // Normal presentation preserves indexes. Bound even legacy coalescing to
+    // the visible window; final-only filtering needs the full turn context.
+    let source_start = if final_only {
+        0
+    } else {
+        crate::chat_presentation::window_start(&this.harness.transcript, this.chat_visible_items)
+    };
     let items = crate::chat_presentation::project(
-        &this.harness.transcript,
-        this.final_answer_only,
+        &this.harness.transcript[source_start..],
+        final_only,
         this.harness.running,
         this.stream_responses,
     );
@@ -186,7 +223,9 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let status = this.harness.status.clone();
     let reasoning_open = this.reasoning_open;
     let expanded = this.expanded_tool;
-    let waiting_for_permission = items
+    let waiting_for_permission = this
+        .harness
+        .transcript
         .iter()
         .any(|item| matches!(item, ChatItem::Permission { resolved: None, .. }));
 
@@ -199,8 +238,9 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .flex_col()
         .gap(px(18.));
     let first_visible = crate::chat_presentation::window_start(&items, this.chat_visible_items);
+    let earlier_count = source_start + first_visible;
 
-    if first_visible > 0 {
+    if earlier_count > 0 {
         inner = inner.child(
             div().w_full().flex().justify_center().child(
                 dunlin_ui::button("chat-show-earlier")
@@ -209,8 +249,8 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     .icon(IconName::ChevronUp)
                     .label(format!(
                         "Show {} earlier {}",
-                        first_visible,
-                        if first_visible == 1 {
+                        earlier_count,
+                        if earlier_count == 1 {
                             "message"
                         } else {
                             "messages"
@@ -230,15 +270,44 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     if items.is_empty() {
         inner = inner.child(empty_state(&status, this.project().is_remote(), cx, &p));
     } else {
+        // Final-only presentation removes tool/thought rows, not user turns.
+        // Keep retry/selection identities tied to the original transcript.
+        let skipped_users = items[..first_visible]
+            .iter()
+            .filter(|item| matches!(item, ChatItem::User { .. }))
+            .count();
+        let mut user_indices = this
+            .harness
+            .transcript
+            .iter()
+            .enumerate()
+            .skip(source_start)
+            .filter(|(_, item)| matches!(item, ChatItem::User { .. }))
+            .map(|(index, _)| index)
+            .skip(skipped_users);
         let mut index = first_visible;
         while index < items.len() {
             if let ChatItem::User { text, at_ms, .. } = &items[index] {
+                let source_index = user_indices
+                    .next()
+                    .expect("presentation preserves user turns");
                 inner = inner.child(user_message(
-                    index,
                     text,
-                    this.chat_timestamps
-                        .then(|| crate::chat_timing::local_time(*at_ms))
-                        .flatten(),
+                    UserMessageOptions {
+                        index: source_index,
+                        time: this
+                            .chat_timestamps
+                            .then(|| crate::chat_timing::local_time(*at_ms))
+                            .flatten(),
+                        failure: crate::chat_presentation::prompt_failure(
+                            &this.harness.transcript,
+                            source_index,
+                        ),
+                        retry_enabled: !this.chat_controls_busy()
+                            && !this.harness.has_queued_prompts()
+                            && !this.group_cleanup.busy,
+                        session: &session,
+                    },
                     cx,
                     &p,
                 ));
@@ -269,21 +338,33 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
                     model: None,
                 }
             });
-            inner = inner.child(agent_group(
-                &items[start..index],
-                start,
-                AgentGroupOptions {
-                    reasoning_open,
-                    expanded,
-                    session: &session,
-                    reduce_motion: this.reduce_motion,
-                    caption,
-                    logo: this.chat_logo,
-                    speaker,
-                },
-                cx,
-                &p,
-            ));
+            let mut group =
+                div()
+                    .id(("chat-agent-group", source_start + start))
+                    .child(agent_group(
+                        &items[start..index],
+                        source_start + start,
+                        AgentGroupOptions {
+                            reasoning_open,
+                            expanded,
+                            session: &session,
+                            reduce_motion: this.reduce_motion || cx.reduce_motion(),
+                            caption,
+                            logo: this.chat_logo,
+                            speaker,
+                        },
+                        window,
+                        cx,
+                        &p,
+                    ));
+            if reveal.is_some_and(|target| {
+                (source_start + start..source_start + index).contains(&target)
+            }) {
+                let anchor = ScrollAnchor::for_handle(this.chat_scroll.handle.clone());
+                anchor.scroll_to(window, cx);
+                group = group.anchor_scroll(Some(anchor));
+            }
+            inner = inner.child(group);
         }
     }
 
@@ -291,6 +372,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         inner = inner.child(running_card(
             this.final_answer_only,
             this.stream_responses,
+            this.reduce_motion || cx.reduce_motion(),
             &p,
         ));
     }
@@ -311,12 +393,16 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             let delta = event.delta.pixel_delta(px(16.)).y;
             let current = this.session().id == scroll_session;
             if delta > px(0.) {
-                if current {
-                    this.chat_scroll.pause_following();
+                let changed = if current {
+                    this.chat_scroll.pause_following()
                 } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&scroll_session) {
-                    scroll.pause_following();
+                    scroll.pause_following()
+                } else {
+                    false
+                };
+                if changed {
+                    cx.notify();
                 }
-                cx.notify();
                 return;
             }
             if delta == px(0.) {
@@ -329,12 +415,16 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
             let session = scroll_session.clone();
             window.defer(cx, move |_, cx| {
                 let _ = app.update(cx, |this, cx| {
-                    if this.session().id == session {
-                        this.chat_scroll.user_scrolled();
+                    let changed = if this.session().id == session {
+                        this.chat_scroll.user_scrolled()
                     } else if let Some(scroll) = this.workbench.chat_scrolls.get_mut(&session) {
-                        scroll.user_scrolled();
+                        scroll.user_scrolled()
+                    } else {
+                        false
+                    };
+                    if changed {
+                        cx.notify();
                     }
-                    cx.notify();
                 });
             });
         }))
@@ -344,6 +434,7 @@ fn conversation(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
         .flex_col()
         .items_center()
         .child(inner);
+    let stream = text::auto_copy(stream, &session, window, cx);
 
     div()
         .relative()
@@ -566,23 +657,64 @@ fn agent_group(
     items: &[ChatItem],
     base: usize,
     options: AgentGroupOptions<'_>,
+    window: &mut Window,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
-    let AgentGroupOptions {
-        reasoning_open,
-        expanded,
-        session,
-        reduce_motion,
-        caption,
-        logo,
-        speaker,
-    } = options;
     let mut body = div()
-        .pl(px(if logo { 27. } else { 0. }))
+        .w_full()
+        .min_w(px(0.))
+        .pl(px(if options.logo { 27. } else { 0. }))
         .flex()
         .flex_col()
         .gap(px(14.));
+    let mut offset = 0;
+    for section in items.chunk_by(|a, b| work::is_work(a) == work::is_work(b)) {
+        let index = base + offset;
+        if work::is_work(&section[0]) {
+            let (card, open) = work::card(section, index, &options, window, cx, p);
+            body = body.child(card.when(open, |card| {
+                card.child(
+                    div()
+                        .px(px(10.))
+                        .pb(px(9.))
+                        .child(agent_items(section, index, &options, cx, p)),
+                )
+            }));
+        } else {
+            body = body.child(agent_items(section, index, &options, cx, p));
+        }
+        offset += section.len();
+    }
+
+    div()
+        .w_full()
+        .min_w(px(0.))
+        .flex()
+        .flex_col()
+        .gap(px(9.))
+        .child(agent_header(
+            options.logo,
+            &options.speaker,
+            options.caption,
+            p,
+        ))
+        .child(body)
+        .into_any_element()
+}
+
+fn agent_items(
+    items: &[ChatItem],
+    base: usize,
+    options: &AgentGroupOptions<'_>,
+    cx: &mut Context<DunlinApp>,
+    p: &Palette,
+) -> AnyElement {
+    let reasoning_open = options.reasoning_open;
+    let expanded = options.expanded;
+    let session = options.session;
+    let reduce_motion = options.reduce_motion;
+    let mut body = div().w_full().min_w(px(0.)).flex().flex_col().gap(px(14.));
 
     for (offset, item) in items.iter().enumerate() {
         let index = base + offset;
@@ -731,13 +863,7 @@ fn agent_group(
         }
     }
 
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(9.))
-        .child(agent_header(logo, &speaker, caption, p))
-        .child(body)
-        .into_any_element()
+    body.into_any_element()
 }
 
 pub(crate) fn markdown_text(id: String, text: String) -> TextView {
@@ -777,16 +903,28 @@ mod link_tests {
     }
 }
 
-fn user_message(
+struct UserMessageOptions<'a> {
     index: usize,
-    text: &str,
     time: Option<String>,
+    failure: Option<&'a str>,
+    retry_enabled: bool,
+    session: &'a str,
+}
+
+fn user_message(
+    text: &str,
+    options: UserMessageOptions<'_>,
     cx: &mut Context<DunlinApp>,
     p: &Palette,
 ) -> AnyElement {
-    let copy_text = text.to_string();
-    let retry_text = text.to_string();
-    let edit_text = text.to_string();
+    let UserMessageOptions {
+        index,
+        time,
+        failure,
+        retry_enabled,
+        session,
+    } = options;
+    let failed = failure.is_some();
 
     div()
         .id(("user-message", index))
@@ -795,62 +933,81 @@ fn user_message(
         .justify_end()
         .child(
             div()
+                .relative()
+                .children(crate::gui_probe::marker_named(format!(
+                    "user-bubble-{index}"
+                )))
+                .when(failed, |bubble| {
+                    bubble.children(crate::gui_probe::marker_named(format!(
+                        "failed-user-{index}"
+                    )))
+                })
                 .max_w(px(620.))
+                .min_w(px(0.))
                 .px(px(13.))
                 .py(px(10.))
                 .rounded(px(dunlin_ui::radii::GRAPH_NODE))
-                .bg(p.muted)
+                .bg(if failed { p.red_soft } else { p.muted })
                 .border_1()
-                .border_color(p.border)
+                .border_color(if failed { p.red.opacity(0.5) } else { p.border })
                 .flex()
                 .flex_col()
                 .gap(px(5.))
                 .child(
                     div()
+                        .relative()
+                        .children(crate::gui_probe::marker_named(format!("user-text-{index}")))
+                        .min_w(px(0.))
                         .text_size(crate::workspace_text::size(13., cx))
                         .line_height(relative(1.6))
-                        .text_color(p.fg)
-                        .child(text.to_string()),
+                        .text_color(if failed { p.red } else { p.fg })
+                        .child(
+                            text::plain(format!("user-text:{session}:{index}"), text)
+                                .text_size(crate::workspace_text::size(13., cx)),
+                        ),
                 )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(2.))
-                        .child(
-                            div()
-                                .text_size(px(11.0))
-                                .font_family(dunlin_ui::theme::code_font())
-                                .text_color(p.muted_fg.opacity(0.75))
-                                .child(
-                                    time.map(|time| format!("You · {time}"))
-                                        .unwrap_or_else(|| "You".into()),
-                                ),
-                        )
-                        .child(div().flex_1())
-                        .child(
-                            icon_button(("user-copy", index), IconName::Copy, "Copy prompt")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(
-                                        copy_text.clone(),
-                                    ));
-                                    this.set_notice("Copied the prompt", cx);
-                                })),
-                        )
-                        .child(
-                            icon_button(("user-edit", index), IconName::Pencil, "Edit prompt")
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.edit_prompt(edit_text.clone(), window, cx);
-                                })),
-                        )
-                        .child(crate::gui_probe::target(
-                            format!("user-retry-{index}"),
-                            icon_button(("user-retry", index), IconName::RotateCcw, "Retry prompt")
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.retry_prompt(retry_text.clone(), window, cx);
-                                })),
-                        )),
-                ),
+                .when(time.is_some() || failed, |bubble| {
+                    bubble.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(2.))
+                            .when_some(time, |row, time| {
+                                row.child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_family(dunlin_ui::theme::code_font())
+                                        .text_color(p.muted_fg.opacity(0.75))
+                                        .child(time),
+                                )
+                            })
+                            .when(failed, |row| {
+                                row.child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(p.red)
+                                        .child("Request failed"),
+                                )
+                            })
+                            .child(div().flex_1())
+                            .when(failed, |row| {
+                                row.child(crate::gui_probe::target(
+                                    format!("user-retry-{index}"),
+                                    icon_button(
+                                        ("user-retry", index),
+                                        IconName::RotateCcw,
+                                        "Retry failed message",
+                                    )
+                                    .disabled(!retry_enabled)
+                                    .on_click(cx.listener(
+                                        move |this, _, window, cx| {
+                                            this.retry_prompt(index, window, cx);
+                                        },
+                                    )),
+                                ))
+                            }),
+                    )
+                }),
         )
         .into_any_element()
 }
@@ -986,6 +1143,17 @@ struct ToolCardOptions<'a> {
     reduce_motion: bool,
 }
 
+// Every tool row reserves the same columns, including absent metadata. Only
+// the path/summary between the name and these columns may grow or shrink.
+fn tool_column(width: f32) -> Div {
+    div()
+        .w(px(width))
+        .min_w(px(width))
+        .max_w(px(width))
+        .flex_shrink_0()
+        .overflow_hidden()
+}
+
 fn tool_card(
     tool: &ToolCallView,
     duration_ms: u64,
@@ -1022,6 +1190,7 @@ fn tool_card(
     let detail = tool.detail.clone();
     let additions = tool.additions;
     let deletions = tool.deletions;
+    let has_changes = additions > 0 || deletions > 0;
     let diff = tool.diff.clone();
 
     let mut card = card_surface(*p).overflow_hidden().child(
@@ -1051,7 +1220,8 @@ fn tool_card(
                 .child(Icon::new(icon_name).size(px(12.)).text_color(p.muted_fg)),
         )
         .child(
-            div()
+            tool_column(80.)
+                .truncate()
                 .text_size(px(12.0))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.fg)
@@ -1067,37 +1237,44 @@ fn tool_card(
                 .truncate()
                 .child(target),
         )
-        .when(additions > 0 || deletions > 0, |this| {
-            this.child(
-                div()
-                    .text_size(px(11.0))
-                    .font_family(dunlin_ui::theme::code_font())
-                    .text_color(p.green)
-                    .child(format!("+{additions}")),
-            )
-            .child(
-                div()
-                    .text_size(px(11.0))
-                    .font_family(dunlin_ui::theme::code_font())
-                    .text_color(p.red)
-                    .child(format!("−{deletions}")),
-            )
-        })
         .child(
-            div()
+            tool_column(44.)
+                .truncate()
+                .text_right()
+                .text_size(px(11.0))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.green)
+                .child(if has_changes {
+                    format!("+{additions}")
+                } else {
+                    String::new()
+                }),
+        )
+        .child(
+            tool_column(44.)
+                .truncate()
+                .text_right()
+                .text_size(px(11.0))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.red)
+                .child(if has_changes {
+                    format!("−{deletions}")
+                } else {
+                    String::new()
+                }),
+        )
+        .child(
+            tool_column(78.)
                 .h(px(16.))
                 .px(px(5.))
                 .rounded_full()
                 .bg(status_soft)
                 .flex()
                 .items_center()
+                .justify_center()
                 .gap(px(4.))
                 .when(status == ToolStatus::Running, |this| {
-                    this.child(
-                        Icon::new(IconName::LoaderCircle)
-                            .size(px(8.5))
-                            .text_color(status_color),
-                    )
+                    this.child(working_icon(8.5, status_color, reduce_motion))
                 })
                 .child(
                     div()
@@ -1114,23 +1291,33 @@ fn tool_card(
                         ),
                 ),
         )
-        .when(duration_ms > 0, |this| {
-            this.child(
-                div()
-                    .text_size(px(11.0))
-                    .font_family(dunlin_ui::theme::code_font())
-                    .text_color(p.muted_fg)
-                    .child(format_ms(duration_ms)),
-            )
-        })
         .child(
-            Icon::new(if is_open {
-                IconName::ChevronDown
-            } else {
-                IconName::ChevronRight
-            })
-            .size(px(11.5))
-            .text_color(p.muted_fg),
+            tool_column(64.)
+                .truncate()
+                .text_right()
+                .text_size(px(11.0))
+                .font_family(dunlin_ui::theme::code_font())
+                .text_color(p.muted_fg)
+                .child(if duration_ms > 0 {
+                    format_ms(duration_ms)
+                } else {
+                    String::new()
+                }),
+        )
+        .child(
+            tool_column(12.)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Icon::new(if is_open {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    })
+                    .size(px(11.5))
+                    .text_color(p.muted_fg),
+                ),
         ),
     );
 
@@ -1493,6 +1680,10 @@ fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElem
     };
     div()
         .id(("chat-error", index))
+        .w_full()
+        .min_w(px(0.))
+        .relative()
+        .children(crate::gui_probe::marker("chat-error-card"))
         .tooltip(move |window, cx| {
             Tooltip::new(details.clone())
                 .max_w(px(600.))
@@ -1510,15 +1701,23 @@ fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElem
         .child(
             Icon::new(IconName::CircleAlert)
                 .size(px(13.))
+                .flex_shrink_0()
                 .text_color(p.red),
         )
         .child(
             div()
                 .flex_1()
+                .min_w(px(0.))
+                .relative()
+                .children(crate::gui_probe::marker("chat-error-text"))
                 .text_size(px(12.0))
                 .line_height(relative(1.5))
                 .text_color(p.red)
-                .child(display.to_string())
+                .child(
+                    text::plain(format!("chat-error-text:{index}"), display)
+                        .w_full()
+                        .text_size(px(12.)),
+                )
                 .when(count > 1, |view| {
                     view.child(
                         div()
@@ -1534,7 +1733,23 @@ fn error_card(index: usize, message: &str, count: usize, p: &Palette) -> AnyElem
         .into_any_element()
 }
 
-fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
+fn working_icon(size: f32, color: Hsla, reduce_motion: bool) -> AnyElement {
+    if reduce_motion {
+        Icon::new(IconName::LoaderCircle)
+            .size(px(size))
+            .text_color(color)
+            .into_any_element()
+    } else {
+        dunlin_ui::component::spinner::Spinner::new()
+            .icon(IconName::LoaderCircle)
+            .with_size(px(size))
+            .color(color)
+            .ease(|progress| progress)
+            .into_any_element()
+    }
+}
+
+fn running_card(final_only: bool, stream: bool, reduce_motion: bool, p: &Palette) -> AnyElement {
     div()
         .rounded(px(dunlin_ui::radii::MESSAGE))
         .border_1()
@@ -1550,11 +1765,7 @@ fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
                 .flex()
                 .items_center()
                 .gap(px(6.))
-                .child(
-                    Icon::new(IconName::LoaderCircle)
-                        .size(px(12.5))
-                        .text_color(p.blue),
-                )
+                .child(working_icon(12.5, p.blue, reduce_motion))
                 .child(
                     div()
                         .text_size(px(12.0))
@@ -1571,7 +1782,7 @@ fn running_card(final_only: bool, stream: bool, p: &Palette) -> AnyElement {
                 .child(if !stream {
                     "The final answer will appear when the turn completes"
                 } else if final_only {
-                    "Response text appears as it arrives; workflow details stay in Graph / Trace"
+                    "Response text appears as it arrives; agent work stays in Graph and file edits in Timeline"
                 } else {
                     "tool calls and reasoning will appear inline"
                 }),
@@ -1913,8 +2124,23 @@ pub(crate) fn harness_tone(p: &Palette, status: &HarnessStatus) -> (Hsla, Hsla) 
 
 #[cfg(test)]
 mod tests {
-    use super::repeated_errors;
+    use super::{repeated_errors, tool_column};
     use crate::harness::ChatItem;
+    use dunlin_ui::*;
+
+    #[test]
+    fn tool_columns_keep_fixed_widths_even_with_missing_or_long_values() {
+        for width in [80., 44., 78., 64., 12.] {
+            for value in ["", "DONE", "RUNNING", "+123456789", "12345m 59s"] {
+                let mut column = tool_column(width).child(value);
+                let style = column.style();
+                assert_eq!(style.size.width, Some(px(width).into()));
+                assert_eq!(style.min_size.width, Some(px(width).into()));
+                assert_eq!(style.max_size.width, Some(px(width).into()));
+                assert_eq!(style.flex_shrink, Some(0.));
+            }
+        }
+    }
 
     #[test]
     fn repeated_errors_are_grouped_without_crossing_messages_or_other_errors() {

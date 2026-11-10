@@ -190,6 +190,9 @@ impl OverlayBackdrop {
                     native_prompt || this.shared.external_modal.get(),
                 );
                 let p = palette(cx);
+                // Solid has no native glass; Grain gets its quiet translucency
+                // from the window tint, not a second Liquid Glass material.
+                let material = p.skin == Skin::Default && !crate::platform::reduce_transparency();
                 if panel_plane && !native_prompt {
                     let frame = this.shared.frame.borrow();
                     // Glass belongs below this plane's controls. The owner has
@@ -197,7 +200,7 @@ impl OverlayBackdrop {
                     this.shared.native.borrow_mut().update_panel(
                         window,
                         viewport,
-                        frame.surface,
+                        frame.surface.filter(|_| material),
                         frame.radius,
                         p.bg.l < 0.5,
                     );
@@ -215,7 +218,7 @@ impl OverlayBackdrop {
                 this.shared.native.borrow_mut().update(
                     window,
                     viewport,
-                    &regions,
+                    if material { &regions } else { &[] },
                     p.bg.l < 0.5,
                     shape,
                 );

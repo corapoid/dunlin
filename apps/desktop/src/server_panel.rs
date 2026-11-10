@@ -38,6 +38,8 @@ pub fn selected_host(this: &DunlinApp) -> Option<String> {
 
 #[derive(Default)]
 pub struct State {
+    pub jobs: crate::jobs_panel::State,
+    pub linear: crate::linear_panel::State,
     pub host: Option<String>,
     pub info: Option<Server>,
     pub error: Option<String>,
@@ -57,7 +59,7 @@ pub struct State {
     pub watching: Option<String>,
 }
 
-fn request<T: DeserializeOwned>(
+pub(crate) fn request<T: DeserializeOwned>(
     host: &RemoteHost,
     token: &str,
     method: &str,
@@ -65,18 +67,27 @@ fn request<T: DeserializeOwned>(
     body: Option<&impl Serialize>,
 ) -> Result<T, String> {
     let response = raw(host, token, method, path, body)?;
-    decode(response)
+    if path == "/v1/jobs" {decode_limit(response,16*1024*1024)}
+    else if path == "/v1/integrations/linear" || path == "/v1/integrations/linear/sync" {
+        decode_limit(response, 8 * 1024 * 1024)
+    } else {
+        decode(response)
+    }
 }
 
 fn decode<T: DeserializeOwned>(response: ureq::Response) -> Result<T, String> {
+    decode_limit(response, 1024 * 1024)
+}
+
+fn decode_limit<T: DeserializeOwned>(response: ureq::Response, limit: usize) -> Result<T, String> {
     use std::io::Read;
     let mut bytes = Vec::new();
     response
         .into_reader()
-        .take(1024 * 1024 + 1)
+        .take(limit as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| "Could not read server response")?;
-    if bytes.len() > 1024 * 1024 {
+    if bytes.len() > limit {
         return Err("Server response exceeds the management limit".into());
     }
     serde_json::from_slice(&bytes)
@@ -199,7 +210,7 @@ impl DunlinApp {
         }
         self.refresh_server(cx);
     }
-    fn server_credentials(&mut self) -> Result<(RemoteHost, String), String> {
+    pub(crate) fn server_credentials(&mut self) -> Result<(RemoteHost, String), String> {
         let id = self
             .server_panel
             .host
@@ -210,6 +221,8 @@ impl DunlinApp {
         Ok((host, token))
     }
     pub(crate) fn refresh_server(&mut self, cx: &mut Context<Self>) {
+        self.refresh_job_queue(cx);
+        self.refresh_linear_inbox(cx);
         if self.server_panel.loading {
             return;
         }
@@ -828,6 +841,8 @@ pub fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             ),
     );
     if let Some(info) = this.server_panel.info.clone() {
+        body = body.child(crate::jobs_panel::render(this, cx));
+        body = body.child(crate::linear_panel::render(this, cx));
         if !info.isolated_agents {
             body = body.child(div().text_size(px(11.)).text_color(p.amber).child("Legacy host agent configuration is retained. Running relay setup opts into dedicated homes and may require provider sign-in and new conversations."));
         }

@@ -91,6 +91,12 @@ pub(crate) const NATIVE_SMOKES: &[NativeSmoke] = &[
         timeout_secs: 60,
     },
     NativeSmoke {
+        flag: "--onboarding-setup-smoke",
+        fixture: Some("onboarding-setup"),
+        light_narrow: false,
+        timeout_secs: 90,
+    },
+    NativeSmoke {
         flag: "--save-smoke",
         fixture: Some("save"),
         light_narrow: false,

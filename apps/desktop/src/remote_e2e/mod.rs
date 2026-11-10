@@ -4,7 +4,7 @@ use crate::remote::{RemoteHost, RemoteWorkspace};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    io::{BufRead, Write},
+    io::BufRead,
     path::PathBuf,
     sync::OnceLock,
     time::{Duration, Instant},
@@ -59,7 +59,7 @@ pub(crate) fn workspace(spec: &Manifest) -> RemoteWorkspace {
     }
 }
 
-fn execute(spec: Manifest, input: &mut impl BufRead) -> Result<Value, String> {
+fn execute(spec: Manifest, _input: &mut impl BufRead) -> Result<Value, String> {
     match spec.action.as_str() {
         "pair" => {
             let pair = crate::remote::pair(&spec.url, &spec.code, "Dunlin manual remote E2E")?;
@@ -160,50 +160,7 @@ fn execute(spec: Manifest, input: &mut impl BufRead) -> Result<Value, String> {
                 .map_err(|e| e.to_string())
         }
         "tunnel" | "bootstrap" | "ssh-check" => {
-            let host: dunlin_domain::SshHost =
-                serde_json::from_value(spec.payload["host"].clone()).map_err(|e| e.to_string())?;
-            let options = dunlin_ssh::service::ConnectionOptions {
-                config_file: Some(PathBuf::from(
-                    spec.payload["ssh_config"]
-                        .as_str()
-                        .ok_or("Missing SSH config")?,
-                )),
-                control_socket: Some(PathBuf::from(
-                    spec.payload["control_socket"]
-                        .as_str()
-                        .ok_or("Missing SSH socket")?,
-                )),
-            };
-            if spec.action == "ssh-check" {
-                dunlin_ssh::service::ensure_master_with_options(&host, None, &options)?;
-                dunlin_ssh::service::exit_master_with_options(&host, &options);
-                return Ok(json!({"connected":true}));
-            }
-            let (mut tunnel, code) = if spec.action == "bootstrap" {
-                let binary = PathBuf::from(
-                    spec.payload["relay_binary"]
-                        .as_str()
-                        .ok_or("Missing relay binary")?,
-                );
-                let result =
-                    dunlin_ssh::service::bootstrap_with_options(&host, &binary, None, &options)?;
-                (result.tunnel, Some(result.pairing_code))
-            } else {
-                (
-                    dunlin_ssh::service::start_tunnel_with_options(&host, None, &options)?,
-                    None,
-                )
-            };
-            println!(
-                "{}",
-                json!({"url":format!("http://127.0.0.1:{}",tunnel.local_port),"code":code})
-            );
-            std::io::stdout().flush().map_err(|e| e.to_string())?;
-            let mut line = String::new();
-            let _ = input.read_line(&mut line);
-            tunnel.stop();
-            dunlin_ssh::service::exit_master_with_options(&host, &options);
-            Ok(json!({"closed":true}))
+            Err("SSH relay connections were removed; use private Tailscale HTTPS".into())
         }
         "terminal" => {
             let session = crate::terminal::relay::connect(&workspace(&spec), 24, 80)?;

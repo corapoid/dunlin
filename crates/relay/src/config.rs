@@ -51,6 +51,15 @@ struct FileConfig {
 }
 
 impl Config {
+    /// Remote access is through private Tailscale Serve, never a public relay
+    /// listener. Do not resolve arbitrary hostnames while validating the bind.
+    pub fn listen_address(&self) -> Result<std::net::SocketAddr, String> {
+        let address:std::net::SocketAddr=self.listen.parse().map_err(|_|"Use a numeric loopback listen address (127.0.0.1:8787 or [::1]:8787) behind private Tailscale Serve".to_string())?;
+        if !address.ip().is_loopback() {
+            return Err("Relay listeners must use loopback; expose remote access only through private Tailscale Serve HTTPS".into());
+        }
+        Ok(address)
+    }
     pub fn load(path: PathBuf) -> Result<Self, String> {
         let text = std::fs::read_to_string(&path)
             .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
@@ -141,4 +150,26 @@ pub fn default_db() -> PathBuf {
         return current;
     }
     PathBuf::from("relay.db")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn remote_access_cannot_bypass_private_serve_with_a_public_bind() {
+        for (listen, allowed) in [
+            ("127.0.0.1:8787", true),
+            ("[::1]:8787", true),
+            ("0.0.0.0:8787", false),
+            ("[::]:8787", false),
+            ("100.64.0.1:8787", false),
+            ("relay.example.test:8787", false),
+        ] {
+            let config = Config {
+                listen: listen.into(),
+                ..Default::default()
+            };
+            assert_eq!(config.listen_address().is_ok(), allowed, "{listen}");
+        }
+    }
 }

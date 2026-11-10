@@ -355,6 +355,7 @@ impl DunlinApp {
                     if let Some(settings) = settings {
                         macro_rules! apply_one {
                             (appearance) => { this.set_appearance(settings.appearance.unwrap_or(Appearance::System), window, cx); };
+                            (skin) => { this.set_skin(settings.skin, cx); };
                             ($field:ident) => { this.$field = settings.$field.clone(); };
                         }
                         macro_rules! apply { ($($field:ident),*) => { $(apply_one!($field);)* }; }
@@ -474,8 +475,8 @@ pub(crate) fn settings(
             .on_click(cx.listener(|this, _, _, cx| { this.settings_ui.backup_details = !this.settings_ui.backup_details; cx.notify(); })))
         .when(this.settings_ui.backup_details, |view| view.child(dunlin_ui::settings::notice("Includes portable preferences and nested groups with GitHub.com / GitLab.com URLs only. Excludes local paths, sessions, trust, permissions, commands, environment variables, credentials, relay configuration, remote projects, unsupported repositories, project/group runtime overrides and custom icons.", p)))
         .child(div().flex().gap(px(8.))
-            .child(dunlin_ui::checkbox("backup-settings", "Settings", this.backup.include_settings).label("Settings").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_settings = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); })))
-            .child(dunlin_ui::checkbox("backup-projects", "Project structure", this.backup.include_projects).label("Project structure").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_projects = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); }))))
+            .child(dunlin_ui::switch("backup-settings", "Settings", this.backup.include_settings).label("Settings").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_settings = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); })))
+            .child(dunlin_ui::switch("backup-projects", "Project structure", this.backup.include_projects).label("Project structure").disabled(busy).on_click(cx.listener(|this, checked: &bool, _, cx| { this.backup.include_projects = *checked; if this.backup.pending.as_ref().is_some_and(|p| !p.importing) { this.backup.pending = None; } cx.notify(); }))))
         .child(div().flex().flex_wrap().justify_end().gap(px(8.))
             .child(button("backup-export-file", "Export to JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.prepare_backup_export(false, cx))))
             .child(button("backup-import-file", "Import JSON…", !busy).on_click(cx.listener(|this, _, _, cx| this.read_backup(false, cx)))))

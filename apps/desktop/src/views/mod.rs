@@ -5,8 +5,8 @@ pub(crate) mod host_control;
 pub(crate) mod palette;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
+pub(crate) mod timeline;
 pub(crate) mod titlebar;
-pub(crate) mod trace;
 mod view_switcher;
 
 /// Empty conversations have no execution data, not a sample agent run.

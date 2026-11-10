@@ -10,6 +10,7 @@ mod chat_scroll;
 mod chat_timing;
 mod cli;
 mod comparisons;
+mod connection_map;
 #[cfg(debug_assertions)]
 mod controls_smoke;
 mod coordination;
@@ -19,6 +20,7 @@ mod explorer;
 mod factory_reset;
 mod file_icons;
 mod file_preview;
+mod free_endpoint_consent;
 mod git_actions;
 mod git_history;
 #[cfg(debug_assertions)]
@@ -36,14 +38,18 @@ mod gui_test;
 mod harness;
 mod harness_brand;
 mod harness_discovery;
+mod harness_install;
 mod inline_blame;
 mod knowledge;
 mod local_projects;
+mod linear_panel;
+mod jobs_panel;
 mod logging;
 mod markdown_editor;
 mod mcp;
 mod minimap;
 mod native_menu;
+mod onboarding;
 #[cfg(debug_assertions)]
 mod onboarding_smoke;
 mod overlay_window;
@@ -51,6 +57,7 @@ mod platform;
 mod plugins;
 mod project_activity;
 mod project_catalog;
+mod project_creation;
 mod project_groups;
 mod project_icons;
 mod project_import;
@@ -76,12 +83,12 @@ mod sidebar_layout;
 mod skills;
 mod source_control;
 mod spec;
-mod ssh;
 mod subtask_worktrees;
 #[cfg(debug_assertions)]
 mod surfaces_smoke;
 mod task_budgets;
 mod terminal;
+mod timeline;
 #[cfg(test)]
 mod ui_contract_tests;
 mod usage;
@@ -263,6 +270,11 @@ fn main() {
     #[cfg(debug_assertions)]
     if std::env::args().nth(1).as_deref() == Some("--onboarding-smoke") {
         onboarding_smoke::run();
+        return;
+    }
+    #[cfg(debug_assertions)]
+    if std::env::args().nth(1).as_deref() == Some("--onboarding-setup-smoke") {
+        onboarding::smoke::run();
         return;
     }
     #[cfg(debug_assertions)]

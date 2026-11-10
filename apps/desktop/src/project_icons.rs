@@ -5,7 +5,9 @@ mod discovery;
 use crate::app::{DunlinApp, tone_color, tone_soft};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use dunlin_domain::Project;
+use dunlin_ui::component::Icon;
 use dunlin_ui::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
+use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use std::{
     collections::HashMap,
@@ -147,6 +149,41 @@ fn group_image(value: &str) -> Result<Arc<Image>, String> {
     custom_image(value)
 }
 
+pub(crate) fn group_choice_icon(
+    value: Option<&str>,
+    tone: dunlin_domain::ProjectTone,
+    side: f32,
+    p: &Palette,
+) -> AnyElement {
+    use std::sync::OnceLock;
+    static LAMBDA: OnceLock<Arc<Image>> = OnceLock::new();
+    static KUBERNETES: OnceLock<Arc<Image>> = OnceLock::new();
+    let image = match value {
+        Some("aws-lambda") => Some(
+            LAMBDA
+                .get_or_init(|| group_image("aws-lambda").unwrap())
+                .clone(),
+        ),
+        Some("kubernetes") => Some(
+            KUBERNETES
+                .get_or_init(|| group_image("kubernetes").unwrap())
+                .clone(),
+        ),
+        _ => None,
+    };
+    div()
+        .size(px(side))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .map(|view| match image {
+            Some(image) => view.child(img(image).size(px(side)).object_fit(ObjectFit::Contain)),
+            None => view.child(dot(tone_color(p, tone), side * 0.65)),
+        })
+        .into_any_element()
+}
+
 pub(crate) fn render_group(
     this: &DunlinApp,
     group: &dunlin_domain::ProjectGroup,
@@ -281,6 +318,9 @@ impl DunlinApp {
             self.project_icons.color = Some((id, state, subscription));
         }
         ColorPicker::new(&self.project_icons.color.as_ref().unwrap().1)
+            .icon(Icon::default().data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>"#)
+                .size(px(24.)).text_color(self.project_icons.color.as_ref().unwrap().1.read(cx).value()
+                    .unwrap_or_else(|| tone_color(&palette(cx), self.projects[index].tone))))
             .label("Custom dot color")
             .into_any_element()
     }

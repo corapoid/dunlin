@@ -32,8 +32,28 @@ enum Kind {
     Retry,
     Allow,
     Deny,
+    Cleanup,
+    Timeline,
+    Connections,
+    Linear,
 }
 pub(crate) const SCENARIOS: &[Scenario] = &[
+    Scenario {
+        flag: "--gui-linear-smoke",
+        kind: Kind::Linear,
+    },
+    Scenario {
+        flag: "--gui-connections-smoke",
+        kind: Kind::Connections,
+    },
+    Scenario {
+        flag: "--gui-timeline-smoke",
+        kind: Kind::Timeline,
+    },
+    Scenario {
+        flag: "--gui-cleanup-smoke",
+        kind: Kind::Cleanup,
+    },
     Scenario {
         flag: "--gui-save-reopen-smoke",
         kind: Kind::Save,
@@ -392,6 +412,16 @@ fn chat_steps(kind: Kind, root: &Path) -> Vec<Step> {
                 true
             },
         ));
+        steps.push(Step::act(
+            "fixture: pin the waiting session's activity date",
+            |owner, _, cx| {
+                owner.update(cx, |app, _| {
+                    app.update_active_session(|session| {
+                        session.updated_at = "2026-01-01T00:00:00Z".into();
+                    });
+                });
+            },
+        ));
         steps.push(Step::click(if allow {
             "permission-allow-once"
         } else {
@@ -402,6 +432,7 @@ fn chat_steps(kind: Kind, root: &Path) -> Vec<Step> {
             let app = owner.read(cx);
             if app.harness.running || events(&root, "permission").is_empty() { return false; }
             assert_eq!(events(&root, "permission").len(), 1);
+            assert_eq!(app.session().updated_at != "2026-01-01T00:00:00Z", allow, "only approval promotes a waiting session in history");
             assert!(app.harness.transcript.iter().any(|item| matches!(item, ChatItem::AgentText { text, .. } if text.contains(if allow { "Permission granted" } else { "Permission denied" }))));
             assert_eq!(root.join("hello.txt").exists(), allow);
             if allow { assert_eq!(fs::read_to_string(root.join("hello.txt")).unwrap(), "GUI permission granted\n"); }
@@ -473,12 +504,56 @@ fn chat_steps(kind: Kind, root: &Path) -> Vec<Step> {
             move |_, _, _| fs::write(root.join("release"), "go").unwrap(),
         ));
     }
-    steps.push(finished(
-        if kind == Kind::Queue { 2 } else { 1 },
-        usize::from(kind == Kind::QueueClear),
-        root.into(),
-    ));
+    if kind != Kind::Retry {
+        steps.push(finished(
+            if kind == Kind::Queue { 2 } else { 1 },
+            usize::from(kind == Kind::QueueClear),
+            root.into(),
+        ));
+    }
     if kind == Kind::Retry {
+        let failed_root = root.to_path_buf();
+        let wide_height = std::rc::Rc::new(std::cell::Cell::new(px(0.)));
+        let measured_height = wide_height.clone();
+        steps.push(Step::until("failed request is red, retryable and persisted; long error wraps", move |owner, window, cx| {
+            let app = owner.read(cx);
+            if app.harness.running || crate::gui_probe::bounds("failed-user-0").is_none() { return false; }
+            let Some(error) = crate::gui_probe::bounds("chat-error-card") else { return false; };
+            let text = crate::gui_probe::bounds("chat-error-text").unwrap();
+            assert!(text.right() <= error.right() - px(7.) && text.left() >= error.left());
+            assert!(error.right() <= window.viewport_size().width && text.size.height > px(100.), "long provider error must wrap its URL and preserve diagnostic lines: {text:?}");
+            measured_height.set(text.size.height);
+            assert!(crate::gui_probe::bounds("user-retry-0").is_some());
+            assert_eq!(events(&failed_root, "prompt").len(), 1);
+            let stored: Vec<ChatItem> = app.store.as_ref().unwrap().load_transcript(&app.session().id).unwrap().unwrap();
+            assert!(matches!(&stored[0], ChatItem::User { timing: Some(timing), .. } if timing.failure.is_some()));
+            true
+        }));
+        steps.push(Step::act("narrow the fixture window", |_, window, _| {
+            window.resize(size(px(900.), px(800.)))
+        }));
+        steps.push(Step::until(
+            "provider error reflows instead of overflowing a narrow window",
+            move |_, window, _| {
+                if window.viewport_size().width >= px(1200.) {
+                    return false;
+                }
+                let error = crate::gui_probe::bounds("chat-error-card").unwrap();
+                let text = crate::gui_probe::bounds("chat-error-text").unwrap();
+                assert!(
+                    error.right() <= window.viewport_size().width
+                        && text.right() <= error.right() - px(7.)
+                );
+                assert!(
+                    text.size.height > wide_height.get(),
+                    "narrower error text must gain lines"
+                );
+                true
+            },
+        ));
+        steps.push(Step::act("restore fixture window size", |_, window, _| {
+            window.resize(size(px(1200.), px(800.)))
+        }));
         steps.push(Step::click("user-retry-0"));
         let retry_root = root.to_path_buf();
         steps.push(Step::until(
@@ -498,6 +573,148 @@ fn chat_steps(kind: Kind, root: &Path) -> Vec<Step> {
         ));
         steps.push(finished(2, 0, root.into()));
     }
+    if matches!(kind, Kind::SendClick | Kind::SendEnter | Kind::Retry) {
+        steps.push(Step::act(
+            "successful user messages have no retry or failed styling",
+            |owner, _, cx| {
+                for (index, item) in owner.read(cx).harness.transcript.iter().enumerate() {
+                    if let ChatItem::User { timing, .. } = item
+                        && timing
+                            .as_ref()
+                            .and_then(|timing| timing.failure.as_ref())
+                            .is_none()
+                    {
+                        assert!(crate::gui_probe::bounds(&format!("user-retry-{index}")).is_none());
+                        assert!(
+                            crate::gui_probe::bounds(&format!("failed-user-{index}")).is_none()
+                        );
+                    }
+                }
+            },
+        ));
+    }
+    if kind == Kind::SendEnter {
+        let clipboard = std::rc::Rc::new(std::cell::RefCell::new(None::<ClipboardItem>));
+        let saved_clipboard = clipboard.clone();
+        steps.push(Step::act(
+            "select part of the user message with the mouse",
+            move |_, window, cx| {
+                saved_clipboard.replace(cx.read_from_clipboard());
+                let bounds = crate::gui_probe::bounds("user-text-0").unwrap();
+                cx.write_to_clipboard(ClipboardItem::new_string("unchanged until release".into()));
+                let start = point(bounds.left() + px(0.5), bounds.top() + px(8.));
+                let end = start + point(px(32.), px(0.));
+                window.dispatch_event(
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        button: MouseButton::Left,
+                        position: start,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: end,
+                        pressed_button: Some(MouseButton::Left),
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                assert_eq!(
+                    cx.read_from_clipboard().unwrap().text().unwrap(),
+                    "unchanged until release"
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        button: MouseButton::Left,
+                        position: end,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+            },
+        ));
+        steps.push(Step::act(
+            "mouse release copies exactly the selected fragment",
+            |_, window, cx| {
+                let selected = gpui_kit::base::TextSelection::selected_text(window, cx);
+                assert!(!selected.is_empty() && selected != "First GUI prompt");
+                // Rich-text selection includes its paragraph separator.
+                assert!(
+                    "First GUI prompt".contains(selected.trim_end_matches('\n')),
+                    "selected literal fragment: {selected:?}"
+                );
+                assert_eq!(cx.read_from_clipboard().unwrap().text().unwrap(), selected);
+            },
+        ));
+        steps.push(Step::act(
+            "fixture: render literal Unicode, markup and whitespace",
+            |owner, _, cx| {
+                owner.update(cx, |app, cx| {
+                    app.harness.transcript = vec![ChatItem::User {
+                        text: "  Żółty  <tag>& **literal**\n\tend".into(),
+                        at_ms: 1,
+                        timing: None,
+                    }];
+                    app.chat_scroll.jump_to_latest();
+                    cx.notify();
+                });
+            },
+        ));
+        steps.push(Step::act(
+            "select the literal user message",
+            |_, window, cx| {
+                let bounds = crate::gui_probe::bounds("user-text-0").unwrap();
+                let start = point(bounds.left() + px(0.1), bounds.top() + px(5.));
+                let end = point(bounds.right() + px(2.), bounds.bottom() + px(2.));
+                window.dispatch_event(
+                    PlatformInput::MouseDown(MouseDownEvent {
+                        button: MouseButton::Left,
+                        position: start,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: end,
+                        pressed_button: Some(MouseButton::Left),
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+                window.dispatch_event(
+                    PlatformInput::MouseUp(MouseUpEvent {
+                        button: MouseButton::Left,
+                        position: end,
+                        click_count: 1,
+                        ..Default::default()
+                    }),
+                    cx,
+                );
+            },
+        ));
+        steps.push(Step::act(
+            "literal user text copies without parsing markup or collapsing whitespace",
+            |_, _, cx| {
+                assert_eq!(
+                    cx.read_from_clipboard().unwrap().text().unwrap(),
+                    "  Żółty  <tag>& **literal**\n\tend\n"
+                );
+            },
+        ));
+        steps.push(Step::act(
+            "restore clipboard after selection test",
+            move |_, _, cx| {
+                if let Some(item) = clipboard.borrow_mut().take() {
+                    cx.write_to_clipboard(item);
+                }
+            },
+        ));
+    }
     steps
 }
 
@@ -515,6 +732,12 @@ pub(crate) fn run(scenario: &'static Scenario) {
     let root = directory.join("project");
     fs::create_dir(&root).unwrap();
     fs::write(root.join("file.txt"), "original").unwrap();
+    if scenario.kind == Kind::Cleanup {
+        crate::group_cleanup::smoke::prepare(&root);
+    }
+    if scenario.kind == Kind::Retry {
+        fs::write(root.join("fail-next-prompt"), format!("Free models may train on request data. Turn on the provider's opt-in at https://example.invalid/console/org_{} to continue.\n{{\n  \"service\": \"session\",\n  \"errorName\": \"provider.invalid-request\"\n}}", "0123456789abcdef".repeat(24))).unwrap();
+    }
     let chat = matches!(
         scenario.kind,
         Kind::SendClick
@@ -591,6 +814,9 @@ pub(crate) fn run(scenario: &'static Scenario) {
         crate::logging::init();
         let (window, owner) = open_window(
             WindowOptions {
+                // Input is dispatched in-process. Do not steal the keyboard
+                // from the user's application while running these fixtures.
+                focus: false,
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     point(px(80.), px(50.)),
                     size(px(1200.), px(800.)),
@@ -601,7 +827,6 @@ pub(crate) fn run(scenario: &'static Scenario) {
             |window, cx| cx.new(|cx| DunlinApp::new(window, cx)),
         )
         .unwrap();
-        cx.activate(true);
         if chat {
             owner.update(cx, |app, _| {
                 let mut neighbor = app.session().clone();
@@ -615,7 +840,15 @@ pub(crate) fn run(scenario: &'static Scenario) {
             });
             owner.update(cx, |app, cx| app.connect_harness(cx));
         }
-        let steps = if chat {
+        let steps = if scenario.kind == Kind::Linear {
+            crate::linear_panel::smoke::steps()
+        } else if scenario.kind == Kind::Connections {
+            crate::connection_map::smoke::steps()
+        } else if scenario.kind == Kind::Timeline {
+            crate::timeline::smoke::steps(&root)
+        } else if scenario.kind == Kind::Cleanup {
+            crate::group_cleanup::smoke::steps(&root)
+        } else if chat {
             chat_steps(scenario.kind, &root)
         } else {
             file_steps(scenario.kind, &root)

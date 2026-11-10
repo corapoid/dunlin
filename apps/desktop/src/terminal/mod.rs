@@ -1,4 +1,4 @@
-//! Local, relay and SSH terminals. Sessions are explicit, bounded and never
+//! Local and Tailscale relay terminals. Sessions are explicit, bounded and never
 //! resumed after a restart. Remote projects never fall back to a local shell.
 use crate::app::DunlinApp;
 use dunlin_domain::Project;
@@ -8,7 +8,6 @@ use dunlin_terminal::{
 };
 use dunlin_ui::component::Sizable;
 use dunlin_ui::component::button::ButtonVariants;
-use dunlin_ui::component::input::InputState;
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 use std::cell::Cell;
@@ -132,7 +131,6 @@ pub(crate) enum Origin {
     Shell,
     Run { record: String },
     Relay,
-    Ssh { target: String },
 }
 
 pub(crate) struct Tab {
@@ -171,8 +169,6 @@ pub(crate) struct State {
     pub split_drag: Option<SplitDrag>,
     pub focus: FocusHandle,
     pub search_open: bool,
-    pub ssh_target: Option<Entity<InputState>>,
-    pub ssh_path: Option<Entity<InputState>>,
     pub dock_width: f32,
     pub dock_height: f32,
     run_previous_tab: Option<String>,
@@ -195,8 +191,6 @@ impl State {
             split_drag: None,
             focus: cx.focus_handle(),
             search_open: false,
-            ssh_target: None,
-            ssh_path: None,
             dock_width: 900.,
             dock_height: 300.,
             run_previous_tab: None,
@@ -506,81 +500,6 @@ impl DunlinApp {
         Ok(())
     }
 
-    pub(crate) fn open_ssh_terminal(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Result<(), String> {
-        if self.group_cleanup.busy {
-            return Err("Wait for generated-folder cleanup to finish".into());
-        }
-        self.ensure_ssh_inputs(window, cx);
-        let target = self
-            .terminal
-            .ssh_target
-            .as_ref()
-            .map(|input| input.read(cx).value().trim().to_string())
-            .unwrap_or_default();
-        if target.is_empty() {
-            return Err("Enter an SSH host or a ~/.ssh/config alias".into());
-        }
-        let path = self
-            .terminal
-            .ssh_path
-            .as_ref()
-            .map(|input| input.read(cx).value().trim().to_string())
-            .unwrap_or_default();
-        let local_cwd = PathBuf::from(&self.project().path);
-        let local_cwd = if local_cwd.is_dir() {
-            local_cwd
-        } else {
-            std::env::temp_dir()
-        };
-        let identity = self
-            .remote_connection
-            .identity
-            .as_ref()
-            .map(|input| input.read(cx).value().trim().to_string())
-            .filter(|s| !s.is_empty());
-        let port = self
-            .remote_connection
-            .port
-            .as_ref()
-            .map(|input| input.read(cx).value().trim().to_string())
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                s.parse::<u16>()
-                    .map_err(|_| "SSH port must be between 1 and 65535".to_string())
-            })
-            .transpose()?;
-        let options = SpawnOptions::ssh_with_identity(
-            &target,
-            local_cwd,
-            (!path.is_empty()).then_some(path.as_str()),
-            identity.as_deref().map(std::path::Path::new),
-            port,
-        )?;
-        let title = format!("SSH · {target}");
-        let tab = self.terminal_spawn(
-            options,
-            title,
-            target.clone(),
-            Origin::Ssh {
-                target: target.clone(),
-            },
-            cx,
-        )?;
-        self.terminal.active = self.terminal.index_of(&tab).unwrap_or(0);
-        self.terminal_ssh_target = target;
-        self.terminal_ssh_path = path;
-        self.terminal.error = None;
-        self.bottom_panel = crate::app::BottomPanel::Terminal;
-        self.persist_settings(cx);
-        self.terminal.focus.focus(window, cx);
-        cx.notify();
-        Ok(())
-    }
-
     pub(crate) fn terminal_split(
         &mut self,
         axis: Axis,
@@ -601,25 +520,6 @@ impl DunlinApp {
         self.terminal.focus.focus(window, cx);
         cx.notify();
         Ok(())
-    }
-
-    pub(crate) fn ensure_ssh_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.terminal.ssh_target.is_none() {
-            let target = self.terminal_ssh_target.clone();
-            self.terminal.ssh_target = Some(cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder("user@host or SSH config alias")
-                    .default_value(target)
-            }));
-        }
-        if self.terminal.ssh_path.is_none() {
-            let path = self.terminal_ssh_path.clone();
-            self.terminal.ssh_path = Some(cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder("Optional remote path")
-                    .default_value(path)
-            }));
-        }
     }
 
     fn terminal_stream(
@@ -657,7 +557,7 @@ impl DunlinApp {
                             tab.status = Status::Exited(exit.clone());
                             match &tab.origin {
                                 Origin::Run { record } => (Some(record.clone()), None),
-                                Origin::Shell | Origin::Relay | Origin::Ssh { .. } => {
+                                Origin::Shell | Origin::Relay => {
                                     (None, Some(tab.title.clone()))
                                 }
                             }

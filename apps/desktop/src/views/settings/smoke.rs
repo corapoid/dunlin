@@ -24,6 +24,22 @@ pub(super) fn page_marker(tab: SettingsTab) -> AnyElement {
     .into_any_element()
 }
 
+fn assert_resize_indicator(window: &Window, visible: bool) {
+    let bounds =
+        crate::workspace_ui_smoke::measured("sidebar-resize-line").scale(window.scale_factor());
+    let painted = window.painted_quads().iter().any(|quad| {
+        (quad.bounds.left() - bounds.left()).0.abs() <= 0.51
+            && (quad.bounds.top() - bounds.top()).0.abs() <= 0.51
+            && (quad.bounds.size.width - bounds.size.width).0.abs() <= 0.51
+            && (quad.bounds.size.height - bounds.size.height).0.abs() <= 0.51
+            && !quad.background.is_transparent()
+    });
+    assert_eq!(
+        painted, visible,
+        "resize indicator visibility at {bounds:?}"
+    );
+}
+
 /// Opt-in visual evidence from the real settings window, using fixture data only.
 /// Never captures the desktop or automates screen-recording consent.
 fn capture(window: &Window, path: &std::path::Path) {
@@ -150,19 +166,84 @@ pub(crate) fn run() {
              let mut visual_scrolled = false;
               let mut credential_phase = 0;
               let mut agent_catalog = false;
-            let total = pages.len() * 8;
+             let total = pages.len() * 24;
             let mut stage = 0;
             let mut expanded_footer = None;
             loop {
                 cx.background_executor().timer(Duration::from_millis(100)).await;
                 let done = cx.update(|cx| {
-                    assert!(started.elapsed() < Duration::from_secs(90), "settings smoke stalled: page {index}, stage {stage}");
+                    assert!(started.elapsed() < Duration::from_secs(180), "settings smoke stalled: page {index}, stage {stage}");
                     let visual = std::env::var_os("DUNLIN_SETTINGS_CAPTURE").is_some();
                     if visual { cx.activate(true); }
                      parent.update(cx, |_, window, cx| { window.refresh(); if !visual { window.draw(cx).clear(cx); } }).unwrap();
                      match stage {
-                         80 if !owner.read(cx).overlay_window.is_open() => {
-                             parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-user-menu").center(), cx)).unwrap();
+                          80 if !owner.read(cx).overlay_window.is_open() => {
+                              let handle = crate::workspace_ui_smoke::measured("sidebar-resize-handle");
+                              let initial = owner.read(cx).sidebar_width;
+                              parent.update(cx, |_, window, cx| {
+                                  // Grab the outer edge, not the 1px painted line.
+                                  let start = point(handle.right() - px(1.), handle.center().y);
+                                  window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: start, ..Default::default() }), cx);
+                                  window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { position: start, button: MouseButton::Left, click_count: 1, ..Default::default() }), cx);
+                                  assert!(owner.read(cx).sidebar_resize.is_some(), "the wide resize hit target must remain usable");
+                                  let end = start + point(px(30.), px(0.));
+                                  window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: end, pressed_button: Some(MouseButton::Left), ..Default::default() }), cx);
+                                  window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { position: end, button: MouseButton::Left, click_count: 1, ..Default::default() }), cx);
+                              }).unwrap();
+                              assert!((owner.read(cx).sidebar_width - initial - 30.).abs() < 1.);
+                              assert!(owner.read(cx).sidebar_resize.is_none());
+                              stage = 116;
+                              return false;
+                          }
+                          116 => {
+                              let handle = crate::workspace_ui_smoke::measured("sidebar-resize-handle");
+                              let line = crate::workspace_ui_smoke::measured("sidebar-resize-line");
+                              assert_eq!(handle.size.width, px(10.));
+                              assert_eq!(line.size.width, px(1.), "hover must not fill the whole resize hit target");
+                               parent.update(cx, |_, window, cx| {
+                                   assert_resize_indicator(window, true);
+                                   let settings = crate::workspace_ui_smoke::measured("sidebar-settings");
+                                  let repository = crate::workspace_ui_smoke::measured("repository-host-link");
+                                  assert!((settings.center().x - repository.center().x).abs() < px(0.5), "repository and Settings icons share one vertical axis");
+                                  let quads = window.painted_quads();
+                                  let scale = window.scale_factor();
+                                  let field = |name| {
+                                      // Button children measure the inner label plane,
+                                      // not the root's horizontal field padding.
+                                      let bounds = crate::workspace_ui_smoke::measured(name).scale(scale);
+                                      quads.iter().filter(|quad| {
+                                          quad.bounds.left().0 <= bounds.left().0 + 0.51
+                                              && quad.bounds.top().0 <= bounds.top().0 + 0.51
+                                              && quad.bounds.right().0 >= bounds.right().0 - 0.51
+                                              && quad.bounds.bottom().0 >= bounds.bottom().0 - 0.51
+                                              && quad.corner_radii.top_left.0 > 0.
+                                              && !quad.background.is_transparent()
+                                      }).min_by(|a, b| {
+                                          (a.bounds.size.width.0 * a.bounds.size.height.0)
+                                              .total_cmp(&(b.bounds.size.width.0 * b.bounds.size.height.0))
+                                      }).unwrap_or_else(|| panic!("missing painted {name} at {bounds:?}"))
+                                  };
+                                  let project = field("project-switcher");
+                                  let search = field("global-search-trigger");
+                                  assert_eq!(project.corner_radii, search.corner_radii, "project and Search have identical rounding");
+                                  assert_eq!(project.border_widths, search.border_widths, "project must not have an extra frame");
+                                  assert_eq!(project.background, search.background, "project and Search have identical background paint");
+                                  let position = handle.center();
+                                  window.dispatch_event(PlatformInput::MouseDown(MouseDownEvent { position, button: MouseButton::Left, click_count: 2, ..Default::default() }), cx);
+                                  window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { position, button: MouseButton::Left, click_count: 2, ..Default::default() }), cx);
+                              }).unwrap();
+                              assert_eq!(owner.read(cx).sidebar_width, crate::sidebar_layout::DEFAULT_WIDTH, "double-click reset must remain functional");
+                              stage = 117;
+                              return false;
+                          }
+                          117 => {
+                              parent.update(cx, |_, window, cx| {
+                                  window.dispatch_event(PlatformInput::MouseMove(MouseMoveEvent { position: point(px(4.), px(4.)), ..Default::default() }), cx);
+                                  window.refresh();
+                                  window.draw(cx).clear(cx);
+                                  assert_resize_indicator(window, false);
+                                  crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("title-user-menu").center(), cx);
+                              }).unwrap();
                              stage = 81;
                              return false;
                          }
@@ -170,7 +251,11 @@ pub(crate) fn run() {
                              let avatar = crate::workspace_ui_smoke::measured("title-user-menu");
                              let menu = crate::workspace_ui_smoke::measured("profile-menu");
                               assert!(menu.top() > avatar.bottom(), "user menu must open below the avatar");
-                              assert!(menu.size.width <= px(244.), "profile menu fits its contents without a wide empty right edge");
+                               assert!(menu.size.width <= px(200.), "profile menu fits its contents without a wide empty right edge");
+                               for name in ["theme-choice-System", "theme-choice-Light", "theme-choice-Dark"] {
+                                   let choice = crate::workspace_ui_smoke::measured(name);
+                                   assert!(choice.left() >= menu.left() && choice.right() <= menu.right(), "{name} must fit the compact profile menu");
+                               }
                              parent.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("theme-choice-System").center(), cx)).unwrap();
                              assert_eq!(owner.read(cx).appearance, Appearance::System, "profile menu must support System, not just a light/dark toggle");
                              stage = 82;
@@ -193,12 +278,14 @@ pub(crate) fn run() {
                               return false;
                           }
                           85 if !owner.read(cx).user_profile.menu_open => {
-                              let search = crate::workspace_ui_smoke::measured("global-search-trigger");
+                               let search = crate::workspace_ui_smoke::measured("global-search-trigger");
+                               let previous_epoch = owner.read(cx).command_epoch;
                               parent.update(cx, |_, window, cx| {
                                   assert!((search.center().x - window.viewport_size().width / 2.).abs() < px(1.), "global search must be centered in the window");
                                   crate::workspace_ui_smoke::click(window, search.center(), cx);
                               }).unwrap();
-                              assert!(owner.read(cx).command_open);
+                               assert!(owner.read(cx).command_open);
+                               assert!(owner.read(cx).command_epoch > previous_epoch, "each search opening starts a fresh entrance animation");
                               assert_eq!(owner.read(cx).filtered_commands()[0].command, crate::app::Command::Section(dunlin_domain::SidebarSection::Dashboard));
                               stage = 86;
                               return false;
@@ -340,7 +427,12 @@ pub(crate) fn run() {
                                  crate::workspace_ui_smoke::measured("settings-content"),
                                  &format!("settings page {:?}", pages[index % pages.len()]));
                          }).unwrap();
-                         let bounds = crate::workspace_ui_smoke::measured("settings-panel");
+                           let bounds = crate::workspace_ui_smoke::measured("settings-panel");
+                           assert_eq!(crate::workspace_ui_smoke::measured("sidebar-resize-line").size.width, px(1.), "every skin keeps the thin resize indicator");
+                           assert_eq!(crate::workspace_ui_smoke::measured("sidebar-resize-handle").size.width, px(10.), "the thin indicator must not shrink its hit target");
+                          if owner.read(cx).skin != Skin::Default {
+                              assert!(owner.read(cx).overlay_window.diagnostic(cx).is_none(), "new skins must not retain native Liquid Glass from Default");
+                          }
                         let viewport = child.update(cx, |_, window, _| window.viewport_size()).unwrap();
                         assert!(bounds.left() >= px(0.) && bounds.top() >= px(0.));
                         assert!(bounds.right() <= viewport.width && bounds.bottom() <= viewport.height);
@@ -410,11 +502,12 @@ pub(crate) fn run() {
                         let tab = pages[index % pages.len()];
                         let variant = index / pages.len();
                         parent.update(cx, |_, window, cx| {
-                            if index % pages.len() == 0 {
-                                window.resize(if variant < 4 { size(px(1100.), px(720.)) } else { size(px(1360.), px(860.)) });
+                             if index % pages.len() == 0 {
+                                 window.resize(if variant % 8 < 4 { size(px(1100.), px(720.)) } else { size(px(1360.), px(860.)) });
                             }
                             owner.update(cx, |app, cx| {
-                                if index % pages.len() == 0 {
+                                 if index % pages.len() == 0 {
+                                     app.set_skin(Skin::ALL[variant / 8], cx);
                                     app.set_appearance(if variant % 2 == 0 { Appearance::Light } else { Appearance::Dark }, window, cx);
                                     app.set_ui_density(if variant % 4 < 2 { UiDensity::Comfortable } else { UiDensity::Compact }, cx);
                                 }
@@ -436,9 +529,44 @@ pub(crate) fn run() {
                         return false;
                     }
                     match stage {
-                         0 => {
-                             println!("Settings render matrix completed in {:?}", started.elapsed());
-                             owner.update(cx, |app, cx| {
+                          0 => {
+                              println!("Settings render matrix completed in {:?}", started.elapsed());
+                              owner.update(cx, |app, cx| { app.settings_tab = SettingsTab::Design; cx.notify(); });
+                              stage = 110;
+                          }
+                          110 => {
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-picker").center(), cx)).unwrap();
+                              stage = 118;
+                          }
+                          118 => {
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-choice-Solid").center(), cx)).unwrap();
+                              assert_eq!(owner.read(cx).skin, Skin::Solid);
+                              assert_eq!(dunlin_ui::palette(cx).skin, Skin::Solid);
+                              stage = 111;
+                          }
+                          111 => {
+                              assert!(owner.read(cx).overlay_window.diagnostic(cx).is_none());
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-picker").center(), cx)).unwrap();
+                              stage = 119;
+                          }
+                          119 => {
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-choice-Grain").center(), cx)).unwrap();
+                              assert_eq!(owner.read(cx).skin, Skin::Grain);
+                              assert_eq!(owner.read(cx).store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap().skin, Skin::Grain);
+                              stage = 112;
+                          }
+                          112 => {
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-picker").center(), cx)).unwrap();
+                              stage = 120;
+                          }
+                          120 => {
+                              child.update(cx, |_, window, cx| crate::workspace_ui_smoke::click(window, crate::workspace_ui_smoke::measured("skin-choice-Default").center(), cx)).unwrap();
+                              assert_eq!(owner.read(cx).skin, Skin::Default);
+                              assert_eq!(dunlin_ui::palette(cx).skin, Skin::Default);
+                              stage = 113;
+                          }
+                          113 => {
+                              owner.update(cx, |app, cx| {
                                  app.settings_tab = SettingsTab::Skills;
                                  app.add_catalog_skill(crate::skills::PLUGIN_BUILDER_SKILL, cx);
                                  app.install_skill_scoped(crate::skills::PLUGIN_BUILDER_SKILL, crate::skills::Target::Shared,
@@ -533,16 +661,52 @@ pub(crate) fn run() {
                             }).unwrap();
                             stage = 8;
                         }
-                         8 => {
-                             assert_eq!(owner.read(cx).appearance, Appearance::Light);
-                             let stored: StoredSettings = dunlin_storage::Store::open(dir.join("dunlin.db")).unwrap().load_setting("app").unwrap().unwrap();
-                             assert_eq!(stored.appearance, Some(Appearance::Light), "keyboard theme choice must persist to a reopened database");
-                             child.update(cx, |_, window, cx| {
-                                 let restored = cx.new(|cx| DunlinApp::new(window, cx));
-                                 assert_eq!(restored.read(cx).appearance, Appearance::Light, "a new app instance must restore the selected theme");
-                             }).unwrap();
-                              owner.update(cx, |app, cx| {
-                                  app.settings_open = false;
+                          8 => {
+                              assert_eq!(owner.read(cx).appearance, Appearance::Light);
+                              let stored: StoredSettings = dunlin_storage::Store::open(dir.join("dunlin.db")).unwrap().load_setting("app").unwrap().unwrap();
+                              assert_eq!(stored.appearance, Some(Appearance::Light), "keyboard theme choice must persist to a reopened database");
+                              child.update(cx, |_, window, cx| {
+                                  // Light -> Dark -> skin dropdown.
+                                  for _ in 0..2 { window.focus_next(cx); }
+                                  crate::controls_smoke::key(window, cx, "space");
+                              }).unwrap();
+                              stage = 114;
+                          }
+                          114 => {
+                              child.update(cx, |_, window, cx| {
+                                  crate::controls_smoke::key(window, cx, "down");
+                                  crate::controls_smoke::key(window, cx, "down");
+                                  crate::controls_smoke::key(window, cx, "enter");
+                              }).unwrap();
+                              stage = 121;
+                          }
+                          121 => {
+                              assert_eq!(owner.read(cx).skin, Skin::Solid, "skin menu must accept keyboard selection");
+                              child.update(cx, |_, window, cx| {
+                                  crate::controls_smoke::key(window, cx, "space");
+                              }).unwrap();
+                              stage = 122;
+                          }
+                          122 => {
+                              child.update(cx, |_, window, cx| {
+                                  for _ in 0..3 { crate::controls_smoke::key(window, cx, "down"); }
+                                  crate::controls_smoke::key(window, cx, "enter");
+                              }).unwrap();
+                              stage = 115;
+                          }
+                          115 => {
+                              assert_eq!(owner.read(cx).skin, Skin::Grain);
+                              let stored: StoredSettings = dunlin_storage::Store::open(dir.join("dunlin.db")).unwrap().load_setting("app").unwrap().unwrap();
+                              assert_eq!(stored.skin, Skin::Grain, "keyboard skin choice must persist to a reopened database");
+                              assert_eq!(stored.appearance, Some(Appearance::Light), "skin must not change appearance");
+                              child.update(cx, |_, window, cx| {
+                                  let restored = cx.new(|cx| DunlinApp::new(window, cx));
+                                  assert_eq!(restored.read(cx).appearance, Appearance::Light, "a new app instance must restore the selected theme");
+                                  assert_eq!(restored.read(cx).skin, Skin::Grain, "a new app instance must restore the selected skin");
+                              }).unwrap();
+                               owner.update(cx, |app, cx| {
+                                   app.set_skin(Skin::Default, cx);
+                                   app.settings_open = false;
                                   app.set_ui_density(UiDensity::Comfortable, cx);
                                   cx.notify();
                               });

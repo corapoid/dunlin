@@ -936,6 +936,7 @@ mod tests {
                     usage: None,
                     usage_before: None,
                     speaker: None,
+                    failure: None,
                 }),
             },
             ChatItem::AgentText {
@@ -999,6 +1000,7 @@ mod tests {
                     usage: None,
                     usage_before: None,
                     speaker: None,
+                    failure: None,
                 }),
                 at_ms: 1_750_000_000_000,
             },

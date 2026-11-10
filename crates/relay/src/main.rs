@@ -12,6 +12,8 @@ mod auth;
 mod config;
 mod coordination;
 mod management;
+mod linear;
+mod jobs;
 mod store;
 mod terminal;
 mod vault;
@@ -580,6 +582,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         config.harness = harness;
     }
     config.apply_env();
+    let listen_address=config.listen_address()?;
     if !config.db.is_absolute() {
         config.db = std::env::current_dir()
             .map_err(|e| e.to_string())?
@@ -622,10 +625,12 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
                 &config.db.with_extension("coordination"),
             )?,
         ));
-        let app = api::router(state);
-        let listener = tokio::net::TcpListener::bind(&config.listen)
+        let listener = tokio::net::TcpListener::bind(listen_address)
             .await
             .map_err(|error| format!("Could not listen on {}: {error}", config.listen))?;
+        linear::start_background(state.clone());
+        jobs::start_background(state.clone())?;
+        let app = api::router(state);
         eprintln!(
             "[relay] listening on {} · db {} · harness {}",
             config.listen,

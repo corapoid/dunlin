@@ -3,7 +3,7 @@
 | Task | Guide |
 | --- | --- |
 | Install, pair and manage a remote server | [Relay setup](relay-setup.md) |
-| Bootstrap a relay through system OpenSSH | [SSH hosts](ssh.md) |
+| Migrate a former SSH host to Tailscale | [SSH removal](ssh.md) |
 | Look up relay defaults, config and CLI | [Configuration](../reference/configuration.md), [command interfaces](../reference/cli.md) |
 | Export or import settings/project organization | [Portable backup](settings-project-backup.md) |
 | Understand data locations and make a full backup | [Data and recovery](data-and-recovery.md) |

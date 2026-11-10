@@ -68,6 +68,7 @@ mod tests {
             usage: None,
             usage_before: None,
             speaker: None,
+            failure: None,
         });
         assert_eq!(
             agent_caption(&[], timing.clone(), false, true).unwrap(),

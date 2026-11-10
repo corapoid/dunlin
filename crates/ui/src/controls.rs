@@ -221,6 +221,35 @@ pub fn navigation_button(
     icon: IconName,
     label: impl Into<SharedString>,
 ) -> Button {
+    navigation_button_with_icon(
+        id,
+        gpui_kit::component::Icon::new(icon).size(px(17.)),
+        label,
+    )
+}
+
+/// Project selector and global search share one quiet, borderless chrome field.
+pub fn titlebar_field(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    p: Palette,
+) -> Button {
+    button(id)
+        .h(px(30.))
+        .px(px(12.))
+        .rounded(px(crate::radii::CONTROL))
+        .border_0()
+        .bg(p.fg.opacity(0.05))
+        .justify_start()
+        .accessibility_label(label)
+}
+
+/// Custom native artwork keeps the same keyboard, tooltip and pointer behavior.
+pub fn navigation_button_with_icon(
+    id: impl Into<ElementId>,
+    icon: impl IntoElement,
+    label: impl Into<SharedString>,
+) -> Button {
     let label = label.into();
     button(id)
         .ghost()
@@ -228,7 +257,7 @@ pub fn navigation_button(
         .px(px(0.))
         .accessibility_label(label.clone())
         .tooltip(label)
-        .child(gpui_kit::component::Icon::new(icon).size(px(17.)))
+        .child(icon)
 }
 
 pub fn segment_button(
@@ -327,7 +356,7 @@ pub fn card_surface(p: Palette) -> Div {
 
 pub fn dialog_surface(p: Palette) -> Div {
     SurfaceGeometry::DIALOG
-        .paint(p.card, p.border_strong)
+        .paint_material(p, p.card, p.border_strong)
         .p(px(16.))
         .flex()
         .flex_col()
@@ -336,6 +365,8 @@ pub fn dialog_surface(p: Palette) -> Div {
 
 pub fn panel_header(p: Palette) -> Div {
     div()
+        .relative()
+        .children(crate::grain_layer(p, 0.))
         .h(px(scale::HEADER_HEIGHT))
         .flex_shrink_0()
         .px(px(12.))
@@ -396,6 +427,27 @@ pub fn window_options() -> WindowOptions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn titlebar_fields_share_borderless_geometry_in_every_skin() {
+        for skin in crate::Skin::ALL {
+            for dark in [false, true] {
+                let p = crate::theme::for_skin(skin, dark);
+                let mut field = titlebar_field("field", "Field", p);
+                let style = field.style();
+                for border in [
+                    style.border_widths.top,
+                    style.border_widths.bottom,
+                    style.border_widths.left,
+                    style.border_widths.right,
+                ] {
+                    assert_eq!(border, Some(px(0.).into()));
+                }
+                assert_eq!(style.size.height, Some(px(30.).into()));
+                assert_eq!(style.background, Some(p.fg.opacity(0.05).into()));
+            }
+        }
+    }
 
     #[test]
     fn switches_keep_keyboard_support_without_a_focus_outline() {

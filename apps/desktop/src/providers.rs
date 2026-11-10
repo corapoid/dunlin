@@ -501,6 +501,13 @@ impl DunlinApp {
             .models
             .as_ref()
             .map(|models| models.current.as_str());
+        if !self.opencode_free_consent
+            && (self.selected_provider() == Some(FREE)
+                || current.is_some_and(|id| self.provider_catalog.free_models.contains(id)))
+        {
+            self.open_free_endpoint_consent(false, cx);
+            return false;
+        }
         if self
             .visible_models()
             .iter()
@@ -536,6 +543,13 @@ impl DunlinApp {
                 .any(|provider| provider.id == id)
         }) {
             return;
+        }
+        if id == FREE && !self.opencode_free_consent {
+            self.open_free_endpoint_consent(true, cx);
+            return;
+        }
+        if self.selected_provider() != Some(id) {
+            self.harness.inherited_model = None;
         }
         self.opencode_provider = Some(id.into());
         self.ensure_usage(cx);

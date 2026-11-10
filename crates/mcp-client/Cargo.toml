@@ -1,0 +1,16 @@
+[package]
+publish = false
+name = "dunlin-mcp-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+dunlin-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url = "2"
+sha2 = "0.11.1"
+hex.workspace = true

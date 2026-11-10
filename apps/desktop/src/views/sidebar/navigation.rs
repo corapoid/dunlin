@@ -18,13 +18,15 @@ pub(super) fn tabs(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
         (Tab::Sessions, IconName::MessageSquare, "Sessions"),
         (Tab::Explorer, IconName::Files, "Explorer"),
     ] {
+        let active = this.sidebar_tab == tab;
+        let disabled = tab == Tab::Explorer && this.projects.is_empty();
         tabs = tabs.child(
             navigation_button(format!("sidebar-tab:{label}"), icon, label)
                 .flex_1()
                 .h(px(30.))
-                .selected(this.sidebar_tab == tab)
-                .toggled(this.sidebar_tab == tab)
-                .disabled(tab == Tab::Explorer && this.projects.is_empty())
+                .selected(active)
+                .toggled(active)
+                .disabled(disabled)
                 .relative()
                 .children({
                     #[cfg(debug_assertions)]
@@ -140,7 +142,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         } else {
             2.
         }))
-        .px(px(8.))
+        .px(px(crate::sidebar_layout::UTILITY_INSET))
         .pt(px(if this.density == crate::app::UiDensity::Compact {
             8.
         } else {
@@ -181,7 +183,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .font_family(dunlin_ui::theme::code_font())
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(p.muted_fg)
-                .child(div().flex_1().child("PROJECT WORKSPACE"))
+                .child(sidebar_heading("PROJECT WORKSPACE", &p).flex_1())
                 .child(
                     Icon::new(if this.workspace_navigation_collapsed {
                         IconName::ChevronUp
@@ -277,7 +279,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                         IconName::Settings,
                         this.shortcut_label("Settings", "⌘,"),
                     )
-                    .size(px(32.))
+                    .size(px(crate::sidebar_layout::UTILITY_SIZE))
                     .flex_shrink_0()
                     .selected(this.settings_open)
                     .toggled(this.settings_open)

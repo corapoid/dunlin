@@ -801,7 +801,7 @@ pub(crate) fn render(
             cx.notify();
         }))
         .child(
-            div()
+            SurfaceGeometry::DIALOG.paint_material(p, p.panel, p.border_strong)
                 .id("project-import-sheet")
                 .relative()
                 .children({
@@ -816,10 +816,6 @@ pub(crate) fn render(
                 })
                 .w(px(width))
                 .h(px(height))
-                .rounded(px(SurfaceGeometry::DIALOG.radius))
-                .border(px(SurfaceGeometry::DIALOG.border))
-                .border_color(p.border_strong)
-                .bg(p.panel)
                 .overflow_hidden()
                 .flex()
                 .flex_col()

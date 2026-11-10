@@ -251,7 +251,8 @@ pub(crate) fn run() {
             let mut usage_before: Option<Bounds<Pixels>> = None;
             let mut dashboard_recent = None;
              let mut dashboard_summary = None;
-             let mut activity_transcript = None;
+            let mut activity_transcript = None;
+            let mut consent_previous = (String::new(), None::<String>);
             loop {
                 cx.background_executor().timer(Duration::from_millis(150)).await;
                 let done = cx.update(|cx| {
@@ -278,11 +279,18 @@ pub(crate) fn run() {
                     let target = match stage {
                           15 => Some("composer-options"), 16 => Some("chat-option-reasoning"),
                            18 => Some("composer-options"), 19 => Some("chat-option-commit-skill"),
-                         7900 => Some("ctx-project-group"), 7902 => Some("project-group-none"),
+                          7900 => Some("ctx-project-group"), 7902 => Some("project-group-none"),
+                          7911 => Some("project-menu-create"),
+                          7916 | 7918 => Some("toggle-general-sessions"),
+                          7917 => Some("toggle-project-sessions"),
+                          8000 | 8003 => Some("group-settings-delete"),
+                          8100 | 8105 => Some("free-endpoint-confirm"),
+                          8102 => Some("free-endpoint-cancel"),
+                          8104 => Some("free-endpoint-agree"),
                            7903 => Some("ctx-project-trust"),
                          10000 => Some("delete-cancel"), 10001 => Some("delete-confirm"),
                         100 => Some("group-settings-button"), 101 => Some("group-icon-kubernetes"),
-                        102 => Some("group-color-teal"), 103 | 107 => Some("group-settings-save"),
+                         102 => Some("group-color-picker"), 1021 => Some("group-color-teal"), 103 | 107 => Some("group-settings-save"),
                         104 => Some("group-settings-button"),
                         106 => Some("group-icon-dot"),
                         31 | 33 => Some("project-menu-root"),
@@ -316,6 +324,42 @@ pub(crate) fn run() {
                         }).unwrap();
                         stage = 19;
                         return false;
+                    }
+                    if stage == 10010 {
+                        if !BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("group-settings-scroll")) {
+                            assert!(started.elapsed() < Duration::from_secs(90), "group settings scroll did not render");
+                            return false;
+                        }
+                        let position = measured("group-settings-scroll").origin + point(px(8.), px(50.));
+                        let child = owner.read(cx).overlay_window.debug_window();
+                        child.unwrap_or(parent.into()).update(cx, |_, window, cx| {
+                            window.dispatch_event(PlatformInput::Scroll(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(-180.))), touch_phase: TouchPhase::Moved, ..Default::default() }), cx);
+                        }).unwrap();
+                        stage = 10011;
+                        return false;
+                    }
+                    if matches!(stage, 8001 | 8004) {
+                        assert!(started.elapsed() < Duration::from_secs(90), "group deletion confirmation stalled at {stage}");
+                        if let Some(bounds) = dunlin_ui::debug_confirmation_answer(if stage == 8001 { 0 } else { 1 }) {
+                            let child = owner.read(cx).overlay_window.debug_window();
+                            child.unwrap_or(parent.into()).update(cx, |_, window, cx| click(window, bounds.center(), cx)).unwrap();
+                            stage += 1;
+                        }
+                        return false;
+                    }
+                    if stage == 8101 {
+                        let child = owner.read(cx).overlay_window.debug_window();
+                        child.unwrap_or(parent.into()).update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "escape")).unwrap();
+                        stage = 81011;
+                        return false;
+                    }
+                    if stage == 7913 {
+                        parent.update(cx, |_, window, cx| {
+                            assert!(owner.read(cx).project_creation.input.as_ref().unwrap().read(cx).focus_handle(cx).is_focused(window), "inline project name must keep keyboard focus");
+                        }).unwrap();
+                        if let Some(child) = owner.read(cx).overlay_window.debug_window() {
+                            child.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "enter")).unwrap();
+                        } else { parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "enter")).unwrap(); }
                     }
                     if stage == 21 || stage == 22 {
                         if !BOUNDS.with(|map| map.borrow().as_ref().unwrap().contains_key("integration-catalog-list")) { return false; }
@@ -512,7 +556,7 @@ pub(crate) fn run() {
                     if stage == 7400 {
                         let bounds = measured("toolbar-view-selector");
                         assert_eq!(bounds.size.height, px(30.), "selector must align without border-induced inset drift");
-                        for (index, name) in ["view-label-chat", "view-label-graph", "view-label-trace"].into_iter().enumerate() {
+                        for (index, name) in ["view-label-chat", "view-label-graph", "view-label-timeline"].into_iter().enumerate() {
                             let label = measured(name);
                             assert!((label.center().y - bounds.center().y).abs() <= px(0.5));
                             assert!((label.center().x - bounds.left() - px(3. + (index as f32 + 0.5) * 76.)).abs() <= px(0.5), "each label must be centered in its equal-width segment");
@@ -538,7 +582,7 @@ pub(crate) fn run() {
                         parent.update(cx, |_, window, cx| {
                             window.dispatch_event(PlatformInput::MouseUp(MouseUpEvent { position: target, button: MouseButton::Left, click_count: 1, ..Default::default() }), cx);
                         }).unwrap();
-                        assert_eq!(owner.read(cx).view, MainView::Trace, "release must commit the dragged-to segment");
+                        assert_eq!(owner.read(cx).view, MainView::Timeline, "release must commit the dragged-to segment");
                         parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "left")).unwrap();
                         assert_eq!(owner.read(cx).view, MainView::Graph);
                         parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "home")).unwrap();
@@ -568,10 +612,10 @@ pub(crate) fn run() {
                     }
                      assert!(started.elapsed() < Duration::from_secs(90), "workspace smoke stalled at {stage}: {:?}", owner.read(cx).notice);
                      if let Some(key) = match stage {
-                         20001 | 20008 => Some("home"),
-                         20002 | 20006 => Some("end"),
+                          20001 => Some("home"),
+                          20002 => Some("end"),
                          20004 => Some("down"),
-                          13 | 20009 => Some("escape"),
+                           13 => Some("escape"),
                          _ => None,
                      } {
                          parent.update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, key)).unwrap();
@@ -711,12 +755,11 @@ pub(crate) fn run() {
                                    stage = 7103;
                                }
                                7103 if app.overlay_window.is_open() => {
-                                   app.remote_connection.ssh = true;
-                                   cx.notify();
+                                    cx.notify();
                                    stage = 7104;
                                }
                                7104 => {
-                                   assert!(app.remote_connection.identity.is_some() && app.remote_connection.port.is_some());
+                                    assert!(app.remote_connection.open);
                                    app.close_remote_connection(window, cx);
                                    assert!(!app.remote_connection.open && app.terminal.tabs.is_empty());
                                    app.new_session(cx);
@@ -845,9 +888,19 @@ pub(crate) fn run() {
                                   assert!(measured("active-project-row").size.height <= px(80.), "narrow project names must not form a vertical letter tower");
                                  stage = 100;
                              }
-                             100 => { assert!(app.group_settings_draft.is_some()); stage = 101; }
+                              100 => { assert!(app.group_settings_draft.is_some()); stage = 10010; }
+                              10011 => {
+                                  let scroll = &app.group_settings_draft.as_ref().unwrap().scroll;
+                                   if scroll.max_offset().y > px(0.) {
+                                       assert!(scroll.offset().y < px(0.), "overflowing group settings must scroll instead of shrinking fields");
+                                   }
+                                  assert!(measured("group-settings-actions").bottom() <= measured("group-settings-panel").bottom());
+                                  scroll.set_offset(point(px(0.), px(0.)));
+                                  stage = 101;
+                              }
                              101 => { stage = 102; }
-                             102 => { stage = 103; }
+                              102 => { stage = 1021; }
+                              1021 => { stage = 103; }
                              103 => {
                                  assert!(app.group_settings_draft.is_none());
                                  let saved = app.store.as_ref().unwrap().project_groups().unwrap().pop().unwrap();
@@ -893,7 +946,8 @@ pub(crate) fn run() {
                               14 => {
                                   assert!(!BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("project-preview")), "Escape must close project information");
                                   app.reasoning_open = false;
-                                  app.final_answer_only = false;
+                                   app.final_answer_only = false;
+                                   app.harness.transcript.push(ChatItem::Thought { text: "Fixture shared reasoning".into(), streaming: false, message_id: None, at_ms: 1 });
                                   stage = 15;
                               }
                               15 => { stage = 16; }
@@ -984,28 +1038,12 @@ pub(crate) fn run() {
                                   assert!(!ids.is_empty() && ids.len() < 10);
                                   assert!(app.selected_node.as_ref().is_none_or(|id| ids.contains(id)), "search must not retain a hidden graph selection");
                                   app.activity_search.update(cx, |input, cx| input.replace_all("", window, cx));
-                                  app.view = MainView::Trace;
-                                  app.selected_span = None;
-                                  stage = 20005;
-                              }
-                              20005 => { app.activity_focus.focus(window, cx); stage = 20006; }
-                              20006 => {
-                                  let ids = app.activity_visible_ids();
-                                  assert!(ids.len() > 20);
-                                  assert_eq!(app.selected_span.as_deref(), ids.last().map(String::as_str), "Trace End must use the installed key handler");
-                                  stage = 20007;
-                              }
-                              20007 => {
-                                  assert!(app.activity.trace_scroll.0.borrow().base_handle.offset().y < px(0.), "Trace End must reveal its last virtual row");
-                                  stage = 20008;
-                              }
-                              20008 => {
-                                  assert_eq!(app.selected_span.as_deref(), app.activity_visible_ids().first().map(String::as_str));
-                                  stage = 20009;
-                              }
-                              20009 => {
-                                  assert!(app.selected_span.is_none() && app.activity_focus.is_focused(window), "Trace Escape must clear selection without losing tree focus");
-                                  app.harness.transcript = activity_transcript.take().unwrap();
+                                   app.view = MainView::Timeline;
+                                   stage = 20005;
+                               }
+                               20005 => {
+                                   assert!(app.commands().iter().all(|command| !command.label.contains("Trace")), "the retired Trace view must not remain in the command palette");
+                                   app.harness.transcript = activity_transcript.take().unwrap();
                                   app.selected_node = None;
                                   app.view = MainView::Graph;
                                   stage = 20010;
@@ -1069,8 +1107,20 @@ pub(crate) fn run() {
                                    assert_eq!(measured("project-menu-active-row").left(), measured("project-menu-child").left());
                                    measured("project-menu-ungrouped-row");
                                    assert_eq!(measured("project-menu-active-row").size.height, px(42.));
+                                   app.density = crate::app::UiDensity::Compact;
+                                   stage = 30010;
+                              }
+                              30010 => {
+                                  assert_eq!(measured("project-menu-active-row").size.height, px(28.));
+                                  assert_eq!(measured("project-menu-root").size.height, px(24.));
+                                  app.density = crate::app::UiDensity::Comfortable;
+                                  stage = 30011;
+                              }
+                              30011 => {
+                                  assert_eq!(measured("project-menu-active-row").size.height, px(42.));
+                                  assert_eq!(measured("project-menu-root").size.height, px(32.));
                                   stage = 31;
-                             }
+                              }
                              31 => { assert!(app.project_menu_open); stage = 32; }
                              32 => {
                                   assert!(app.collapsed_project_groups.contains(&"picker-root".into()));
@@ -1307,8 +1357,11 @@ pub(crate) fn run() {
                                   cx.set_window_appearance(Some(WindowAppearance::Dark));
                                   stage = 210;
                               }
-                              210 if !dunlin_ui::theme::is_transitioning(cx) => {
-                                  use dunlin_ui::component::ActiveTheme as _;
+                               210 if !dunlin_ui::theme::is_transitioning(cx) => {
+                                   use dunlin_ui::component::ActiveTheme as _;
+                                   // Native appearance notifications may arrive after a frame
+                                   // where the preceding transition has already settled.
+                                   if !cx.theme().is_dark() { return false; }
                                    assert!(cx.theme().is_dark());
                                    assert!(chrome_background(palette(cx), false).a >= 0.8);
                                   cx.set_window_appearance(Some(WindowAppearance::Light));
@@ -1318,8 +1371,9 @@ pub(crate) fn run() {
                                        name: "Claude Code", cli: Some("/usr/bin/false".into()), adapter: None,
                                    });
                               }
-                              211 if !dunlin_ui::theme::is_transitioning(cx) => {
-                                  use dunlin_ui::component::ActiveTheme as _;
+                               211 if !dunlin_ui::theme::is_transitioning(cx) => {
+                                   use dunlin_ui::component::ActiveTheme as _;
+                                   if cx.theme().is_dark() { return false; }
                                    assert!(!cx.theme().is_dark());
                                     app.overlay_window.debug_window().unwrap()
                                         .update(cx, |_, window, _| assert_painted_corners(window, "settings-content", false)).unwrap();
@@ -1623,14 +1677,10 @@ pub(crate) fn run() {
                               7905 => {
                                   assert!(app.project_group_editor.is_none());
                                   app.open_remote_connection(window, cx);
-                                  app.remote_connection.ssh = true;
                                   stage = 7906;
                               }
-                              7906 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("ssh-key-input")) => {
-                                  let input = measured("ssh-key-input");
-                                  let button = measured("ssh-key-button");
-                                  assert_eq!(input.size.height, button.size.height);
-                                  assert!((input.center().y - button.center().y).abs() <= px(1.), "key chooser must align with the input, not its label");
+                               7906 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("remote-e2e-url")) => {
+                                   assert!(measured("remote-e2e-url").size.height > px(0.));
                                   app.close_remote_connection(window, cx);
                                   app.settings_open = true;
                                   app.settings_tab = crate::app::SettingsTab::Harnesses;
@@ -1645,8 +1695,125 @@ pub(crate) fn run() {
                                   app.custom_harness_command = "/usr/bin/false".into();
                                   assert!(app.visible_harness_names().iter().any(|name| name == "Custom ACP"));
                                   assert_eq!(app.session_harness(), harness);
-                                  assert_eq!(app.harness.transcript.len(), transcript);
-                                  std::fs::write(dir.join("PASS"), "PASS: project actions/group dialog, installed harness choices, SSH key geometry, project search, text zoom, MRU and workspace UI\n").unwrap();
+                                   assert_eq!(app.harness.transcript.len(), transcript);
+                                   app.settings_open = false;
+                                   app.project_menu_open = true;
+                                   stage = 7911;
+                              }
+                              7911 => {
+                                   assert!(app.project_creation.editing);
+                                   stage = 7912;
+                              }
+                              7912 => {
+                                   measured("project-menu-draft");
+                                   let input = app.project_creation.input.as_ref().unwrap().clone();
+                                   input.update(cx, |input, cx| input.set_value("New native project", window, cx));
+                                   stage = 7913;
+                              }
+                              7913 => {
+                                   assert!(!app.project_creation.editing, "Enter must confirm the inline name: {:?}", app.project_creation.error);
+                                   let id = app.project_creation.recent.as_ref().unwrap();
+                                   let project = app.projects.iter().find(|p| &p.id == id).unwrap();
+                                   assert_eq!(project.name, "New native project");
+                                   assert!(!project.is_chat_space());
+                                   assert!(PathBuf::from(&project.path).starts_with(dir.join("projects")));
+                                   assert!(PathBuf::from(&project.path).is_dir());
+                                   assert!(app.store.as_ref().unwrap().projects().unwrap().iter().any(|p| &p.id == id));
+                                   app.project_menu_open = false;
+                                   app.section = SidebarSection::Sessions;
+                                   app.sidebar_tab = crate::sidebar_layout::Tab::Sessions;
+                                   app.general_sessions_collapsed = false;
+                                   app.project_sessions_collapsed = false;
+                                   stage = 7916;
+                              }
+                              7916 => {
+                                   assert!(app.general_sessions_collapsed);
+                                   assert!(!app.project_sessions_collapsed);
+                                   let general = measured("general-sessions-chevron");
+                                   let project = measured("project-sessions-chevron");
+                                   assert!((general.left() - project.left()).abs() <= px(1.), "scope headings must share the same left inset");
+                                   assert!(general.left() - measured("sidebar").left() <= px(24.), "scope headings must align left, not center inside their buttons");
+                                   stage = 7917;
+                              }
+                              7917 => {
+                                   assert!(app.general_sessions_collapsed && app.project_sessions_collapsed);
+                                   stage = 7918;
+                              }
+                              7918 => {
+                                   assert!(!app.general_sessions_collapsed && app.project_sessions_collapsed);
+                                   assert!((measured("general-sessions-chevron").left() - measured("project-sessions-chevron").left()).abs() <= px(1.), "collapsed and expanded headings keep the same alignment");
+                                   let saved = app.store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap();
+                                   assert!(!saved.general_sessions_collapsed && saved.project_sessions_collapsed);
+                                   let date = "2020-01-01T00:00:00+00:00".to_string();
+                                   app.update_active_session(|session| session.updated_at = date.clone());
+                                   app.update_active_session(|session| { session.model = "Read-only metadata".into(); session.acp_session_id = Some("historical".into()); });
+                                   assert_eq!(app.session().updated_at, date, "loading metadata cannot reorder history");
+                                   let group = dunlin_domain::ProjectGroup { id: "delete-settings-fixture".into(), name: "Delete fixture".into(), tone: dunlin_domain::ProjectTone::Blue, parent_id: None, settings: Default::default() };
+                                   let child = dunlin_domain::ProjectGroup { id: "delete-settings-child".into(), name: "Keep child".into(), parent_id: Some(group.id.clone()), ..group.clone() };
+                                   for group in [group, child] { app.store.as_ref().unwrap().upsert_project_group(&group).unwrap(); app.project_groups.push(group); }
+                                   app.open_group_settings("delete-settings-fixture", window, cx);
+                                   stage = 8000;
+                              }
+                              8000 => { stage = 8001; }
+                              8002 => {
+                                  assert!(app.project_groups.iter().any(|group| group.id == "delete-settings-fixture"), "Cancel cannot delete a group");
+                                  assert!(app.group_settings_draft.is_some());
+                                  stage = 8003;
+                              }
+                              8003 => { stage = 8004; }
+                              8005 => {
+                                  assert!(app.group_settings_draft.is_none());
+                                  assert!(!app.project_groups.iter().any(|group| group.id == "delete-settings-fixture"));
+                                  assert!(app.project_groups.iter().find(|group| group.id == "delete-settings-child").unwrap().parent_id.is_none());
+                                  app.apply_toast(cx);
+                                  assert!(app.project_groups.iter().find(|group| group.id == "delete-settings-child").unwrap().parent_id.as_deref() == Some("delete-settings-fixture"));
+                                  consent_previous = (app.session_harness(), app.opencode_provider.clone());
+                                  app.update_active_session(|session| session.harness = "OpenCode".into());
+                                  app.harness.status = crate::harness::HarnessStatus::Offline;
+                                  app.harness.local_session_loading = false; app.harness.session_metadata_pending = false;
+                                  app.provider_catalog.directory = app.project().path.clone(); app.provider_catalog.loading = false; app.provider_catalog.error = None;
+                                  app.provider_catalog.models.insert("opencode/beam-free".into()); app.provider_catalog.free_models.insert("opencode/beam-free".into());
+                                  app.harness.models = Some(dunlin_agent::SessionModels { config_id: None, current: "opencode/beam-free".into(), choices: vec![dunlin_agent::ModelChoice { id: "opencode/beam-free".into(), name: "Beam Free".into(), description: None }] });
+                                  app.opencode_free_consent = false;
+                                  app.select_provider(crate::providers::FREE, cx);
+                                  assert!(app.free_endpoint_dialog.is_some());
+                                  assert_eq!(app.opencode_provider, consent_previous.1, "selecting Free must wait for explicit consent");
+                                  stage = 8100;
+                              }
+                              8100 => {
+                                   assert!(!app.opencode_free_consent && app.free_endpoint_dialog.is_some(), "disabled Save cannot grant consent");
+                                   stage = 8101;
+                               }
+                              81011 => {
+                                   assert!(app.free_endpoint_dialog.is_none() && !app.opencode_free_consent, "Escape must cancel without granting consent");
+                                   assert_eq!(app.opencode_provider, consent_previous.1);
+                                   app.select_provider(crate::providers::FREE, cx);
+                                   stage = 8102;
+                              }
+                              8102 => {
+                                  assert!(app.free_endpoint_dialog.is_none() && !app.opencode_free_consent);
+                                  assert_eq!(app.opencode_provider, consent_previous.1);
+                                  app.opencode_provider = Some(crate::providers::FREE.into());
+                                  assert!(!app.check_provider_model(cx), "restored Free selections must also enforce consent at send time");
+                                  stage = 8104;
+                              }
+                              8104 => { assert!(app.free_endpoint_dialog.as_ref().unwrap().accepted); stage = 8105; }
+                              8105 => {
+                                  assert!(app.free_endpoint_dialog.is_none() && app.opencode_free_consent);
+                                  assert!(app.check_provider_model(cx));
+                                  let saved = app.store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap();
+                                  assert!(saved.opencode_free_consent);
+                                  app.set_free_endpoint_consent(false, cx);
+                                  assert!(!app.check_provider_model(cx), "revocation must block another Free request");
+                                  app.close_free_endpoint_consent(cx);
+                                  app.update_active_session(|session| session.harness = consent_previous.0.clone());
+                                  app.opencode_provider = consent_previous.1.clone();
+                                  app.settings_open = true; app.settings_tab = crate::app::SettingsTab::Harnesses;
+                                  stage = 8106;
+                              }
+                              8106 if BOUNDS.with(|m| m.borrow().as_ref().unwrap().contains_key("free-endpoint-settings-card")) => {
+                                   assert!(!app.store.as_ref().unwrap().load_setting::<StoredSettings>("app").unwrap().unwrap().opencode_free_consent);
+                                    std::fs::write(dir.join("PASS"), "PASS: group settings scrolling, confirmed deletion/Undo, compact project switcher, Free consent/cancellation/revocation, project actions, installed harness choices, SSH key geometry, project search, text zoom, MRU and workspace UI\n").unwrap();
                                  println!("PASS: workspace UI smoke"); cx.quit(); return true;
                             }
                             _ => {}

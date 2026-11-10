@@ -115,6 +115,82 @@ fn line_at(y: f32, height: f32, lines: usize) -> usize {
         .min(lines.saturating_sub(1) as f32) as usize
 }
 
+/// GPUI's rectangular overflow mask does not clip a canvas to rounded corners.
+/// Intersect each painted region with the *fixed frame*, not a moving rounded
+/// viewport. The curve therefore remains continuous at every scroll offset.
+fn frame_inset(y: f32, height: f32, top_radius: f32, bottom_radius: f32) -> f32 {
+    let radius_and_distance = if y < top_radius {
+        Some((top_radius, top_radius - y.max(0.)))
+    } else if y > height - bottom_radius {
+        Some((
+            bottom_radius,
+            (y - (height - bottom_radius)).min(bottom_radius),
+        ))
+    } else {
+        None
+    };
+    radius_and_distance
+        .map(|(radius, distance)| radius - (radius * radius - distance * distance).max(0.).sqrt())
+        .unwrap_or(0.)
+}
+
+fn paint_in_frame(
+    window: &mut Window,
+    rect: Bounds<Pixels>,
+    frame: Bounds<Pixels>,
+    top_radius: f32,
+    bottom_radius: f32,
+    color: Hsla,
+) {
+    let rect = rect.intersect(&frame);
+    if rect.is_empty() {
+        return;
+    }
+    let height = f32::from(frame.size.height);
+    let top_radius = top_radius.min(height / 2.);
+    let bottom_radius = bottom_radius.min(height / 2.);
+    if rect.right() <= frame.right() - px(top_radius.max(bottom_radius))
+        || (rect.top() >= frame.top() + px(top_radius)
+            && rect.bottom() <= frame.bottom() - px(bottom_radius))
+    {
+        window.paint_quad(fill(rect, color));
+        return;
+    }
+    let top = f32::from(rect.top() - frame.top());
+    let bottom = f32::from(rect.bottom() - frame.top());
+    let edge = |y: f32| {
+        point(
+            rect.right()
+                .min(frame.right() - px(frame_inset(y, height, top_radius, bottom_radius)))
+                .max(rect.left()),
+            frame.top() + px(y),
+        )
+    };
+    let mut path = PathBuilder::fill();
+    path.move_to(rect.origin);
+    path.line_to(edge(top));
+    // Only sample the curved portions; the middle remains a single straight edge.
+    for (start, end) in [
+        (top, bottom.min(top_radius)),
+        (top.max(height - bottom_radius), bottom),
+    ] {
+        if end <= start {
+            continue;
+        }
+        path.line_to(edge(start));
+        let steps = ((end - start) * window.scale_factor() * 4.).ceil() as usize;
+        for step in 1..=steps {
+            path.line_to(edge(start + (end - start) * step as f32 / steps as f32));
+        }
+    }
+    path.line_to(edge(bottom));
+    path.line_to(point(rect.left(), rect.bottom()));
+    path.close();
+    if let Ok(path) = path.build() {
+        window.paint_path(path, color);
+    }
+}
+
 fn scroll_to(
     editor: &Entity<EditorState>,
     lines: usize,
@@ -289,6 +365,12 @@ pub(crate) fn render(
                     bounds
                 },
                 move |bounds, _, window, cx| {
+                    let top_radius = if at_workspace_top {
+                        dunlin_ui::scale::WORKSPACE_RADIUS
+                    } else {
+                        0.
+                    };
+                    let bottom_radius = dunlin_ui::scale::WORKSPACE_RADIUS;
                     let height = map_height(snapshot.lines, f32::from(bounds.size.height));
                     let scale = height / snapshot.lines.max(1) as f32;
                     for row in &snapshot.rows {
@@ -301,14 +383,18 @@ pub(crate) fn render(
                             bounds.origin + point(px(x), px(row.line as f32 * scale)),
                             size(px(width), px(scale.clamp(0.5, 1.4))),
                         );
-                        window.paint_quad(fill(
+                        paint_in_frame(
+                            window,
                             rect,
+                            bounds,
+                            top_radius,
+                            bottom_radius,
                             if row.comment {
                                 p.green.opacity(0.5)
                             } else {
                                 p.muted_fg.opacity(0.4)
                             },
-                        ));
+                        );
                     }
                     for (marks, x) in [(&snapshot.changes, 0.), (&snapshot.unsaved, 4.)] {
                         for mark in marks {
@@ -330,7 +416,7 @@ pub(crate) fn render(
                                         .max(2.)),
                                 ),
                             );
-                            window.paint_quad(fill(rect, color));
+                            paint_in_frame(window, rect, bounds, top_radius, bottom_radius, color);
                         }
                     }
                     let state = editor.read(cx);
@@ -361,18 +447,14 @@ pub(crate) fn render(
                                     .min((height - top).max(0.))),
                             ),
                         );
-                        let radius = dunlin_ui::scale::WORKSPACE_RADIUS;
-                        let corners = Corners {
-                            top_right: px(if at_workspace_top && start == 0 {
-                                radius
-                            } else {
-                                0.
-                            }),
-                            bottom_right: px(if end >= snapshot.lines { radius } else { 0. }),
-                            ..Corners::default()
-                        };
-                        window
-                            .paint_quad(fill(viewport, p.blue.opacity(0.12)).corner_radii(corners));
+                        paint_in_frame(
+                            window,
+                            viewport,
+                            bounds,
+                            top_radius,
+                            bottom_radius,
+                            p.blue.opacity(0.12),
+                        );
                     }
                 },
             )
@@ -386,6 +468,34 @@ pub(crate) fn render(
 #[cfg(test)]
 mod tests {
     use super::{Kind, line_at, snapshot};
+
+    #[test]
+    fn minimap_corner_intersection_changes_continuously_at_both_frame_edges() {
+        let height = 500.;
+        for radius in [8., 18., 28.] {
+            assert_eq!(super::frame_inset(0., height, radius, radius), radius);
+            assert_eq!(super::frame_inset(radius, height, radius, radius), 0.);
+            let mut previous = radius;
+            for step in 1..=1000 {
+                let offset = radius * step as f32 / 1000.;
+                let top = super::frame_inset(offset, height, radius, radius);
+                let bottom = super::frame_inset(height - offset, height, radius, radius);
+                assert!((top - bottom).abs() < 0.001);
+                assert!(top <= previous && top >= 0.);
+                assert!(
+                    previous - top < radius * 0.05,
+                    "no binary corner jump after a small scroll"
+                );
+                previous = top;
+            }
+            assert_eq!(
+                super::frame_inset(0., height, 0., radius),
+                0.,
+                "no top rounding below editor tabs"
+            );
+            assert_eq!(super::frame_inset(height / 2., height, radius, radius), 0.);
+        }
+    }
     #[test]
     fn separate_git_and_unsaved_marks_follow_additions_modifications_deletions_and_undo() {
         let view = snapshot("one\nchanged\nnew\n", "one\nchanged\n", Some("one\ntwo\n"));

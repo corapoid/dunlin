@@ -20,7 +20,6 @@ illustrations, not fresh acceptance evidence.
 | **Settings** | <img src="../screenshots/settings.png" alt="Dunlin settings, dark" width="480" /> | <img src="../screenshots/light/settings.png" alt="Dunlin settings, light" width="480" /> |
 | **Chat** | <img src="../screenshots/chat.png" alt="Dunlin chat, dark" width="480" /> | <img src="../screenshots/light/chat.png" alt="Dunlin chat, light" width="480" /> |
 | **Graph** | <img src="../screenshots/graph.png" alt="Dunlin agent graph, dark" width="480" /> | <img src="../screenshots/light/graph.png" alt="Dunlin agent graph, light" width="480" /> |
-| **Trace** | <img src="../screenshots/trace.png" alt="Dunlin trace waterfall, dark" width="480" /> | <img src="../screenshots/light/trace.png" alt="Dunlin trace waterfall, light" width="480" /> |
 
 ## Feature close-ups
 

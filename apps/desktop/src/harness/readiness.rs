@@ -3,7 +3,7 @@
 use super::*;
 use std::hash::{Hash, Hasher};
 
-pub(super) fn config_key(name: &str, config: &HarnessConfig) -> u64 {
+pub(crate) fn config_key(name: &str, config: &HarnessConfig) -> u64 {
     let mut hash = std::collections::hash_map::DefaultHasher::new();
     name.hash(&mut hash);
     config.description().hash(&mut hash);

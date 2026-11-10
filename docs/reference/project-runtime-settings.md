@@ -1,37 +1,42 @@
 # Project runtime defaults
 
-Local projects expose **Project settings → Model & environment…**. Groups expose
+Local projects expose **Project settings → Default model…**. Groups expose
 **right-click group → Group settings…** (rename remains a separate action). Saving these
 defaults never sends a prompt, changes a running session's model, or restarts an
 agent. Projects and existing conversations are not reassigned to another harness.
 
-The project dialog explicitly separates appearance/agent/approval choices, which
-save immediately, from the model/environment form, which requires **Save model &
-environment**. **Cancel edit** discards only that form. Closing the dialog with
+The project dialog separates appearance/agent choices, which save immediately,
+from the model form, which requires **Save model**. **Cancel edit** discards only
+that form. Closing the dialog with
 the form open asks before discarding; a pending relay save cannot be dismissed.
 Group settings keeps all choices in one draft until **Save group settings**;
-**Cancel** discards them. Project reset requires confirmation and clears all
-project overrides, not repository files or inherited group values.
+**Cancel** discards them. Both forms use a default-harness dropdown. Group colors
+use a dropdown with colored dots; built-in group icon choices show their logos.
+The project color picker shows a circular dot rather than a square swatch.
+
+Neither form exposes permission/environment editors or a bulk reset-to-inherited
+action. Existing stored permission and environment overrides remain intact when
+appearance, harness or model settings are saved. **Clean project… / Clean group…**
+opens the generated-data preview, not a settings reset or history deletion.
 
 ## Inheritance and sources
 
 Effective defaults resolve in order: global harness/client permissions → root group
 → nested groups → project. Harness and permissions use the nearest explicit value;
-models merge per harness and environment merges per name. The settings UI shows the
-source of each effective value. Icons and trust are project-only, never inherited.
-Environment summaries show names and sources, not inherited values.
+models merge per harness and environment merges per name. The settings UI shows
+the source of harness/model defaults. Group appearance can be inherited; project
+icons can override it. Trust remains project-specific.
 
 Editors contain **only explicit overrides**, not copies of ancestor values. Choose
-**Inherit** for harness/permissions, blank a model or omit an environment name to
-remove that local override. If there is no ancestor override, the harness's own
+**Inherit** for the harness or blank a model to remove that local override.
+If there is no ancestor override, the harness's own
 model or inherited OS/process environment remains the fallback. An explicit empty
 `NAME=` overrides an ancestor with an empty value; deleting an inherited variable
 from the process entirely is not supported yet.
 
-**Reset to inherited** in Group settings resets the draft; Save confirms it.
-**Reset overrides** in Project settings clears all project overrides, including its
-icon, without changing the group's preferences. Ancestor changes do not materialize
-new project rows or rewrite existing conversations.
+Ancestor changes do not materialize new project rows or rewrite existing
+conversations. Hidden legacy permission/environment defaults still participate in
+inheritance; removing their controls does not relax existing approval policies.
 
 Moving projects/groups, deleting a group (promotion) or Undo immediately recomputes
 inheritance. This can change **client approval policy for following requests**;
@@ -63,6 +68,9 @@ permission policy as read-only rather than accepting partial, broader defaults.
 
 ## Environment
 
+The following documents the retained storage/runtime format, not a field in the
+project/group settings windows. These windows no longer edit environment values.
+
 ```text
 LANG=pl_PL.UTF-8
 MY_PROJECT_MODE=development
@@ -86,11 +94,10 @@ defaults; reconnecting an old one also receives current environment overrides.
 
 **Not a secrets store:** values are saved unencrypted in the local SQLite database
 (and may appear in its WAL/backups). Use harness authentication/Keychain for
-credentials, not this editor. Local values are not attached to prompts,
-transcripts or Git files. For a remote project, a relay administrator can store
-project runtime defaults on the relay through the same editor; the relay applies
-the validated environment to the next harness process. Non-admin members see the
-values but cannot save them. Relay settings are stored unencrypted in the relay
+credentials. Local values are not attached to prompts, transcripts or Git files.
+For a remote project, relay-owned environment defaults are retained when an
+administrator saves a model. The relay applies its validated environment to the
+next harness process. Relay settings are stored unencrypted in the relay
 database and are never read from this Mac's local account catalog.
 
 The desktop refreshes relay model/environment defaults when entering a remote
@@ -110,25 +117,23 @@ existing groups, project settings, memberships and transcripts are preserved.
 
 - Fresh data directory and a disposable trusted local folder; custom ACP command
   pointing at `target/debug/mock_acp_agent`, no real provider account needed.
-- Save `mock-b` and `DUNLIN_MOCK_STREAM_CHUNKS=2`; start a new conversation:
-  model shows Mock B and a synthetic prompt returns two chunks without tools.
+- Save `mock-b`; start a new conversation: the model shows Mock B.
 - Change defaults while connected: model/process stays unchanged. New local
   conversation uses new defaults; reopening an old session never sets its model.
-- Duplicate/invalid env shows an inline error without modifying saved settings;
-  Cancel/Done/Esc do not save the runtime draft. Reopen confirms prior values.
-- Empty fields clear overrides; changing harness preserves other harness models,
-  icon and permission mode. Reset overrides clears all project preferences.
+- Cancel/Done/Esc do not save the model draft. Reopen confirms prior values.
+- A blank model clears that model override; changing harness preserves other
+  harness models, icon, environment and permission mode.
 - Unknown default model blocks activation and prompts; clearing it allows recovery.
 - Save a different allowed model while connected, then explicitly Apply saved
   model: current selector updates through ACP without a new session or prompt.
   Busy, unsupported/filtered and rejected selections must not force a fallback.
-- Tab/Shift-Tab reach input/editor/save/cancel; Esc closes the modal and returns
+- Tab/Shift-Tab reach dropdown/input/save/cancel; Esc closes the modal and returns
   focus. Check scrolling at minimum window height in light and dark themes.
-- Remote project as an admin: save model/env, reconnect, and verify the relay
-  harness receives the env while no local Mac env is used. As a member, verify
-  the values are visible but saving is refused. Check that reserved `DUNLIN_*`,
+- Remote project as an admin: save a model, reconnect, and verify the relay's
+  existing env is preserved while no local Mac env is used. As a member, verify
+  saving is refused. Check that reserved `DUNLIN_*`,
   `DYLD_*`, `LD_*`, `PATH`, `BASH_ENV`, `ENV` and `ZDOTDIR` keys are not applied.
-- Create parent/child groups, set different harness/model/env defaults, then move
+- Create parent/child groups, set different harness/model defaults, then move
   a project between them. Check per-value sources and that editors stay override-only.
 - Set Read-only in one member's effective defaults: its existing group conversation
   must remain Read-only even if another member uses Auto-approve.

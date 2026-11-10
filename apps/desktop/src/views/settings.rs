@@ -7,7 +7,7 @@ use dunlin_ui::component::Icon;
 use dunlin_ui::component::button::{Button, ButtonVariants};
 use dunlin_ui::component::input::Editor;
 use dunlin_ui::component::menu::{DropdownMenu, PopupMenuItem};
-use dunlin_ui::component::{Disableable, Selectable};
+use dunlin_ui::component::{Disableable, Selectable, Sizable};
 use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
@@ -73,6 +73,29 @@ pub(crate) fn settings_size(width: f32, height: f32) -> (f32, f32) {
 
 #[cfg(test)]
 mod design_tests {
+    #[test]
+    fn skin_settings_migrate_roundtrip_and_remain_independent_of_appearance() {
+        use crate::app::{Appearance, StoredSettings};
+        use dunlin_ui::Skin;
+        let old: StoredSettings = serde_json::from_str(r#"{"appearance":"Dark"}"#).unwrap();
+        assert_eq!(old.skin, Skin::Default);
+        let future: StoredSettings = serde_json::from_str(r#"{"skin":"FutureSkin"}"#).unwrap();
+        assert_eq!(future.skin, Skin::Default);
+        for skin in Skin::ALL {
+            for appearance in [Appearance::System, Appearance::Light, Appearance::Dark] {
+                let settings = StoredSettings {
+                    skin,
+                    appearance: Some(appearance),
+                    ..Default::default()
+                };
+                let saved: StoredSettings =
+                    serde_json::from_value(serde_json::to_value(settings).unwrap()).unwrap();
+                assert_eq!(saved.skin, skin);
+                assert_eq!(saved.appearance, Some(appearance));
+            }
+        }
+    }
+
     #[test]
     fn larger_settings_still_fit_the_supported_window_sizes() {
         assert_eq!(super::settings_size(1360., 860.), (1120., 760.));
@@ -154,7 +177,7 @@ pub(crate) fn render(
     );
 
     let panel = SurfaceGeometry::SETTINGS
-        .paint(dunlin_ui::settings::Tokens::new(p).sidebar, p.border)
+        .paint_material(p, dunlin_ui::settings::Tokens::new(p).sidebar, p.border)
         .id("settings-panel")
         .absolute()
         .left(px(left))
@@ -186,7 +209,7 @@ pub(crate) fn render(
         .child(settings_nav(this, cx))
         .child(
             SurfaceGeometry::SETTINGS_CONTENT
-                .paint(p.bg, p.border)
+                .paint_material(p, p.bg, p.border)
                 .rounded_tl(px(dunlin_ui::radii::SQUARE))
                 .rounded_bl(px(dunlin_ui::radii::SQUARE))
                 .relative()
@@ -226,7 +249,7 @@ pub(crate) fn render(
                                 }
                                 SettingsTab::Extensions => crate::plugins::render(this, cx),
                                 SettingsTab::Permissions => permissions(this, cx),
-                                SettingsTab::Remote => remote_settings(this, cx),
+                                SettingsTab::Remote => remote_settings(this, window, cx),
                                 SettingsTab::Editor => editor(this, cx),
                                 SettingsTab::Usage => usage(this, cx),
                                 SettingsTab::Data => data::render(this, window, cx),
@@ -660,8 +683,10 @@ fn design(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp
     }
     dunlin_ui::settings::page()
                 .child(section_label("Theme", &p))
-                .child(setting_row("Appearance", "Use the system appearance or choose a light or dark interface.",
-                    appearance_picker(this, cx), &p))
+                 .child(setting_row("Appearance", "Use the system appearance or choose a light or dark interface.",
+                     appearance_picker(this, cx), &p))
+                 .child(setting_row("Skin", "Surface style is independent of light and dark appearance. Changes are saved on this Mac.",
+                     skin_picker(this, cx), &p))
                 .child(section_label("Interface", &p))
                 .child(
                     dunlin_ui::settings::group()
@@ -693,17 +718,25 @@ fn design(this: &mut DunlinApp, _window: &mut Window, cx: &mut Context<DunlinApp
                         ))
                         .child(divider(&p))
                         .child(setting_row(
-                            "Reduce motion",
-                            "Disable decorative graph/trace entrance and pulse animations. Status remains visible without motion.",
+                             "Reduce motion",
+                             "Disable decorative entrance, pulse and import animations. Status remains visible without motion.",
                             toggle_switch(
                                 "reduce-motion",
                                 this.reduce_motion,
-                                |this| this.reduce_motion = !this.reduce_motion,
+                                 |this| this.reduce_motion = !this.reduce_motion,
                                 cx,
                                 &p,
                             ),
-                            &p,
-                        ))
+                             &p,
+                         ))
+                         .when(cfg!(target_os = "macos"), |card| card
+                             .child(divider(&p))
+                             .child(setting_row(
+                                 "GPU acceleration",
+                                 "The interface is already accelerated by Metal. This macOS renderer has no CPU fallback, so GPU acceleration cannot be disabled.",
+                                 div().text_size(px(11.)).text_color(p.muted_fg).child("Metal · Active").into_any_element(),
+                                 &p,
+                             )))
                 )
                 .into_any_element()
 }
@@ -836,7 +869,7 @@ fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         ),
         (
             "Final answer only",
-            "Hide intermediate text, reasoning, tools, plans and subagent output. Permission requests and errors remain visible; full history stays in Graph / Trace.",
+            "Hide intermediate text, reasoning, tools, plans and subagent output. Permission requests and errors remain visible; recorded history is preserved, with agent work in Graph and file edits in Timeline.",
             "final-answer-only",
             this.final_answer_only,
             |this| this.final_answer_only = !this.final_answer_only,
@@ -867,9 +900,68 @@ fn chat_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
         .child(section_label("Response behavior", &p))
         .child(behavior)
         .when(this.final_answer_only, |body| body.child(dunlin_ui::settings::notice(
-            "Final answer only hides reasoning and tool details in Chat. Your reasoning preference is retained for when this mode is off; Graph and Trace keep the full history.", p)))
+            "Final answer only hides reasoning and tool details in Chat. Your reasoning preference is retained for when this mode is off; recorded history and the Graph and Timeline views are unaffected.", p)))
         .child(section_label("Message appearance", &p))
         .child(appearance)
+        .into_any_element()
+}
+
+fn skin_picker(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+    let app = cx.entity().downgrade();
+    dunlin_ui::settings::button("skin-picker")
+        .label(this.skin.label())
+        .accessibility_label("Skin")
+        .dropdown_caret(true)
+        .w(px(180.))
+        .relative()
+        .children({
+            #[cfg(debug_assertions)]
+            {
+                crate::workspace_ui_smoke::probe("skin-picker")
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                None::<AnyElement>
+            }
+        })
+        .dropdown_menu_with_anchor(Anchor::BottomRight, move |mut menu, _, cx| {
+            let Some(entity) = app.upgrade() else {
+                return menu;
+            };
+            let selected = entity.read(cx).skin;
+            for skin in Skin::ALL {
+                let app = app.clone();
+                menu = menu.item(
+                    crate::effects::menu_item(move |_, cx| {
+                        div()
+                            .min_w(px(150.))
+                            .text_size(px(12.))
+                            .text_color(palette(cx).fg)
+                            .child(skin.label())
+                            .children({
+                                #[cfg(debug_assertions)]
+                                {
+                                    crate::workspace_ui_smoke::probe(match skin {
+                                        Skin::Default => "skin-choice-Default",
+                                        Skin::Solid => "skin-choice-Solid",
+                                        Skin::Grain => "skin-choice-Grain",
+                                    })
+                                }
+                                #[cfg(not(debug_assertions))]
+                                {
+                                    None::<AnyElement>
+                                }
+                            })
+                    })
+                    .checked(skin == selected)
+                    .on_click(move |_, window, cx| {
+                        let _ = app.update(cx, |this, cx| this.set_skin(skin, cx));
+                        window.activate_window();
+                    }),
+                );
+            }
+            menu
+        })
         .into_any_element()
 }
 
@@ -916,7 +1008,7 @@ fn theme_card(
 
     dunlin_ui::settings::segment(format!("theme-card-{label}"), label, selected)
         .when(fixed, |button| {
-            button.h(px(dunlin_ui::settings::Tokens::CONTROL_HEIGHT - 4.))
+            button.small().px(px(7.)).h(px(dunlin_ui::settings::Tokens::CONTROL_HEIGHT - 4.))
         })
         .relative()
         .children({
@@ -1217,6 +1309,15 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                                     IconName::RefreshCw,
                                     "Check for newer session data",
                                 )
+                                .when(
+                                    scanning && !this.reduce_motion && !cx.reduce_motion(),
+                                    |button| {
+                                        button.icon(
+                                            component::spinner::Spinner::new()
+                                                .icon(IconName::RefreshCw),
+                                        )
+                                    },
+                                )
                                 .disabled(this.session_import.loading)
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -1295,6 +1396,7 @@ fn harnesses(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
                 .text_color(p.muted_fg)
                 .child("Default for new conversations. Set default verifies the connection; projects and groups can override this choice."),
         )
+        .child(crate::free_endpoint_consent::settings(this, cx))
         .child(list)
         .when(detected_count == 0, |body| body.child(dunlin_ui::settings::notice(
             "No local agents detected. Set up an agent below, then scan again. Nothing is installed or started automatically.", p)))
@@ -1629,7 +1731,7 @@ fn editor(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
             dunlin_ui::settings::group()
                 .child(setting_row(
                     "Code font",
-                    "Monospaced face for files, traces and diffs.",
+                    "Monospaced face for files, timelines and diffs.",
                     font_picker(this, true, cx),
                     &p,
                 ))
@@ -2807,22 +2909,28 @@ fn advanced(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
     body.into_any_element()
 }
 
-fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement {
+fn remote_settings(
+    this: &mut DunlinApp,
+    window: &mut Window,
+    cx: &mut Context<DunlinApp>,
+) -> AnyElement {
     let p = palette(cx);
 
-    let mut body = dunlin_ui::settings::page().child(
-        dunlin_ui::settings::actions()
-            .child(section_label("Paired servers", &p))
-            .child(div().flex_1())
-            .child(
-                dunlin_ui::settings::button("settings-connect-server")
-                    .primary()
-                    .label("Connect to server…")
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.open_remote_connection(window, cx)),
-                    ),
-            ),
-    );
+    let mut body = dunlin_ui::settings::page()
+        .child(crate::connection_map::view::render(this, window, cx))
+        .child(
+            dunlin_ui::settings::actions()
+                .child(section_label("Paired servers", &p))
+                .child(div().flex_1())
+                .child(
+                    dunlin_ui::settings::button("settings-connect-server")
+                        .primary()
+                        .label("Connect to server…")
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_remote_connection(window, cx)),
+                        ),
+                ),
+        );
 
     if this.remote_hosts.is_empty() {
         body = body.child(
@@ -2843,7 +2951,7 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                         .text_size(px(11.5))
                         .line_height(relative(1.5))
                         .text_color(p.muted_fg)
-                        .child("Use Connect to server to enter an endpoint and a relay login key, or choose an SSH identity."),
+                        .child("Use Connect to server with a private Tailscale HTTPS endpoint and a relay login key."),
                 ),
         );
     } else {
@@ -2958,7 +3066,6 @@ fn remote_settings(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                 .child(crate::server_panel::render(this, cx)),
         );
     }
-    body = body.child(crate::ssh::settings_section(this, cx));
 
     body.into_any_element()
 }

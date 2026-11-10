@@ -18,6 +18,7 @@ desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml
 | [crates/terminal](../../crates/terminal) | PTY process lifecycle and bounded terminal screen. |
 | [crates/usage](../../crates/usage) | Account probes, pricing/billing evidence and attribution. |
 | [crates/http](../../crates/http) | Shared HTTP transport helpers. |
+| [crates/mcp-client](../../crates/mcp-client) | Host-owned Streamable HTTP MCP client and deterministic Linear adapter; no LLM or credential storage. |
 | [crates/vault](../../crates/vault) | Keychain/Secret Service credentials, use-only broker and MCP tools. |
 | [crates/coordination](../../crates/coordination) | Peer runs/tasks, inbox, durable deferred-turn coordination and MCP. |
 | [crates/artifacts](../../crates/artifacts) | Governing artifact parsing/index models and content-addressed blob helpers. |

@@ -258,7 +258,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     let p = palette(cx);
                     div()
                         .id("profile-menu")
-                        .w(px(244.))
+                        .w(px(200.))
                         .flex()
                         .flex_col()
                         .gap(px(10.))
@@ -284,12 +284,16 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                 .gap(px(4.))
                                 .child(
                                     div()
+                                        .min_w(px(0.))
+                                        .truncate()
                                         .text_size(px(13.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .child(name.clone()),
                                 )
                                 .child(
                                     div()
+                                        .min_w(px(0.))
+                                        .truncate()
                                         .text_size(px(11.5))
                                         .text_color(p.muted_fg)
                                         .child(identity.clone()),

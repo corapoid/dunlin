@@ -2,6 +2,10 @@
 use dunlin_ui::UniformListScrollHandle;
 use dunlin_workspace::git::GitChange;
 
+pub(crate) fn unstage_all(changes: &[GitChange]) -> bool {
+    !changes.is_empty() && changes.iter().all(|change| change.staged)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Row {
     Heading { staged: bool, count: usize },
@@ -48,6 +52,20 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bulk_action_changes_only_when_all_files_are_staged() {
+        let change = |staged| GitChange {
+            path: "file.rs".into(),
+            status: 'M',
+            additions: 1,
+            deletions: 0,
+            staged,
+        };
+        assert!(!unstage_all(&[]));
+        assert!(!unstage_all(&[change(false)]));
+        assert!(!unstage_all(&[change(true), change(false)]));
+        assert!(unstage_all(&[change(true), change(true)]));
+    }
     #[test]
     fn virtual_rows_keep_staged_and_worktree_entries_for_the_same_path() {
         let changes = [false, true, false].map(|staged| GitChange {

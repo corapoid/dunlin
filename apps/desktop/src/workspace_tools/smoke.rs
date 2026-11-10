@@ -48,6 +48,7 @@ pub(crate) fn run() {
         std::env::set_var("DUNLIN_DATA_DIR", &dir);
         std::env::set_var("DUNLIN_LOG_FILE", dir.join("dunlin.log"));
         std::env::set_var("DUNLIN_HARNESS_COMMAND", &mock);
+        std::env::set_var("DUNLIN_MOCK_CONFIG_VARIANTS", "1");
         std::env::remove_var("DUNLIN_AUTOPROMPT");
         for key in [
             "DUNLIN_MOCK_RICH_CHAT",
@@ -122,6 +123,7 @@ pub(crate) fn run() {
             let start = Instant::now(); let mut stage = 0;
             let mut menu_size = None; let mut session_height = px(0.); let mut footer_height = px(0.);
             let mut commit_card = None; let mut change_offset = px(0.);
+            let mut inherited_from = None;
             loop {
                 cx.background_executor().timer(Duration::from_millis(180)).await;
                 let done = cx.update(|cx| {
@@ -278,11 +280,18 @@ pub(crate) fn run() {
                             })).unwrap();
                             stage = 10;
                         }
-                        10 => {
+                         10 => {
                             let app = owner.read(cx);
                             assert!(!app.ai_commit.manual, "AI remains the default even without verified model authentication");
                             assert_eq!(app.source_control.rows.len(), 2002);
-                            assert!(app.source_control.rendered.len() < 60, "only visible rows may be constructed, not all 2000 files");
+                             assert!(app.source_control.rendered.len() < 60, "only visible rows may be constructed, not all 2000 files");
+                             measured("stage-all-action");
+                             let row = measured("changed-file-row");
+                             let action = measured("changed-file-stage");
+                             let list = measured("source-control-change-list");
+                             assert!(row.right() <= list.right() + px(1.));
+                             assert!(action.right() <= row.right() && row.right() - action.center().x <= px(19.), "file actions must stay at the right edge: row={row:?} action={action:?} list={list:?}");
+                             assert!(action.top() >= row.top() && action.bottom() <= row.bottom(), "file controls must fit their row");
                             commit_card = Some(measured("source-control-card"));
                             parent.update(cx, |_, window, cx| {
                                 window.dispatch_event(PlatformInput::Scroll(ScrollEvent {
@@ -307,13 +316,15 @@ pub(crate) fn run() {
                             parent.update(cx, |_, window, cx| click(window, measured("commit-mode-manual").center(), cx)).unwrap();
                             stage = 13;
                         }
-                        13 => {
+                         13 => {
                             assert!(owner.read(cx).ai_commit.manual, "manual mode must always be available");
                             assert_eq!(owner.read(cx).source_control.scroll.0.borrow().base_handle.offset().y, change_offset, "mode changes must preserve the change-list position");
-                            parent.update(cx, |_, window, cx| click(window, measured("commit-mode-ai").center(), cx)).unwrap();
+                             parent.update(cx, |_, window, cx| click(window, measured("commit-mode-ai").center(), cx)).unwrap();
+                             owner.update(cx, |app, cx| { for change in &mut app.git.changes { change.staged = true; } cx.notify(); });
                             stage = 14;
                         }
-                        14 => {
+                         14 => {
+                             measured("unstage-all-action");
                             assert!(!owner.read(cx).ai_commit.manual);
                             parent.update(cx, |_, window, cx| owner.update(cx, |app, cx| app.open_workspace_tool(Tool::Knowledge, window, cx))).unwrap();
                             stage = 16;
@@ -357,7 +368,52 @@ pub(crate) fn run() {
                             stage = 21;
                         }
                         21 if owner.read(cx).harness.modes.as_ref().is_some_and(|modes| modes.current == "build") => {
-                            println!("PASS: workspace tabs and right-click locks, Spec Kit installation/gating, full-width audit with report-only refresh, exact-model/no-fallback dispatch, pixel-scrolled 2000-file list, Shift+Tab harness mode cycling with hints hidden and visible, capitalized native process name");
+                            owner.update(cx, |app, cx| app.select_model("mock-b", cx));
+                            stage = 22;
+                        }
+                        22 if !owner.read(cx).chat_controls_busy() && owner.read(cx).harness.models.as_ref().is_some_and(|models| models.current == "mock-b") => {
+                            owner.update(cx, |app, cx| {
+                                inherited_from = Some(app.session().id.clone());
+                                app.auto_connect = false;
+                                app.new_session(cx);
+                                assert_ne!(Some(&app.session().id), inherited_from.as_ref());
+                                assert_eq!(app.session().model, "Mock B", "new chat displays the inherited choice immediately");
+                                assert!(app.harness.models.is_none(), "no model catalog should be fabricated before connecting");
+                                assert_eq!(app.harness.inherited_model.as_ref().unwrap().choice.id, "mock-b");
+                                app.connect_harness(cx);
+                            });
+                            stage = 23;
+                        }
+                        23 if !owner.read(cx).chat_controls_busy() && owner.read(cx).harness.models.is_some() => {
+                            owner.update(cx, |app, cx| {
+                                assert_eq!(app.harness.models.as_ref().unwrap().current, "mock-b", "new ACP session must restore the selected model, not mock-a");
+                                assert!(app.harness.inherited_model.is_none(), "the real ACP acknowledgement clears the pending snapshot");
+                                let original = inherited_from.as_ref().unwrap();
+                                assert_eq!(app.all_sessions.iter().find(|session| &session.id == original).unwrap().model, "Mock B", "creating a new chat must not rewrite the previous conversation");
+                                app.new_session(cx);
+                                assert_eq!(app.harness.inherited_model.as_ref().unwrap().choice.id, "mock-b");
+                                app.new_session(cx);
+                                assert_eq!(app.session().model, "Mock B", "successive unconnected tabs keep the choice too");
+                                assert_eq!(app.harness.inherited_model.as_ref().unwrap().choice.id, "mock-b");
+                                app.connect_harness(cx);
+                            });
+                            stage = 24;
+                        }
+                        24 if !owner.read(cx).chat_controls_busy() && owner.read(cx).harness.models.is_some() => {
+                            assert_eq!(owner.read(cx).harness.models.as_ref().unwrap().current, "mock-b");
+                            assert_eq!(owner.read(cx).harness.config_options.iter().find(|option| option.id == "reasoning-effort").unwrap().selector.current, "medium");
+                            parent.update(cx, |_, window, cx| click(window, measured("composer-effort").center(), cx)).unwrap();
+                            stage = 25;
+                        }
+                        25 => {
+                            parent.update(cx, |_, window, cx| click(window, measured("chat-option-effort-high").center(), cx)).unwrap();
+                            stage = 26;
+                        }
+                        26 if !owner.read(cx).chat_controls_busy() => {
+                            let app = owner.read(cx);
+                            let effort = app.harness.config_options.iter().find(|option| option.id == "reasoning-effort").unwrap();
+                            assert_eq!(effort.selector.current, "high", "text-only Effort menu must apply the real ACP selection");
+                            println!("PASS: workspace tabs and right-click locks, Spec Kit installation/gating, full-width audit with report-only refresh, exact-model/no-fallback dispatch, new chat confirmed-model inheritance, text-only Effort selection with ACP acknowledgement, pixel-scrolled 2000-file list, Shift+Tab harness mode cycling with hints hidden and visible, capitalized native process name");
                             cx.quit(); return true;
                         }
                         _ => {}

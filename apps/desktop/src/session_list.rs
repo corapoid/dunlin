@@ -18,6 +18,13 @@ pub(crate) enum Scope {
     Project,
 }
 
+/// Opening, connecting and background status changes are not user activity.
+pub(crate) fn recency_key(
+    session: &SessionSummary,
+) -> std::cmp::Reverse<Option<chrono::DateTime<chrono::FixedOffset>>> {
+    std::cmp::Reverse(chrono::DateTime::parse_from_rfc3339(&session.updated_at).ok())
+}
+
 fn scope(project: &Project, group_context: bool, current_project: &str) -> Option<Scope> {
     if project.is_chat_space() || group_context {
         Some(Scope::General)
@@ -172,6 +179,25 @@ impl DunlinApp {
 mod tests {
     use super::{Scope, State, has_user_message, historical_evidence, scope};
     use crate::harness::ChatItem;
+
+    #[test]
+    fn history_order_depends_only_on_recorded_user_activity_not_runtime_status() {
+        let mut older = crate::app::blank_session("project", "OpenCode", None);
+        older.updated_at = "2026-11-10T10:00:00Z".into();
+        let mut newer = older.clone();
+        newer.updated_at = "2026-11-10T11:00:00Z".into();
+        for status in [
+            dunlin_domain::SessionStatus::Idle,
+            dunlin_domain::SessionStatus::Running,
+            dunlin_domain::SessionStatus::Waiting,
+        ] {
+            older.status = status;
+            assert!(super::recency_key(&newer) < super::recency_key(&older));
+        }
+        // Only an explicit user action records a new date and promotes the row.
+        older.updated_at = "2026-11-10T12:00:00Z".into();
+        assert!(super::recency_key(&older) < super::recency_key(&newer));
+    }
 
     #[test]
     fn general_sessions_survive_project_switches_without_duplicating_project_history() {

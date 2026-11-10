@@ -23,7 +23,6 @@ pub(crate) fn render(
     let project = this.project().clone();
     if this.activity.prepare(&session.id) {
         this.selected_node = None;
-        this.selected_span = None;
     }
     let all = crate::projection::nodes(&this.harness.transcript, &project, &session);
     if all.is_empty() {
@@ -251,7 +250,7 @@ pub(crate) fn render(
         .rounded(px(dunlin_ui::radii::CONTROL))
         .border_1()
         .border_color(p.border)
-        .bg(p.card.opacity(0.94))
+        .bg(p.floating_surface(0.94))
         .flex()
         .items_center()
         .gap(px(9.))
@@ -345,7 +344,7 @@ fn graph_minimap(nodes: &[AgentNode], scroll: &ScrollHandle, p: &Palette) -> Any
         .rounded(px(dunlin_ui::radii::ICON))
         .border_1()
         .border_color(p.border)
-        .bg(p.card.opacity(0.88))
+        .bg(p.floating_surface(0.88))
         .overflow_hidden()
         .child(
             canvas(
@@ -713,7 +712,6 @@ fn node_card(
             } else {
                 Some(selected_id.clone())
             };
-            this.selected_span = None;
             if !is_tool && !this.activity.agents_expanded.remove(&selected_id) {
                 this.activity.agents_expanded.insert(selected_id.clone());
             }

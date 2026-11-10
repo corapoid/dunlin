@@ -59,4 +59,4 @@ jobs:
           cargo build -p dunlin-agent --bins --locked
       - name: Compile release dependencies
         if: matrix.profile == 'release'
-        run: cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked
+        run: cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-relay --locked

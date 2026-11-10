@@ -6,6 +6,7 @@ use dunlin_ui::prelude::FluentBuilder as _;
 use dunlin_ui::*;
 
 use crate::app::DunlinApp;
+use std::time::Duration;
 
 pub(crate) fn render(
     this: &mut DunlinApp,
@@ -13,6 +14,12 @@ pub(crate) fn render(
     cx: &mut Context<DunlinApp>,
 ) -> AnyElement {
     let p = palette(cx);
+    let opening = if this.reduce_motion || cx.reduce_motion() {
+        Duration::ZERO
+    } else {
+        Duration::from_millis(180)
+    };
+    let epoch = this.command_epoch;
     let projects_only = this.command_projects_only;
     let show_shortcuts = this.show_shortcut_hints;
     let items = this.filtered_commands();
@@ -214,7 +221,12 @@ pub(crate) fn render(
                 .child(list),
         )
         .child(divider(p))
-        .child(footer);
+        .child(footer)
+        .with_animation(
+            ElementId::NamedInteger("search-panel-open".into(), epoch),
+            Animation::new(opening).with_easing(ease_out_quint()),
+            |panel, t| panel.opacity(t).top(px(-8. * (1. - t))),
+        );
 
     div()
         .id("command-overlay")
@@ -229,6 +241,11 @@ pub(crate) fn render(
         .pt(px(92.))
         .on_click(cx.listener(|this, _, window, cx| this.close_palette(window, cx)))
         .child(panel)
+        .with_animation(
+            ElementId::NamedInteger("search-backdrop-open".into(), epoch),
+            Animation::new(opening).with_easing(ease_out_quint()),
+            |overlay, t| overlay.bg(black().opacity(0.14 * t)),
+        )
         .into_any_element()
 }
 

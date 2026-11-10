@@ -6,6 +6,13 @@ impl crate::app::DunlinApp {
         shortcut_label(self.show_shortcut_hints, label, keys)
     }
     pub(crate) fn dismiss_history_for_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.onboarding.setup.is_some() {
+            self.set_notice(
+                "Wait for adapter setup to finish, or use its recovery actions",
+                cx,
+            );
+            return false;
+        }
         // History is a document tab, not a blocking overlay. Menus may open over
         // it without destroying its state or releasing an in-flight Git lock.
         if self.settings_open && self.settings_have_draft() {

@@ -72,6 +72,13 @@ impl SurfaceGeometry {
             .bg(background)
     }
 
+    /// Interface surfaces may carry grain; reading/code surfaces use `paint`.
+    pub fn paint_material(self, p: Palette, background: Hsla, border_color: Hsla) -> Div {
+        self.paint(background, border_color)
+            .relative()
+            .children(crate::grain_layer(p, self.inner_radius()))
+    }
+
     /// Round only the child's exposed edges; internal joins stay square.
     pub fn round_child<T: Styled>(self, element: T, edges: SurfaceEdges) -> T {
         let radius = px(self.inner_radius());

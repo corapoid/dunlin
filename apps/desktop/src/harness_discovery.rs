@@ -25,13 +25,16 @@ impl Detected {
 }
 
 pub(crate) fn search_paths() -> Vec<PathBuf> {
-    let mut paths: Vec<_> = std::env::var_os("PATH")
-        .map(|path| {
-            std::env::split_paths(&path)
-                .filter(|path| path.is_absolute())
-                .collect()
-        })
-        .unwrap_or_default();
+    let mut paths = crate::harness_install::managed_bins();
+    paths.extend(
+        std::env::var_os("PATH")
+            .map(|path| {
+                std::env::split_paths(&path)
+                    .filter(|path| path.is_absolute())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default(),
+    );
     paths.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].map(PathBuf::from));
     if let Some(home) = std::env::var_os("HOME") {
         paths.extend(home_bins(Path::new(&home)));

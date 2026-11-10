@@ -64,12 +64,13 @@ fn track_menu(cx: &Context<DunlinApp>) -> impl Fn(&bool, &mut Window, &mut App) 
 fn item(
     app: &WeakEntity<DunlinApp>,
     text: (String, String),
-    icon: IconName,
+    icon: impl Into<Option<IconName>>,
     selected: bool,
     disabled: bool,
     action: Action,
 ) -> PopupMenuItem {
     let app = app.clone();
+    let icon = icon.into();
     let branded = matches!(action, Action::Harness(_));
     #[cfg(debug_assertions)]
     let probe = match &action {
@@ -132,7 +133,7 @@ fn item(
             cx,
         )
     })
-    .when(!branded, |item| item.icon(icon))
+    .when_some(icon.filter(|_| !branded), |item, icon| item.icon(icon))
     .checked(selected)
     .disabled(disabled)
     .on_click(move |_, window, cx| {
@@ -356,6 +357,13 @@ pub(crate) fn model(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement
     let visible = this.visible_models();
     let label = if this.harness.model_changing {
         "Changing model…".into()
+    } else if let Some(inherited) = this
+        .harness
+        .inherited_model
+        .as_ref()
+        .filter(|_| this.harness.models.is_none())
+    {
+        crate::providers::model_name(&inherited.choice.name, this.selected_provider()).to_string()
     } else if this.local_opencode() && this.provider_catalog.loading {
         "Loading models…".into()
     } else {
@@ -543,7 +551,6 @@ pub(crate) fn model_options(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Ve
                         None::<AnyElement>
                     }
                 })
-                .icon(IconName::SlidersHorizontal)
                 .label(option.selector.label())
                 .accessibility_label(format!("{} · {}", option.name, option.selector.label()))
                 .dropdown_caret(true)
@@ -569,7 +576,7 @@ pub(crate) fn model_options(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> Ve
                                 choice.name.clone(),
                                 choice.description.clone().unwrap_or_default(),
                             ),
-                            IconName::SlidersHorizontal,
+                            None,
                             choice.id == current.selector.current,
                             this.chat_controls_busy(),
                             Action::ConfigOption(current.id.clone(), choice.id.clone()),
@@ -620,16 +627,18 @@ pub(crate) fn options(_this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElem
                 .item(item(
                     &menu_app,
                     (
-                        "Show reasoning".into(),
+                        "Expand reasoning".into(),
                         if this.final_answer_only {
                             "Disabled by Final answer only".into()
+                        } else if !crate::chat_presentation::has_reasoning(&this.harness.transcript) {
+                            "This harness has not shared reasoning in this session".into()
                         } else {
-                            "Show thought details in Chat".into()
+                            "Expand thought details shared by the harness; does not change model effort".into()
                         },
                     ),
                     IconName::Brain,
                     this.reasoning_open && !this.final_answer_only,
-                    this.final_answer_only,
+                    this.final_answer_only || !crate::chat_presentation::has_reasoning(&this.harness.transcript),
                     Action::ToggleReasoning,
                 ));
             let skills = menu_app.clone();

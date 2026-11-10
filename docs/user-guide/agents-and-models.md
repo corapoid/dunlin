@@ -4,6 +4,28 @@ An **ACP harness/adapter** connects Dunlin to an agent over stdio. A provider
 account pays for or authorizes the model. Installing an adapter, signing into a
 CLI and choosing an agent mode are separate operations.
 
+## Welcome
+
+Welcome hides the sidebar and workspace controls. Choose the **default harness**
+using its radio indicator; the down arrow reveals the rest of the catalog. No
+scan or separate Set default action is needed here. Detection refreshes when
+returning to the app. Back from the project step is a left-arrow icon.
+
+If Claude Code or Codex has a CLI but lacks its ACP adapter, a footer explains
+that Continue authorizes installation **after choosing the first local project**.
+Selecting a radio alone never installs anything; Back withdraws pending intent.
+The pinned official npm adapter goes into Dunlin's private data directory, not
+system-global npm directories. Node.js 22+ and npm are prerequisites; dependency
+lifecycle scripts are disabled. Existing managed adapters are discovered on later
+launches. Authentication/sign-in is still owned by the harness.
+
+A dedicated setup window shows installation, then an empty ACP connection check
+without a model prompt. Success remains visible for about two seconds, then the
+window closes and the workspace fades in (respecting Reduced Motion). Failures
+remain visible with Retry, Choose another harness and Skip setup. Interrupted
+setup requires Retry instead of silently installing on restart. A remote first
+project uses its relay; it never causes a local adapter install.
+
 ## Connect locally
 
 Use **Settings → Agents** to scan, open setup instructions or choose a default.
@@ -79,6 +101,22 @@ provider selector filters enabled models also advertised by ACP. **Free** is an
 explicit filter for discovered zero-priced models, not a fallback to paid models.
 Unknown pricing is excluded from the free allowlist; limits and availability are
 controlled by the provider.
+
+Choosing **OpenCode Free** opens a separate privacy window before changing the
+provider filter. Read the disclosure, explicitly enable the consent switch and
+choose **Save consent**; Cancel leaves the previous provider unchanged. Some free
+endpoints retain request data or use it for training; policies differ by model.
+The window links to the provider's current privacy policies and Console settings.
+
+This is **local permission in Dunlin on this Mac**, not a change to or verification
+of your OpenCode Console account/organization setting. If an endpoint requires
+an account-level training opt-in, enable it separately in
+[OpenCode Console](https://opencode.ai/console); Dunlin has no documented API to
+change that setting. Saving permission sends no prompt and never changes models.
+Review or revoke it in **Settings → Agents → OpenCode Free privacy**. Revocation
+blocks new Free sends (including queued requests), but cannot recall shared data,
+cancel an already sent request or revoke provider-owned consent. This permission
+defaults off and is excluded from portable settings backups.
 
 The provider selector lists connected accounts reported by OpenCode for the
 current project, not every provider in its integration catalog. Expired accounts

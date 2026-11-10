@@ -1,11 +1,7 @@
 //! Explicit, project-scoped runtime defaults. Editing never restarts an agent.
-use dunlin_domain::{ProjectSettings, parse_project_environment};
+use dunlin_domain::ProjectSettings;
 use dunlin_ui::{
-    component::{
-        Disableable,
-        button::ButtonVariants,
-        input::{Editor, EditorState, InputState},
-    },
+    component::{Disableable, button::ButtonVariants, input::InputState},
     prelude::FluentBuilder as _,
     *,
 };
@@ -45,7 +41,6 @@ pub(crate) struct Draft {
     project_id: String,
     harness: String,
     model: Entity<InputState>,
-    environment: Entity<EditorState>,
     error: Option<String>,
     saving: bool,
 }
@@ -67,11 +62,9 @@ fn updated_settings(
     current: &ProjectSettings,
     harness: &str,
     model: &str,
-    environment: &str,
 ) -> Result<ProjectSettings, String> {
     let mut updated = current.clone();
     updated.set_default_model(harness, model)?;
-    updated.environment = parse_project_environment(environment)?;
     Ok(updated)
 }
 
@@ -116,8 +109,8 @@ impl DunlinApp {
         }
         self.settings_ui.confirming_leave = true;
         let id = draft.project_id.clone();
-        let answer = window.prompt(PromptLevel::Warning, "Discard model and environment edits?",
-            Some("These form edits have not been saved. Appearance, agent and approval choices already saved outside this form are not reverted."),
+        let answer = window.prompt(PromptLevel::Warning, "Discard model edits?",
+            Some("These model edits have not been saved. Appearance and agent choices already saved outside this form are not reverted."),
             &[PromptButton::cancel("Keep editing"), PromptButton::new("Discard edits")], cx);
         let answer = self.overlay_backdrop.track_native(answer, cx);
         cx.spawn(async move |this, cx| {
@@ -134,40 +127,6 @@ impl DunlinApp {
                 }
                 cx.notify();
             });
-        })
-        .detach();
-    }
-
-    pub(crate) fn request_reset_project_settings(
-        &mut self,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self
-            .project_runtime_draft
-            .as_ref()
-            .is_some_and(|draft| draft.saving)
-        {
-            self.set_notice("Wait for project settings to finish saving", cx);
-            return;
-        }
-        let Some(project) = self.projects.get(index) else {
-            return;
-        };
-        let id = project.id.clone();
-        let answer = window.prompt(PromptLevel::Warning, "Reset all project overrides?",
-            Some("Clear this project’s appearance, agent, approval, model and environment overrides, including any unsaved runtime form. Inherited defaults will apply. Repository files and running agents stay unchanged."),
-            &["Cancel", "Reset overrides"], cx);
-        let answer = self.overlay_backdrop.track_native(answer, cx);
-        cx.spawn(async move |this, cx| {
-            if answer.await == Ok(1) {
-                let _ = this.update(cx, |this, cx| {
-                    if let Some(index) = this.projects.iter().position(|project| project.id == id) {
-                        this.reset_project_settings(index, cx);
-                    }
-                });
-            }
         })
         .detach();
     }
@@ -225,11 +184,6 @@ impl DunlinApp {
         let model = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Blank = inherit model (otherwise ACP wire ID)")
         });
-        let environment = cx.new(|cx| {
-            EditorState::new(window, cx)
-                .language("plain")
-                .soft_wrap(true)
-        });
         model.update(cx, |state, cx| {
             state.set_value(
                 project.settings.default_model(&harness).unwrap_or_default(),
@@ -237,19 +191,10 @@ impl DunlinApp {
                 cx,
             )
         });
-        let text = project
-            .settings
-            .environment
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        environment.update(cx, |state, cx| state.set_value(text, window, cx));
         self.project_runtime_draft = Some(Draft {
             project_id: project.id.clone(),
             harness,
             model,
-            environment,
             error: None,
             saving: false,
         });
@@ -271,7 +216,6 @@ impl DunlinApp {
             &self.projects[index].settings,
             &draft.harness,
             &draft.model.read(cx).value(),
-            &draft.environment.read(cx).value(),
         );
         let settings = match result {
             Ok(settings) => settings,
@@ -332,7 +276,7 @@ impl DunlinApp {
                                 }
                             }
                             this.project_runtime_draft = None;
-                            this.set_notice("Saved on the relay · environment applies to the next remote connection; running agents were not restarted.", cx);
+                            this.set_notice("Model saved on the relay · applies to new conversations; running agents were not restarted.", cx);
                         }
                         Err(error) => {
                             if let Some(draft) = &mut this.project_runtime_draft {
@@ -359,7 +303,10 @@ impl DunlinApp {
         }
         self.projects[index] = project;
         self.project_runtime_draft = None;
-        self.set_notice("Saved · model applies to new conversations; environment applies at the next local connection. Running agents were not restarted.", cx);
+        self.set_notice(
+            "Model saved · applies to new conversations. Running agents were not restarted.",
+            cx,
+        );
     }
 }
 
@@ -393,15 +340,14 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
                     .text_size(px(11.))
                     .text_color(p.muted_fg)
                     .child(format!(
-                        "{} · model: {} · {} effective environment entries",
+                        "{} · model: {}",
                         harness,
-                        resolved.default_model(harness).unwrap_or("Harness default"),
-                        resolved.environment.len()
+                        resolved.default_model(harness).unwrap_or("Harness default")
                     )),
             )
             .child(
                 dunlin_ui::action_button("edit-project-runtime")
-                    .label("Model & environment…")
+                    .label("Default model…")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.edit_project_runtime_settings(index, window, cx)
                     })),
@@ -430,24 +376,41 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
                     draft.model.update(cx, |s, cx| s.set_value(model.clone(), window, cx));
                 }
             }))))
-        .child(div().text_size(px(11.)).text_color(p.muted_fg).child("Environment overrides · NAME=value; omitted names inherit; no shell expansion"))
-        .child(div().h(px(120.)).overflow_hidden().child(Editor::new(&draft.environment).aria_label("Project environment overrides").readonly(draft.saving).h_full()))
-        .child(div().text_size(px(10.5)).text_color(p.muted_fg).child(if project.is_remote() {
-            "Stored on the relay for this project, unencrypted. Only relay administrators can save. Values reach the remote harness at its next connection; do not paste secrets."
-        } else {
-            "Stored unencrypted in the local database, not Keychain. Do not paste secrets. Only the local agent and its child tools receive these values, at the next connection; never sent to relay. Values may change tool behavior."
-        }))
         .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
         .child(div().flex().gap(px(6.))
-            .child(dunlin_ui::action_button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model & environment" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
+            .child(dunlin_ui::action_button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
             .child(dunlin_ui::action_button("cancel-project-runtime").label("Cancel edit").disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
         .into_any_element()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{live_model_target, refresh_remote_defaults, updated_settings};
+    use super::{live_model_target, refresh_remote_defaults};
     use dunlin_domain::ProjectSettings;
+
+    fn updated_settings(
+        current: &ProjectSettings,
+        harness: &str,
+        model: &str,
+        environment: &str,
+    ) -> Result<ProjectSettings, String> {
+        let mut updated = super::updated_settings(current, harness, model)?;
+        updated.environment = dunlin_domain::parse_project_environment(environment)?;
+        Ok(updated)
+    }
+
+    #[test]
+    fn model_form_preserves_hidden_environment_and_permission_overrides() {
+        let mut current = ProjectSettings::default();
+        current.permission_mode = Some(dunlin_domain::PermissionMode::ReadOnly);
+        current
+            .environment
+            .insert("MULTILINE".into(), "one\ntwo".into());
+        let updated = super::updated_settings(&current, "OpenCode", "provider/model").unwrap();
+        assert_eq!(updated.environment, current.environment);
+        assert_eq!(updated.permission_mode, current.permission_mode);
+        assert_eq!(updated.default_model("OpenCode"), Some("provider/model"));
+    }
 
     fn remote_project() -> dunlin_domain::Project {
         dunlin_domain::Project {

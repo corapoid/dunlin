@@ -248,6 +248,10 @@ fn main() -> Result<()> {
                     CANCELLED.store(false, Ordering::SeqCst);
                     gui_event(serde_json::json!({"event":"prompt","request":request}));
                     if let Some(root) = gui_root() {
+                        if let Ok(message) = std::fs::read_to_string(root.join("fail-next-prompt")) {
+                            std::fs::remove_file(root.join("fail-next-prompt")).unwrap();
+                            return responder.respond_with_error(agent_client_protocol::Error::new(-32603, message));
+                        }
                         let started = std::time::Instant::now();
                         while !root.join("release").exists() && !CANCELLED.load(Ordering::SeqCst) {
                             assert!(started.elapsed() < std::time::Duration::from_secs(20), "GUI fixture did not release the mock");

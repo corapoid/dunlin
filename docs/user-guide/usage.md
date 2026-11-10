@@ -5,7 +5,7 @@ another or silently filled with zero.
 
 | Surface | Meaning | Boundary |
 | --- | --- | --- |
-| Session/Trace usage | Observed ACP counters/deltas and reported costs. | Context occupancy is not consumed tokens; legacy/unreported data stays unknown. |
+| Session usage | Observed ACP counters/deltas and reported costs. | Context occupancy is not consumed tokens; legacy/unreported data stays unknown. |
 | Account usage | Available allowance/rate-limit data for the active environment/harness/provider. | Missing, cached and unavailable data are explicit; no guessed percentages. |
 | Settings → Usage & Limits → Cost report | Bounded scans of local provider billing evidence. | Priced totals are a lower bound when models or usage are unknown. |
 

@@ -2,14 +2,18 @@
 use crate::harness::ChatItem;
 use dunlin_agent::ToolCallView;
 use dunlin_domain::{ToolKind, ToolStatus};
+use std::borrow::Cow;
 
 pub(crate) fn project(
     items: &[ChatItem],
     final_only: bool,
     running: bool,
     stream: bool,
-) -> Vec<ChatItem> {
+) -> Cow<'_, [ChatItem]> {
     if !final_only {
+        if (!running || stream) && !needs_coalescing(items) {
+            return Cow::Borrowed(items);
+        }
         let mut visible = coalesce_legacy(items);
         if running && !stream {
             let start = visible
@@ -22,7 +26,7 @@ pub(crate) fn project(
                 }
             }
         }
-        return visible;
+        return Cow::Owned(visible);
     }
     let mut output = Vec::new();
     let mut start = 0;
@@ -90,7 +94,57 @@ pub(crate) fn project(
         }
         start = end;
     }
-    output
+    Cow::Owned(output)
+}
+
+fn needs_coalescing(items: &[ChatItem]) -> bool {
+    let mut legacy = false;
+    for item in items {
+        match item {
+            ChatItem::AgentText {
+                message_id: None, ..
+            } => {
+                if legacy {
+                    return true;
+                }
+                legacy = true;
+            }
+            ChatItem::Thought { .. } => {}
+            _ => legacy = false,
+        }
+    }
+    false
+}
+
+pub(crate) fn has_reasoning(items: &[ChatItem]) -> bool {
+    items.iter().any(|item| match item {
+        ChatItem::Thought { text, .. } => !text.trim().is_empty(),
+        ChatItem::Child { items, .. } => has_reasoning(items),
+        _ => false,
+    })
+}
+
+/// Older transcripts have no per-request failure metadata. Recognize only
+/// explicit prompt/transport failures, never an unrelated model/config error.
+pub(crate) fn prompt_failure(items: &[ChatItem], index: usize) -> Option<&str> {
+    let ChatItem::User { timing, .. } = items.get(index)? else {
+        return None;
+    };
+    if let Some(failure) = timing.as_ref().and_then(|timing| timing.failure.as_deref()) {
+        return Some(failure);
+    }
+    items[index + 1..]
+        .iter()
+        .take_while(|item| !matches!(item, ChatItem::User { .. }))
+        .find_map(|item| match item {
+            ChatItem::Error { message, .. }
+                if message.starts_with("Prompt failed:")
+                    || message.starts_with("Could not send the prompt:") =>
+            {
+                Some(message.as_str())
+            }
+            _ => None,
+        })
 }
 
 /// First visible item for the chat window. Prefer starting on a user turn when
@@ -186,6 +240,7 @@ fn legacy_tool_item(text: &str, at: u64, sequence: usize) -> Option<ChatItem> {
             additions: 0,
             deletions: 0,
             diff: None,
+            file_changes: Vec::new(),
         },
         duration_ms: 0,
         at_ms: at,
@@ -249,6 +304,100 @@ fn coalesce_legacy(items: &[ChatItem]) -> Vec<ChatItem> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn retry_is_request_scoped_and_legacy_transport_errors_remain_retryable() {
+        let user = || ChatItem::User {
+            text: "Request".into(),
+            timing: None,
+            at_ms: 1,
+        };
+        let error = |message: &str| ChatItem::Error {
+            message: message.into(),
+            at_ms: 2,
+        };
+        assert!(prompt_failure(&[user(), error("Model selection denied")], 0).is_none());
+        let history = [
+            user(),
+            error("Prompt failed: provider declined the request"),
+            user(),
+            message("Success"),
+        ];
+        assert_eq!(
+            prompt_failure(&history, 0),
+            Some("Prompt failed: provider declined the request")
+        );
+        assert!(prompt_failure(&history, 2).is_none());
+        assert!(prompt_failure(&history, 1).is_none());
+        assert!(prompt_failure(&history, 99).is_none());
+    }
+
+    #[test]
+    fn ordinary_chat_borrows_even_large_tool_results_instead_of_cloning_them_on_scroll() {
+        let items = vec![
+            tool(),
+            ChatItem::AgentText {
+                text: "x".repeat(1_000_000),
+                streaming: false,
+                message_id: Some("answer".into()),
+                at_ms: 1,
+            },
+        ];
+        assert!(matches!(
+            project(&items, false, false, true),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(
+            project(&items, false, true, true),
+            Cow::Borrowed(_)
+        ));
+        assert!(matches!(project(&items, false, true, false), Cow::Owned(_)));
+        assert!(matches!(
+            project(
+                &[message("one"), thought(), message("two")],
+                false,
+                false,
+                true
+            ),
+            Cow::Owned(_)
+        ));
+    }
+
+    #[test]
+    fn legacy_projection_can_be_windowed_without_losing_absolute_tool_indexes() {
+        let mut history = Vec::new();
+        for turn in 0..500 {
+            history.push(ChatItem::User {
+                text: turn.to_string(),
+                at_ms: 1,
+                timing: None,
+            });
+            history.extend([message("one"), thought(), message("two"), tool()]);
+        }
+        let start = window_start(&history, 120);
+        let visible = project(&history[start..], false, false, true);
+        assert!(start > 2000 && visible.len() <= 240);
+        assert_eq!(visible.len(), history.len() - start);
+        for (index, item) in visible.iter().enumerate() {
+            if let ChatItem::Tool { .. } = item {
+                assert!(matches!(history[start + index], ChatItem::Tool { .. }));
+            }
+        }
+    }
+
+    #[test]
+    fn reasoning_availability_requires_shared_nonempty_thoughts() {
+        assert!(!has_reasoning(&[message("Answer")]));
+        assert!(has_reasoning(&[thought()]));
+        let child = ChatItem::Child {
+            id: "child".into(),
+            parent_id: "parent".into(),
+            title: None,
+            items: vec![thought()],
+            at_ms: 1,
+        };
+        assert!(has_reasoning(&[child]));
+    }
 
     fn message(text: &str) -> ChatItem {
         ChatItem::AgentText {

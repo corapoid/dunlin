@@ -1,10 +1,6 @@
 use super::*;
 use dunlin_ui::component::ThemeStyled as _;
-use dunlin_ui::component::menu::DropdownMenu as _;
-use dunlin_ui::component::{
-    Disableable, Selectable, Sizable,
-    button::{Button, ButtonVariants},
-};
+use dunlin_ui::component::{Disableable, Sizable, button::ButtonVariants};
 
 impl DunlinApp {
     pub(crate) fn takeover_current_session(&mut self, cx: &mut Context<Self>) {
@@ -76,332 +72,6 @@ impl DunlinApp {
             self.load_transcript(&id);
         }
         self.takeover_current_session(cx);
-    }
-
-    fn onboarding(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let p = palette(cx);
-        // Two steps: pick a default harness, then create the first project.
-        // Older saved progress is clamped so nobody sees a redundant final page.
-        let step = self.onboarding_step.min(1);
-
-        if step == 0 {
-            let ready: Vec<&'static str> = self
-                .harness_discovery
-                .iter()
-                .filter(|detected| detected.adapter.is_some())
-                .map(|detected| detected.name)
-                .collect();
-            if !ready.is_empty() && !ready.contains(&self.default_harness.as_str()) {
-                self.default_harness = ready[0].to_string();
-                self.persist_settings(cx);
-            }
-        }
-
-        let title = if step == 0 {
-            "Choose a harness"
-        } else {
-            "Create your first project"
-        };
-        let subtitle = if step == 0 {
-            "Choose an agent for new conversations. Installed CLIs may need a separate ACP adapter."
-        } else {
-            "Pick a folder and start working. Nothing is uploaded; your project stays on this Mac."
-        };
-
-        let mut dots = div().flex().items_center().gap(px(5.));
-        for index in 0..2 {
-            dots = dots.child(div().size(px(5.)).rounded_full().bg(if index <= step {
-                p.fg
-            } else {
-                p.border_strong
-            }));
-        }
-
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h(px(0.))
-            .min_w(px(0.))
-            .items_center()
-            .justify_center()
-            .gap(px(18.))
-            .child(
-                div()
-                    .size(px(38.))
-                    .rounded(px(dunlin_ui::radii::DRAG_PREVIEW))
-                    .bg(p.fg)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(Icon::new(IconName::Bird).size(px(19.)).text_color(p.bg)),
-            )
-            .child(dots)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap(px(7.))
-                    .child(
-                        div()
-                            .text_size(px(19.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(p.fg)
-                            .child(title),
-                    )
-                    .child(
-                        div()
-                            .max_w(px(480.))
-                            .text_center()
-                            .text_size(px(12.0))
-                            .line_height(relative(1.55))
-                            .text_color(p.muted_fg)
-                            .child(subtitle),
-                    ),
-            );
-
-        if step == 0 {
-            let available = self
-                .harness_discovery
-                .iter()
-                .filter(|detected| {
-                    detected.visible_in_onboarding(self.onboarding_show_all_harnesses)
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            let mut rows = div()
-                .id("onboarding-harness-list")
-                .w(px(460.))
-                .max_w_full()
-                .max_h(px(260.))
-                .min_h(px(0.))
-                .overflow_y_scroll()
-                .flex()
-                .flex_col()
-                .gap(px(6.));
-            for detected in available {
-                let name = detected.name;
-                let installed = detected.adapter.is_some();
-                let selected = installed && self.default_harness == name;
-                let name_owned = name.to_string();
-                let name_for_button = name_owned.clone();
-                let row = action_row(
-                    format!("onboarding-harness:{name}"),
-                    format!("Use {name} harness"),
-                )
-                .flex_1()
-                .min_w(px(0.))
-                .w_auto()
-                .selected(selected)
-                .toggled(selected)
-                .disabled(!installed)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.default_harness = name_owned.clone();
-                    this.persist_settings(cx);
-                    cx.notify();
-                }))
-                .child(
-                    div()
-                        .size(px(16.))
-                        .flex_shrink_0()
-                        .rounded_full()
-                        .border_1()
-                        .border_color(if selected { p.fg } else { p.border_strong })
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .children(selected.then(|| div().size(px(7.)).rounded_full().bg(p.fg))),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w(px(0.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.))
-                        .child(
-                            div()
-                                .text_size(px(12.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(p.fg)
-                                .child(name),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(5.))
-                                .child(dot(
-                                    if installed {
-                                        p.green
-                                    } else if detected.cli.is_some() {
-                                        p.amber
-                                    } else {
-                                        p.muted_fg
-                                    },
-                                    4.0,
-                                ))
-                                .child(
-                                    div()
-                                        .text_size(px(10.5))
-                                        .text_color(p.muted_fg)
-                                        .child(detected.status()),
-                                ),
-                        ),
-                );
-                let row = div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .flex_shrink_0()
-                    .child(row)
-                    .child(div().w(px(96.)).flex().justify_end().child(if selected {
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.))
-                            .child(Icon::new(IconName::Check).size(px(12.)).text_color(p.fg))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(p.fg)
-                                    .child("Default"),
-                            )
-                            .into_any_element()
-                    } else if installed {
-                        div()
-                            .text_size(px(11.))
-                            .text_color(p.muted_fg)
-                            .child("Set default")
-                            .into_any_element()
-                    } else {
-                        onboarding_secondary_button(
-                            format!("onboarding-harness-install:{name}"),
-                            "Set up…",
-                            &p,
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.show_harness_setup(&name_for_button, cx);
-                        }))
-                        .into_any_element()
-                    }));
-                rows = rows.child(row);
-            }
-            body = body.child(rows);
-            body = body.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .child(
-                        onboarding_text_button(
-                            "onboarding-harness-show-all",
-                            if self.onboarding_show_all_harnesses {
-                                "Show detected only"
-                            } else {
-                                "Choose another / Show all"
-                            },
-                            &p,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.onboarding_show_all_harnesses =
-                                !this.onboarding_show_all_harnesses;
-                            cx.notify();
-                        })),
-                    )
-                    .child(
-                        onboarding_text_button(
-                            "onboarding-harness-rescan",
-                            if self.harness_scanning {
-                                "Scanning…"
-                            } else {
-                                "Scan again"
-                            },
-                            &p,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.rescan_harnesses(cx))),
-                    ),
-            );
-            if let Some(notice) = &self.harness_setup_notice {
-                body = body.child(
-                    div()
-                        .max_w(px(440.))
-                        .text_size(px(11.))
-                        .text_color(p.muted_fg)
-                        .child(notice.clone()),
-                );
-            }
-            if self
-                .harness_discovery
-                .iter()
-                .all(|detected| detected.adapter.is_none())
-            {
-                body = body.child(
-                    div()
-                        .max_w(px(440.))
-                        .text_center()
-                        .text_size(px(11.0))
-                        .line_height(relative(1.45))
-                        .text_color(p.muted_fg)
-                        .child("No ACP adapter was detected. Use Set up to view installation instructions, then Scan again. You can also do this later in Settings › Agents."),
-                );
-            }
-        }
-
-        if step == 0 {
-            body = body.child(
-                div()
-                    .w(px(460.))
-                    .flex()
-                    .items_center()
-                    .child(div().flex_1())
-                    .child(
-                        onboarding_primary_button("onboarding-continue", "Continue", &p).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.onboarding_step = 1;
-                                this.persist_settings(cx);
-                                cx.notify();
-                            }),
-                        ),
-                    ),
-            );
-        } else {
-            body = body.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap(px(10.))
-                    .child(
-                        onboarding_primary_button(
-                            "onboarding-create-project",
-                            "Create first project…",
-                            &p,
-                        )
-                        .h(px(38.))
-                        .px(px(18.))
-                        .text_size(px(12.5))
-                        .dropdown_menu_with_anchor(Anchor::TopLeft, {
-                            let app = cx.entity().downgrade();
-                            move |menu, _, _| crate::project_import::source_menu(menu, app.clone())
-                        }),
-                    )
-                    .child(
-                        onboarding_text_button("onboarding-back", "Back", &p).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.onboarding_step = 0;
-                                this.persist_settings(cx);
-                                cx.notify();
-                            }),
-                        ),
-                    ),
-            );
-        }
-
-        body.into_any_element()
     }
 
     pub(crate) fn finish_terminal_resize(&mut self, cx: &mut Context<Self>) {
@@ -672,6 +342,9 @@ impl DunlinApp {
     }
 
     pub(super) fn main_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.onboarding_visible() {
+            return crate::onboarding::render(self, cx);
+        }
         if self.has_modal_overlay() || self.section == SidebarSection::Dashboard {
             self.workbench.new_tab_menu = None;
             self.workbench.new_tab_press = None;
@@ -685,9 +358,6 @@ impl DunlinApp {
         if self.section == SidebarSection::Security {
             self.section = self.sidebar_tab.section();
             self.open_workspace_tool(crate::workspace_tools::Tool::Security, window, cx);
-        }
-        if self.projects.is_empty() {
-            return self.onboarding(cx);
         }
         self.sync_workspace_panes(window, cx);
         let count = if self.workbench.panes.enabled { 2 } else { 1 };
@@ -815,7 +485,7 @@ impl DunlinApp {
             match self.view {
                 MainView::Chat => views::chat::render(self, window, cx),
                 MainView::Graph => views::graph::render(self, window, cx),
-                MainView::Trace => views::trace::render(self, window, cx),
+                MainView::Timeline => views::timeline::render(self, window, cx),
             }
         }
     }
@@ -981,7 +651,7 @@ impl DunlinApp {
             .on_click(cx.listener(|this, _, window, cx| this.close_diff(window, cx)))
             .child(
                 SurfaceGeometry::DIALOG
-                    .paint(p.card, p.border_strong)
+                    .paint_material(p, p.card, p.border_strong)
                     .id("diff-dialog")
                     .child(crate::effects::panel_probe(
                         &self.overlay_backdrop,
@@ -1496,7 +1166,6 @@ impl DunlinApp {
             return div().into_any_element();
         };
         let selected_harness = project.settings.harness.clone();
-        let selected_permission = project.settings.permission_mode;
         let focus = self
             .settings_ui
             .project_focus
@@ -1574,9 +1243,9 @@ impl DunlinApp {
                         "Overrides apply to this project. Defaults inherit from its group ancestry, then global settings.",
                     ))
                     .child(dunlin_ui::settings::notice(if project.is_remote() {
-                        "Remote project. Appearance and client approval choices save on this Mac; the model/environment form is saved on the relay by an administrator."
+                        "Remote project. Appearance and agent choices save on this Mac; the model default is saved on the relay by an administrator."
                     } else {
-                        "Project scope: this Mac. Appearance, agent and approval choices below save immediately. The separate model/environment form has its own Save and Cancel."
+                        "Project scope: this Mac. Appearance and agent choices below save immediately. The model form has its own Save and Cancel."
                     }, p))
                     .child(dunlin_ui::settings::section("Appearance and defaults · saved immediately", p))
                     .child(div().flex().items_center().gap(px(8.))
@@ -1592,77 +1261,19 @@ impl DunlinApp {
                             .text_color(p.muted_fg)
                             .child("HARNESS"),
                     )
-                    .child({
-                        let mut row = div().flex().flex_wrap().gap(px(4.));
-                        row = row.child(chip(
-                            "project-harness-default".into(),
-                            "Inherit",
-                            selected_harness.is_none(),
-                            cx,
-                            Box::new(move |this, cx| this.set_project_harness(index, None, cx)),
-                        ));
-                        for name in crate::harness_discovery::catalog_names()
-                            .chain(std::iter::once("Custom ACP"))
-                        {
-                            if !self.harness_visible(name) { continue; }
-                            let active = selected_harness.as_deref() == Some(name);
-                            row = row.child(chip(
-                                format!("project-harness-{name}"),
-                                name,
-                                active,
-                                cx,
-                                Box::new(move |this, cx| {
-                                    this.set_project_harness(index, Some(name.to_string()), cx)
-                                }),
-                            ));
-                        }
-                        row
-                    })
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .font_family(dunlin_ui::theme::code_font())
-                            .text_color(p.muted_fg)
-                            .child("PERMISSIONS"),
-                    )
-                    .child({
-                        let mut row = div().flex().flex_wrap().gap(px(4.));
-                        row = row.child(chip(
-                            "project-permission-default".into(),
-                            "Inherit",
-                            selected_permission.is_none(),
-                            cx,
-                            Box::new(move |this, cx| this.set_project_permission(index, None, cx)),
-                        ));
-                        for mode in [
-                            PermissionMode::Ask,
-                            PermissionMode::ReadOnly,
-                            PermissionMode::AutoApprove,
-                        ] {
-                            let active = selected_permission == Some(mode);
-                            row = row.child(chip(
-                                format!("project-permission-{}", mode.label()),
-                                mode.label(),
-                                active,
-                                cx,
-                                Box::new(move |this, cx| {
-                                    this.set_project_permission(index, Some(mode), cx)
-                                }),
-                            ));
-                        }
-                        row
-                    })
+                    .child(crate::group_settings::harness_picker(self, "project-harness-picker", selected_harness.as_deref(), saving, cx,
+                        move |this, harness, _, cx| this.set_project_harness(index, harness, cx)))
                     .when(!project.is_remote(), |view| view.child(match self.resolved_project_settings(&project) {
                         Ok(settings) => crate::group_settings::render_sources(self, &settings, cx),
                         Err(error) => div().text_size(px(11.)).text_color(p.red).child(error).into_any_element(),
                     }))
-                    .child(dunlin_ui::settings::section("Model & environment · explicit Save / Cancel", p))
+                    .child(dunlin_ui::settings::section("Default model · explicit Save / Cancel", p))
                     .child(crate::project_runtime_settings::render(self, index, cx))
                     .child(
                         div()
                             .text_size(px(10.5))
                             .text_color(p.muted_fg.opacity(0.8))
-                            .child("Harness/model defaults apply to new conversations. Permission changes apply to subsequent requests without restarting."),
+                            .child("Harness/model defaults apply to new conversations without restarting existing agents."),
                     )
                     .child(
                         div()
@@ -1670,9 +1281,13 @@ impl DunlinApp {
                             .items_center()
                             .gap(px(7.))
                             .child(
-                                dunlin_ui::action_button("project-settings-reset").danger().outline().label("Reset overrides").disabled(saving)
+                                dunlin_ui::action_button("project-settings-clean").label("Clean project…")
+                                    .disabled(saving || self.group_cleanup.busy)
+                                    .relative().children(crate::gui_probe::marker("project-settings-clean"))
+                                    .tooltip("Review generated dependencies, caches and builds before moving selected folders to system Trash.")
                                     .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.request_reset_project_settings(index, window, cx);
+                                        let Some(project) = this.projects.get(index) else { return; };
+                                        this.preview_project_cleanup(project.id.clone(), window, cx);
                                     })),
                             )
                             .child(div().flex_1())
@@ -1681,7 +1296,7 @@ impl DunlinApp {
                                      dunlin_ui::action_button("project-settings-new-session").label("New conversation")
                                           .on_click(cx.listener(|this, _, _, cx| {
                                              if this.project_runtime_draft.is_some() {
-                                                 this.set_notice("Save or cancel model and environment changes before starting a conversation", cx);
+                                                  this.set_notice("Save or cancel model changes before starting a conversation", cx);
                                                  return;
                                              }
                                             if this.chat_controls_busy() {
@@ -1712,7 +1327,7 @@ impl DunlinApp {
         let viewport = window.viewport_size();
         let width = 228.0;
         let height = match &state.target {
-            ContextTarget::Project(_) => 480.,
+            ContextTarget::Project(_) => 512.,
             ContextTarget::Session(_) => 260.,
             ContextTarget::Tab(_) => 170.,
         };
@@ -1749,6 +1364,12 @@ impl DunlinApp {
                 let pinned = project.pinned;
                 let trusted = project.trusted;
                 let remote = project.is_remote();
+                let cleanup_id = project.id.clone();
+                let can_cleanup = trusted
+                    && !remote
+                    && !missing
+                    && !project.is_chat_space()
+                    && !project.is_not_downloaded();
                 let reveal_path = project.path.clone();
                 let path = project.path.clone();
                 let name = project.name.clone();
@@ -1789,6 +1410,15 @@ impl DunlinApp {
                                     this.open_project_settings(index, cx);
                                 }),
                             ),
+                        )
+                        .child(
+                            item("ctx-project-cleanup", "Clean project…", p.fg)
+                                .children(crate::gui_probe::marker("ctx-project-cleanup"))
+                                .disabled(!can_cleanup || self.group_cleanup.busy)
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.context_menu = None;
+                                    this.preview_project_cleanup(cleanup_id.clone(), window, cx);
+                                })),
                         )
                         .child(
                             item(
@@ -2569,7 +2199,8 @@ impl DunlinApp {
             .h(px(crate::branch_picker::STATUS_BAR_HEIGHT))
             .flex_shrink_0()
             .overflow_hidden()
-            .px(px(crate::branch_picker::STATUS_BAR_INSET))
+            .pl(px(dunlin_ui::scale::WORKSPACE_INSET + crate::sidebar_layout::UTILITY_INSET))
+            .pr(px(crate::branch_picker::STATUS_BAR_INSET))
             .flex()
             .items_center()
             .gap(px(12.))
@@ -2578,9 +2209,16 @@ impl DunlinApp {
             .child(
                 dunlin_ui::button("repository-host-link")
                     .ghost()
-                    .size(px(24.))
+                    .size(px(crate::sidebar_layout::UTILITY_SIZE))
                     .p(px(0.))
                     .child(Icon::new(hosting_icon).size(px(15.)))
+                    .relative()
+                    .children({
+                        #[cfg(debug_assertions)]
+                        { crate::workspace_ui_smoke::probe("repository-host-link") }
+                        #[cfg(not(debug_assertions))]
+                        { None::<AnyElement> }
+                    })
                     .accessibility_label(hosting_label.clone())
                     .tooltip(hosting_label)
                     .disabled(repository.is_none())
@@ -2713,11 +2351,13 @@ impl DunlinApp {
     }
 
     pub(crate) fn has_modal_overlay(&self) -> bool {
-        self.settings_open || self.navigation_blocked()
+        self.onboarding.setup.is_some() || self.settings_open || self.navigation_blocked()
     }
     pub(crate) fn navigation_blocked(&self) -> bool {
-        (self.settings_open && self.settings_have_draft())
+        self.onboarding.setup.is_some()
+            || (self.settings_open && self.settings_have_draft())
             || self.group_cleanup.busy
+            || self.group_cleanup.dialog.is_some()
             || self.remote_connection.open
             || self.pending_delete.is_some()
             || self.pending_git_action.is_some()
@@ -2731,6 +2371,7 @@ impl DunlinApp {
             || self.project_settings_target.is_some()
             || self.group_settings_draft.is_some()
             || self.provider_auth.is_some()
+            || self.free_endpoint_dialog.is_some()
             || self.factory_resetting
     }
     pub(crate) fn has_overlay(&self) -> bool {
@@ -2742,16 +2383,14 @@ impl DunlinApp {
             || self.project_menu_open
     }
     pub(crate) fn overlay_focus_handle(&self, cx: &App) -> FocusHandle {
+        if let Some(dialog) = &self.group_cleanup.dialog {
+            return dialog.focus.clone();
+        }
+        if let Some(dialog) = &self.free_endpoint_dialog {
+            return dialog.focus.clone();
+        }
         if self.remote_connection.open {
-            return if self.remote_connection.ssh {
-                self.terminal
-                    .ssh_target
-                    .as_ref()
-                    .map(|input| input.read(cx).focus_handle(cx))
-                    .unwrap_or_else(|| self.focus_handle.clone())
-            } else {
-                self.remote_url_input.read(cx).focus_handle(cx)
-            };
+            return self.remote_url_input.read(cx).focus_handle(cx);
         }
         if self.project_import.open
             && let Some(focus) = self.project_import.focus(cx)
@@ -2802,6 +2441,12 @@ impl DunlinApp {
         if self.group_prompt.is_some() {
             return self.group_input.read(cx).focus_handle(cx);
         }
+        if self.project_menu_open
+            && self.project_creation.editing
+            && let Some(input) = &self.project_creation.input
+        {
+            return input.read(cx).focus_handle(cx);
+        }
         self.focus_handle.clone()
     }
     pub(super) fn render_overlay_content(
@@ -2809,6 +2454,15 @@ impl DunlinApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.group_cleanup.dialog.is_some() {
+            return crate::group_cleanup::render(self, cx);
+        }
+        if self.onboarding.setup.is_some() {
+            return crate::onboarding::render_setup(self, cx);
+        }
+        if self.free_endpoint_dialog.is_some() {
+            return crate::free_endpoint_consent::render(self, cx);
+        }
         if self.has_modal_overlay() {
             self.project_menu_open = false;
         }
@@ -2960,7 +2614,7 @@ impl DunlinApp {
                         .absolute()
                         .inset_0()
                         .size_full()
-                        .bg(dunlin_ui::palette(cx).card.opacity(0.95))
+                        .bg(dunlin_ui::palette(cx).floating_surface(0.95))
                         .occlude()
                         .flex()
                         .items_center()
@@ -3023,121 +2677,100 @@ impl DunlinApp {
                     this.navigate_history(true, window, cx);
                 }),
             )
-            .when(!self.factory_resetting, |root| {
-                root.on_action(
-                    cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
-                        if this.dismiss_history_for_menu(cx) {
-                            this.branch_ui.dismiss();
-                            this.settings_open = true;
-                            this.settings_tab = SettingsTab::General;
-                            cx.notify();
-                        }
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
-                        this.open_folder(cx)
-                    }),
-                )
-                .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
-                    if this.dismiss_history_for_menu(cx) {
-                        this.section = SidebarSection::Dashboard;
-                        this.settings_open = false;
-                        cx.notify();
-                    }
-                }))
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
-                        if this.dismiss_history_for_menu(cx) {
-                            this.section = SidebarSection::Projects;
-                            this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
-                            cx.notify();
-                        }
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
-                        this.sidebar_collapsed = !this.sidebar_collapsed;
-                        this.persist_settings(cx);
-                        cx.notify();
-                    }),
-                )
-                .on_action(
-                    cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
-                        if this.dismiss_history_for_menu(cx) {
-                            this.open_palette(window, cx);
-                        }
-                    }),
-                )
-                .when(!self.projects.is_empty(), |root| {
-                    root.on_action(cx.listener(
-                        |this, _: &crate::native_menu::NewSession, _, cx| {
+            .when(
+                !self.factory_resetting && self.onboarding.setup.is_none(),
+                |root| {
+                    root.on_action(
+                        cx.listener(|this, _: &crate::native_menu::Settings, _, cx| {
                             if this.dismiss_history_for_menu(cx) {
-                                this.new_session(cx);
+                                this.branch_ui.dismiss();
+                                this.settings_open = true;
+                                this.settings_tab = SettingsTab::General;
+                                cx.notify();
                             }
-                        },
-                    ))
-                    .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
-                        this.save_all_tabs(cx);
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::OpenFolders, _, cx| {
+                            this.open_folder(cx)
+                        }),
+                    )
+                    .on_action(cx.listener(|this, _: &crate::native_menu::Home, _, cx| {
+                        if this.dismiss_history_for_menu(cx) {
+                            this.section = SidebarSection::Dashboard;
+                            this.settings_open = false;
+                            cx.notify();
+                        }
                     }))
-                    .on_action(cx.listener(
-                        |this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::Projects, _, cx| {
                             if this.dismiss_history_for_menu(cx) {
-                                this.open_project_settings(this.selected_project, cx);
+                                this.section = SidebarSection::Projects;
+                                this.sidebar_tab = crate::sidebar_layout::Tab::Projects;
+                                cx.notify();
                             }
-                        },
-                    ))
-                    .on_action(cx.listener(
-                        |this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::ToggleSidebar, _, cx| {
+                            this.sidebar_collapsed = !this.sidebar_collapsed;
+                            this.persist_settings(cx);
+                            cx.notify();
+                        }),
+                    )
+                    .on_action(
+                        cx.listener(|this, _: &crate::native_menu::Commands, window, cx| {
                             if this.dismiss_history_for_menu(cx) {
-                                this.open_branch_picker(&this.project().id.clone(), window, cx);
+                                this.open_palette(window, cx);
                             }
-                        },
-                    ))
-                    .on_action(cx.listener(
-                        |this, _: &crate::native_menu::RefreshGit, _, cx| {
-                            this.refresh_git_status(cx)
-                        },
-                    ))
-                })
-                .when(
-                    !self.projects.is_empty() && self.project().trusted,
-                    |root| {
+                        }),
+                    )
+                    .when(!self.projects.is_empty(), |root| {
                         root.on_action(cx.listener(
-                            |this, _: &crate::native_menu::GitHistory, window, cx| {
-                                this.open_git_history(window, cx)
+                            |this, _: &crate::native_menu::NewSession, _, cx| {
+                                if this.dismiss_history_for_menu(cx) {
+                                    this.new_session(cx);
+                                }
                             },
                         ))
-                    },
-                )
-            })
+                        .on_action(cx.listener(|this, _: &crate::native_menu::SaveAll, _, cx| {
+                            this.save_all_tabs(cx);
+                        }))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::ProjectSettings, _, cx| {
+                                if this.dismiss_history_for_menu(cx) {
+                                    this.open_project_settings(this.selected_project, cx);
+                                }
+                            },
+                        ))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::SwitchBranch, window, cx| {
+                                if this.dismiss_history_for_menu(cx) {
+                                    this.open_branch_picker(&this.project().id.clone(), window, cx);
+                                }
+                            },
+                        ))
+                        .on_action(cx.listener(
+                            |this, _: &crate::native_menu::RefreshGit, _, cx| {
+                                this.refresh_git_status(cx)
+                            },
+                        ))
+                    })
+                    .when(
+                        !self.projects.is_empty() && self.project().trusted,
+                        |root| {
+                            root.on_action(cx.listener(
+                                |this, _: &crate::native_menu::GitHistory, window, cx| {
+                                    this.open_git_history(window, cx)
+                                },
+                            ))
+                        },
+                    )
+                },
+            )
             .child(self.overlay_backdrop.begin())
             .child(content)
             .child(self.overlay_backdrop.finish())
             .into_any_element()
     }
-}
-
-fn onboarding_primary_button(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    _p: &Palette,
-) -> Button {
-    dunlin_ui::action_button(id).primary().large().label(label)
-}
-
-fn onboarding_secondary_button(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    _p: &Palette,
-) -> Button {
-    dunlin_ui::action_button(id).label(label)
-}
-
-fn onboarding_text_button(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    _p: &Palette,
-) -> Button {
-    dunlin_ui::action_button(id).label(label)
 }

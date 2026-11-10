@@ -46,8 +46,8 @@ Apple Developer ID signing and notarization are available.
   runs, bounded result reports and inbox messages. Human-approved deferred turns
   wait for fixed run/task dependencies without model polling, locally or on a
   paired relay, preserving mode, permissions and budgets.
-- **Live Graph and Trace.** Every request, model call, tool and permission is
-  projected from the actual transcript — not a mock, estimate or demo view.
+- **Live Graph and file Timeline.** Follow agents and subagents, then inspect
+  animated file-edit history and recorded diffs from the actual transcript.
 - **Your history comes with you.** Import Claude Code, Codex and OpenCode
   sessions locally, including per-turn tokens and file-diff counts, with no
   cloud upload.
@@ -73,16 +73,17 @@ Apple Developer ID signing and notarization are available.
   a local agent, install and authorize OpenCode/Codex/Claude Code remotely,
   clone repositories or copy a reviewed project snapshot with optional Git history.
   Pair with a one-use, 15-minute code; harnesses use macOS seatbelt or Linux
-  bubblewrap, with server-side credential storage. SSH hosts reuse system
-  OpenSSH with ControlMaster, Keychain passphrases, relay bootstrap and
-  loopback tunnels instead of a second crypto stack.
+  bubblewrap, with server-side credential storage. Remote connections use private
+  Tailscale Serve HTTPS only; SSH bootstrap, tunnels and terminals are removed.
+  Tagged Linear issues arrive through native MCP and can be explicitly approved
+  for a durable, serial queue on a chosen host, with review-status delivery.
 - **Portable project organization.** Local collections and GitHub/GitLab imports,
   plus settings/project-structure backup to JSON or an existing repository.
   Imported catalog entries download only when explicitly requested.
 - **A flexible native workbench.** Two document panes, independent conversation
   drafts, shared reading zoom, project search and recoverable generated-folder
   cleanup, with refreshed light/dark chrome and keyboard controls.
-- **A terminal that goes the distance.** Local PTY, relay and SSH transports,
+- **A terminal that goes the distance.** Local PTY and relay transports,
   draggable splits, mouse selection, OSC 8 links and zsh/bash shell integration
   with command/output actions.
 - **Two-step onboarding and a macOS permission center.** No account, no telemetry,
@@ -149,7 +150,7 @@ bash install-relay.sh
 Review the script before running it as your regular service user, not root.
 For source builds, see [relay setup](docs/administration/relay-setup.md#build-and-register-from-source).
 
-Pair in **Settings → Remote & SSH**, then choose **Manage** or use the title-bar host
+Pair in **Settings → Remote · Tailscale**, then choose **Manage** or use the title-bar host
 switcher. Server tool settings and authorization stay remote; appearance stays
 local. Copying is a one-time, non-overwriting snapshot, not synchronization.
 Review files and history for secrets before uploading.
@@ -181,8 +182,8 @@ Linux keyring/reboot requirements, transfer limits and acceptance caveats.
       <br/><sub><b>See the plan.</b> Agents, tools and subagents as a live graph.</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/trace.png" alt="Dunlin trace waterfall" />
-      <br/><sub><b>See the time.</b> Requests, tools and permissions as trace spans.</sub>
+      <b>Follow the changes.</b><br/>
+      <sub>Timeline shows animated additions, removals and per-file edit history.</sub>
     </td>
   </tr>
 </table>

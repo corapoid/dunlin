@@ -8,6 +8,8 @@ New here? Begin with [installation](../getting-started/installation.md) and
 - [Workspace, navigation and files](workspace.md)
 - [Project import](project-import.md) and [collection import contract](../reference/collection-import.md)
 - [Settings](settings.md) and [runtime defaults/inheritance](../reference/project-runtime-settings.md)
+- [Connection map and connected users](connection-map.md)
+- [Linear inbox through server-owned MCP](linear.md)
 - [Session list](session-list.md), [tabs and UI preferences](session-tabs-and-ui-preferences.md)
 - [Import conversation history](session-import.md)
 - [Standalone chats and subtask worktrees](standalone-chat-and-worktrees.md)
@@ -16,7 +18,7 @@ New here? Begin with [installation](../getting-started/installation.md) and
 ## Agents and evidence
 
 - [Agents, models and accounts](agents-and-models.md)
-- [Conversations, Graph and Trace](conversations.md)
+- [Conversations, Graph and Timeline](conversations.md)
 - [Context, review, checks, budgets, comparison and impact](agent-workbench.md)
 - [Project peer coordination and deferred turns](agent-coordination.md)
 - [Skills and AI-assisted commits](skills.md)

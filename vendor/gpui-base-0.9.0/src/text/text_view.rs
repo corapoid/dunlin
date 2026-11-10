@@ -252,6 +252,13 @@ impl TextView {
         }
     }
 
+    /// Create literal selectable text, preserving whitespace without interpreting markup.
+    pub fn plain(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
+        let mut view = Self::markdown(id, text);
+        view.format = Some(TextViewFormat::Plain);
+        view
+    }
+
     /// Create a new html text view.
     pub fn html(id: impl Into<ElementId>, html: impl Into<SharedString>) -> Self {
         Self {
@@ -662,12 +669,10 @@ impl Element for TextView {
             let state = window.use_keyed_state(
                 SharedString::from(format!("{}/state", self.id)),
                 cx,
-                move |_, cx| {
-                    if default_format == TextViewFormat::Markdown {
-                        TextViewState::markdown(default_text.as_str(), cx)
-                    } else {
-                        TextViewState::html(default_text.as_str(), cx)
-                    }
+                move |_, cx| match default_format {
+                    TextViewFormat::Markdown => TextViewState::markdown(default_text.as_str(), cx),
+                    TextViewFormat::Html => TextViewState::html(default_text.as_str(), cx),
+                    TextViewFormat::Plain => TextViewState::plain(default_text.as_str(), cx),
                 },
             );
             self.state = Some(state.clone());

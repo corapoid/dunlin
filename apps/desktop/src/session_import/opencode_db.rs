@@ -655,6 +655,7 @@ fn finish_turn(
         usage: Some(cumulative.snapshot()),
         usage_before: Some(before.snapshot()),
         speaker: None,
+        failure: None,
     });
 }
 
@@ -690,7 +691,7 @@ fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
         }
         detail.push_str(&output.to_string());
     }
-    let (additions, deletions, locations, diff) = tool_changes(state);
+    let (additions, deletions, locations, diff, file_changes) = tool_changes(state);
     ChatItem::Tool {
         view: ToolCallView {
             id,
@@ -707,33 +708,41 @@ fn tool_call_item(id: String, name: &str, state: &Value, at: u64) -> ChatItem {
             additions,
             deletions,
             diff,
+            file_changes,
         },
         duration_ms: 0,
         at_ms: at,
     }
 }
 
-fn tool_changes(state: &Value) -> (u32, u32, Vec<String>, Option<String>) {
+fn tool_changes(
+    state: &Value,
+) -> (
+    u32,
+    u32,
+    Vec<String>,
+    Option<String>,
+    Vec<dunlin_agent::FileChange>,
+) {
     let metadata = &state["metadata"];
     let mut additions = 0u32;
     let mut deletions = 0u32;
     let mut locations = Vec::new();
     let mut diff = None;
+    let mut file_changes = Vec::new();
     let mut consume = |file: &Value| {
         let patch = file["patch"].as_str();
         let (patch_additions, patch_deletions) = patch.map(diff_counts).unwrap_or_default();
-        additions = additions.saturating_add(
-            file["additions"]
-                .as_u64()
-                .map(|value| value as u32)
-                .unwrap_or(patch_additions),
-        );
-        deletions = deletions.saturating_add(
-            file["deletions"]
-                .as_u64()
-                .map(|value| value as u32)
-                .unwrap_or(patch_deletions),
-        );
+        let file_additions = file["additions"]
+            .as_u64()
+            .map(|value| value.min(u32::MAX as u64) as u32)
+            .unwrap_or(patch_additions);
+        let file_deletions = file["deletions"]
+            .as_u64()
+            .map(|value| value.min(u32::MAX as u64) as u32)
+            .unwrap_or(patch_deletions);
+        additions = additions.saturating_add(file_additions);
+        deletions = deletions.saturating_add(file_deletions);
         if diff.is_none()
             && let Some(patch) = patch.filter(|patch| !patch.trim().is_empty())
         {
@@ -747,6 +756,24 @@ fn tool_changes(state: &Value) -> (u32, u32, Vec<String>, Option<String>) {
             && !locations.iter().any(|known| known == path)
         {
             locations.push(path.to_string());
+        }
+        if let Some(path) = path.filter(|path| !path.trim().is_empty()) {
+            if file_additions > 0 || file_deletions > 0 {
+                // Preserve authoritative per-file counters even when the
+                // bounded chat preview cannot retain the entire patch.
+                let recorded = patch.filter(|patch| patch.len() <= 16 * 1024).unwrap_or("");
+                let recorded = if recorded.starts_with("@@") {
+                    format!("--- a/{path}\n+++ b/{path}\n{recorded}")
+                } else {
+                    recorded.into()
+                };
+                file_changes.push(dunlin_agent::FileChange {
+                    path: path.into(),
+                    additions: file_additions,
+                    deletions: file_deletions,
+                    diff: recorded,
+                });
+            }
         }
     };
 
@@ -770,8 +797,14 @@ fn tool_changes(state: &Value) -> (u32, u32, Vec<String>, Option<String>) {
         additions = additions.saturating_add(add);
         deletions = deletions.saturating_add(del);
         diff = Some(truncate(patch, 16 * 1024));
+        file_changes = crate::timeline::parse_patch(patch);
+        for change in &mut file_changes {
+            if change.diff.len() > 16 * 1024 {
+                change.diff.clear();
+            }
+        }
     }
-    (additions, deletions, locations, diff)
+    (additions, deletions, locations, diff, file_changes)
 }
 
 fn diff_counts(patch: &str) -> (u32, u32) {
@@ -846,6 +879,21 @@ fn ms(value: Option<i64>) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn imported_file_counts_survive_bounded_diff_previews_without_losing_files() {
+        let large = format!("@@ -0,0 +1,20000 @@\n{}", "+line\n".repeat(20_000));
+        let state = serde_json::json!({ "metadata": { "files": [
+            {"file":"large.rs", "additions":20000, "deletions":0, "patch":large},
+            {"file":"small.rs", "additions":1, "deletions":1, "patch":"@@ -1 +1 @@\n-old\n+new\n"}
+        ]}});
+        let (added, removed, locations, _, changes) = super::tool_changes(&state);
+        assert_eq!((added, removed), (20_001, 1));
+        assert_eq!(locations.len(), 2);
+        assert_eq!(changes.len(), 2);
+        assert!(changes[0].diff.is_empty());
+        assert!(changes[1].diff.starts_with("--- a/small.rs"));
+    }
+
     use super::{load, load_selected};
     use crate::harness::ChatItem;
     use rusqlite::Connection;
