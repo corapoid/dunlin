@@ -62,8 +62,7 @@ pub(super) fn tabs(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElement 
 
 fn entry(
     this: &DunlinApp,
-    id: &'static str,
-    label: &'static str,
+    (id, label): (&'static str, &'static str),
     icon: IconName,
     command: Command,
     active: bool,
@@ -213,8 +212,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
             footer
                 .child(entry(
                     this,
-                    "sidebar-source-control",
-                    "Source Control",
+                    ("sidebar-source-control", "Source Control"),
                     IconName::GitBranch,
                     Command::Section(SidebarSection::SourceControl),
                     !this.settings_open && this.section == SidebarSection::SourceControl,
@@ -223,8 +221,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 ))
                 .child(entry(
                     this,
-                    "sidebar-knowledge",
-                    "Knowledge",
+                    ("sidebar-knowledge", "Knowledge"),
                     IconName::BookOpen,
                     Command::Section(SidebarSection::Knowledge),
                     tool == Some(crate::workspace_tools::Tool::Knowledge) && !this.settings_open,
@@ -234,8 +231,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .when(this.spec_tools_enabled(), |footer| {
                     footer.child(entry(
                         this,
-                        "sidebar-intent",
-                        "Intent",
+                        ("sidebar-intent", "Intent"),
                         IconName::ListTodo,
                         Command::Spec,
                         this.spec.is_active_for(this.project()) && !this.settings_open,
@@ -245,8 +241,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 })
                 .child(entry(
                     this,
-                    "sidebar-artifacts",
-                    "Artifacts",
+                    ("sidebar-artifacts", "Artifacts"),
                     IconName::FileText,
                     Command::Artifacts,
                     tool == Some(crate::workspace_tools::Tool::Artifacts) && !this.settings_open,
@@ -256,8 +251,7 @@ pub(super) fn footer(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                 .when(this.security_workspace_enabled(), |footer| {
                     footer.child(entry(
                         this,
-                        "sidebar-security",
-                        "Security Audit",
+                        ("sidebar-security", "Security Audit"),
                         IconName::ShieldCheck,
                         Command::Section(SidebarSection::Security),
                         tool == Some(crate::workspace_tools::Tool::Security) && !this.settings_open,

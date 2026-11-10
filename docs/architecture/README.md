@@ -16,7 +16,7 @@ desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml
 | [crates/storage](../../crates/storage) | Desktop SQLite persistence, migrations and evidence/index APIs. |
 | [apps/cli](../../apps/cli) | Headless local/remote client; catalog reads and fresh one-shot ACP sessions. |
 | [apps/server](../../apps/server) | Relay server CLI, pairing/auth/grants, HTTP/WebSocket APIs, remote processes and vault integration. |
-| [crates/runtime](../../crates/runtime) | UI-independent transcript models and one-shot session execution. |
+| [crates/runtime](../../crates/runtime) | UI-independent transcripts, pending prompts, durable budget dispatch policy and one-shot session execution. |
 | [crates/relay-protocol](../../crates/relay-protocol) | Shared v1 pairing, project and session wire contracts. |
 | [crates/relay-client](../../crates/relay-client) | Relay HTTP client and local/remote workspace backend; no GPUI or credential persistence. |
 | [crates/terminal](../../crates/terminal) | PTY process lifecycle and bounded terminal screen. |
@@ -62,11 +62,26 @@ adapters. The client receives credentials as arguments and recoverable deletion
 as an explicit callback. Its optional private CA must be configured before the
 first HTTP request; no client library reaches into desktop acceptance fixtures.
 
-`dunlin-runtime` now owns persisted conversation items and stream/child transcript
-reducers used by the desktop, plus fresh one-shot ACP execution for the CLI.
-Desktop orchestration still owns queued/deferred turns, task-budget integration,
-provider discovery, imports and UI-specific settings. Those are not claimed as
-fully extracted yet. The CLI deliberately does not load them implicitly; see the
+`dunlin-runtime` owns persisted conversation items and stream/child transcript
+reducers used by the desktop, the per-session prompt queue and client-dispatch
+budget state, plus fresh one-shot ACP execution for the CLI. Queue identities,
+timestamps and reviewed skill snapshots survive reordering and failed pre-send
+preparation. Clearing a queue does not reset IDs. The queue never authorizes a
+send itself; the caller still checks the current model, grants and budget.
+
+Model-default inheritance, validation of an explicitly applied model, and guarded
+refresh of relay-owned project defaults also live in the runtime crate. They
+operate on wire model IDs and caller-supplied visible choices, never on display
+labels or implicit provider fallbacks. Local UI/permission choices and newer
+runtime edits are preserved when an earlier remote read completes.
+
+Budget state receives persistence callbacks, not GPUI or a database connection.
+Reservations update memory only after a successful durable write; failed/corrupt
+storage blocks sending, and restart invalidates stale cost observations. The
+desktop retains its existing SQLite key and owns actual storage, notices, vault
+revocation, deferred-turn scheduling, provider discovery, imports and UI-specific
+settings. These integrations are not claimed as fully extracted yet. The CLI
+deliberately does not load desktop budget/settings policies implicitly; see the
 [CLI contract and limitations](../reference/cli.md#standalone-cli).
 
 `scripts/check_architecture.py` rejects transitive GPUI or desktop dependencies

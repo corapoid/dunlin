@@ -40,10 +40,10 @@ fn mock(mut replies: Vec<(String, Value, u16)>) -> (String, thread::JoinHandle<V
                 if line == "\r\n" {
                     break;
                 }
-                if let Some((name, value)) = line.split_once(':') {
-                    if name.eq_ignore_ascii_case("content-length") {
-                        length = value.trim().parse::<usize>().unwrap();
-                    }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse::<usize>().unwrap();
                 }
             }
             let mut bytes = vec![0; length];

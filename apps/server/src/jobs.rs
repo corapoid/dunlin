@@ -10,7 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dunlin_domain::jobs::{Action, Enqueue, Job, Status};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 mod runner;
 #[cfg(test)]
@@ -73,7 +73,7 @@ pub(crate) fn authorized(state: &AppState, record: &Record) -> Result<(), String
         return Err("Linear configuration changed; reapprove the task".into());
     }
     let current = std::fs::canonicalize(&project.path).map_err(|_| "Project root unavailable")?;
-    if current != PathBuf::from(&record.task.root) {
+    if current != std::path::Path::new(&record.task.root) {
         return Err("Project root changed; reapprove the task".into());
     }
     drop(store);

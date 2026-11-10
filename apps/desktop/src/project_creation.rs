@@ -95,12 +95,12 @@ impl DunlinApp {
                 path: path.to_string_lossy().into_owned(),
                 ..preview("")
             };
-            if let Some(store) = &self.store {
-                if let Err(error) = store.upsert_project(&project) {
-                    // Only remove the empty directory just created by this operation.
-                    let _ = std::fs::remove_dir(&path);
-                    return Err(error.to_string());
-                }
+            if let Some(store) = &self.store
+                && let Err(error) = store.upsert_project(&project)
+            {
+                // Only remove the empty directory just created by this operation.
+                let _ = std::fs::remove_dir(&path);
+                return Err(error.to_string());
             }
             Ok(project)
         })();

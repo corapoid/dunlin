@@ -176,12 +176,12 @@ impl DunlinApp {
             cx.notify();
             return;
         }
-        if !self.project().is_remote() {
-            if let Err(reason) = self.local_harness_config(&harness) {
-                self.security.workspace.error = Some(reason);
-                cx.notify();
-                return;
-            }
+        if !self.project().is_remote()
+            && let Err(reason) = self.local_harness_config(&harness)
+        {
+            self.security.workspace.error = Some(reason);
+            cx.notify();
+            return;
         }
         let prompt = if self.project().is_remote() {
             let before = self.session().id.clone();
@@ -285,19 +285,18 @@ impl DunlinApp {
             self.security.workspace.pending = Some(pending);
             return;
         }
-        if self.local_opencode() {
-            if let Some(provider) = &pending.provider {
-                if self.selected_provider() != Some(provider.as_str()) {
-                    self.select_provider(provider, cx);
-                    if self.selected_provider() != Some(provider.as_str()) {
-                        fail(
-                            self,
-                            "The selected model's provider is unavailable. Connect it in Chat first; no fallback was sent.",
-                            cx,
-                        );
-                        return;
-                    }
-                }
+        if self.local_opencode()
+            && let Some(provider) = &pending.provider
+            && self.selected_provider() != Some(provider.as_str())
+        {
+            self.select_provider(provider, cx);
+            if self.selected_provider() != Some(provider.as_str()) {
+                fail(
+                    self,
+                    "The selected model's provider is unavailable. Connect it in Chat first; no fallback was sent.",
+                    cx,
+                );
+                return;
             }
         }
         if !pending.model.is_empty() {

@@ -3,7 +3,7 @@
 use dunlin_agent::{ModelChoice, SessionModels};
 
 #[derive(Clone, Debug)]
-pub(crate) struct InheritedModel {
+pub struct InheritedModel {
     pub harness: String,
     pub choice: ModelChoice,
 }

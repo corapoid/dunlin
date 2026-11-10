@@ -517,14 +517,13 @@ pub(crate) fn render(
             movement.update(cx, |state, cx| {
                 let Some(bounds) = state.bounds else { return };
                 let width = f32::from(bounds.size.width).max(1.);
-                if let Some((start, pan)) = state.drag {
-                    if event.pressed_button == Some(MouseButton::Left) && state.zoom > 1. {
+                if let Some((start, pan)) = state.drag
+                    && event.pressed_button == Some(MouseButton::Left) && state.zoom > 1. {
                         let delta = (f32::from(event.position.x) - start) / width;
                         state.pan = (pan - delta * state.zoom / (state.zoom - 1.)).clamp(0., 1.);
                         state.following = false;
                         cx.notify(); return;
                     }
-                }
                 let at = range.time(f32::from(event.position.x - bounds.left()), width);
                 let hovered = nearest(&move_data, &move_indices, at).map(|edit| edit.id.clone());
                 if state.hovered != hovered { state.hovered = hovered; cx.notify(); }
@@ -994,10 +993,10 @@ fn paint_chart(
     // Time continues while the model thinks, but the line stays flat.
     let tail = range.x(duration, width).clamp(0., width);
     for points in [&mut green, &mut red, &mut net] {
-        if let Some(&(x, y)) = points.last() {
-            if tail > x {
-                points.push((tail, y));
-            }
+        if let Some(&(x, y)) = points.last()
+            && tail > x
+        {
+            points.push((tail, y));
         }
     }
     let mut curve = |points: &[(f32, f32)], color: Hsla, fill: bool, dashed: bool| {
@@ -1051,10 +1050,8 @@ fn paint_chart(
                 );
             }
         }
-        if !dashed {
-            if let Ok(path) = stroke.build() {
-                window.paint_path(path, color);
-            }
+        if !dashed && let Ok(path) = stroke.build() {
+            window.paint_path(path, color);
         }
         if let Some(&(x, y)) = points.last() {
             dot(window, pos(x, y), 6., color.opacity(0.16));

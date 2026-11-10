@@ -104,10 +104,8 @@ impl DunlinApp {
             })
             .detach();
         }
-        if changed {
-            if self.settings_open && self.settings_tab == crate::app::SettingsTab::Remote {
-                cx.notify();
-            }
+        if changed && self.settings_open && self.settings_tab == crate::app::SettingsTab::Remote {
+            cx.notify();
         }
     }
 }

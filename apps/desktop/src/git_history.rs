@@ -390,10 +390,9 @@ impl DunlinApp {
             .view
             .as_ref()
             .map(|view| view.project.id.clone())
+            && !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Git(project), cx)
         {
-            if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Git(project), cx) {
-                return;
-            }
+            return;
         }
         if let Some(view) = &self.git_history.view {
             self.workbench

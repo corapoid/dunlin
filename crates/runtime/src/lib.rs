@@ -1,5 +1,9 @@
 //! UI-independent session models and execution. Desktop adapters own rendering,
 //! credentials, project trust decisions and application-specific persistence.
+pub mod budget;
+pub mod model_defaults;
+pub mod project_settings;
+pub mod queue;
 pub mod run;
 pub mod transcript;
 

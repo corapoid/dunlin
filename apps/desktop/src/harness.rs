@@ -4,7 +4,7 @@
 //! prompts to [`AcpHarness`], and folds streaming events back into that
 //! transcript. Permission prompts round-trip through the same path.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use dunlin_ui::*;
 use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
 
-mod new_session;
+use dunlin_runtime::model_defaults as new_session;
 pub(crate) mod readiness;
 
 pub(crate) use dunlin_runtime::now_ms;
@@ -68,16 +68,8 @@ pub(crate) struct HarnessUsage {
     pub size: u64,
 }
 
-/// A prompt waiting for the current turn to finish. The id is stable so the
-/// queue panel can edit, remove and reorder entries without relying on text.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct QueuedPrompt {
-    pub id: u64,
-    pub text: String,
-    pub created_at_ms: u64,
-    pub skill_context: String,
-    pub skill_ids: Vec<String>,
-}
+use dunlin_runtime::queue::PromptQueue;
+pub(crate) use dunlin_runtime::queue::QueuedPrompt;
 
 impl HarnessUsage {
     pub(crate) fn percent(&self) -> f32 {
@@ -191,8 +183,7 @@ pub(crate) struct HarnessState {
     pub session_metadata_pending: bool,
     pub running: bool,
     pub session_id: Option<String>,
-    pending_prompts: VecDeque<QueuedPrompt>,
-    next_prompt_id: u64,
+    pending_prompts: PromptQueue,
     prompt_sent: bool,
     active_turn: Option<(usize, Instant)>,
     token_baseline: Option<dunlin_agent::TokenUsage>,
@@ -233,8 +224,7 @@ impl Default for HarnessState {
             connected_harness: None,
             running: false,
             session_id: None,
-            pending_prompts: VecDeque::new(),
-            next_prompt_id: 0,
+            pending_prompts: PromptQueue::default(),
             prompt_sent: false,
             active_turn: None,
             token_baseline: None,
@@ -346,7 +336,7 @@ impl HarnessState {
     }
 
     pub(crate) fn queued_prompts(&self) -> Vec<QueuedPrompt> {
-        self.pending_prompts.iter().cloned().collect()
+        self.pending_prompts.snapshot()
     }
 
     pub(crate) fn has_queued_prompts(&self) -> bool {
@@ -354,51 +344,19 @@ impl HarnessState {
     }
 
     pub(crate) fn remove_queued_prompt(&mut self, id: u64) -> Option<QueuedPrompt> {
-        self.pending_prompts
-            .iter()
-            .position(|prompt| prompt.id == id)
-            .and_then(|index| self.pending_prompts.remove(index))
+        self.pending_prompts.remove(id)
     }
 
     pub(crate) fn move_queued_prompt(&mut self, id: u64, delta: isize) -> bool {
-        let Some(index) = self
-            .pending_prompts
-            .iter()
-            .position(|prompt| prompt.id == id)
-        else {
-            return false;
-        };
-        let target = (index as isize + delta)
-            .clamp(0, self.pending_prompts.len().saturating_sub(1) as isize)
-            as usize;
-        if target == index {
-            return false;
-        }
-        let prompt = match self.pending_prompts.remove(index) {
-            Some(prompt) => prompt,
-            None => return false,
-        };
-        self.pending_prompts.insert(target, prompt);
-        true
+        self.pending_prompts.move_by(id, delta)
     }
 
     pub(crate) fn enqueue_prompt(&mut self, text: String) -> QueuedPrompt {
-        self.next_prompt_id = self.next_prompt_id.wrapping_add(1);
-        let prompt = QueuedPrompt {
-            id: self.next_prompt_id,
-            text,
-            created_at_ms: now_ms(),
-            skill_context: String::new(),
-            skill_ids: Vec::new(),
-        };
-        self.pending_prompts.push_back(prompt.clone());
-        prompt
+        self.pending_prompts.enqueue(text, now_ms())
     }
 
     pub(crate) fn clear_queued_prompts(&mut self) -> usize {
-        let count = self.pending_prompts.len();
-        self.pending_prompts.clear();
-        count
+        self.pending_prompts.clear()
     }
 }
 
@@ -1432,10 +1390,9 @@ impl DunlinApp {
         let summary = session_summary(&text);
         let was_running = self.harness.running;
         let queued = self.harness.enqueue_prompt(text.clone());
-        if let Some(pending) = self.harness.pending_prompts.back_mut() {
-            pending.skill_context = skill_context;
-            pending.skill_ids = skill_ids;
-        }
+        self.harness
+            .pending_prompts
+            .set_skill_context(queued.id, skill_context, skill_ids);
         self.chat_visible_items = crate::app::CHAT_WINDOW;
         self.chat_scroll.jump_to_latest();
         self.harness.transcript.push(ChatItem::User {
@@ -1776,7 +1733,7 @@ impl DunlinApp {
             return;
         };
         if let Err(error) = self.prepare_coordination_run(&prompt.text) {
-            self.harness.pending_prompts.push_front(prompt);
+            self.harness.pending_prompts.restore_front(prompt);
             self.harness.running = false;
             self.file_notice(format!("Coordination paused sending: {error}"), cx);
             return;
@@ -3244,10 +3201,13 @@ mod tests {
     #[test]
     fn queued_skill_instructions_are_owned_snapshots() {
         let mut state = HarnessState::default();
-        state.enqueue_prompt("first".into());
+        let first = state.enqueue_prompt("first".into());
         let mut instructions = "Reviewed skill revision 1".to_string();
-        state.pending_prompts.back_mut().unwrap().skill_context = instructions.clone();
-        state.pending_prompts.back_mut().unwrap().skill_ids = vec!["skill-a".into()];
+        state.pending_prompts.set_skill_context(
+            first.id,
+            instructions.clone(),
+            vec!["skill-a".into()],
+        );
         instructions.replace_range(.., "Reviewed skill revision 2");
         state.enqueue_prompt("second".into());
         let prompts = state.queued_prompts();

@@ -174,7 +174,7 @@ pub(crate) fn install(
         return Err("Installation cancelled".into());
     }
     let output = crate::providers::command_output(
-        &mut crate::harness_discovery::local_command("node").arg("--version"),
+        crate::harness_discovery::local_command("node").arg("--version"),
         Duration::from_secs(5),
     )
     .map_err(|_| {

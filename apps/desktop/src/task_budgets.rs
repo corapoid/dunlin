@@ -2,116 +2,69 @@
 //! durably reserved BEFORE each client wire send, including retries/queued sends.
 use crate::app::DunlinApp;
 use dunlin_domain::task_budget::{Budget, Cost, Registry};
+use dunlin_runtime::budget::Scope;
+pub(crate) use dunlin_runtime::budget::State;
 use dunlin_ui::*;
-const KEY: &str = "task-budget-ledgers-v1";
-#[derive(Default)]
-pub(crate) struct State {
-    pub registry: Registry,
-    pub error: Option<String>,
-}
-impl State {
-    pub fn load(store: Option<&dunlin_storage::Store>) -> Self {
-        let result = store
+
+pub(crate) fn load(store: Option<&dunlin_storage::Store>) -> State {
+    State::load(|key| {
+        store
             .ok_or("Storage unavailable; existing task budgets cannot be verified".to_string())
             .and_then(|s| {
-                s.load_setting::<Registry>(KEY)
+                s.load_setting::<Registry>(key)
                     .map_err(|_| "Could not read task budget ledger".into())
             })
-            .map(|r| r.unwrap_or_default())
-            .and_then(|r| {
-                r.validate()?;
-                Ok(r)
-            });
-        match result {
-            Ok(mut registry) => {
-                for task in &mut registry.tasks {
-                    for member in &mut task.members {
-                        member.latest = None;
-                    }
-                }
-                Self {
-                    registry,
-                    error: None,
-                }
-            }
-            Err(e) => Self {
-                registry: Registry::default(),
-                error: Some(e),
-            },
-        }
-    }
+    })
 }
+
+fn persist(
+    store: Option<&dunlin_storage::Store>,
+    key: &str,
+    registry: &Registry,
+) -> Result<(), String> {
+    store
+        .ok_or("Budget storage unavailable".to_string())?
+        .save_setting(key, registry)
+        .map_err(|_| {
+            "Budget reservation could not be persisted; no new prompt is authorized".into()
+        })
+}
+
 impl DunlinApp {
     pub(crate) fn persist_task_budgets(&mut self, next: Registry) -> Result<(), String> {
-        next.validate()?;
-        let result = self
-            .store
-            .as_ref()
-            .ok_or("Budget storage unavailable")
-            .and_then(|s| {
-                s.save_setting(KEY, &next).map_err(
-                    |_| "Budget reservation could not be persisted; no new prompt is authorized",
-                )
-            });
-        if let Err(e) = result {
-            self.task_budgets.error = Some(e.into());
-            return Err(e.into());
-        }
-        self.task_budgets.registry = next;
-        self.task_budgets.error = None;
-        Ok(())
+        self.task_budgets
+            .commit(next, |key, next| persist(self.store.as_ref(), key, next))
     }
     pub(crate) fn budget_gate(&self) -> Result<(), String> {
-        if let Some(e) = &self.task_budgets.error {
-            return Err(e.clone());
-        }
-        if let Some(task) = self.task_budgets.registry.task(&self.session().id) {
-            task.gate(
-                &self.session().id,
-                &self.project().id,
-                &self.project().path,
-                self.harness.session_id.as_deref(),
-                crate::harness::now_ms(),
-            )?;
-        }
-        Ok(())
+        self.task_budgets
+            .gate(self.budget_scope(), crate::harness::now_ms())
     }
     pub(crate) fn budget_continuation_gate(&self) -> Result<(), String> {
-        if let Some(e) = &self.task_budgets.error {
-            return Err(e.clone());
+        self.task_budgets
+            .continuation_gate(self.budget_scope(), crate::harness::now_ms())
+    }
+    fn budget_scope(&self) -> Scope<'_> {
+        Scope {
+            session: &self.session().id,
+            project: &self.project().id,
+            root: &self.project().path,
+            acp: self.harness.session_id.as_deref(),
         }
-        if let Some(task) = self.task_budgets.registry.task(&self.session().id) {
-            task.continuation_gate(
-                &self.session().id,
-                &self.project().id,
-                &self.project().path,
-                self.harness.session_id.as_deref(),
-                crate::harness::now_ms(),
-            )?;
-        }
-        Ok(())
     }
     pub(crate) fn reserve_task_request(&mut self, cx: &mut Context<Self>) -> bool {
-        let result = (|| {
-            self.budget_gate()?;
-            if self
-                .task_budgets
-                .registry
-                .task(&self.session().id)
-                .is_none()
-            {
-                return Ok(());
-            }
-            let mut next = self.task_budgets.registry.clone();
-            next.reserve(
-                &self.session().id,
-                &self.project().id,
-                &self.project().path,
-                self.harness.session_id.as_deref(),
-                crate::harness::now_ms(),
-            )?;
-            self.persist_task_budgets(next)
-        })();
+        let session = self.session().id.clone();
+        let project = self.project().clone();
+        let scope = Scope {
+            session: &session,
+            project: &project.id,
+            root: &project.path,
+            acp: self.harness.session_id.as_deref(),
+        };
+        let result = self
+            .task_budgets
+            .reserve(scope, crate::harness::now_ms(), |key, next| {
+                persist(self.store.as_ref(), key, next)
+            });
         if let Err(e) = result {
             self.file_notice(format!("Task budget paused sending: {e}"), cx);
             false
@@ -120,18 +73,8 @@ impl DunlinApp {
         }
     }
     pub(crate) fn approve_task_budget(&mut self, budget: Budget) -> Result<(), String> {
-        if self.task_budgets.error.is_some() {
-            return Err("Repair/reload budget storage before approving new work".into());
-        }
-        budget.validate()?;
-        let mut next = self.task_budgets.registry.clone();
-        if next.tasks.len() >= 64 {
-            return Err(
-                "Budget history limit reached; release and remove obsolete tasks first".into(),
-            );
-        }
-        next.tasks.push(budget);
-        self.persist_task_budgets(next)?;
+        self.task_budgets
+            .approve(budget, |key, next| persist(self.store.as_ref(), key, next))?;
         if let Some(session) = &self.harness.vault_session {
             session.set_allowed(true);
         }

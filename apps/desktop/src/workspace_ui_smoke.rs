@@ -332,7 +332,7 @@ pub(crate) fn run() {
                         }
                         let position = measured("group-settings-scroll").origin + point(px(8.), px(50.));
                         let child = owner.read(cx).overlay_window.debug_window();
-                        child.unwrap_or(parent.into()).update(cx, |_, window, cx| {
+                        child.unwrap_or(parent).update(cx, |_, window, cx| {
                             window.dispatch_event(PlatformInput::Scroll(ScrollEvent { position, delta: ScrollDelta::Pixels(point(px(0.), px(-180.))), touch_phase: TouchPhase::Moved, ..Default::default() }), cx);
                         }).unwrap();
                         stage = 10011;
@@ -342,14 +342,14 @@ pub(crate) fn run() {
                         assert!(started.elapsed() < Duration::from_secs(90), "group deletion confirmation stalled at {stage}");
                         if let Some(bounds) = dunlin_ui::debug_confirmation_answer(if stage == 8001 { 0 } else { 1 }) {
                             let child = owner.read(cx).overlay_window.debug_window();
-                            child.unwrap_or(parent.into()).update(cx, |_, window, cx| click(window, bounds.center(), cx)).unwrap();
+                            child.unwrap_or(parent).update(cx, |_, window, cx| click(window, bounds.center(), cx)).unwrap();
                             stage += 1;
                         }
                         return false;
                     }
                     if stage == 8101 {
                         let child = owner.read(cx).overlay_window.debug_window();
-                        child.unwrap_or(parent.into()).update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "escape")).unwrap();
+                        child.unwrap_or(parent).update(cx, |_, window, cx| crate::controls_smoke::key(window, cx, "escape")).unwrap();
                         stage = 81011;
                         return false;
                     }

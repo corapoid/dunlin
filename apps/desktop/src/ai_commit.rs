@@ -377,11 +377,11 @@ impl DunlinApp {
             .iter()
             .find(|skill| skill.id == skills::COMMIT_SKILL && !skill.disabled)
             .cloned();
-        if let Some(skill) = &skill {
-            if let Err(e) = skill.rendered() {
-                self.file_notice(e, cx);
-                return;
-            }
+        if let Some(skill) = &skill
+            && let Err(e) = skill.rendered()
+        {
+            self.file_notice(e, cx);
+            return;
         }
         let project = self.project().id.clone();
         let root = self.project().path.clone();

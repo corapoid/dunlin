@@ -290,10 +290,10 @@ pub(crate) async fn connect(
             Ok::<_, ApiError>(())
         })();
         if let Err(error) = save {
-            if state.linear.secrets.delete(&credential_id).is_err() {
-                if let Ok(store) = state.store.lock() {
-                    let _ = store.linear_retire(&credential_id);
-                }
+            if state.linear.secrets.delete(&credential_id).is_err()
+                && let Ok(store) = state.store.lock()
+            {
+                let _ = store.linear_retire(&credential_id);
             }
             return Err(error);
         }
@@ -389,10 +389,10 @@ fn cleanup(state: &AppState) {
         {
             continue;
         }
-        if state.linear.secrets.delete(&id).is_ok() {
-            if let Ok(store) = state.store.lock() {
-                let _ = store.linear_cleaned(&id);
-            }
+        if state.linear.secrets.delete(&id).is_ok()
+            && let Ok(store) = state.store.lock()
+        {
+            let _ = store.linear_cleaned(&id);
         }
     }
 }

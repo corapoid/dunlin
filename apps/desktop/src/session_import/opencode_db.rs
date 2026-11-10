@@ -757,23 +757,23 @@ fn tool_changes(
         {
             locations.push(path.to_string());
         }
-        if let Some(path) = path.filter(|path| !path.trim().is_empty()) {
-            if file_additions > 0 || file_deletions > 0 {
-                // Preserve authoritative per-file counters even when the
-                // bounded chat preview cannot retain the entire patch.
-                let recorded = patch.filter(|patch| patch.len() <= 16 * 1024).unwrap_or("");
-                let recorded = if recorded.starts_with("@@") {
-                    format!("--- a/{path}\n+++ b/{path}\n{recorded}")
-                } else {
-                    recorded.into()
-                };
-                file_changes.push(dunlin_agent::FileChange {
-                    path: path.into(),
-                    additions: file_additions,
-                    deletions: file_deletions,
-                    diff: recorded,
-                });
-            }
+        if let Some(path) = path.filter(|path| !path.trim().is_empty())
+            && (file_additions > 0 || file_deletions > 0)
+        {
+            // Preserve authoritative per-file counters even when the
+            // bounded chat preview cannot retain the entire patch.
+            let recorded = patch.filter(|patch| patch.len() <= 16 * 1024).unwrap_or("");
+            let recorded = if recorded.starts_with("@@") {
+                format!("--- a/{path}\n+++ b/{path}\n{recorded}")
+            } else {
+                recorded.into()
+            };
+            file_changes.push(dunlin_agent::FileChange {
+                path: path.into(),
+                additions: file_additions,
+                deletions: file_deletions,
+                diff: recorded,
+            });
         }
     };
 

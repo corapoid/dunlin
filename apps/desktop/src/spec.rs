@@ -591,10 +591,10 @@ impl DunlinApp {
     }
 
     pub(crate) fn close_spec_workspace(&mut self, cx: &mut Context<Self>) {
-        if let Some(project) = self.spec.view.as_ref().map(|view| view.project.id.clone()) {
-            if !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Spec(project), cx) {
-                return;
-            }
+        if let Some(project) = self.spec.view.as_ref().map(|view| view.project.id.clone())
+            && !self.guard_workspace_tab_close(&crate::workspace_panes::TabKey::Spec(project), cx)
+        {
+            return;
         }
         if let Some(view) = &self.spec.view {
             self.workbench

@@ -755,7 +755,7 @@ fn draft_view(this: &DunlinApp, draft: &Draft, cx: &mut Context<DunlinApp>) -> A
             .child(div().flex_1().child(dunlin_ui::settings::field("Wall-clock seconds",dunlin_ui::input(&draft.seconds).aria_label("Wall-clock seconds").disabled(frozen),p)))
             .child(div().flex_1().child(dunlin_ui::settings::field("Client tool request limit",dunlin_ui::input(&draft.tools).aria_label("Client tool request limit").disabled(frozen),p))))
         .child(dunlin_ui::settings::field("Linear review status",dunlin_ui::input(&draft.review).aria_label("Linear review status").disabled(frozen),p))
-        .child(dunlin_ui::switch("job-allow-tools","Allow once permission requests (not read-only isolation)",draft.allow_tools).disabled(frozen).on_click(cx.listener(|this,checked:&bool,_,cx|{if let Some(draft)=&mut this.server_panel.jobs.draft{draft.allow_tools=*checked;}cx.notify();})))
+        .child(dunlin_ui::switch("job-allow-tools","Allow once permission requests (not read-only isolation)",draft.allow_tools).disabled(frozen).on_click(cx.listener(|this,checked:&bool,_,cx|{if let Some(draft)=&mut this.server_panel.jobs.draft{draft.allow_tools = *checked;}cx.notify();})))
         .child(div().text_size(px(10.5)).text_color(p.muted_fg).child("Each target needs its own Linear authorization. Budgets cover one ACP turn, wall-clock time and client requests—not unseen model calls or provider billing. Changes stay in an isolated checkout."))
         .child(div().flex().gap(px(8.))
             .child(dunlin_ui::settings::button("job-close").relative().children(crate::gui_probe::marker("job-close")).label("Cancel assignment").disabled(frozen).on_click(cx.listener(|this,_,_,cx|{this.server_panel.jobs.draft=None;cx.notify();})))

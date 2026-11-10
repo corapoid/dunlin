@@ -1123,7 +1123,7 @@ impl DunlinApp {
             sessions.push(session);
         }
         let fallback_session = blank_session("none", &stored.default_harness, None);
-        let task_budgets = crate::task_budgets::State::load(store.as_ref());
+        let task_budgets = crate::task_budgets::load(store.as_ref());
         let subtask_worktrees = crate::subtask_worktrees::State::load(store.as_ref());
         let comparisons = crate::comparisons::State::load(store.as_ref());
 
@@ -4135,11 +4135,8 @@ impl DunlinApp {
     }
 
     fn set_activity_selection(&mut self, id: Option<String>) {
-        match self.view {
-            MainView::Graph => {
-                self.selected_node = id;
-            }
-            _ => {}
+        if self.view == MainView::Graph {
+            self.selected_node = id;
         }
     }
 
@@ -4199,37 +4196,31 @@ impl DunlinApp {
     /// Scroll the selected graph node into view. Virtualization is
     /// only honest when keyboard selection cannot move focus to an offscreen row.
     fn activity_reveal_selection(&mut self, cx: &mut Context<Self>) {
-        match self.view {
-            MainView::Graph => {
-                let Some(id) = self.selected_node.clone() else {
-                    return;
-                };
-                let all =
-                    projection::nodes(&self.harness.transcript, self.project(), self.session());
-                let nodes = crate::activity::graph_nodes(all, &self.activity.agents_expanded);
-                let nodes = crate::activity::filter_graph_nodes(nodes, &self.activity_query);
-                let Some(node) = nodes.iter().find(|node| node.id == id) else {
-                    return;
-                };
-                let (x, y, width, height) =
-                    crate::activity::scaled_node_rect(node, self.activity.graph_zoom);
-                let viewport = self.activity.graph_scroll.bounds().size;
-                let viewport_width = f32::from(viewport.width);
-                let viewport_height = f32::from(viewport.height);
-                if viewport_width <= 0.0 || viewport_height <= 0.0 {
-                    return;
-                }
-                let max = self.activity.graph_scroll.max_offset();
-                let target_x =
-                    (x + width / 2.0 - viewport_width / 2.0).clamp(0.0, f32::from(max.x));
-                let target_y =
-                    (y + height / 2.0 - viewport_height / 2.0).clamp(0.0, f32::from(max.y));
-                self.activity.graph_centered = true;
-                self.activity
-                    .graph_scroll
-                    .set_offset(point(px(-target_x), px(-target_y)));
+        if self.view == MainView::Graph {
+            let Some(id) = self.selected_node.clone() else {
+                return;
+            };
+            let all = projection::nodes(&self.harness.transcript, self.project(), self.session());
+            let nodes = crate::activity::graph_nodes(all, &self.activity.agents_expanded);
+            let nodes = crate::activity::filter_graph_nodes(nodes, &self.activity_query);
+            let Some(node) = nodes.iter().find(|node| node.id == id) else {
+                return;
+            };
+            let (x, y, width, height) =
+                crate::activity::scaled_node_rect(node, self.activity.graph_zoom);
+            let viewport = self.activity.graph_scroll.bounds().size;
+            let viewport_width = f32::from(viewport.width);
+            let viewport_height = f32::from(viewport.height);
+            if viewport_width <= 0.0 || viewport_height <= 0.0 {
+                return;
             }
-            _ => {}
+            let max = self.activity.graph_scroll.max_offset();
+            let target_x = (x + width / 2.0 - viewport_width / 2.0).clamp(0.0, f32::from(max.x));
+            let target_y = (y + height / 2.0 - viewport_height / 2.0).clamp(0.0, f32::from(max.y));
+            self.activity.graph_centered = true;
+            self.activity
+                .graph_scroll
+                .set_offset(point(px(-target_x), px(-target_y)));
         }
         cx.notify();
     }

@@ -412,7 +412,7 @@ pub(crate) fn render(this: &mut DunlinApp, cx: &mut Context<DunlinApp>) -> AnyEl
             .iter()
             .filter(eligible)
             .find(|d| d.name == this.default_harness)
-            .or_else(|| this.harness_discovery.iter().filter(eligible).next())
+            .or_else(|| this.harness_discovery.iter().find(eligible))
             .map(|d| d.name.into());
     }
     let selection = this.onboarding.selection.clone();

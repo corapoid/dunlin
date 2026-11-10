@@ -166,7 +166,7 @@ mod tests {
             hint: None,
             icon: IconName::Search,
         };
-        let mut items = vec![
+        let mut items = [
             item(Command::SearchResult(0)),
             item(Command::Settings(SettingsTab::General)),
             item(Command::Section(SidebarSection::Dashboard)),

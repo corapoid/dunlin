@@ -1772,9 +1772,8 @@ impl DunlinApp {
                 } else {
                     format!("Global installation needs attention: {}", errors.join(" · "))
                 });
-                if id == SPEC_KIT_SKILL {
-                    if let Some(message) = this.skills_ui.message.clone() { this.set_notice(message, cx); }
-                }
+                if id == SPEC_KIT_SKILL
+                    && let Some(message) = this.skills_ui.message.clone() { this.set_notice(message, cx); }
                 cx.notify();
             });
         }).detach();

@@ -53,7 +53,7 @@ impl Fixture {
         .unwrap()
         .trim()
         .to_string();
-        let store = Store::open(&dir.path().join("relay.db")).unwrap();
+        let store = Store::open(dir.path().join("relay.db")).unwrap();
         let user = store.create_user("owner", "member").unwrap();
         let project = store
             .create_project("source", root.to_str().unwrap())
@@ -209,7 +209,7 @@ fn restart_blocks_dispatch_and_never_replays_ambiguous_execution_or_status() {
         store.enqueue(&f.user, &next).unwrap();
         store.claim_job().unwrap().unwrap();
     }
-    let reopened = Store::open(&f.dir.path().join("relay.db")).unwrap();
+    let reopened = Store::open(f.dir.path().join("relay.db")).unwrap();
     reopened.recover_jobs().unwrap();
     let queue = reopened.jobs().unwrap();
     assert!(queue.paused);
@@ -534,3 +534,4 @@ async fn queue_api_requires_device_project_and_owner_or_admin_authority() {
         assert_eq!(status, expected, "{}", String::from_utf8_lossy(&bytes));
     }
 }
+use std::path::PathBuf;

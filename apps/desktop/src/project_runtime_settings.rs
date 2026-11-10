@@ -1,5 +1,4 @@
 //! Explicit, project-scoped runtime defaults. Editing never restarts an agent.
-use dunlin_domain::ProjectSettings;
 use dunlin_ui::{
     component::{Disableable, button::ButtonVariants, input::InputState},
     prelude::FluentBuilder as _,
@@ -9,33 +8,8 @@ use dunlin_ui::{
 use crate::app::DunlinApp;
 use crate::remote;
 
-/// Refresh only relay-owned runtime defaults. A delayed read must not replace
-/// local appearance/approval choices, a retargeted project or a newer save.
-pub(crate) fn refresh_remote_defaults(
-    current: &mut dunlin_domain::Project,
-    expected: &dunlin_domain::Project,
-    incoming: ProjectSettings,
-) -> bool {
-    let same_remote = current
-        .remote
-        .as_ref()
-        .zip(expected.remote.as_ref())
-        .is_some_and(|(current, expected)| {
-            current.host_id == expected.host_id
-                && current.project_id == expected.project_id
-                && current.path == expected.path
-        });
-    if current.id != expected.id
-        || !same_remote
-        || current.settings.default_models != expected.settings.default_models
-        || current.settings.environment != expected.settings.environment
-    {
-        return false;
-    }
-    current.settings.default_models = incoming.default_models;
-    current.settings.environment = incoming.environment;
-    true
-}
+pub(crate) use dunlin_runtime::project_settings::refresh_remote_defaults;
+use dunlin_runtime::project_settings::{live_model_target, updated_settings};
 
 pub(crate) struct Draft {
     project_id: String,
@@ -56,38 +30,6 @@ impl Draft {
     pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.model.read(cx).focus_handle(cx)
     }
-}
-
-fn updated_settings(
-    current: &ProjectSettings,
-    harness: &str,
-    model: &str,
-) -> Result<ProjectSettings, String> {
-    let mut updated = current.clone();
-    updated.set_default_model(harness, model)?;
-    Ok(updated)
-}
-
-fn live_model_target(
-    preferred: Option<&str>,
-    models: Option<&dunlin_agent::SessionModels>,
-    visible: &[dunlin_agent::ModelChoice],
-    busy: bool,
-) -> Result<Option<String>, String> {
-    if busy {
-        return Err("Wait for the current agent operation before applying a saved model".into());
-    }
-    let preferred = preferred.ok_or("No saved model default for this conversation's harness")?;
-    let models = models.ok_or("Connect a harness that advertises ACP models first")?;
-    if models.current == preferred {
-        return Ok(None);
-    }
-    if !models.choices.iter().any(|model| model.id == preferred)
-        || !visible.iter().any(|model| model.id == preferred)
-    {
-        return Err("The saved model is unavailable or hidden by the current provider/model filter. Select an allowed provider/model in the composer first.".into());
-    }
-    Ok(Some(preferred.into()))
 }
 
 impl DunlinApp {
@@ -450,8 +392,10 @@ mod tests {
 
     #[test]
     fn model_form_preserves_hidden_environment_and_permission_overrides() {
-        let mut current = ProjectSettings::default();
-        current.permission_mode = Some(dunlin_domain::PermissionMode::ReadOnly);
+        let mut current = ProjectSettings {
+            permission_mode: Some(dunlin_domain::PermissionMode::ReadOnly),
+            ..Default::default()
+        };
         current
             .environment
             .insert("MULTILINE".into(), "one\ntwo".into());
