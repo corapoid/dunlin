@@ -249,7 +249,7 @@ pub(crate) fn run() -> i32 {
         let spec: Manifest =
             serde_json::from_str(&line).map_err(|_| "Invalid private manifest".to_string())?;
         if let Some(pem) = &spec.tls_ca_pem {
-            dunlin_http::AgentBuilder::new().root_certificate_pem(pem.as_bytes())?;
+            dunlin_relay_client::configure_tls_root_pem(pem.as_bytes())?;
             TLS_CA
                 .set(pem.as_bytes().to_vec())
                 .map_err(|_| "CA already configured")?;

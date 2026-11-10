@@ -357,7 +357,7 @@ impl DunlinApp {
             let target = path.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { backend.delete_entry(&target) })
+                .spawn(async move { backend.delete_entry_with(&target, crate::platform::trash) })
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.explorer.busy = false;

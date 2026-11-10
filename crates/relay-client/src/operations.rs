@@ -9,7 +9,7 @@ use dunlin_workspace::git::{
 use serde::{Deserialize, de::DeserializeOwned};
 use std::{io::Read, time::Duration};
 #[derive(Clone, Deserialize)]
-pub(crate) struct Prepared {
+pub struct Prepared {
     pub id: String,
     pub plan: Plan,
 }
@@ -19,10 +19,7 @@ fn request<T: DeserializeOwned>(
     body: Option<serde_json::Value>,
 ) -> Result<T, String> {
     super::validate_relay_url(&remote.host.url)?;
-    let agent = ureq::AgentBuilder::new()
-        .try_proxy_from_env(false)
-        .redirects(0)
-        .build();
+    let agent = super::http_agent();
     let url = format!("{}{path}", remote.host.url.trim_end_matches('/'));
     let req = if body.is_some() {
         agent.post(&url)
@@ -47,7 +44,7 @@ fn request<T: DeserializeOwned>(
     serde_json::from_slice(&bytes).map_err(|_| "Invalid relay Git response".into())
 }
 impl WorkspaceBackend {
-    pub(crate) fn prepare_git_operation(&self, action: Action) -> Result<Prepared, String> {
+    pub fn prepare_git_operation(&self, action: Action) -> Result<Prepared, String> {
         match self {
             Self::Local { root } => Ok(Prepared {
                 id: uuid::Uuid::now_v7().to_string(),
@@ -71,7 +68,7 @@ impl WorkspaceBackend {
             }
         }
     }
-    pub(crate) fn execute_git_operation(&self, prepared: &Prepared) -> Result<Outcome, String> {
+    pub fn execute_git_operation(&self, prepared: &Prepared) -> Result<Outcome, String> {
         match self {
             Self::Local { root } => operations::execute(root, &prepared.plan),
             Self::Remote(remote) => {
@@ -85,7 +82,7 @@ impl WorkspaceBackend {
             }
         }
     }
-    pub(crate) fn blame(
+    pub fn blame(
         &self,
         path: &str,
         scope: Option<&str>,
@@ -135,7 +132,7 @@ impl WorkspaceBackend {
 #[cfg(test)]
 mod tests {
     use super::{Prepared, request};
-    use crate::remote::{RemoteHost, RemoteWorkspace, WorkspaceBackend};
+    use crate::{RemoteHost, RemoteWorkspace, WorkspaceBackend};
     use dunlin_workspace::git::operations::{self, Action, Outcome};
     use std::{
         io::{Read, Write},

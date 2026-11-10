@@ -133,6 +133,11 @@ uses the harness installed on its server instead. Development runs with
 Local app bundles are ad-hoc signed, not Apple-notarized. An Apple Developer ID
 certificate is not required to build from source.
 
+For terminal-only use on macOS/Linux, build the separate client with
+`cargo build -p dunlin-cli --locked`. It can read an existing desktop catalog
+read-only or run a fresh local/remote ACP session without GPUI. See the
+[CLI commands and current limitations](docs/reference/cli.md#standalone-cli).
+
 ## Set up a remote server
 
 The interactive terminal installer collects the server name,

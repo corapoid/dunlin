@@ -11,8 +11,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 use crate::auth;
-mod linear;
 pub(crate) mod jobs;
+mod linear;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -28,12 +28,7 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 
 const MAX_SESSIONS_PER_USER: i64 = 1000;
 
-#[derive(Clone, Debug, Serialize)]
-pub struct User {
-    pub id: String,
-    pub name: String,
-    pub role: String,
-}
+pub use dunlin_relay_protocol::{Project, User};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Device {
@@ -43,13 +38,6 @@ pub struct Device {
     pub created_at: i64,
     pub last_seen_at: Option<i64>,
     pub revoked_at: Option<i64>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct Project {
-    pub id: String,
-    pub name: String,
-    pub path: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -284,7 +272,7 @@ impl Store {
             transaction.commit()?;
         }
         if version < 8 {
-            let transaction=self.connection.unchecked_transaction()?;
+            let transaction = self.connection.unchecked_transaction()?;
             transaction.execute_batch("CREATE TABLE IF NOT EXISTS relay_jobs (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,
                 owner TEXT NOT NULL REFERENCES users(id),project TEXT NOT NULL REFERENCES projects(id),

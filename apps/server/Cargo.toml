@@ -15,6 +15,7 @@ hex.workspace = true
 dunlin-workspace.workspace = true
 dunlin-usage.workspace = true
 dunlin-domain.workspace = true
+dunlin-relay-protocol.workspace = true
 dunlin-mcp-client.workspace = true
 dunlin-terminal.workspace = true
 dunlin-storage.workspace = true

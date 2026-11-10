@@ -645,6 +645,15 @@ impl AcpHarness {
         let _ = self.commands.try_send(HarnessCommand::Shutdown);
     }
 
+    /// Headless owners must reap the worker before exiting the process. Desktop
+    /// callers continue using nonblocking shutdown/Drop to avoid stalling GPUI.
+    pub fn shutdown_and_wait(mut self) {
+        self.shutdown();
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+
     fn send(&self, command: HarnessCommand) -> bool {
         self.commands.try_send(command).is_ok()
     }
@@ -1640,8 +1649,15 @@ impl WsTransport {
             }
         }
         if !(cfg!(debug_assertions) && loopback)
-            && (!matches!(parsed.scheme(),"https"|"wss") || !parsed.host_str().is_some_and(dunlin_domain::relay::tailscale_hostname)) {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied,"Remote agents require private Tailscale HTTPS/WSS (*.ts.net)"));
+            && (!matches!(parsed.scheme(), "https" | "wss")
+                || !parsed
+                    .host_str()
+                    .is_some_and(dunlin_domain::relay::tailscale_hostname))
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Remote agents require private Tailscale HTTPS/WSS (*.ts.net)",
+            ));
         }
         let base = url.trim_end_matches('/');
         let ws = match parsed.scheme() {

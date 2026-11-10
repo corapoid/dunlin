@@ -1,5 +1,5 @@
 use super::{MAX_RESPONSE_BYTES, WorkspaceBackend, history, validate_envelope};
-use crate::remote::{RemoteHost, RemoteWorkspace};
+use crate::{RemoteHost, RemoteWorkspace};
 use dunlin_domain::RemoteProject;
 use dunlin_workspace::git::history::{
     Commit, CommitDetails, CommitFile, CommitPatch, HistoryResponse,

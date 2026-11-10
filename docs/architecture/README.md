@@ -14,7 +14,11 @@ desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml
 | [crates/agent](../../crates/agent) | ACP client/worker and deterministic agent smoke binaries. |
 | [crates/workspace](../../crates/workspace) | Filesystem, search, Git, review/check/impact and repository operations. |
 | [crates/storage](../../crates/storage) | Desktop SQLite persistence, migrations and evidence/index APIs. |
-| [crates/relay](../../crates/relay) | Server CLI, pairing/auth/grants, HTTP/WebSocket APIs, remote processes and vault integration. |
+| [apps/cli](../../apps/cli) | Headless local/remote client; catalog reads and fresh one-shot ACP sessions. |
+| [apps/server](../../apps/server) | Relay server CLI, pairing/auth/grants, HTTP/WebSocket APIs, remote processes and vault integration. |
+| [crates/runtime](../../crates/runtime) | UI-independent transcript models and one-shot session execution. |
+| [crates/relay-protocol](../../crates/relay-protocol) | Shared v1 pairing, project and session wire contracts. |
+| [crates/relay-client](../../crates/relay-client) | Relay HTTP client and local/remote workspace backend; no GPUI or credential persistence. |
 | [crates/terminal](../../crates/terminal) | PTY process lifecycle and bounded terminal screen. |
 | [crates/usage](../../crates/usage) | Account probes, pricing/billing evidence and attribution. |
 | [crates/http](../../crates/http) | Shared HTTP transport helpers. |
@@ -37,6 +41,37 @@ desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml
 This is a responsibility map, not a dependency graph. Check each crate's
 `Cargo.toml` before changing dependencies; UI-free core crates must not acquire
 GPUI or storage dependencies merely for convenience.
+
+## Application and service boundaries
+
+The desktop, CLI and server are independent binaries in one Cargo workspace.
+"Core" means the existing service crates plus `dunlin-runtime`, not another
+process or a catch-all library. All packages keep one workspace version and lock
+file. The desktop remains `dunlin`; the server remains `dunlin-relay` after moving
+from `crates/relay` to `apps/server`. Existing installer and MCP commands retain
+their names. No daemon is required for local desktop or CLI operation.
+
+Clients import shared services and `dunlin-relay-client`, never server internals.
+The server and client share pairing/project/session v1 contracts through
+`dunlin-relay-protocol`; adding this crate does not change URLs or wire formats.
+Other endpoint contracts are still owned by their existing feature modules.
+The protocol crate itself depends only on serde, not SQLite, HTTP or GPUI.
+
+Desktop credential persistence and native Trash integration remain application
+adapters. The client receives credentials as arguments and recoverable deletion
+as an explicit callback. Its optional private CA must be configured before the
+first HTTP request; no client library reaches into desktop acceptance fixtures.
+
+`dunlin-runtime` now owns persisted conversation items and stream/child transcript
+reducers used by the desktop, plus fresh one-shot ACP execution for the CLI.
+Desktop orchestration still owns queued/deferred turns, task-budget integration,
+provider discovery, imports and UI-specific settings. Those are not claimed as
+fully extracted yet. The CLI deliberately does not load them implicitly; see the
+[CLI contract and limitations](../reference/cli.md#standalone-cli).
+
+`scripts/check_architecture.py` rejects transitive GPUI or desktop dependencies
+in every workspace member except the desktop and its UI crate. Linux headless
+tests and native macOS checks remain separate required CI work.
 
 ## Runtime flow
 

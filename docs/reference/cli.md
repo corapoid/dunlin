@@ -37,6 +37,65 @@ and [test quality](../quality/test-quality.md), not old archive command lists.
 Sources: [validation/registry](../../apps/desktop/src/cli.rs),
 [dispatch](../../apps/desktop/src/main.rs), [runner](../../scripts/release_qa.py).
 
+## Standalone CLI
+
+`dunlin-cli` is a separate binary, without GPUI. Build it on macOS or Linux:
+
+```sh
+cargo build -p dunlin-cli --locked
+target/debug/dunlin-cli --help
+target/debug/dunlin-cli project list --db /absolute/path/to/dunlin.db --json
+target/debug/dunlin-cli session list --db /absolute/path/to/dunlin.db --json
+```
+
+Catalog commands require an explicitly selected existing desktop database and
+open it **read-only**, without creation or migrations. They can run alongside the
+desktop. They do not take ownership of its active sessions.
+
+Run a fresh local ACP session, explicitly choosing the executable and directory:
+
+```sh
+target/debug/dunlin-cli run --local --harness 'opencode acp' \
+  --cwd /absolute/path/to/project --prompt 'Explain this project' --json
+```
+
+Runs are ephemeral: no desktop history writes, resume/takeover, automatic trust
+import, desktop model/environment defaults, vault/MCP grants or task budgets.
+The selected harness still runs with your OS permissions; this command is not a
+sandbox. Tool permission requests are denied by default. `--permission ask`
+requires an interactive terminal and approves only the operation you confirm,
+once. `--timeout` defaults to 180 seconds and is limited to 1–3600. Ctrl-C cancels
+the run and waits for the ACP worker to shut down.
+
+Pair a separate CLI device using the server's private Tailscale Serve HTTPS URL:
+
+```sh
+target/debug/dunlin-cli remote pair --url https://server.tail123.ts.net \
+  --connection ./dunlin-connection.json
+target/debug/dunlin-cli remote list --connection ./dunlin-connection.json --json
+target/debug/dunlin-cli project list --remote ./dunlin-connection.json --json
+target/debug/dunlin-cli session list --remote ./dunlin-connection.json --project PROJECT_ID --json
+target/debug/dunlin-cli run --remote ./dunlin-connection.json --project PROJECT_ID \
+  --cwd /absolute/server/project/path --prompt 'Explain this project' --json
+```
+
+Pairing reads one code from stdin, not argv. The new connection file contains a
+**bearer token in plaintext**, is created with mode `0600` and is never overwritten.
+Keep it outside repositories, do not share it, and revoke the paired device on the
+server when finished. `remote list` describes that one connection; it does not
+scan desktop settings or discover servers. Tokens are never included in command
+output. Release builds retain the desktop's Tailscale-only endpoint policy;
+debug builds additionally allow loopback for deterministic tests.
+
+`--json` writes a single result to stdout; diagnostics and permission prompts use
+stderr. Exit codes: `0` success, `1` operation failure or non-success ACP stop,
+`2` usage error, `124` timeout, `130` cancellation. Failure before a result leaves
+stdout empty. Catalog text mode currently uses readable, indented JSON; run text
+mode prints the agent's response.
+
+Sources: [CLI](../../apps/cli/src/main.rs), [runner](../../crates/runtime/src/run.rs),
+[relay client](../../crates/relay-client/src/lib.rs).
+
 ## Relay
 
 ```sh
@@ -61,7 +120,7 @@ commands do not uniformly inherit `serve --config`; see [configuration](configur
 [Relay setup](../administration/relay-setup.md) covers installers, Linux keyrings,
 authorization, transfers and deployed-host acceptance.
 
-Source: [relay main](../../crates/relay/src/main.rs).
+Source: [relay main](../../apps/server/src/main.rs).
 
 ## Knowledge MCP and pack tooling
 

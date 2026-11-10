@@ -1,0 +1,16 @@
+[package]
+name = "dunlin-runtime"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+dunlin-agent.workspace = true
+dunlin-domain.workspace = true
+serde.workspace = true
+async-channel = "2"
+
+[dev-dependencies]
+serde_json.workspace = true

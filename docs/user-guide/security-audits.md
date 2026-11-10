@@ -71,4 +71,4 @@ is tracked in the [roadmap](../project/roadmap.md); repository vulnerabilities m
 be reported through [SECURITY.md](../../SECURITY.md), not a public issue.
 
 Sources: [Security UI](../../apps/desktop/src/security.rs),
-[audit parsers](../../crates/audit/src), [relay](../../crates/relay/src/api.rs).
+[audit parsers](../../crates/audit/src), [relay](../../apps/server/src/api.rs).

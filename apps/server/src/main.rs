@@ -11,9 +11,9 @@ mod api;
 mod auth;
 mod config;
 mod coordination;
-mod management;
-mod linear;
 mod jobs;
+mod linear;
+mod management;
 mod store;
 mod terminal;
 mod vault;
@@ -582,7 +582,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         config.harness = harness;
     }
     config.apply_env();
-    let listen_address=config.listen_address()?;
+    let listen_address = config.listen_address()?;
     if !config.db.is_absolute() {
         config.db = std::env::current_dir()
             .map_err(|e| e.to_string())?

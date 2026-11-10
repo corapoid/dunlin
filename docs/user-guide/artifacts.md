@@ -32,4 +32,4 @@ must include blob files as well as metadata if you need the captured content.
 
 Sources: [artifact UI](../../apps/desktop/src/knowledge.rs),
 [artifact types/storage](../../crates/artifacts/src),
-[relay artifact routes](../../crates/relay/src/api.rs).
+[relay artifact routes](../../apps/server/src/api.rs).

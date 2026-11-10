@@ -57,4 +57,4 @@ explicit destructive application-data operation, not a repair step to try first.
 Sources: [data directory](../../apps/desktop/src/app/helpers.rs),
 [storage](../../crates/storage/src/lib.rs),
 [logging](../../apps/desktop/src/logging.rs),
-[relay config](../../crates/relay/src/config.rs).
+[relay config](../../apps/server/src/config.rs).

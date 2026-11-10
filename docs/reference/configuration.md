@@ -79,5 +79,5 @@ Non-serve commands do not uniformly load TOML or environment. `user`, `project`,
 intended database explicitly for administration; check the implementation before
 assuming that a service's `--config` affects another command.
 
-Sources: [Config](../../crates/relay/src/config.rs),
-[command dispatch/serve](../../crates/relay/src/main.rs).
+Sources: [Config](../../apps/server/src/config.rs),
+[command dispatch/serve](../../apps/server/src/main.rs).

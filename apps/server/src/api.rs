@@ -15,6 +15,7 @@ use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use dunlin_domain::{ProjectSettings, ProviderUsage, validate_project_environment};
+use dunlin_relay_protocol::{PairRequest, PairResponse, SessionInfo};
 use dunlin_workspace::checks;
 use dunlin_workspace::fs as workspace_fs;
 use dunlin_workspace::git;
@@ -310,9 +311,17 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/presence", post(presence::heartbeat))
-        .route("/v1/jobs", get(crate::jobs::list).post(crate::jobs::enqueue).layer(DefaultBodyLimit::max(16*1024)))
+        .route(
+            "/v1/jobs",
+            get(crate::jobs::list)
+                .post(crate::jobs::enqueue)
+                .layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/v1/jobs/queue", post(crate::jobs::queue_action))
-        .route("/v1/jobs/{id}", get(crate::jobs::get).post(crate::jobs::action))
+        .route(
+            "/v1/jobs/{id}",
+            get(crate::jobs::get).post(crate::jobs::action),
+        )
         .route(
             "/v1/integrations/linear",
             get(crate::linear::inbox)
@@ -723,19 +732,6 @@ fn public_mime(value: &str) -> &'static str {
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(bytes))
-}
-
-#[derive(Deserialize)]
-struct PairRequest {
-    code: String,
-    device_name: String,
-}
-
-#[derive(Serialize)]
-struct PairResponse {
-    token: String,
-    user: User,
-    device_id: String,
 }
 
 async fn pair(
@@ -1456,15 +1452,6 @@ struct AcpQuery {
     /// Comma-separated relay project ids explicitly granted for a group
     /// conversation. Only paths from these grants may enter the sandbox.
     roots: Option<String>,
-}
-
-#[derive(Serialize)]
-struct SessionInfo {
-    id: String,
-    title: String,
-    updated_at: i64,
-    last_device_id: Option<String>,
-    active_device_id: Option<String>,
 }
 
 async fn sessions(

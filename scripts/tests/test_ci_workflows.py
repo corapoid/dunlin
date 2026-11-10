@@ -23,20 +23,21 @@ def job(workflow, name):
 class WorkflowTests(unittest.TestCase):
     def test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results(self):
         gate = job("ci.yml", "test")
-        self.assertIn("needs: [macos-checks, macos-build]", gate)
+        self.assertIn("needs: [macos-checks, macos-build, headless]", gate)
         self.assertIn("if: ${{ always() }}", gate)
         self.assertIn("CHECKS_RESULT: ${{ needs.macos-checks.result }}", gate)
         self.assertIn("BUILD_RESULT: ${{ needs.macos-build.result }}", gate)
+        self.assertIn("HEADLESS_RESULT: ${{ needs.headless.result }}", gate)
         command = textwrap.dedent(gate.split("        run: |\n", 1)[1])
         results = ["success", "failure", "cancelled", "skipped", ""]
-        for checks, build in itertools.product(results, repeat=2):
-            with self.subTest(checks=checks, build=build):
+        for checks, build, headless in itertools.product(results, repeat=3):
+            with self.subTest(checks=checks, build=build, headless=headless):
                 result = subprocess.run(
                     ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
-                    env=dict(os.environ, CHECKS_RESULT=checks, BUILD_RESULT=build),
+                    env=dict(os.environ, CHECKS_RESULT=checks, BUILD_RESULT=build, HEADLESS_RESULT=headless),
                     capture_output=True, text=True,
                 )
-                self.assertEqual(result.returncode == 0, checks == build == "success")
+                self.assertEqual(result.returncode == 0, checks == build == headless == "success")
 
     def test_macos_checks_and_build_are_independent_and_keep_full_checks(self):
         checks = job("ci.yml", "macos-checks")
@@ -48,8 +49,16 @@ class WorkflowTests(unittest.TestCase):
                         "python3 scripts/verify_vendor.py", "./scripts/relay-smoke.sh",
                         "python3 scripts/git-operations-smoke.py"]:
             self.assertIn(command, checks)
-        self.assertIn("cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-ssh -p dunlin-relay --locked", build)
+        self.assertIn("cargo build --release -p dunlin -p dunlin-cli -p dunlin-knowledge-mcp -p dunlin-relay --locked", build)
         self.assertIn("./scripts/bundle-relay.sh --no-build", build)
+
+    def test_headless_checks_are_required_and_publish_separate_cli_artifacts(self):
+        headless = job("ci.yml", "headless")
+        self.assertIn("cargo test --workspace --exclude dunlin --exclude dunlin-ui --locked", headless)
+        self.assertIn("python3 scripts/test_headless.py", headless)
+        self.assertIn("python3 scripts/check_architecture.py", job("ci.yml", "macos-checks"))
+        self.assertIn("name: dunlin-cli-linux-x86_64", headless)
+        self.assertIn("name: dunlin-cli-macos", job("ci.yml", "macos-build"))
 
     def test_platform_releases_wait_for_authorization_not_each_other(self):
         authorization = job("release.yml", "source-authorization")

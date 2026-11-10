@@ -8,8 +8,8 @@ use tower::ServiceExt;
 
 mod coordination;
 mod history;
-mod management;
 mod linear;
+mod management;
 mod operations;
 mod presence;
 mod terminal;

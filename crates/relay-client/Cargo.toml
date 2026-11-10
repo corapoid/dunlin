@@ -1,0 +1,22 @@
+[package]
+name = "dunlin-relay-client"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+dunlin-domain.workspace = true
+dunlin-http.workspace = true
+dunlin-relay-protocol.workspace = true
+dunlin-workspace.workspace = true
+dunlin-usage.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+base64 = "0.23.1"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"

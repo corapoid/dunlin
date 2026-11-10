@@ -45,6 +45,9 @@ jobs:
       - name: Unused Rust dependencies
         run: cargo machete --skip-target-dir apps crates
 
+      - name: Enforce UI-free service boundaries
+        run: python3 scripts/check_architecture.py
+
       - name: Reject panic placeholders
         run: |
           if grep -RInE --include='*.rs' '\b(todo!|unimplemented!)' apps crates; then
@@ -115,7 +118,7 @@ jobs:
 
       - name: Compile app and relay without distributing the app
         run: |
-          cargo build --release -p dunlin -p dunlin-knowledge-mcp -p dunlin-relay --locked
+          cargo build --release -p dunlin -p dunlin-cli -p dunlin-knowledge-mcp -p dunlin-relay --locked
           ./scripts/bundle-relay.sh --no-build
 
       - name: Upload relay
@@ -126,11 +129,47 @@ jobs:
           path: dist/dunlin-relay
           if-no-files-found: error
 
+      - name: Upload standalone CLI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: dunlin-cli-macos
+          retention-days: 3
+          path: target/release/dunlin-cli
+          if-no-files-found: error
+
+  headless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: headless-v1
+          save-if: "false"
+      - name: Test shared services, CLI and server without GPUI
+        run: cargo test --workspace --exclude dunlin --exclude dunlin-ui --locked
+      - name: Build deterministic CLI fixtures
+        run: cargo build -p dunlin-cli -p dunlin-agent --bin dunlin-cli --bin mock_acp_agent --locked
+      - name: CLI ACP behavior
+        run: python3 scripts/test_headless.py
+      - name: Compile standalone CLI
+        run: cargo build --release -p dunlin-cli --locked
+      - name: Upload standalone CLI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: dunlin-cli-linux-x86_64
+          retention-days: 3
+          path: target/release/dunlin-cli
+          if-no-files-found: error
+
   # Preserve the required status used by branch protection and release_source.py.
   # always() is essential: a failed/cancelled prerequisite must fail this gate,
   # not leave a skipped check that GitHub could consider mergeable.
   test:
-    needs: [macos-checks, macos-build]
+    needs: [macos-checks, macos-build, headless]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -139,9 +178,10 @@ jobs:
         env:
           CHECKS_RESULT: ${{ needs.macos-checks.result }}
           BUILD_RESULT: ${{ needs.macos-build.result }}
+          HEADLESS_RESULT: ${{ needs.headless.result }}
         run: |
-          if [[ "$CHECKS_RESULT" != "success" || "$BUILD_RESULT" != "success" ]]; then
-            echo "::error::macOS checks: $CHECKS_RESULT; macOS build: $BUILD_RESULT"
+          if [[ "$CHECKS_RESULT" != "success" || "$BUILD_RESULT" != "success" || "$HEADLESS_RESULT" != "success" ]]; then
+            echo "::error::macOS checks: $CHECKS_RESULT; macOS build: $BUILD_RESULT; headless: $HEADLESS_RESULT"
             exit 1
           fi
 

@@ -74,4 +74,4 @@ Sources: [context](../../apps/desktop/src/workbench.rs),
 [budgets](../../apps/desktop/src/task_budgets.rs),
 [comparisons](../../apps/desktop/src/comparisons.rs),
 [workspace backends](../../crates/workspace/src),
-[relay routes](../../crates/relay/src/api.rs).
+[relay routes](../../apps/server/src/api.rs).

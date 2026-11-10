@@ -10,11 +10,10 @@ use std::time::{Duration, Instant};
 
 use dunlin_agent::{
     AcpHarness, HarnessConfig, HarnessEvent, HarnessUpdate, PermissionChoice, PermissionKind,
-    PlanItem, PlanStatus, ToolCallDelta, ToolCallView,
+    PlanStatus, ToolCallDelta,
 };
 use dunlin_domain::{PermissionMode, SessionStatus, ToolStatus};
 use dunlin_ui::*;
-use serde::{Deserialize, Serialize};
 
 use crate::app::{DunlinApp, PendingRemoteSession};
 use crate::logging;
@@ -22,103 +21,9 @@ use crate::logging;
 mod new_session;
 pub(crate) mod readiness;
 
-/// One rendered entry in the conversation.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub(crate) struct TurnTiming {
-    pub started_at_ms: u64,
-    pub finished_at_ms: Option<u64>,
-    pub elapsed_ms: Option<u64>,
-    #[serde(default)]
-    pub usage: Option<dunlin_agent::TokenUsage>,
-    #[serde(default)]
-    pub usage_before: Option<dunlin_agent::TokenUsage>,
-    #[serde(default)]
-    pub speaker: Option<Speaker>,
-    /// The failure belongs to this request, not later connection/model errors.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub failure: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Speaker {
-    pub harness: String,
-    pub model: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) enum ChatItem {
-    User {
-        text: String,
-        #[serde(default)]
-        timing: Option<TurnTiming>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    AgentText {
-        text: String,
-        streaming: bool,
-        #[serde(default)]
-        message_id: Option<String>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Thought {
-        text: String,
-        streaming: bool,
-        #[serde(default)]
-        message_id: Option<String>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Tool {
-        view: ToolCallView,
-        duration_ms: u64,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Plan {
-        items: Vec<PlanItem>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Permission {
-        request_id: String,
-        title: String,
-        options: Vec<PermissionChoice>,
-        resolved: Option<String>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Error {
-        message: String,
-        #[serde(default)]
-        at_ms: u64,
-    },
-    Child {
-        id: String,
-        parent_id: String,
-        title: Option<String>,
-        items: Vec<ChatItem>,
-        #[serde(default)]
-        at_ms: u64,
-    },
-}
-
-/// Wall-clock timestamp used to project transcript activity onto a timeline.
-pub(crate) fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0)
-}
-
-fn session_status_from_stop(reason: &str) -> SessionStatus {
-    match reason {
-        "end_turn" => SessionStatus::Done,
-        "cancelled" => SessionStatus::Interrupted,
-        _ => SessionStatus::Failed,
-    }
-}
+pub(crate) use dunlin_runtime::now_ms;
+use dunlin_runtime::session_status_from_stop;
+pub(crate) use dunlin_runtime::transcript::{ChatItem, Speaker, TurnTiming};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HarnessStatus {
@@ -686,7 +591,10 @@ impl DunlinApp {
         };
         config.resume_session_id = self.session().acp_session_id.clone();
         if config.resume_session_id.is_none()
-            && let Some(model) = self.harness.inherited_model.as_ref()
+            && let Some(model) = self
+                .harness
+                .inherited_model
+                .as_ref()
                 .and_then(|model| model.id_for(&name))
         {
             config.default_model = Some(model.into());
@@ -1662,7 +1570,9 @@ impl DunlinApp {
         self.coordination_permission_resolved();
         self.update_active_session(|session| {
             session.status = SessionStatus::Running;
-            if approved { session.updated_at = chrono::Utc::now().to_rfc3339(); }
+            if approved {
+                session.updated_at = chrono::Utc::now().to_rfc3339();
+            }
         });
         self.save_current_transcript();
         self.notice = Some(label);
@@ -1803,7 +1713,10 @@ impl DunlinApp {
                 harness.load_session_with_roots(id, path, roots);
             } else {
                 let name = self.session_harness();
-                let model = self.harness.inherited_model.as_ref()
+                let model = self
+                    .harness
+                    .inherited_model
+                    .as_ref()
                     .and_then(|model| model.id_for(&name))
                     .or_else(|| settings.default_model(&name))
                     .map(str::to_owned);
@@ -2467,7 +2380,9 @@ impl DunlinApp {
 
     fn apply_models(&mut self, mut state: Option<dunlin_agent::SessionModels>) {
         if state.as_ref().is_some_and(|models| {
-            self.harness.inherited_model.as_ref()
+            self.harness
+                .inherited_model
+                .as_ref()
                 .is_some_and(|inherited| inherited.choice.id == models.current)
         }) {
             self.harness.inherited_model = None;
@@ -2907,178 +2822,7 @@ impl DunlinApp {
     }
 }
 
-#[derive(Clone, Copy)]
-enum StreamKind {
-    Message,
-    Thought,
-}
-
-fn append_stream(transcript: &mut Vec<ChatItem>, kind: StreamKind, text: String, at_ms: u64) {
-    append_identified(transcript, kind, text, at_ms, None);
-}
-
-fn append_identified(
-    transcript: &mut Vec<ChatItem>,
-    kind: StreamKind,
-    text: String,
-    at_ms: u64,
-    id: Option<String>,
-) {
-    if let Some(id) = &id {
-        for item in transcript.iter_mut().rev() {
-            if matches!(item, ChatItem::User { .. }) {
-                break;
-            }
-            match (kind, item) {
-                (
-                    StreamKind::Message,
-                    ChatItem::AgentText {
-                        text: body,
-                        message_id: Some(existing),
-                        ..
-                    },
-                )
-                | (
-                    StreamKind::Thought,
-                    ChatItem::Thought {
-                        text: body,
-                        message_id: Some(existing),
-                        ..
-                    },
-                ) if existing == id => {
-                    body.push_str(&text);
-                    return;
-                }
-                _ => {}
-            }
-        }
-    }
-    match (kind, transcript.last_mut()) {
-        (
-            StreamKind::Message,
-            Some(ChatItem::AgentText {
-                text: body,
-                streaming,
-                message_id,
-                ..
-            }),
-        ) if *streaming && *message_id == id => {
-            body.push_str(&text);
-            return;
-        }
-        (
-            StreamKind::Thought,
-            Some(ChatItem::Thought {
-                text: body,
-                streaming,
-                message_id,
-                ..
-            }),
-        ) if *streaming && *message_id == id => {
-            body.push_str(&text);
-            return;
-        }
-        _ => {}
-    }
-
-    match kind {
-        StreamKind::Message => transcript.push(ChatItem::AgentText {
-            text,
-            streaming: true,
-            message_id: id,
-            at_ms,
-        }),
-        StreamKind::Thought => transcript.push(ChatItem::Thought {
-            text,
-            streaming: true,
-            message_id: id,
-            at_ms,
-        }),
-    }
-}
-
-fn append_child(
-    transcript: &mut Vec<ChatItem>,
-    id: String,
-    parent_id: String,
-    title: Option<String>,
-    update: HarnessUpdate,
-    at_ms: u64,
-) {
-    if !transcript
-        .iter()
-        .any(|item| matches!(item, ChatItem::Child { id:existing, .. } if existing == &id))
-    {
-        transcript.push(ChatItem::Child {
-            id: id.clone(),
-            parent_id,
-            title: title.clone(),
-            items: Vec::new(),
-            at_ms,
-        });
-    }
-    let Some(ChatItem::Child {
-        items,
-        title: current,
-        ..
-    }) = transcript
-        .iter_mut()
-        .find(|item| matches!(item, ChatItem::Child { id:existing, .. } if existing == &id))
-    else {
-        return;
-    };
-    if title.is_some() {
-        *current = title;
-    }
-    match update {
-        HarnessUpdate::AgentMessage(text) => append_stream(items, StreamKind::Message, text, at_ms),
-        HarnessUpdate::AgentThought(text) => append_stream(items, StreamKind::Thought, text, at_ms),
-        HarnessUpdate::MessageChunk { id, text, thought } => append_identified(
-            items,
-            if thought {
-                StreamKind::Thought
-            } else {
-                StreamKind::Message
-            },
-            text,
-            at_ms,
-            Some(id),
-        ),
-        HarnessUpdate::ToolCall(view) => items.push(ChatItem::Tool {
-            view,
-            duration_ms: 0,
-            at_ms,
-        }),
-        HarnessUpdate::ToolCallUpdate(delta) => {
-            if let Some(ChatItem::Tool {
-                view,
-                duration_ms,
-                at_ms: started,
-                ..
-            }) = items
-                .iter_mut()
-                .find(|item| matches!(item, ChatItem::Tool {view,..} if view.id == delta.id))
-            {
-                if delta
-                    .status
-                    .is_some_and(|status| matches!(status, ToolStatus::Done | ToolStatus::Failed))
-                    && !matches!(view.status, ToolStatus::Done | ToolStatus::Failed)
-                {
-                    *duration_ms = at_ms.saturating_sub(*started);
-                }
-                view.apply(delta);
-            }
-        }
-        HarnessUpdate::Plan(plan) => items.push(ChatItem::Plan { items: plan, at_ms }),
-        HarnessUpdate::Child {
-            id,
-            parent_id,
-            title,
-            update,
-        } => append_child(items, id, parent_id, title, *update, at_ms),
-        _ => {}
-    }
-}
+use dunlin_runtime::transcript::{StreamKind, append_child, append_identified, append_stream};
 
 fn session_title(prompt: &str) -> String {
     let line = prompt.lines().next().unwrap_or(prompt).trim();

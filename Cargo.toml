@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/desktop", "crates/*"]
+members = ["apps/desktop", "apps/cli", "apps/server", "crates/*"]
 exclude = ["vendor/*", "plugins/*"]
 
 [patch.crates-io]
@@ -29,6 +29,9 @@ hex = "0.4.3"
 gpui-kit = { version = "0.9.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
 dunlin-http = { path = "crates/http" }
+dunlin-relay-protocol = { path = "crates/relay-protocol" }
+dunlin-relay-client = { path = "crates/relay-client" }
+dunlin-runtime = { path = "crates/runtime" }
 dunlin-mcp-client = { path = "crates/mcp-client" }
 dunlin-domain = { path = "crates/domain" }
 dunlin-agent = { path = "crates/agent" }

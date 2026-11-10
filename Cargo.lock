@@ -1541,6 +1541,8 @@ dependencies = [
  "dunlin-mcp-client",
  "dunlin-plugin",
  "dunlin-plugin-host",
+ "dunlin-relay-client",
+ "dunlin-runtime",
  "dunlin-storage",
  "dunlin-terminal",
  "dunlin-ui",
@@ -1618,6 +1620,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "uuid",
+]
+
+[[package]]
+name = "dunlin-cli"
+version = "0.2.0"
+dependencies = [
+ "dunlin-agent",
+ "dunlin-relay-client",
+ "dunlin-relay-protocol",
+ "dunlin-runtime",
+ "dunlin-storage",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -1718,6 +1735,7 @@ dependencies = [
  "dunlin-coordination",
  "dunlin-domain",
  "dunlin-mcp-client",
+ "dunlin-relay-protocol",
  "dunlin-storage",
  "dunlin-terminal",
  "dunlin-usage",
@@ -1739,6 +1757,42 @@ dependencies = [
  "tower",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "dunlin-relay-client"
+version = "0.2.0"
+dependencies = [
+ "base64 0.23.1",
+ "dunlin-domain",
+ "dunlin-http",
+ "dunlin-relay-protocol",
+ "dunlin-usage",
+ "dunlin-workspace",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "dunlin-relay-protocol"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dunlin-runtime"
+version = "0.2.0"
+dependencies = [
+ "async-channel",
+ "dunlin-agent",
+ "dunlin-domain",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -31,7 +31,8 @@ fn get<T: DeserializeOwned>(
     path: &str,
     expected: Option<&str>,
 ) -> Result<HistoryResponse<T>, String> {
-    let agent = ureq::AgentBuilder::new().redirects(0).build();
+    super::validate_relay_url(&remote.host.url)?;
+    let agent = super::http_agent();
     let response = agent
         .get(&format!(
             "{}{}",
@@ -131,7 +132,7 @@ fn file_bytes(file: &CommitFile) -> usize {
 }
 
 impl WorkspaceBackend {
-    pub(crate) fn git_overview(
+    pub fn git_overview(
         &self,
         expected: Option<&str>,
     ) -> Result<HistoryResponse<dunlin_workspace::git::overview::Overview>, String> {
@@ -162,7 +163,7 @@ impl WorkspaceBackend {
         }
     }
 
-    pub(crate) fn history_load(
+    pub fn history_load(
         &self,
         revision: &str,
         limit: usize,
@@ -201,7 +202,7 @@ impl WorkspaceBackend {
         }
     }
 
-    pub(crate) fn history_details(
+    pub fn history_details(
         &self,
         scope: &str,
         oid: &str,
@@ -248,7 +249,7 @@ impl WorkspaceBackend {
         }
     }
 
-    pub(crate) fn history_patch(
+    pub fn history_patch(
         &self,
         scope: &str,
         oid: &str,
