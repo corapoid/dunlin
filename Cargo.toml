@@ -77,6 +77,9 @@ strip = false
 
 [profile.dev.package]
 gpui-pre = { opt-level = 3, strip = false }
+# Base controls are framework code too. Optimizing them also keeps macOS debug
+# unwind tables below the compact-unwind offset limit without disabling unwind.
+gpui-base = { opt-level = 3 }
 gpui-component = { opt-level = 3 }
 gpui-kit = { opt-level = 3 }
 gpui-kit-assets = { opt-level = 3 }
