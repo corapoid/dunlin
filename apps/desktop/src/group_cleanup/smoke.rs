@@ -127,9 +127,12 @@ pub(crate) fn steps(root: &Path) -> Vec<Step> {
                 app.group_cleanup.dialog.is_none() && !app.group_cleanup.busy
             },
         ),
-        Step::act("close project settings after cleanup review", |owner, _, cx| {
-            owner.update(cx, |app, cx| app.close_project_settings(cx));
-        }),
+        Step::act(
+            "close project settings after cleanup review",
+            |owner, _, cx| {
+                owner.update(cx, |app, cx| app.close_project_settings(cx));
+            },
+        ),
     ];
     let root = fs::canonicalize(root).unwrap();
     let child = root.parent().unwrap().join("child-project");

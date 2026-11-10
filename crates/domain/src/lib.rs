@@ -7,10 +7,10 @@
 
 use serde::{Deserialize, Serialize};
 
-mod project_settings;
-pub mod presence;
-pub mod relay;
 pub mod jobs;
+pub mod presence;
+mod project_settings;
+pub mod relay;
 pub mod task_budget;
 pub mod vault;
 pub use project_settings::{

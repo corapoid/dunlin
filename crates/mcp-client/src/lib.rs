@@ -190,16 +190,16 @@ impl<'a> Client<'a> {
         self.next_id = self.next_id.checked_add(1).ok_or(Error::Limit)?;
         let response =
             self.post(&json!({"jsonrpc":"2.0", "id":id, "method":method, "params":params}))?;
-        if method == "initialize" {
-            if let Some(session) = response.header("Mcp-Session-Id") {
-                if session.is_empty()
-                    || session.len() > 1024
-                    || !session.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
-                {
-                    return Err(Error::Protocol);
-                }
-                self.session = Some(session.into());
+        if method == "initialize"
+            && let Some(session) = response.header("Mcp-Session-Id")
+        {
+            if session.is_empty()
+                || session.len() > 1024
+                || !session.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+            {
+                return Err(Error::Protocol);
             }
+            self.session = Some(session.into());
         }
         decode_response(response, id)
     }

@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(bytes, noise_bytes());
         assert_eq!(bytes.len(), (TILE * TILE * 4) as usize);
         let mut light = 0;
-        for pixel in bytes.chunks_exact(4) {
+        for pixel in bytes.as_chunks::<4>().0 {
             assert_eq!(pixel[0], pixel[1]);
             assert_eq!(pixel[1], pixel[2]);
             assert!(pixel[3] < 10);

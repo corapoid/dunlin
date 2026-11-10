@@ -165,8 +165,22 @@ pub(crate) fn render(
         } else {
             ("Connecting…", p.muted_fg)
         };
-        let workload=state.and_then(|state|state.snapshot.as_ref()).and_then(|snapshot|snapshot.workload.as_ref());
-        let workload_text=workload.filter(|_|online).map(|workload|format!("{} running · {} queued{}{}",workload.active,workload.queued,if workload.paused{" · paused"}else{""},if workload.interrupted>0{" · interrupted"}else{""}));
+        let workload = state
+            .and_then(|state| state.snapshot.as_ref())
+            .and_then(|snapshot| snapshot.workload.as_ref());
+        let workload_text = workload.filter(|_| online).map(|workload| {
+            format!(
+                "{} running · {} queued{}{}",
+                workload.active,
+                workload.queued,
+                if workload.paused { " · paused" } else { "" },
+                if workload.interrupted > 0 {
+                    " · interrupted"
+                } else {
+                    ""
+                }
+            )
+        });
         let detail = state
             .and_then(|state| state.error.as_deref())
             .unwrap_or(if online {
@@ -294,7 +308,7 @@ pub(crate) fn render(
                     .text_size(px(10.5))
                     .text_color(p.muted_fg)
                     .truncate()
-                    .child(workload_text.unwrap_or_else(||detail.to_string())),
+                    .child(workload_text.unwrap_or_else(|| detail.to_string())),
             )
             .child(peers);
         scene = scene.child(card);

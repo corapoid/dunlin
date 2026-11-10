@@ -801,7 +801,8 @@ pub(crate) fn render(
             cx.notify();
         }))
         .child(
-            SurfaceGeometry::DIALOG.paint_material(p, p.panel, p.border_strong)
+            SurfaceGeometry::DIALOG
+                .paint_material(p, p.panel, p.border_strong)
                 .id("project-import-sheet")
                 .relative()
                 .children({

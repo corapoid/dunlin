@@ -367,19 +367,68 @@ pub(crate) fn render(this: &DunlinApp, index: usize, cx: &mut Context<DunlinApp>
                 .map(|models| models.current.clone())
         })
         .flatten();
-    div().flex().flex_col().gap(px(8.))
-        .child(div().text_size(px(11.)).text_color(p.muted_fg).child(format!("Default model · {} · new conversations only; blank = inherit", draft.harness)))
-        .child(dunlin_ui::input(&draft.model).aria_label("Project default model").disabled(draft.saving))
-        .when_some(current, |view, model| view.child(dunlin_ui::action_button("project-use-current-model").label("Use current session model").disabled(draft.saving)
-            .on_click(cx.listener(move |this, _, window, cx| {
-                if let Some(draft) = &this.project_runtime_draft {
-                    draft.model.update(cx, |s, cx| s.set_value(model.clone(), window, cx));
-                }
-            }))))
-        .when_some(draft.error.clone(), |view, error| view.child(div().text_size(px(11.)).text_color(p.red).child(error)))
-        .child(div().flex().gap(px(6.))
-            .child(dunlin_ui::action_button("save-project-runtime").primary().label(if draft.saving { "Saving…" } else { "Save model" }).disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx))))
-            .child(dunlin_ui::action_button("cancel-project-runtime").label("Cancel edit").disabled(draft.saving).on_click(cx.listener(|this, _, _, cx| { this.project_runtime_draft = None; cx.notify(); }))))
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .child(
+            div()
+                .text_size(px(11.))
+                .text_color(p.muted_fg)
+                .child(format!(
+                    "Default model · {} · new conversations only; blank = inherit",
+                    draft.harness
+                )),
+        )
+        .child(
+            dunlin_ui::input(&draft.model)
+                .aria_label("Project default model")
+                .disabled(draft.saving),
+        )
+        .when_some(current, |view, model| {
+            view.child(
+                dunlin_ui::action_button("project-use-current-model")
+                    .label("Use current session model")
+                    .disabled(draft.saving)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if let Some(draft) = &this.project_runtime_draft {
+                            draft
+                                .model
+                                .update(cx, |s, cx| s.set_value(model.clone(), window, cx));
+                        }
+                    })),
+            )
+        })
+        .when_some(draft.error.clone(), |view, error| {
+            view.child(div().text_size(px(11.)).text_color(p.red).child(error))
+        })
+        .child(
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(
+                    dunlin_ui::action_button("save-project-runtime")
+                        .primary()
+                        .label(if draft.saving {
+                            "Saving…"
+                        } else {
+                            "Save model"
+                        })
+                        .disabled(draft.saving)
+                        .on_click(
+                            cx.listener(|this, _, _, cx| this.save_project_runtime_settings(cx)),
+                        ),
+                )
+                .child(
+                    dunlin_ui::action_button("cancel-project-runtime")
+                        .label("Cancel edit")
+                        .disabled(draft.saving)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.project_runtime_draft = None;
+                            cx.notify();
+                        })),
+                ),
+        )
         .into_any_element()
 }
 

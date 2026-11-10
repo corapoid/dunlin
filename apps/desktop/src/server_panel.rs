@@ -67,8 +67,9 @@ pub(crate) fn request<T: DeserializeOwned>(
     body: Option<&impl Serialize>,
 ) -> Result<T, String> {
     let response = raw(host, token, method, path, body)?;
-    if path == "/v1/jobs" {decode_limit(response,16*1024*1024)}
-    else if path == "/v1/integrations/linear" || path == "/v1/integrations/linear/sync" {
+    if path == "/v1/jobs" {
+        decode_limit(response, 16 * 1024 * 1024)
+    } else if path == "/v1/integrations/linear" || path == "/v1/integrations/linear/sync" {
         decode_limit(response, 8 * 1024 * 1024)
     } else {
         decode(response)

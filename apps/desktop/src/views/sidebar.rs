@@ -146,9 +146,13 @@ pub(crate) fn project_switcher(this: &DunlinApp, cx: &mut Context<DunlinApp>) ->
     .relative()
     .children({
         #[cfg(debug_assertions)]
-        { crate::workspace_ui_smoke::probe("project-switcher") }
+        {
+            crate::workspace_ui_smoke::probe("project-switcher")
+        }
         #[cfg(not(debug_assertions))]
-        { None::<AnyElement> }
+        {
+            None::<AnyElement>
+        }
     })
     .on_click(cx.listener(|this, _, _, cx| {
         this.project_menu_open = !this.project_menu_open;

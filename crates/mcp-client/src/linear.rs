@@ -322,7 +322,7 @@ mod tests {
                 Reply::result("tools/call", json!({"structuredContent":{"issue":row(id)}})),
             ]);
             let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
-            let result = get_issue(&mut client, &[tool.clone()], "issue-id");
+            let result = get_issue(&mut client, std::slice::from_ref(&tool), "issue-id");
             assert_eq!(result.is_ok(), id == "issue-id");
             let requests = mock.finish();
             assert_eq!(

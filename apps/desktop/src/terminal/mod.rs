@@ -557,9 +557,7 @@ impl DunlinApp {
                             tab.status = Status::Exited(exit.clone());
                             match &tab.origin {
                                 Origin::Run { record } => (Some(record.clone()), None),
-                                Origin::Shell | Origin::Relay => {
-                                    (None, Some(tab.title.clone()))
-                                }
+                                Origin::Shell | Origin::Relay => (None, Some(tab.title.clone())),
                             }
                         }
                         None => (None, None),

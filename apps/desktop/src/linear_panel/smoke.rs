@@ -49,9 +49,9 @@ pub(crate) fn steps() -> Vec<Step> {
                         .ticket = Some("no-fixture-network".into());
                     app.server_panel.host = Some("linear-fixture".into());
                     app.server_panel.loading = true;
-                     app.server_panel.linear.fetched =
-                         Some(Instant::now() + Duration::from_secs(86400));
-                     app.server_panel.jobs=crate::jobs_panel::smoke::state();
+                    app.server_panel.linear.fetched =
+                        Some(Instant::now() + Duration::from_secs(86400));
+                    app.server_panel.jobs = crate::jobs_panel::smoke::state();
                     app.server_panel.info = Some(dunlin_workspace::server::Server {
                         role: "member".into(),
                         isolated_agents: true,
@@ -159,5 +159,8 @@ pub(crate) fn steps() -> Vec<Step> {
                 });
             },
         ),
-    ].into_iter().chain(crate::jobs_panel::smoke::steps()).collect()
+    ]
+    .into_iter()
+    .chain(crate::jobs_panel::smoke::steps())
+    .collect()
 }

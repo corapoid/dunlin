@@ -227,9 +227,9 @@ pub(crate) struct StoredSettings {
     pub terminal_dock: TerminalDock,
     #[serde(default = "default_shell_integration")]
     pub shell_integration: bool,
-    #[serde(default, skip_serializing, rename="terminal_ssh_target")]
+    #[serde(default, skip_serializing, rename = "terminal_ssh_target")]
     pub _legacy_terminal_ssh_target: String,
-    #[serde(default, skip_serializing, rename="terminal_ssh_path")]
+    #[serde(default, skip_serializing, rename = "terminal_ssh_path")]
     pub _legacy_terminal_ssh_path: String,
     /// Bundled packs are enabled by default; external packs become enabled only
     /// after the user toggles them. This list is the explicit opt-out.
@@ -1938,11 +1938,17 @@ impl DunlinApp {
         match action {
             PendingRemoteSession::New => {
                 let name = self.session_harness();
-                let model = self.harness.inherited_model.as_ref()
+                let model = self
+                    .harness
+                    .inherited_model
+                    .as_ref()
                     .and_then(|model| model.id_for(&name))
                     .map(str::to_owned)
-                    .or_else(|| self.resolved_project_settings(self.project()).ok()
-                        .and_then(|settings| settings.default_model(&name).map(str::to_owned)));
+                    .or_else(|| {
+                        self.resolved_project_settings(self.project())
+                            .ok()
+                            .and_then(|settings| settings.default_model(&name).map(str::to_owned))
+                    });
                 self.harness.pending_model = model.clone();
                 harness.new_session_with_roots(cwd, roots, model);
             }
@@ -3635,11 +3641,14 @@ impl DunlinApp {
             || self.harness.status.is_busy()
             || self.harness.model_changing
         {
-            self.set_notice(if self.harness.model_changing {
-                "Wait for the model change to finish"
-            } else {
-                "Wait for the harness to finish connecting"
-            }, cx);
+            self.set_notice(
+                if self.harness.model_changing {
+                    "Wait for the model change to finish"
+                } else {
+                    "Wait for the harness to finish connecting"
+                },
+                cx,
+            );
             return;
         }
         let new_harness = if self.project().is_remote() {
@@ -3660,7 +3669,10 @@ impl DunlinApp {
                 title: "New session".into(),
                 status: SessionStatus::Idle,
                 harness: new_harness,
-                model: inherited_model.as_ref().map(|model| model.choice.name.clone()).unwrap_or_else(|| "Auto".into()),
+                model: inherited_model
+                    .as_ref()
+                    .map(|model| model.choice.name.clone())
+                    .unwrap_or_else(|| "Auto".into()),
                 branch: None,
                 updated_at: chrono::Utc::now().to_rfc3339(),
                 cost_usd: 0.0,

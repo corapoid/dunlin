@@ -332,7 +332,7 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                     .flex_col()
                     .gap(px(8.));
                 for issue in &inbox.issues {
-                    let assignment=issue.clone();
+                    let assignment = issue.clone();
                     let url = issue.url.clone();
                     list = list.child(
                         div()
@@ -364,9 +364,23 @@ pub(crate) fn render(this: &DunlinApp, cx: &mut Context<DunlinApp>) -> AnyElemen
                                             .child(issue.title.clone()),
                                     ),
                             )
-                            .child(dunlin_ui::settings::button(SharedString::from(format!("linear-assign:{}",issue.id))).relative().children(crate::gui_probe::marker_named(format!("linear-assign:{}",issue.id)))
+                            .child(
+                                dunlin_ui::settings::button(SharedString::from(format!(
+                                    "linear-assign:{}",
+                                    issue.id
+                                )))
+                                .relative()
+                                .children(crate::gui_probe::marker_named(format!(
+                                    "linear-assign:{}",
+                                    issue.id
+                                )))
                                 .label("Assign to host…")
-                                .on_click(cx.listener(move |this,_,window,cx|this.assign_linear_job(assignment.clone(),window,cx))))
+                                .on_click(cx.listener(
+                                    move |this, _, window, cx| {
+                                        this.assign_linear_job(assignment.clone(), window, cx)
+                                    },
+                                )),
+                            )
                             .child(
                                 dunlin_ui::settings::button(SharedString::from(format!(
                                     "linear-open:{}",

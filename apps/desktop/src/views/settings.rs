@@ -1008,7 +1008,10 @@ fn theme_card(
 
     dunlin_ui::settings::segment(format!("theme-card-{label}"), label, selected)
         .when(fixed, |button| {
-            button.small().px(px(7.)).h(px(dunlin_ui::settings::Tokens::CONTROL_HEIGHT - 4.))
+            button
+                .small()
+                .px(px(7.))
+                .h(px(dunlin_ui::settings::Tokens::CONTROL_HEIGHT - 4.))
         })
         .relative()
         .children({
@@ -2926,9 +2929,9 @@ fn remote_settings(
                     dunlin_ui::settings::button("settings-connect-server")
                         .primary()
                         .label("Connect to server…")
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_remote_connection(window, cx)),
-                        ),
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_remote_connection(window, cx)
+                        })),
                 ),
         );
 
