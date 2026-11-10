@@ -44,6 +44,16 @@ def verify(root=ROOT):
         digest, count = tree_digest(directory)
         if digest != package["tree_sha256"] or count != package["files"]:
             raise ValueError(f"Unreviewed vendor tree change: {package['name']}")
+        changed_paths = set()
+        for change in package.get("changes", []):
+            changed_path = Path(change["path"])
+            if (changed_path.is_absolute() or ".." in changed_path.parts
+                    or not changed_path.parts or change["path"] in changed_paths):
+                raise ValueError(f"Invalid or duplicate vendor change path: {package['name']}")
+            changed_paths.add(change["path"])
+            file = directory / changed_path
+            if not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != change["patched_sha256"]:
+                raise ValueError(f"Vendor per-file provenance mismatch: {package['name']}/{change['path']}")
     lock = tomllib.loads((root / "Cargo.lock").read_text())
     unused = {p["name"] for p in lock.get("patch", {}).get("unused", [])} & packages
     if unused:

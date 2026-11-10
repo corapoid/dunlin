@@ -45,6 +45,29 @@ class VendorIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unused dependency patches"):
             vendor.verify(self.root)
 
+    def test_tree_hash_does_not_hide_incorrect_per_file_provenance(self):
+        path = self.root / "vendor/provenance.json"
+        records = json.loads(path.read_text())
+        record = {"path": "source.rs", "upstream_sha256": None,
+                  "patched_sha256": vendor.hashlib.sha256((self.directory / "source.rs").read_bytes()).hexdigest()}
+        records["packages"][0]["changes"] = [record]
+        path.write_text(json.dumps(records))
+        self.assertEqual(vendor.verify(self.root), 1)
+        record["patched_sha256"] = "0" * 64
+        path.write_text(json.dumps(records))
+        with self.assertRaisesRegex(ValueError, "per-file provenance mismatch"):
+            vendor.verify(self.root)
+
+    def test_duplicate_and_escaping_change_paths_are_rejected(self):
+        path = self.root / "vendor/provenance.json"
+        records = json.loads(path.read_text())
+        record = {"path": "source.rs", "patched_sha256": vendor.hashlib.sha256((self.directory / "source.rs").read_bytes()).hexdigest()}
+        for changes in [[record, record], [{**record, "path": "../outside"}], [{**record, "path": str(self.directory / "source.rs")}]]:
+            records["packages"][0]["changes"] = changes
+            path.write_text(json.dumps(records))
+            with self.assertRaisesRegex(ValueError, "Invalid or duplicate vendor change path"):
+                vendor.verify(self.root)
+
     def test_symlinks_and_unregistered_patches_fail_closed(self):
         (self.directory / "link").symlink_to("source.rs")
         with self.assertRaisesRegex(ValueError, "Symlink"):

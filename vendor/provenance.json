@@ -42,8 +42,8 @@
       "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "cff6377e30f0c857681662e7edc7286bf30f5606033390401b0706d7bd930833",
-      "tree_sha256": "4733291032b90f72607b3c6479cdb7f6636fde37dd8003cbe08bfbdba5e1440c",
-      "files": 220,
+      "tree_sha256": "f170b2c81a3595038ea356e9e2422e48b571a3e18f5e0878ea729014d4825bd9",
+      "files": 221,
       "changes": [
         {
           "path": "Cargo.toml",
@@ -109,6 +109,26 @@
           "path": "src/text/node.rs",
           "upstream_sha256": "cc616d77942c10dd1c9b9910c5a6e1a80b0c9b81a9707cdd939358305a9e750f",
           "patched_sha256": "a8a86986d92a8ab73f7f4accf33e72107b723608512655cc3fe676f8dccc2975"
+        },
+        {
+          "path": "src/text/format/mod.rs",
+          "upstream_sha256": "a9c352dd0d58f53f6dffe14568378bc481c8352985b2653b0ad7dcea67f72ba8",
+          "patched_sha256": "c3ac2671af24e807f3ee9a1cf19a462481fa1b61a79b41b9879abc4decc262d9"
+        },
+        {
+          "path": "src/text/format/plain.rs",
+          "upstream_sha256": null,
+          "patched_sha256": "14ab80793c0d05b29b0f1469ade6a6ca7a1721fee3b3fa95b51892393920ec22"
+        },
+        {
+          "path": "src/text/state.rs",
+          "upstream_sha256": "b22bf74f36e5fc0adcbb1200b4db64356272965e5fdecfdcd2b62d700de38bec",
+          "patched_sha256": "c28a8cc83eb0e88169903ca90bad469b9a6bd8727bb09db3f5962b77032da9bc"
+        },
+        {
+          "path": "src/text/text_view.rs",
+          "upstream_sha256": "5f28384db94118483fdb203e8a2edd6c219c066747b220650e3199c6f7b9b3e0",
+          "patched_sha256": "fbbe35456bfda8305f15823a2193b89487a0d6048944ed4c303e4362b68825af"
         }
       ]
     },
@@ -117,7 +137,7 @@
       "version": "0.9.0",
       "upstream_repository": "https://github.com/longbridge/gpui-kit",
       "registry_archive_sha256": "45bbfdba0efa392190f2fd446ec311325302eb047d5ce45dc1bcf189cb18f5eb",
-      "tree_sha256": "6d75e0d56c6887fdadaaa56ed91d67ec69c1cf6db93009fbb45f73f0d0170074",
+      "tree_sha256": "59179c22d89541be584489d5c69f3cc75a39d235c81cf75297848afa67ac23ff",
       "files": 285,
       "changes": [
         {
@@ -154,6 +174,11 @@
           "path": "src/tab/tab_bar.rs",
           "upstream_sha256": "2d737027220ff389cad010fbe4043e738e82d0d4d06195812902b3b4d69331ff",
           "patched_sha256": "4ba67601c0c57e6ed6fcaf478a9bf0276d2ecbd666edf043b02b0128c5c1f8bc"
+        },
+        {
+          "path": "src/text/compat.rs",
+          "upstream_sha256": "daa6b7e5d2d6a5807fe66f9eb818d57a45cbe944d48efd32811e53ade0d2ca33",
+          "patched_sha256": "8daa4a7827ee3a9dd9f782f5e7f8328f234afcbe858f817d183d79e4109a2a58"
         }
       ]
     },

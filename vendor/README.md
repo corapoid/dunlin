@@ -32,6 +32,16 @@ visual fixtures can present a manually drawn frame in debug builds (`gpui-pre`).
 Their original-file hashes were checked against the checksum-verified registry
 archives; the complete patched trees are recorded in `provenance.json`.
 
+The selectable plain-text extension is recorded as well: four `gpui-base` files
+add a `Plain` format that appends source directly to one paragraph, preserves
+whitespace, and selects the existing plain-text copy behavior; the
+`gpui-component` compatibility constructor forwards to it. It does not parse
+HTML/Markdown, fetch resources, change dependencies or introduce unsafe code.
+The November 2026 reconciliation compared **all files** in both forks against
+their SHA-256-verified crates.io archives. Only those five files were absent from
+the earlier per-file change records; all other differences matched those records.
+This is a focused source/provenance review, not a new comprehensive security audit.
+
 The application's own resvg is also 0.49. All five packages (`bincode`, `instant`,
 `paste`, `rustybuzz`, `ttf-parser`) are absent from the entire application lockfile
 and explicitly banned in `deny.toml`. `advisories.ignore` remains empty.
