@@ -75,8 +75,14 @@ impl Service {
     }
 }
 pub(crate) fn identity(state: &AppState, store: &Store, proof: &Proof) -> Result<()> {
-    proof
-        .browser
+    browser_identity(state, store, &proof.browser)
+}
+pub(crate) fn browser_identity(
+    state: &AppState,
+    store: &Store,
+    browser: &crate::mcp_oauth::BrowserProof,
+) -> Result<()> {
+    browser
         .validate_identity(state, store)
         .map_err(|error| match error {
             dunlin_mcp_client::oauth::persistence::PersistenceError::Unauthorized => Error::Denied,

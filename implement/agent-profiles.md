@@ -155,3 +155,28 @@ Odwołanie ma obowiązkowy, ograniczony `last_disable` receipt w wierszu
 poświadczenia. Wyłączenie może więc zapisać wynik przy pełnym ogólnym audycie;
 nie zależy od odzyskania miejsca na nowy event. Stare referencje i write ACK
 pozostają zachowane. Taki receipt nie jest zgodą na ponowną aktywację.
+
+## Sloty i granty scoped HTTP
+
+Sloty `dunlin-secret-*` używają istniejącej allowlisty MCP profilu schema2:
+`provider_id`, nazwa `http` i SHA pełnej, stałej definicji narzędzia. Prefiks
+jest zarezerwowany; nie może identyfikować zewnętrznego dostawcy OAuth.
+Katalog `scoped-secret-tool` pod zakresem projektu/hosta zwraca schemat oraz
+digest. Wywołanie podaje method/url albo operation/params. Pole secret nie
+należy do schematu; wybór poświadczenia jest prywatnym powiązaniem hosta.
+
+Schema49 zapisuje osobny grant dla principal kind/id, konkretnego
+AgentProfileRef i slotu oraz konkretnej wersji poświadczenia. Manager może
+listować/przyznawać grant przez `scoped-secrets/{credential}/grants`, a odwoływać
+przez `scoped-secrets/{credential}/grants/{grant}/revoke`. Read-only jest jawne.
+Zmiany mają CAS i zachowują tombstone; pierwotny wybór nie przejmuje nowszej
+rewizji grantu. Wygaśnięcie/revocation lub ABA źródłowych uprawnień wymaga
+ponownego, jawnego przypisania sekretu. Granty human wymagają ViewProject i
+CreateSession; service — ViewProject i RunWorkflow oraz żywego principal.
+
+Użytkownik z prawem tworzenia sesji może odczytać własne bieżące powiązania przez
+`secret-bindings?agent_id=…&version=…&digest=…`, bez prawa ManageHosts. Zarządzanie
+grantami pozostaje uprawnieniem ManageProject+ManageHosts. Katalog nie ujawnia
+wartości ani keyring reference. To nadal konfiguracja: execution_supported jest
+false, dopóki broker nie połączy grantu z rzeczywistą sesją/turą/lease i zgodą
+SDK. Status odbioru oraz granice są w [progress.md](progress.md).

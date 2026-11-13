@@ -5619,3 +5619,76 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
   ładowane wyłącznie w testach; skan nie wskazał realnych credentials. Index
   obejmuje powiązany przyrost implementacji, fixture'y, narzędzia i dokumentację.
 - Prośba o commit/push nie zamyka celu E0–E10 ani E5.3; formalnie21/68=30,9%.
+
+## 2026-11-14 — E5.3: granty scoped secrets i katalog profilu, odbiór w toku
+
+- Poprzedni turn zapisał i wypchnął commit3325e16 na prośbę właściciela, był
+  postępem. Ponownie sprawdzono czyste drzewo, schema48 i istniejącą allowlistę
+  MCP. Prace nad całym E0–E10 pozostają aktywne; brak nowego polecenia commita.
+- Dodano stały schemat MCP narzędzia http i zarezerwowany namespace slotów
+  dunlin-secret-*. Profil schema2 przypina provider/name/definition digest,
+  tak jak pozostałe MCP. Definicja nie zawiera poświadczeń, hostów ani referencji
+  keyringu. Argumenty nie mogą podać secret; przypisuje go host z prywatnego
+  grantu. Są dwa rozłączne tryby: method/url albo zarejestrowana operation/params.
+  Istniejący protected policy nadal ogranicza rzeczywisty HTTP. Zewnętrzna
+  konfiguracja OAuth nie może użyć zarezerwowanego prefiksu.
+- Schema49 dodaje scoped_secret_grants: dokładny principal kind/id,
+  AgentProfileRef (ID/version/digest), slot MCP, credential revision, rewizje
+  membership/project grant/host, read-only oraz monotoniczną rewizję grantu.
+  Revoke przechowuje tombstone i bounded last_revoke, także przy pełnym audycie.
+  Zmiana uprawnień nie odświeża starej wybranej rewizji. Dwa profile o identycznej
+  treści/digest mają osobne granty; nie utożsamiamy ich ID i wersji.
+- Konfiguracja grantu wymaga istniejącego activated/write-acknowledged credential,
+  zatwierdzonego hosta, dokładnego opublikowanego profilu i zgodnego pinu http.
+  Grantee human musi mieć ViewProject+CreateSession; service — bieżący, nieodwołany
+  i niewygasły principal w tym projekcie z ViewProject+RunWorkflow. Rewizje źródła
+  są przypięte, więc revocation/regrant/ABA wymaga jawnego regrantu sekretu.
+- Manager API: GET/POST scoped-secrets/{credential}/grants oraz POST
+  scoped-secrets/{credential}/grants/{grant}/revoke. Katalog scoped-secret-tool
+  zwraca schema/digest/prefix. Recipient API secret-bindings z AgentProfileRef
+  zwraca wyłącznie własne bieżące bindings, bez ManageHosts. Wszystkie pozostają
+  cookie/same-origin/expected-user/no-store i nie czytają keyringu. Katalog
+  filtruje wersje, host i źródłowe rewizje w SQL; bound1024 wynika z8 slotów i128
+  credentials, a sentinel przekroczenia kończy zapytanie zamiast cichego ucięcia.
+- Execution_supported pozostaje false: nowe granty i metadata resolver nie są
+  same w sobie runtime permittem. Wciąż wymagane: actual session/turn/lease
+  Authority, jednorazowa zgoda SDK, broker/runner i pełny kill switch/retencja/UI.
+- Dodano testy grantów SQL (reopen,CAS,grantee ABA,service revocation,profile/
+  version/slot,Credential/Host invalidation,profile identity,negative audit),3 API
+  i test reserved OAuth namespace, oraz biblioteczny test argumentów http.
+  Historyczne downgrade fixtures uwzględniają brak tabel49.
+- Pierwszy MCP build exit101: użyty ToolValidation jest prywatny. Zastąpiono go
+  publicznym bounded Schema bez poszerzania API SDK.
+  [Log](evidence/2026-11-14-scoped-grants/mcp-first.log).
+  Pierwszy root Clippy exit101: fixture przekazał extra revision do raw row lookup;
+  poprawiono tylko wywołanie testu. [Log](evidence/2026-11-14-scoped-grants/clippy-first.log).
+- Przegląd dodał terminalny negative cut przy revision ceiling: credential disable
+  i grant revoke działają przy maksymalnej rewizji bez dalszej inkrementacji;
+  positive install/regrant przy ceiling pozostaje zabronione. Jest osobny test
+  obu przypadków. Trwa drugi root Clippy, po nim backend i MCP. Bez deklaracji
+  wyników i bez realnych kont/keyringu/tailnet. Formalnie21/68=30,9%, E5.3 otwarte.
+
+- **Root all-targets Clippy -D warnings PASS**,2m10s, sourcee5ce2f4a;
+  peak2329710592B/max0/OOM0. [Log](evidence/2026-11-14-scoped-grants/clippy-final.log).
+- **Pełny backend889 PASS**:744 relay+1 identity+80 SDK+27 terminal+37 usage;
+  54 osobne acceptance ignored. Wszystkie14 nowych testów backendu PASS
+  (10 grant SQL,3 API,1 reserved namespace), w tym terminalny limit obu
+  negative cuts i izolacja katalogu odbiorcy. Relay744 trwał207,74s;
+  peak3592929280B/max0/OOM0, scratch62%,603292KiB wolnego.
+  [Log](evidence/2026-11-14-scoped-grants/server-final.log).
+- **MCP/HTTP/vault175 +2 compile-fail PASS**, package all-targets Clippy PASS
+  (36,60s);116 MCP+6 HTTP+53 vault. Nowy test przypina statyczny schemat i
+  odrzuca wybór credential przez argumenty oraz mieszanie trybów. Sourcee5ce2f4a,
+  peak1311780864B/max0/OOM0. [Log](evidence/2026-11-14-scoped-grants/mcp-final.log).
+- Niezależny snapshot potwierdzae5ce2f4a dla całego Rust. Frontend/TypeScript/
+  tooling pozostają86f046de/d800150d/821cd925. Końcowy production CLI acceptance
+  ze schema49 trwa; nie deklarujemy jeszcze jego wyniku. Rustfmt23 zmienionych
+  plików,diff check i122 Markdown/linków/anchors PASS.
+
+- **Końcowy production CLI acceptance schema49 PASS**:1 test,797 filtered;
+  peak3592929280B/max0/OOM0. [Log](evidence/2026-11-14-scoped-grants/runtime-final.log).
+  Wszystkie4 suite zakończyły się exit0 i wskazują ten sam Rust source SHA;
+  ponowny snapshot przed commitem potwierdził zgodność.
+  [Manifest odbioru](evidence/2026-11-14-scoped-grants/verified-source.json).
+  Odbiór dotyczy grantów i katalogu konfiguracji; E5.3 pozostaje otwarte,
+  execution_supported=false. Formalnie nadal21/68=30,9%.

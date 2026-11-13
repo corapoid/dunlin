@@ -34,7 +34,10 @@ pub enum Authentication {
 }
 impl Provider {
     pub fn validate(&self) -> Result<(), String> {
-        if self.id.is_empty()
+        if self
+            .id
+            .starts_with(dunlin_vault::scoped::tool::PROVIDER_PREFIX)
+            || self.id.is_empty()
             || self.id.len() > 64
             || !self
                 .id
@@ -240,6 +243,15 @@ mod tests {
             client_secret_ref: None,
         }
     }
+    #[test]
+    fn builtin_secret_provider_namespace_cannot_be_configured_as_external_oauth() {
+        let mut configured = provider();
+        configured.id = "dunlin-secret-work".into();
+        configured.redirect_uri =
+            "https://app.tail123.ts.net/v1/web/mcp/oauth/dunlin-secret-work/callback".into();
+        assert!(configured.validate().unwrap_err().contains("provider ID"));
+    }
+
     #[test]
     fn mcp_provider_configuration_pins_callback_ids_origins_scopes_and_client_secret_namespace() {
         let valid = provider();

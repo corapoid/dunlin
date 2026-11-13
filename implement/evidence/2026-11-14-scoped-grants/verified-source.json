@@ -1,0 +1,32 @@
+{
+  "source_sha256": "e5ce2f4acd17425fc27797672799213dd98986ee18751363b3e7f82e843e3ea3",
+  "suites": {
+    "clippy-final.log": {
+      "sha256": "f9b7f05b0920c41afad0d71b28513b920219a51df57bc5bbfaedb81d0af8dc0b",
+      "exit_code": 0
+    },
+    "server-final.log": {
+      "sha256": "37cf9a88576c188f1d64a26f649fb451496cefa0444ddb9f310174ef164502e2",
+      "exit_code": 0
+    },
+    "mcp-final.log": {
+      "sha256": "38ce7f945a503764057aeb836ae7fcb9d4575233774fbb817c921d66e9def626",
+      "exit_code": 0
+    },
+    "runtime-final.log": {
+      "sha256": "b6862dfc8b96bd940f224bf814201a0477568fd51039f7cfe5de13b12c7c9e8d",
+      "exit_code": 0
+    }
+  },
+  "passed": {
+    "server": 889,
+    "mcp_http_vault": 175,
+    "compile_fail": 2,
+    "production_cli_acceptance": 1
+  },
+  "limits": [
+    "E5.3 remains open; grants and catalog are configuration metadata only",
+    "execution_supported=false; managed runtime/runner authority and per-call SDK consent integration remain pending",
+    "No real accounts, keyring, or tailnet acceptance in these checks"
+  ]
+}

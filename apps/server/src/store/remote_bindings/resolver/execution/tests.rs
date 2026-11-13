@@ -835,7 +835,7 @@ fn migration_35_preserves_v34_local_remote_bindings_and_existing_logical_native_
         .connection
         .query_row("SELECT count(*) FROM team_audit", [], |r| r.get(0))
         .unwrap();
-    f.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; PRAGMA user_version=34;").unwrap();
+    f.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; PRAGMA user_version=34;").unwrap();
     drop(f.store);
     let reopened = Store::open(path).unwrap();
     assert_eq!(
@@ -907,7 +907,7 @@ fn migration_35_second_table_collision_rolls_back_first_table_and_version_then_r
         .remote_binding_row(&f.workspace, &f.project, &f.binding.id)
         .unwrap()
         .unwrap();
-    f.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; PRAGMA user_version=34; CREATE TABLE controller_remote_execution_outcomes(collision_marker TEXT); INSERT INTO controller_remote_execution_outcomes VALUES('keep collision data');").unwrap();
+    f.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; PRAGMA user_version=34; CREATE TABLE controller_remote_execution_outcomes(collision_marker TEXT); INSERT INTO controller_remote_execution_outcomes VALUES('keep collision data');").unwrap();
     drop(f.store);
     assert!(Store::open(&path).is_err());
     let raw = rusqlite::Connection::open(&path).unwrap();

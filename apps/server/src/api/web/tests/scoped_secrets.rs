@@ -384,3 +384,215 @@ async fn scoped_secret_requests_require_cookie_origin_exact_actor_and_explicit_h
     );
     assert!(s.secrets.writes.lock().unwrap().is_empty());
 }
+
+fn published_secret_profile(s: &Scope, digest: &str) -> Value {
+    let store = s.state.store.lock().unwrap();
+    let definition=serde_json::from_value(json!({"schema_version":2,"name":"Secret consumer","harness":"claude","model":"fixture","mode":"plan","skills":[],"mcp":[{"provider_id":"dunlin-secret-work","name":"http","definition_digest":digest}],"max_seconds":60,"max_output_bytes":65536})).unwrap();
+    let draft = store
+        .create_agent(&s.owner, &s.workspace, &s.project, definition)
+        .unwrap();
+    let version = store
+        .publish_agent(&s.owner, &s.workspace, &s.project, &draft.id, 1)
+        .unwrap();
+    json!({"agent_id":version.agent_id,"version":version.version,"digest":version.digest})
+}
+fn grant_request(profile: &Value, principal: &str) -> Value {
+    json!({"expected_revision":0,"credential_revision":1,"principal_kind":"human","principal_id":principal,"profile":profile,"provider_id":"dunlin-secret-work","read_only":true})
+}
+fn bindings_path(s: &Scope, profile: &Value) -> String {
+    format!(
+        "{}?agent_id={}&version={}&digest={}",
+        s.base.replace("/scoped-secrets", "/secret-bindings"),
+        profile["agent_id"].as_str().unwrap(),
+        profile["version"].as_u64().unwrap(),
+        profile["digest"].as_str().unwrap()
+    )
+}
+
+#[tokio::test]
+async fn scoped_secret_grant_api_pins_catalog_profile_actor_and_revisions_without_keyring_reads() {
+    let s = scope().await;
+    let credential = format!("{}/work-api", s.base);
+    assert_eq!(
+        request(&s, "POST", &credential, save(&s, 0)).await.0,
+        StatusCode::OK
+    );
+    let (status, catalog) = request(
+        &s,
+        "GET",
+        &s.base.replace("/scoped-secrets", "/scoped-secret-tool"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(catalog["provider_prefix"], "dunlin-secret-");
+    assert_eq!(catalog["tool"]["name"], "http");
+    assert_eq!(catalog["execution_supported"], false);
+    let profile = published_secret_profile(&s, catalog["definition_digest"].as_str().unwrap());
+    let path = format!("{credential}/grants");
+    let body = grant_request(&profile, &s.owner);
+    let (status, grant) = request(&s, "POST", &path, body.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{grant}");
+    assert_eq!(grant["profile"], profile);
+    assert_eq!(grant["principal_id"], s.owner);
+    assert_eq!(grant["revision"], 1);
+    assert_eq!(
+        request(&s, "POST", &path, body.clone()).await.0,
+        StatusCode::CONFLICT
+    );
+    let (_, list) = request(&s, "GET", &path, Value::Null).await;
+    assert_eq!(list["grants"].as_array().unwrap().len(), 1);
+    let (_, available) = request(&s, "GET", &bindings_path(&s, &profile), Value::Null).await;
+    assert_eq!(available["bindings"].as_array().unwrap().len(), 1);
+    assert_eq!(available["execution_supported"], false);
+    let revoke = format!("{path}/{}/revoke", grant["id"].as_str().unwrap());
+    let (status, revoked) = request(&s, "POST", &revoke, json!({"expected_revision":1})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["active"], false);
+    assert_eq!(revoked["revision"], 2);
+    let (_, available) = request(&s, "GET", &bindings_path(&s, &profile), Value::Null).await;
+    assert!(available["bindings"].as_array().unwrap().is_empty());
+    let mut body = body;
+    body["expected_revision"] = json!(2);
+    let (_, restored) = request(&s, "POST", &path, body).await;
+    assert_eq!(restored["id"], grant["id"]);
+    assert_eq!(restored["revision"], 3);
+    assert_eq!(
+        request(&s, "POST", &revoke, json!({"expected_revision":1}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(s.secrets.reads.load(Ordering::Relaxed), 0);
+    assert_eq!(s.secrets.writes.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn scoped_secret_binding_catalog_is_recipient_only_and_does_not_require_host_management() {
+    let s = scope().await;
+    let credential = format!("{}/work-api", s.base);
+    assert_eq!(
+        request(&s, "POST", &credential, save(&s, 0)).await.0,
+        StatusCode::OK
+    );
+    let digest = dunlin_vault::scoped::tool::http()
+        .definition_digest()
+        .unwrap();
+    let profile = published_secret_profile(&s, &digest);
+    let recipient = {
+        let store = s.state.store.lock().unwrap();
+        let user = store.create_user("secret-recipient", "member").unwrap();
+        store
+            .set_team_member(
+                &s.owner,
+                &s.workspace,
+                &user.id,
+                WorkspaceRole::Member,
+                true,
+                None,
+            )
+            .unwrap();
+        store
+            .set_team_project_grant(
+                &s.owner,
+                &s.workspace,
+                &s.project,
+                &user.id,
+                BTreeSet::from([Permission::ViewProject, Permission::CreateSession]),
+                None,
+            )
+            .unwrap();
+        user
+    };
+    let cookie = paired_cookie(&s.state, &recipient.id).await;
+    let path = format!("{credential}/grants");
+    let body = grant_request(&profile, &recipient.id);
+    assert_eq!(
+        send(
+            &s,
+            "POST",
+            &path,
+            &cookie,
+            body.clone(),
+            "https://build.tail123.ts.net",
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(request(&s, "POST", &path, body).await.0, StatusCode::OK);
+    let (_, own) = request(&s, "GET", &bindings_path(&s, &profile), Value::Null).await;
+    assert!(own["bindings"].as_array().unwrap().is_empty());
+    let (status, available) = send(
+        &s,
+        "GET",
+        &bindings_path(&s, &profile),
+        &cookie,
+        Value::Null,
+        "https://build.tail123.ts.net",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{available}");
+    assert_eq!(available["bindings"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        send(
+            &s,
+            "GET",
+            &path,
+            &cookie,
+            Value::Null,
+            "https://build.tail123.ts.net",
+            None
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(s.secrets.reads.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn scoped_secret_grant_api_rejects_wrong_profile_source_version_and_extra_authority() {
+    let s = scope().await;
+    let credential = format!("{}/work-api", s.base);
+    assert_eq!(
+        request(&s, "POST", &credential, save(&s, 0)).await.0,
+        StatusCode::OK
+    );
+    let profile = published_secret_profile(
+        &s,
+        &dunlin_vault::scoped::tool::http()
+            .definition_digest()
+            .unwrap(),
+    );
+    let path = format!("{credential}/grants");
+    let mut body = grant_request(&profile, &s.owner);
+    body["profile"]["digest"] = json!("b".repeat(64));
+    assert_eq!(
+        request(&s, "POST", &path, body).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let mut body = grant_request(&profile, &s.owner);
+    body["credential_revision"] = json!(2);
+    assert_eq!(
+        request(&s, "POST", &path, body).await.0,
+        StatusCode::CONFLICT
+    );
+    let mut body = grant_request(&profile, &s.owner);
+    body["provider_id"] = json!("external-work");
+    assert_eq!(
+        request(&s, "POST", &path, body).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let mut body = grant_request(&profile, &s.owner);
+    body["actor"] = json!(s.owner);
+    assert_eq!(
+        request(&s, "POST", &path, body).await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (_, grants) = request(&s, "GET", &path, Value::Null).await;
+    assert!(grants["grants"].as_array().unwrap().is_empty());
+    assert_eq!(s.secrets.reads.load(Ordering::Relaxed), 0);
+}

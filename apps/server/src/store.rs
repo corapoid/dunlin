@@ -66,7 +66,7 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-pub(crate) const SCHEMA_VERSION: i64 = 48;
+pub(crate) const SCHEMA_VERSION: i64 = 49;
 
 const MAX_SESSIONS_PER_USER: i64 = 1000;
 
@@ -615,6 +615,12 @@ impl Store {
             let tx = self.connection.unchecked_transaction()?;
             tx.execute_batch(scoped_secrets::SCHEMA)?;
             tx.execute_batch("PRAGMA user_version=48;")?;
+            tx.commit()?;
+        }
+        if version < 49 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(scoped_secrets::GRANTS_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=49;")?;
             tx.commit()?;
         }
         Ok(())
@@ -1511,7 +1517,7 @@ mod tests {
             .interactive_journal()
             .enqueue(&authority, &session.id, "one", "v17 retained prompt")
             .unwrap();
-        store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; DROP TABLE interactive_session_share_audit; DROP TABLE interactive_session_readers; DROP TABLE interactive_session_sharing; DROP TABLE interactive_permission_challenges; DROP TABLE interactive_cancellation_intents; DROP TABLE interactive_client_dispatch; DROP TABLE interactive_message_ids; DROP TABLE interactive_ahp_clients; DROP TABLE interactive_ahp_sessions; DROP TABLE interactive_ahp_actions; DROP TABLE interactive_ahp_chats; DROP TABLE interactive_ahp_clock; DROP TRIGGER interactive_event_stream; DROP TABLE interactive_stream_events; DROP TABLE interactive_stream_clock; ALTER TABLE relay_jobs DROP COLUMN checkout_grant; ALTER TABLE project_grants DROP COLUMN active; ALTER TABLE project_grants DROP COLUMN revision; PRAGMA user_version=17;").unwrap();
+        store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; DROP TABLE interactive_session_share_audit; DROP TABLE interactive_session_readers; DROP TABLE interactive_session_sharing; DROP TABLE interactive_permission_challenges; DROP TABLE interactive_cancellation_intents; DROP TABLE interactive_client_dispatch; DROP TABLE interactive_message_ids; DROP TABLE interactive_ahp_clients; DROP TABLE interactive_ahp_sessions; DROP TABLE interactive_ahp_actions; DROP TABLE interactive_ahp_chats; DROP TABLE interactive_ahp_clock; DROP TRIGGER interactive_event_stream; DROP TABLE interactive_stream_events; DROP TABLE interactive_stream_clock; ALTER TABLE relay_jobs DROP COLUMN checkout_grant; ALTER TABLE project_grants DROP COLUMN active; ALTER TABLE project_grants DROP COLUMN revision; PRAGMA user_version=17;").unwrap();
         drop(store);
         let store = Store::open(&database).unwrap();
         let authority = store
@@ -1563,7 +1569,7 @@ mod tests {
         store
             .connection
             .execute_batch(
-                "DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE transcripts DROP COLUMN revision;
+                "DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE transcripts DROP COLUMN revision;
                 ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; DROP TABLE interactive_session_share_audit; DROP TABLE interactive_session_readers; DROP TABLE interactive_session_sharing; DROP TABLE interactive_permission_challenges; DROP TABLE interactive_cancellation_intents; DROP TABLE interactive_client_dispatch; DROP TABLE interactive_message_ids; DROP TABLE interactive_ahp_clients; DROP TABLE interactive_ahp_sessions; DROP TABLE interactive_ahp_actions; DROP TABLE interactive_ahp_chats; DROP TABLE interactive_ahp_clock; DROP TRIGGER interactive_event_stream; DROP TABLE interactive_stream_events; DROP TABLE interactive_stream_clock; DROP TABLE team_local_bindings; DROP TABLE interactive_events; DROP TABLE interactive_turns; DROP TABLE interactive_sessions; DROP TABLE team_service_principals; DROP TABLE web_oidc_sessions; DROP TABLE team_invitations; DROP TABLE web_browser_sessions;
                 DROP TABLE team_workflow_versions; DROP TABLE team_workflow_drafts;
                 DROP TABLE team_audit; DROP TABLE team_project_grants; DROP TABLE team_projects;

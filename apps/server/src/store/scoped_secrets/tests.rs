@@ -4,7 +4,7 @@ use crate::store::team_projects::PROJECT_PERMISSIONS;
 use dunlin_domain::hosts::{HostCapabilities, HostDefinition};
 use std::collections::BTreeSet;
 
-fn scope(store: &Store) -> Proof {
+pub(super) fn scope(store: &Store) -> Proof {
     let user = store.create_user("scoped-owner", "admin").unwrap();
     let workspace = store.create_workspace(&user, "Scoped").unwrap();
     let project = store
@@ -38,7 +38,7 @@ fn scope(store: &Store) -> Proof {
         )
         .unwrap()
 }
-fn candidate(proof: &Proof, expected: u64) -> Candidate {
+pub(super) fn candidate(proof: &Proof, expected: u64) -> Candidate {
     Candidate {
         credential: "work-api".into(),
         binding: proof.binding.clone(),
@@ -330,7 +330,7 @@ fn migration_47_preserves_existing_data_and_collision_rolls_back_new_schema_only
         let path = dir.path().join("db");
         let store = Store::open(&path).unwrap();
         let proof = scope(&store);
-        store.connection.execute_batch("DROP TABLE scoped_secret_references; DROP TABLE scoped_credentials; PRAGMA user_version=47;").unwrap();
+        store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE scoped_secret_references; DROP TABLE scoped_credentials; PRAGMA user_version=47;").unwrap();
         if collision {
             store.connection.execute_batch("CREATE TABLE scoped_secret_references(marker TEXT);INSERT INTO scoped_secret_references VALUES('preserve me');").unwrap();
         }
@@ -368,7 +368,7 @@ fn migration_47_preserves_existing_data_and_collision_rolls_back_new_schema_only
                     .connection
                     .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                     .unwrap(),
-                48
+                crate::store::SCHEMA_VERSION
             );
             assert!(
                 reopened

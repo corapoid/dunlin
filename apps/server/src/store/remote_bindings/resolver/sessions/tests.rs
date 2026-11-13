@@ -591,7 +591,7 @@ fn unknown_keeps_reservation_blocks_next_claim_and_only_exact_stop_releases_it()
     );
 }
 
-const DROP_SESSION_SCHEMA: &str = "DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; PRAGMA user_version=35;";
+const DROP_SESSION_SCHEMA: &str = "DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; PRAGMA user_version=35;";
 #[test]
 fn migration_36_preserves_existing_v3_command_and_project_authority_without_session_admission() {
     let directory = tempfile::tempdir().unwrap();
@@ -1064,7 +1064,7 @@ fn migration_37_preserves_v36_open_bytes_and_distinguishes_only_proven_unsent_re
             id
         };
         let before = fixture.store.remote_session_snapshot(&id).unwrap().open;
-        fixture.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; ALTER TABLE controller_remote_sessions DROP COLUMN stop_record;ALTER TABLE controller_remote_sessions DROP COLUMN dispatched;PRAGMA user_version=36;").unwrap();
+        fixture.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; ALTER TABLE controller_remote_sessions DROP COLUMN stop_record;ALTER TABLE controller_remote_sessions DROP COLUMN dispatched;PRAGMA user_version=36;").unwrap();
         drop(fixture);
         let store = Store::open(&path).unwrap();
         let snapshot = store.remote_session_snapshot(&id).unwrap();
@@ -1111,7 +1111,7 @@ fn migration_37_column_collision_rolls_back_first_column_and_retains_prior_stop_
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("relay.db");
     let fixture = Fixture::with_store(Store::open(&path).unwrap());
-    fixture.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; ALTER TABLE controller_remote_sessions DROP COLUMN stop_record;ALTER TABLE controller_remote_sessions DROP COLUMN dispatched;ALTER TABLE controller_remote_sessions ADD COLUMN stop_record TEXT;PRAGMA user_version=36;").unwrap();
+    fixture.store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_grants; DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; ALTER TABLE controller_remote_sessions DROP COLUMN stop_record;ALTER TABLE controller_remote_sessions DROP COLUMN dispatched;ALTER TABLE controller_remote_sessions ADD COLUMN stop_record TEXT;PRAGMA user_version=36;").unwrap();
     drop(fixture);
     assert!(Store::open(&path).is_err());
     let raw = rusqlite::Connection::open(&path).unwrap();

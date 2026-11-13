@@ -1,12 +1,15 @@
 //! Scoped credential publication ledger. Contains metadata and write receipts,
 //! never values or credential policies. Unknown references are never reclaimed.
 use super::Store;
+mod grants;
 use crate::mcp_oauth::BrowserProof;
 use dunlin_domain::{
     collaboration::{AuthorityStamp, Permission},
     hosts::HostStatus,
 };
 use dunlin_vault::scoped::{Binding, Candidate, Error, Result, Version, WriteClaim};
+pub(super) use grants::SCHEMA as GRANTS_SCHEMA;
+pub(crate) use grants::{Grant, GrantRequest, Principal};
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Serialize;
 
@@ -313,15 +316,16 @@ impl Store {
         expected: u64,
         identity: &dyn Fn(&Store) -> Result<()>,
     ) -> Result<Status> {
-        if !token(credential) || expected == 0 || expected >= 9_007_199_254_740_991 {
+        if !token(credential) || expected == 0 || expected > 9_007_199_254_740_991 {
             return Err(Error::Invalid);
         }
         let tx = self.scoped_secret_cut(proof, false, identity)?;
         let b = &proof.binding;
+        let revision = (expected + 1).min(9_007_199_254_740_991);
         let receipt=serde_json::json!({"actor":proof.browser.user,"device":proof.browser.device,
             "membership_revision":proof.stamp.membership_revision,"grant_revision":proof.stamp.grant_revision,
-            "host_revision":proof.host_revision,"revision":expected+1,"at":super::now_secs()}).to_string();
-        let changed=tx.execute("UPDATE scoped_credentials SET revision=revision+1,state='disabled',staged_reference=NULL,updated_at=?1,last_disable=?7 WHERE workspace=?2 AND project=?3 AND host=?4 AND credential=?5 AND revision=?6",params![super::now_secs(),b.workspace,b.project,b.host,credential,expected as i64,receipt]).map_err(storage)?;
+            "host_revision":proof.host_revision,"revision":revision,"terminal":revision==expected,"at":super::now_secs()}).to_string();
+        let changed=tx.execute("UPDATE scoped_credentials SET revision=?8,state='disabled',staged_reference=NULL,updated_at=?1,last_disable=?7 WHERE workspace=?2 AND project=?3 AND host=?4 AND credential=?5 AND revision=?6",params![super::now_secs(),b.workspace,b.project,b.host,credential,expected as i64,receipt,revision as i64]).map_err(storage)?;
         if changed != 1 {
             return Err(Error::Conflict);
         }
@@ -329,12 +333,8 @@ impl Store {
         // a rejected audit insert cannot prevent this negative authority cut.
         match self.team_audit_capacity() {
             Ok(()) => {
-                let _ = self.scoped_secret_audit(
-                    proof,
-                    credential,
-                    "scoped_secret_disabled",
-                    expected + 1,
-                );
+                let _ =
+                    self.scoped_secret_audit(proof, credential, "scoped_secret_disabled", revision);
             }
             Err(super::StoreError::Limit(_)) => {}
             Err(other) => return Err(error(other)),
@@ -342,7 +342,7 @@ impl Store {
         tx.commit().map_err(storage)?;
         Ok(Status {
             credential: credential.into(),
-            revision: expected + 1,
+            revision,
             state: "disabled".into(),
         })
     }

@@ -353,6 +353,10 @@ pub(crate) fn check_host_account_policy(state: &AppState, user: &User) -> Result
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secret-tool", get(web::scoped_secrets::tool_catalog).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/secret-bindings", get(web::scoped_secrets::available).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/grants", get(web::scoped_secrets::grants).post(web::scoped_secrets::set_grant).layer(DefaultBodyLimit::max(4096)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/grants/{grant}/revoke", post(web::scoped_secrets::revoke_grant).layer(DefaultBodyLimit::max(1024)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets", get(web::scoped_secrets::list).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}", post(web::scoped_secrets::install).layer(DefaultBodyLimit::max(80*1024)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/disable", post(web::scoped_secrets::disable).layer(DefaultBodyLimit::max(1024)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))

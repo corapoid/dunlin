@@ -10,7 +10,7 @@ use crate::{
 };
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Response,
 };
@@ -38,12 +38,7 @@ fn error(error: Error) -> ApiError {
         _ => ApiError::internal("Scoped secret service unavailable"),
     }
 }
-fn proof(
-    state: &AppState,
-    headers: &HeaderMap,
-    binding: Binding,
-    write: bool,
-) -> Result<Proof, ApiError> {
+fn browser(state: &AppState, headers: &HeaderMap, write: bool) -> Result<BrowserProof, ApiError> {
     request_origin(headers, write)?;
     let cookie = Zeroizing::new(cookie_token(headers)?);
     let store = state.store.lock().map_err(|_| super::unavailable())?;
@@ -59,17 +54,27 @@ fn proof(
     {
         return Err(ApiError::unauthorized());
     }
-    store
-        .scoped_secret_proof(
-            BrowserProof {
-                user: auth.user.id,
-                device: auth.device.id,
-                session_hash: auth::hash_token(&cookie),
-            },
-            binding,
-        )
+    Ok(BrowserProof {
+        user: auth.user.id,
+        device: auth.device.id,
+        session_hash: auth::hash_token(&cookie),
+    })
+}
+fn proof(
+    state: &AppState,
+    headers: &HeaderMap,
+    binding: Binding,
+    write: bool,
+) -> Result<Proof, ApiError> {
+    let browser = browser(state, headers, write)?;
+    state
+        .store
+        .lock()
+        .map_err(|_| super::unavailable())?
+        .scoped_secret_proof(browser, binding)
         .map_err(error)
 }
+
 fn binding((workspace, project, host): (String, String, String)) -> Binding {
     Binding {
         workspace,
@@ -179,4 +184,125 @@ pub(in crate::api) async fn disable(
 
 pub(in crate::api) async fn private_headers(response: Response) -> Response {
     private_response(response)
+}
+
+pub(in crate::api) async fn tool_catalog(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(scope): Path<(String, String, String)>,
+) -> Result<Response, ApiError> {
+    use crate::store::scoped_secrets::Principal;
+    let proof = proof(&state, &headers, binding(scope), false)?;
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    store
+        .scoped_secret_validate(&proof, &|store| {
+            scoped_secrets::identity(&state, store, &proof)
+        })
+        .map_err(error)?;
+    let tool = dunlin_vault::scoped::tool::http();
+    let digest = tool
+        .definition_digest()
+        .map_err(|_| ApiError::internal("Scoped tool schema unavailable"))?;
+    Ok(private_response(Json(
+        json!({"provider_prefix":dunlin_vault::scoped::tool::PROVIDER_PREFIX,"tool":tool,"definition_digest":digest,"principal_kinds":[Principal::Human,Principal::Service],"execution_supported":false}),
+    )))
+}
+pub(in crate::api) async fn grants(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace, project, host, credential)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let proof = proof(
+        &state,
+        &headers,
+        Binding {
+            workspace,
+            project,
+            host,
+        },
+        false,
+    )?;
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    let grants: Vec<crate::store::scoped_secrets::Grant> = store
+        .scoped_secret_grants(&proof, &credential, &|store| {
+            scoped_secrets::identity(&state, store, &proof)
+        })
+        .map_err(error)?;
+    Ok(private_response(Json(json!({"grants":grants}))))
+}
+pub(in crate::api) async fn set_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace, project, host, credential)): Path<(String, String, String, String)>,
+    Json(request): Json<crate::store::scoped_secrets::GrantRequest>,
+) -> Result<Response, ApiError> {
+    let proof = proof(
+        &state,
+        &headers,
+        Binding {
+            workspace,
+            project,
+            host,
+        },
+        true,
+    )?;
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    let grant = store
+        .scoped_secret_set_grant(&proof, &credential, &request, &|store| {
+            scoped_secrets::identity(&state, store, &proof)
+        })
+        .map_err(error)?;
+    Ok(private_response(Json(grant)))
+}
+pub(in crate::api) async fn revoke_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace, project, host, credential, grant)): Path<(
+        String,
+        String,
+        String,
+        String,
+        String,
+    )>,
+    Json(request): Json<Disable>,
+) -> Result<Response, ApiError> {
+    let proof = proof(
+        &state,
+        &headers,
+        Binding {
+            workspace,
+            project,
+            host,
+        },
+        true,
+    )?;
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    let grant = store
+        .scoped_secret_revoke_grant(
+            &proof,
+            &credential,
+            &grant,
+            request.expected_revision,
+            &|store| scoped_secrets::identity(&state, store, &proof),
+        )
+        .map_err(error)?;
+    Ok(private_response(Json(grant)))
+}
+pub(in crate::api) async fn available(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(scope): Path<(String, String, String)>,
+    Query(profile): Query<dunlin_domain::agent::AgentProfileRef>,
+) -> Result<Response, ApiError> {
+    let browser = browser(&state, &headers, false)?;
+    let binding = binding(scope);
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    let grants = store
+        .scoped_secret_available(&browser.user, &binding, &profile, &|store| {
+            scoped_secrets::browser_identity(&state, store, &browser)
+        })
+        .map_err(error)?;
+    Ok(private_response(Json(
+        json!({"bindings":grants,"execution_supported":false}),
+    )))
 }

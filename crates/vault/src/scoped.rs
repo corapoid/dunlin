@@ -13,6 +13,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 use zeroize::{Zeroize, Zeroizing};
 
+pub mod tool;
+
 const MAX_RECORD: usize = 65536;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
