@@ -1,0 +1,12 @@
+{
+  "current_source_sha256": "9738f16036ea27056b755b4d00e7f65596c39a98f5efe1424f211fd69eb7ba6e",
+  "tested_source_sha256": "439b6a8e099d152771cf0c1e8d0dc89f9505f22c4149eae06e6591c8fb108464",
+  "reconstructed_tested_source_sha256": "439b6a8e099d152771cf0c1e8d0dc89f9505f22c4149eae06e6591c8fb108464",
+  "changes": [
+    {
+      "path": "apps/server/src/store/remote_bindings/resolver/sessions/open.rs",
+      "change": "Add #[cfg(test)] to the legacy fixture-only into_legacy converter."
+    }
+  ],
+  "scope": "The full backend and focused tests compiled the same test function bodies with cfg(test). Final non-test compilation/runtime separately verify removal of the unused converter from production. This does not claim byte-identical executables."
+}

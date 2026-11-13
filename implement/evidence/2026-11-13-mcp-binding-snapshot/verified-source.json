@@ -1,0 +1,30 @@
+{
+  "source_sha256": "675ee7d086f5bd8978227b030a6879869ed79b6ccfc0cf28568a4c6383f72dc7",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-binding-snapshot-server.log",
+      "log_sha256": "7452dbf6803b43240c946bff3005d7ba509049cde365a380a70b6c5e7a89cf12",
+      "source_sha256": "675ee7d086f5bd8978227b030a6879869ed79b6ccfc0cf28568a4c6383f72dc7",
+      "exit_code": 0,
+      "scope": "753 full server-family tests, including four new binding snapshot tests."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-binding-snapshot-runtime.log",
+      "log_sha256": "358eabbd051841fe8390106e92e834b40c7ade96522e8952325b600c8932a025",
+      "source_sha256": "675ee7d086f5bd8978227b030a6879869ed79b6ccfc0cf28568a4c6383f72dc7",
+      "exit_code": 0,
+      "scope": "Production executable, real bwrap/LSM and stdio MCP broker: approve/deny/disconnect/lost reply."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-binding-snapshot-clippy-final.log",
+      "log_sha256": "450db8c6fe6bf642e97d55c2be789e707f0427a11be4d054c5cf333f47e78a74",
+      "source_sha256": "675ee7d086f5bd8978227b030a6879869ed79b6ccfc0cf28568a4c6383f72dc7",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "scope": "Shared local account binder and private snapshot format with fresh restore validation. Production remote Pins storage, versioned MCP open/admission, remote Authority and proxy integration remain open. No UI or protocol changes."
+}

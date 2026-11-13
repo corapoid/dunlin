@@ -1,0 +1,32 @@
+Sandbox suite=domain container=dunlin-check-5963838e563e44828ddbd81493cb740b image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=8b3ce53b518e7fea08b2466622e4a7e7b0908236a56ca92e1cc456c2b97d7465
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.10
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.229
+   Compiling typenum v1.20.1
+   Compiling hybrid-array v0.4.15
+   Compiling serde_derive v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling libc v0.2.191
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.19
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling const-oid v0.10.2
+   Compiling digest v0.11.3
+   Compiling cpufeatures v0.3.1
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+error[E0433]: cannot find module or crate `serde_json` in this scope
+   --> crates/domain/src/agent.rs:211:12
+    |
+211 |         if serde_json::to_vec(self)
+    |            ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+    |
+    = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `dunlin-domain` (lib) due to 1 previous error
+Sandbox memory: {"memory.peak": "405659648", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

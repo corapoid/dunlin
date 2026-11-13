@@ -1,0 +1,48 @@
+Sandbox suite=workspace container=dunlin-check-0b86cdc7833044da93f195586f634984 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=2147483648 wall=300s source_sha256=a0e744b99e31a5bd9094c5abcd19063fb2476dacc3cffff53d6f61b9533441d3
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling proc-macro2 v1.0.107
+   Compiling typenum v1.20.1
+   Compiling hybrid-array v0.4.15
+   Compiling cfg-if v1.0.5
+   Compiling getrandom v0.4.3
+   Compiling rustix v1.1.6
+   Compiling zmij v1.0.23
+   Compiling syn v3.0.10
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling const-oid v0.10.2
+   Compiling serde_json v1.0.154
+   Compiling linux-raw-sys v0.12.1
+   Compiling bitflags v2.13.2
+   Compiling serde v1.0.229
+   Compiling winnow v1.0.5
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling digest v0.11.3
+   Compiling serde_derive v1.0.229
+   Compiling cpufeatures v0.3.1
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling memchr v2.8.3
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling once_cell v1.21.4
+   Compiling itoa v1.0.19
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling sha2 v0.11.1
+   Compiling uuid v1.29.2
+   Compiling hex v0.4.3
+   Compiling base64 v0.23.1
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+    Finished `test` profile [unoptimized] target(s) in 56.13s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_workspace-a0e4a545205dbd8d)
+
+running 1 test
+test comparison::tests::second_checkout_hook_cannot_mutate_source_and_report_a_valid_pair ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 188 filtered out; finished in 5.23s
+
+Sandbox memory: {"memory.peak": "665444352", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

@@ -1,0 +1,32 @@
+{
+  "command": [
+    "rustfmt",
+    "--check",
+    "--edition",
+    "2024",
+    "--config",
+    "skip_children=true",
+    "apps/server/src/api.rs",
+    "apps/server/src/api/web.rs",
+    "apps/server/src/api/web/scoped_secrets.rs",
+    "apps/server/src/api/web/tests.rs",
+    "apps/server/src/api/web/tests/scoped_secrets.rs",
+    "apps/server/src/jobs/tests.rs",
+    "apps/server/src/main.rs",
+    "apps/server/src/mcp_oauth/journal.rs",
+    "apps/server/src/scoped_secrets.rs",
+    "apps/server/src/store.rs",
+    "apps/server/src/store/agent_migration_tests.rs",
+    "apps/server/src/store/checkout_migration_tests.rs",
+    "apps/server/src/store/host_migration_tests.rs",
+    "apps/server/src/store/local_metadata_migration_tests.rs",
+    "apps/server/src/store/mcp_input_migration_tests.rs",
+    "apps/server/src/store/mcp_oauth/tests.rs",
+    "apps/server/src/store/remote_bindings/resolver/execution/tests.rs",
+    "apps/server/src/store/remote_bindings/resolver/sessions/tests.rs",
+    "apps/server/src/store/scoped_secrets.rs",
+    "apps/server/src/store/scoped_secrets/tests.rs",
+    "crates/vault/src/scoped.rs"
+  ],
+  "exit_code": 0
+}

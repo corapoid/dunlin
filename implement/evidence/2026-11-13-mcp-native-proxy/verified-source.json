@@ -1,0 +1,32 @@
+{
+  "source_sha256": "9ad77c5af9a1e20d730af40b58b1c2e4bbe9934f22991bb243be9096e9637d8c",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-before-delivery-fix.log",
+      "log_sha256": "929c41916d105787cacc24b63f45086fc3b307a3743fcccdfd4a847140fce977",
+      "source_sha256": "72f507d109012b0ca3d82d5827f1d261a857b3c0e3bc397f942c95b98361a602",
+      "exit_code": 0,
+      "scope": "799 passing backend tests, 38 ignored acceptance tests. Source before the final Unix delivery failure fix, one lint change and the fourth ignored runtime case; exact delta reconstructed by verify-source-scope.py."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "555ee386688d4cfa78450433b58ccbbd3e7e7a17ee39ff55eeec68ecd94bcb3d",
+      "source_sha256": "9ad77c5af9a1e20d730af40b58b1c2e4bbe9934f22991bb243be9096e9637d8c",
+      "exit_code": 0,
+      "scope": "Ten production executable/TLS/WSS/reverse-proof/bwrap/LSM scenarios, including four actual native MCP proxy cases: two turns, Execute revocation, chosen reply quota and local Unix disconnect. Controlled host responder; does not exercise public admission or OAuth/SDK consent in this remote pipeline."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "98ff1fc2e0cf4c87490c4be2b5ef9dda373c290fb09c5cc7357962cebd14f818",
+      "source_sha256": "9ad77c5af9a1e20d730af40b58b1c2e4bbe9934f22991bb243be9096e9637d8c",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "backend_scope_proof": "source-scope-proof.json",
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Native runner open5 receiver, Unix proxy and opaque ACP MCP configuration accepted. Public controller admission/startup and full REST/AHP -> private host broker -> actual runner -> external MCP acceptance remain incomplete. No real accounts/services/tailnet."
+}

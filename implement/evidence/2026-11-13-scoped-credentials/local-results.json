@@ -1,0 +1,32 @@
+[
+  {
+    "command": [
+      "rustfmt",
+      "--check",
+      "--edition",
+      "2024",
+      "--config",
+      "skip_children=true",
+      "crates/vault/src/scoped.rs",
+      "crates/vault/src/lib.rs",
+      "crates/vault/src/store.rs",
+      "crates/vault/src/linux_store.rs"
+    ],
+    "exit_code": 0
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit_code": 0
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/check_docs.py"
+    ],
+    "exit_code": 0
+  }
+]

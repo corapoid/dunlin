@@ -1,0 +1,45 @@
+{
+  "final_source_sha256": "9738f16036ea27056b755b4d00e7f65596c39a98f5efe1424f211fd69eb7ba6e",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "81bcbe1529e372d3be913a81282b2d34042ab63ac0f6ca1c91dffaf766e808f7",
+      "source_sha256": "439b6a8e099d152771cf0c1e8d0dc89f9505f22c4149eae06e6591c8fb108464",
+      "exit_code": 0,
+      "scope": "794 server-family tests (655 relay, 1 identity, 74 SDK, 27 terminal, 37 usage), including four new scoped SQL/controller actor tests. Native receipts/metadata and MCP exchange are controlled fixtures; HTTP MCP and checked credentials are real loopback services."
+    },
+    {
+      "suite": "focused",
+      "log": "focused-second.log",
+      "log_sha256": "2fd29ea57031bff149561227621207cbe4e8ec932cec3922408fb56feb533c2c",
+      "source_sha256": "439b6a8e099d152771cf0c1e8d0dc89f9505f22c4149eae06e6591c8fb108464",
+      "exit_code": 0,
+      "scope": "29 MCP session-store/actor/bridge tests. This is a subset of the full backend count."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "128b95d353ed289a8f65ef956f73ddc0e33d6aa0f2048a4e6a66f9dc3bfc2bfb",
+      "source_sha256": "9738f16036ea27056b755b4d00e7f65596c39a98f5efe1424f211fd69eb7ba6e",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied, including the final non-test compilation."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "4aa3e7d2a0c33413f9efb29b5aaf06479d11213f5eab26ea15187a751d69efec",
+      "source_sha256": "9738f16036ea27056b755b4d00e7f65596c39a98f5efe1424f211fd69eb7ba6e",
+      "exit_code": 0,
+      "scope": "Five actual production executable/TLS/WSS/reverse-proof/bwrap/LSM remote acceptance scenarios for profiles without MCP. Includes process restart and v3/v4/v5 sessions. Not full remote tools/call."
+    }
+  ],
+  "source_scope_proof": {
+    "path": "source-scope-proof.json",
+    "sha256": "ed44c70a0add6989192b7483d0251c2e85442dc94c079295355791b54f6c8d2c",
+    "verifier": "verify-source-scope.py",
+    "verifier_sha256": "c391f4527402ade7d286e6cc4dac8b5cd3b4b760cd68551762a0f342ad795c84"
+  },
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Shared scoped SQL runtime and internal controller actor operations/import/queue/renew/event projection plus negative cleanup after private-account disconnect. Public admission/startup still does not install/activate remote MCP. Source runtime receiver/proxy and full REST/AHP -> TLS/WSS -> runner -> MCP acceptance remain incomplete. No real accounts/services/tailnet, UI or protocol crate changes."
+}

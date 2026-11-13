@@ -1,0 +1,14 @@
+{
+  "exit_code": 0,
+  "image": "sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360",
+  "stdout": "{\"bwrap_sha256\": \"ff5add553bea12a45c18ebe6c67d3ed637052b869a1ca2fc5d74a6a2e8c5cce6\", \"subreaper\": true}\n{\"case\": \"before-handoff\", \"guardian_sigkill\": true, \"adopted\": [{\"pid\": 10, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": false, \"pidfd_exit_observed\": true}, {\"pid\": 11, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": true, \"pidfd_exit_observed\": true}], \"payload_ran\": false, \"all_children_reaped\": true, \"held_fd_stopped\": false}\n{\"case\": \"after-handoff-blocked\", \"guardian_sigkill\": true, \"adopted\": [{\"pid\": 13, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": false, \"pidfd_exit_observed\": true}, {\"pid\": 14, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": true, \"pidfd_exit_observed\": true}], \"payload_ran\": false, \"all_children_reaped\": true, \"held_fd_stopped\": true}\n{\"case\": \"running\", \"guardian_sigkill\": true, \"adopted\": [{\"pid\": 16, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": false, \"pidfd_exit_observed\": true}, {\"pid\": 17, \"ppid\": 7, \"uid\": 65534, \"namespace_init\": true, \"pidfd_exit_observed\": true}], \"payload_ran\": true, \"all_children_reaped\": true, \"held_fd_stopped\": true}\nPASS dedicated Main subreaper: owned pidfd cleanup before handoff, after blocked handoff, and running silent held-FD descendants\n",
+  "stderr": "",
+  "source_sha256": "8c26216911a7fed03fb025b3f4b6043ab0a34747553c0671d0b361d398f44701",
+  "limits": {
+    "memory": "128m",
+    "pids": 64,
+    "network": "none",
+    "wall": 35,
+    "scratch": "16MiB"
+  }
+}

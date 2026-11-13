@@ -1,0 +1,34 @@
+{
+  "rust": {
+    "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+    "inputs": [
+      "Cargo.toml",
+      "Cargo.lock",
+      "apps",
+      "crates",
+      "vendor",
+      "tests/fixtures",
+      "scripts/install-harness.sh"
+    ]
+  },
+  "frontend": {
+    "source_sha256": "21103ba34467926bd94854383dc26ddc74f6d989a553198b5adfc70b6dd58bdf",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog"
+    ]
+  },
+  "typecheck": {
+    "source_sha256": "ebff148222aefa817e0986872dea802769088f458b69c3cb083271f2f8345963",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog",
+      "apps/web/tsconfig.json",
+      "apps/web/vite.config.ts"
+    ]
+  }
+}

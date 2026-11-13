@@ -1,0 +1,19 @@
+{
+  "exit_code": 1,
+  "evidence_kind": "Exact second-run output transcribed from exec tool session 57882; source copied unchanged after that run",
+  "case": "supervisor_sigkill_during_blocked_bootstrap",
+  "namespace_init_exited": false,
+  "payload_ticks_exist": false,
+  "normal_namespace_stop_and_silent_fd_child_prior_case": "passed",
+  "docker_host": "unix:///Users/corapoid/.colima/dunlin-checks/docker.sock",
+  "image": "dunlin-web-checks:browser-bwrap",
+  "image_id": "sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360",
+  "memory_bytes": 134217728,
+  "apparmor": "dunlin-runtime-checks",
+  "seccomp": "target/web-checks/runtime-policies/runtime-seccomp.json",
+  "network": "none",
+  "user": "65534:65534",
+  "cap_drop": "ALL",
+  "no_new_privileges": true,
+  "readonly": true
+}

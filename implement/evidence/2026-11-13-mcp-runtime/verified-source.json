@@ -1,0 +1,14 @@
+{
+  "source_sha256": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42",
+  "logs": {
+    "mcp-runtime-sandbox.log": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42",
+    "mcp-runtime-clippy-final.log": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42",
+    "mcp-runtime-server-final.log": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42",
+    "mcp-runtime-browser-final.log": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42"
+  },
+  "scope": "Local Unix MCP broker, production stdio facade on Linux bwrap/LSM fixture; full server regression; production Chromium UI. Remote MCP and real accounts/services are not accepted by these tests.",
+  "latest_ui_source": "fb00a745d8b2ef9fb43ddf62152f67694b911b42c3072b084c6baa25847ba6bc",
+  "latest_ui_browser_log": "mcp-runtime-browser-ui-verified.log",
+  "latest_ui_frontend_log": "mcp-runtime-frontend-ui-container.log",
+  "unchanged_rust_proof": "ui-parameters-source-proof.json"
+}

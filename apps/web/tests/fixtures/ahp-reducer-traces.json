@@ -1,0 +1,840 @@
+[
+  {
+    "name": "queued-text-reasoning-flags-timestamps",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 97,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": []
+    },
+    "actions": [
+      {
+        "type": "chat/pendingMessageSet",
+        "kind": "queued",
+        "id": "q1",
+        "message": {
+          "text": "one",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/pendingMessageSet",
+        "kind": "queued",
+        "id": "q2",
+        "message": {
+          "text": "two",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/pendingMessageSet",
+        "kind": "queued",
+        "id": "q1",
+        "message": {
+          "text": "edited one",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/queuedMessagesReordered",
+        "order": [
+          "q2",
+          "q1"
+        ]
+      },
+      {
+        "type": "chat/pendingMessageRemoved",
+        "kind": "queued",
+        "id": "q1"
+      },
+      {
+        "type": "chat/turnStarted",
+        "turnId": "t",
+        "startedAt": "2026-11-11T10:01:00.123Z",
+        "message": {
+          "text": "request",
+          "origin": {
+            "kind": "user"
+          }
+        },
+        "queuedMessageId": "q2"
+      },
+      {
+        "type": "chat/responsePart",
+        "turnId": "t",
+        "part": {
+          "kind": "markdown",
+          "id": "text",
+          "content": ""
+        }
+      },
+      {
+        "type": "chat/delta",
+        "turnId": "t",
+        "partId": "text",
+        "content": "hello"
+      },
+      {
+        "type": "chat/reasoning",
+        "turnId": "t",
+        "partId": "text",
+        "content": "wrong part kind no-op"
+      },
+      {
+        "type": "chat/responsePart",
+        "turnId": "t",
+        "part": {
+          "kind": "reasoning",
+          "id": "thought",
+          "content": ""
+        }
+      },
+      {
+        "type": "chat/reasoning",
+        "turnId": "t",
+        "partId": "thought",
+        "content": "reason"
+      },
+      {
+        "type": "chat/delta",
+        "turnId": "t",
+        "partId": "missing",
+        "content": "missing part no-op"
+      },
+      {
+        "type": "chat/turnComplete",
+        "turnId": "t",
+        "duration": 100
+      },
+      {
+        "type": "chat/delta",
+        "turnId": "t",
+        "partId": "text",
+        "content": "late no-op"
+      }
+    ]
+  },
+  {
+    "name": "tool-raw-input-progress-metadata-running-gates",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 65,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": []
+    },
+    "actions": [
+      {
+        "type": "chat/turnStarted",
+        "turnId": "t",
+        "startedAt": "2026-11-11T10:01:00.123Z",
+        "message": {
+          "text": "request",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallStart",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "toolName": "read",
+        "displayName": "Read",
+        "intention": "Inspect",
+        "_meta": {
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallDelta",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "_meta": {
+          "dunlin.rawInput": {
+            "file": "README.md"
+          },
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallDelta",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "content": "{\"file\":",
+        "invocationMessage": {
+          "markdown": "Preparing"
+        },
+        "_meta": {
+          "source": "stream"
+        }
+      },
+      {
+        "type": "chat/toolCallReady",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "invocationMessage": "Read file",
+        "toolInput": "{\"file\":\"README.md\"}",
+        "confirmed": "not-needed",
+        "_meta": {
+          "dunlin.confirmationEvidence": "agent-report-only"
+        }
+      },
+      {
+        "type": "chat/toolCallDelta",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "content": "late-parameters",
+        "_meta": {
+          "source": "must-not-overwrite-running"
+        }
+      },
+      {
+        "type": "chat/toolCallContentChanged",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "content": [
+          {
+            "type": "text",
+            "text": "partial"
+          }
+        ],
+        "_meta": {
+          "source": "progress"
+        }
+      },
+      {
+        "type": "chat/toolCallComplete",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "result": {
+          "success": true,
+          "pastTenseMessage": "Read",
+          "content": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ]
+        },
+        "_meta": {
+          "source": "completed"
+        }
+      },
+      {
+        "type": "chat/toolCallContentChanged",
+        "turnId": "t",
+        "toolCallId": "tool",
+        "content": [
+          {
+            "type": "text",
+            "text": "late"
+          }
+        ],
+        "_meta": {
+          "source": "must-not-overwrite-completed"
+        }
+      },
+      {
+        "type": "chat/turnComplete",
+        "turnId": "t",
+        "duration": -1
+      }
+    ]
+  },
+  {
+    "name": "multiple-host-permissions-decision-revoke-metadata",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 97,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": []
+    },
+    "actions": [
+      {
+        "type": "chat/turnStarted",
+        "turnId": "t",
+        "startedAt": "2026-11-11T10:01:00.123Z",
+        "message": {
+          "text": "request",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallStart",
+        "turnId": "t",
+        "toolCallId": "a",
+        "toolName": "read",
+        "displayName": "Read",
+        "intention": "Inspect",
+        "_meta": {
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallReady",
+        "turnId": "t",
+        "toolCallId": "a",
+        "invocationMessage": "Read file",
+        "toolInput": "{\"file\":\"README.md\"}",
+        "options": [
+          {
+            "id": "nonce:approve",
+            "label": "Allow once",
+            "kind": "approve"
+          },
+          {
+            "id": "nonce:deny",
+            "label": "Deny once",
+            "kind": "deny"
+          }
+        ],
+        "confirmationTitle": "Approve tool A",
+        "_meta": {
+          "dunlin.permissionNonce": "a"
+        }
+      },
+      {
+        "type": "chat/toolCallStart",
+        "turnId": "t",
+        "toolCallId": "b",
+        "toolName": "read",
+        "displayName": "Read",
+        "intention": "Inspect",
+        "_meta": {
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallReady",
+        "turnId": "t",
+        "toolCallId": "b",
+        "invocationMessage": "Read file",
+        "toolInput": "{\"file\":\"README.md\"}",
+        "options": [
+          {
+            "id": "b-nonce:approve",
+            "label": "Allow once",
+            "kind": "approve"
+          },
+          {
+            "id": "b-nonce:deny",
+            "label": "Deny once",
+            "kind": "deny"
+          }
+        ],
+        "confirmationTitle": "Approve tool B",
+        "_meta": {
+          "dunlin.permissionNonce": "b"
+        }
+      },
+      {
+        "type": "chat/toolCallConfirmed",
+        "turnId": "t",
+        "toolCallId": "a",
+        "approved": true,
+        "confirmed": "user-action",
+        "selectedOptionId": "nonce:approve",
+        "_meta": {
+          "dunlin.confirmationEvidence": "human-one-use"
+        }
+      },
+      {
+        "type": "chat/toolCallConfirmed",
+        "turnId": "t",
+        "toolCallId": "b",
+        "approved": false,
+        "reason": "denied",
+        "selectedOptionId": "b-nonce:deny",
+        "_meta": {
+          "dunlin.confirmationEvidence": "human-one-use",
+          "dunlin.humanApproved": false
+        }
+      },
+      {
+        "type": "chat/toolCallComplete",
+        "turnId": "t",
+        "toolCallId": "a",
+        "result": {
+          "success": false,
+          "pastTenseMessage": "Delivery stopped",
+          "error": {
+            "message": "Unknown"
+          }
+        },
+        "_meta": {
+          "dunlin.permissionRevoked": true,
+          "dunlin.permissionUnconfirmed": true
+        }
+      },
+      {
+        "type": "chat/toolCallComplete",
+        "turnId": "t",
+        "toolCallId": "b",
+        "result": {
+          "success": true,
+          "pastTenseMessage": "Late reported success"
+        }
+      },
+      {
+        "type": "chat/error",
+        "turnId": "t",
+        "duration": 125,
+        "part": {
+          "kind": "error",
+          "error": {
+            "errorType": "unknown_outcome",
+            "message": "Unknown outcome"
+          },
+          "resumable": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "terminal-cancel-finalizes-streaming-and-running-tools",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 65,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": []
+    },
+    "actions": [
+      {
+        "type": "chat/turnStarted",
+        "turnId": "t",
+        "startedAt": "2026-11-11T10:01:00.123Z",
+        "message": {
+          "text": "request",
+          "origin": {
+            "kind": "user"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallStart",
+        "turnId": "t",
+        "toolCallId": "stream",
+        "toolName": "read",
+        "displayName": "Read",
+        "intention": "Inspect",
+        "_meta": {
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallDelta",
+        "turnId": "t",
+        "toolCallId": "stream",
+        "content": "partial",
+        "_meta": {
+          "source": "stream"
+        }
+      },
+      {
+        "type": "chat/toolCallStart",
+        "turnId": "t",
+        "toolCallId": "run",
+        "toolName": "read",
+        "displayName": "Read",
+        "intention": "Inspect",
+        "_meta": {
+          "dunlin.acpReport": {
+            "status": "pending"
+          }
+        }
+      },
+      {
+        "type": "chat/toolCallReady",
+        "turnId": "t",
+        "toolCallId": "run",
+        "invocationMessage": "Read file",
+        "toolInput": "{\"file\":\"README.md\"}",
+        "confirmed": "not-needed",
+        "_meta": {
+          "source": "ready"
+        }
+      },
+      {
+        "type": "chat/toolCallContentChanged",
+        "turnId": "t",
+        "toolCallId": "run",
+        "content": [
+          {
+            "type": "text",
+            "text": "partial"
+          }
+        ],
+        "_meta": {
+          "source": "progress"
+        }
+      },
+      {
+        "type": "chat/turnCancelled",
+        "turnId": "t",
+        "duration": 877
+      },
+      {
+        "type": "chat/turnCancelled",
+        "turnId": "t",
+        "duration": 0
+      }
+    ]
+  },
+  {
+    "name": "known-sdk-partial-reorder-original-order-divergence",
+    "knownDivergence": {
+      "reason": "Pinned SDK sorts omitted IDs; protocol docs and queue execution preserve original order. This is not a parity pass.",
+      "protocolOrder": [
+        "m",
+        "z",
+        "a"
+      ]
+    },
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 1,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": [],
+      "queuedMessages": [
+        {
+          "id": "z",
+          "message": {
+            "text": "z",
+            "origin": {
+              "kind": "user"
+            }
+          }
+        },
+        {
+          "id": "a",
+          "message": {
+            "text": "a",
+            "origin": {
+              "kind": "user"
+            }
+          }
+        },
+        {
+          "id": "m",
+          "message": {
+            "text": "m",
+            "origin": {
+              "kind": "user"
+            }
+          }
+        }
+      ]
+    },
+    "actions": [
+      {
+        "type": "chat/queuedMessagesReordered",
+        "order": [
+          "m"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "history-prepend-overlap-cursor-and-live-turns",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle history",
+      "status": 72,
+      "modifiedAt": "2026-11-11T10:03:00.000Z",
+      "interactivity": "full",
+      "turns": [
+        {
+          "id": "t2",
+          "startedAt": "2026-11-11T10:02:00.000Z",
+          "duration": 100,
+          "message": {
+            "text": "prompt2",
+            "origin": {
+              "kind": "user"
+            }
+          },
+          "responseParts": [
+            {
+              "kind": "markdown",
+              "id": "p2",
+              "content": "reply2"
+            }
+          ],
+          "state": "complete"
+        }
+      ],
+      "turnsNextCursor": "page-one",
+      "activeTurn": {
+        "id": "t3",
+        "startedAt": "2026-11-11T10:03:00.000Z",
+        "message": {
+          "text": "prompt3",
+          "origin": {
+            "kind": "user"
+          }
+        },
+        "responseParts": [
+          {
+            "kind": "markdown",
+            "id": "p3",
+            "content": "partial"
+          }
+        ]
+      },
+      "queuedMessages": [
+        {
+          "id": "q4",
+          "message": {
+            "text": "prompt4",
+            "origin": {
+              "kind": "user"
+            }
+          }
+        }
+      ]
+    },
+    "actions": [
+      {
+        "type": "chat/turnsLoaded",
+        "turns": [
+          {
+            "id": "t1",
+            "startedAt": "2026-11-11T10:01:00.000Z",
+            "duration": 100,
+            "message": {
+              "text": "prompt1",
+              "origin": {
+                "kind": "user"
+              }
+            },
+            "responseParts": [
+              {
+                "kind": "markdown",
+                "id": "p1",
+                "content": "reply1"
+              }
+            ],
+            "state": "complete"
+          },
+          {
+            "id": "t2",
+            "startedAt": "2026-11-11T10:02:00.000Z",
+            "duration": 100,
+            "message": {
+              "text": "prompt2",
+              "origin": {
+                "kind": "user"
+              }
+            },
+            "responseParts": [
+              {
+                "kind": "markdown",
+                "id": "p2",
+                "content": "reply2"
+              }
+            ],
+            "state": "complete"
+          }
+        ],
+        "turnsNextCursor": "page-zero"
+      },
+      {
+        "type": "chat/delta",
+        "turnId": "t3",
+        "partId": "p3",
+        "content": " live"
+      },
+      {
+        "type": "chat/turnsLoaded",
+        "turns": [
+          {
+            "id": "t0",
+            "startedAt": "2026-11-11T10:00:00.000Z",
+            "duration": 100,
+            "message": {
+              "text": "prompt0",
+              "origin": {
+                "kind": "user"
+              }
+            },
+            "responseParts": [
+              {
+                "kind": "markdown",
+                "id": "p0",
+                "content": "reply0"
+              }
+            ],
+            "state": "complete"
+          },
+          {
+            "id": "t1",
+            "startedAt": "2026-11-11T10:01:00.000Z",
+            "duration": 100,
+            "message": {
+              "text": "prompt1",
+              "origin": {
+                "kind": "user"
+              }
+            },
+            "responseParts": [
+              {
+                "kind": "markdown",
+                "id": "p1",
+                "content": "reply1"
+              }
+            ],
+            "state": "complete"
+          }
+        ]
+      },
+      {
+        "type": "chat/turnComplete",
+        "turnId": "t3",
+        "duration": 50
+      },
+      {
+        "type": "chat/turnStarted",
+        "turnId": "t4",
+        "startedAt": "2026-11-11T10:04:00.000Z",
+        "message": {
+          "text": "prompt4",
+          "origin": {
+            "kind": "user"
+          }
+        },
+        "queuedMessageId": "q4"
+      }
+    ]
+  },
+  {
+    "name": "mcp-form-input-rounds-and-drafts",
+    "initial": {
+      "resource": "ahp-chat:/oracle",
+      "title": "Oracle",
+      "status": 97,
+      "modifiedAt": "2026-11-11T10:00:00.000Z",
+      "interactivity": "full",
+      "turns": []
+    },
+    "actions": [
+      {
+        "type": "chat/turnStarted",
+        "turnId": "turn",
+        "message": {
+          "text": "Use MCP",
+          "origin": {
+            "kind": "user"
+          }
+        },
+        "startedAt": "2026-11-11T10:01:00.000Z"
+      },
+      {
+        "type": "chat/inputRequested",
+        "request": {
+          "id": "dunlin:mcp-input:first",
+          "message": "MCP work / lookup",
+          "questions": [
+            {
+              "kind": "text",
+              "id": "name",
+              "message": "Name",
+              "required": true
+            }
+          ]
+        }
+      },
+      {
+        "type": "chat/inputAnswerChanged",
+        "requestId": "dunlin:mcp-input:first",
+        "questionId": "name",
+        "answer": {
+          "state": "draft",
+          "value": {
+            "kind": "text",
+            "value": "Draft"
+          }
+        }
+      },
+      {
+        "type": "chat/inputRequested",
+        "request": {
+          "id": "dunlin:mcp-input:first",
+          "message": "Updated display",
+          "questions": [
+            {
+              "kind": "text",
+              "id": "name",
+              "message": "Name",
+              "required": true
+            }
+          ]
+        }
+      },
+      {
+        "type": "chat/inputCompleted",
+        "requestId": "dunlin:mcp-input:first",
+        "response": "accept",
+        "answers": {
+          "name": {
+            "state": "submitted",
+            "value": {
+              "kind": "text",
+              "value": "Alice"
+            }
+          }
+        }
+      },
+      {
+        "type": "chat/inputCompleted",
+        "requestId": "dunlin:mcp-input:first",
+        "response": "decline"
+      },
+      {
+        "type": "chat/inputRequested",
+        "request": {
+          "id": "dunlin:mcp-input:second",
+          "message": "Second round",
+          "questions": []
+        }
+      },
+      {
+        "type": "chat/inputCompleted",
+        "requestId": "dunlin:mcp-input:second",
+        "response": "cancel"
+      },
+      {
+        "type": "chat/turnComplete",
+        "turnId": "turn",
+        "duration": 42
+      }
+    ]
+  }
+]

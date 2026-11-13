@@ -1,0 +1,31 @@
+{
+  "source_sha256": "8e0a15784fa3b2df52d8294e692a420cab784a20ea0aa438c484ae231142126c",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "b63ca947a1cec7eb8863077bd301def6ced4758b3fd8ad141316d741a83fa628",
+      "source_sha256": "8e0a15784fa3b2df52d8294e692a420cab784a20ea0aa438c484ae231142126c",
+      "exit_code": 0,
+      "scope": "802 passing backend-family tests: 662 relay, 1 identity, 75 session SDK, 27 terminal, 37 usage; 40 separate acceptance tests ignored. Includes checked read-only admission callback, offline private MCP receipt matching, and pending queue/approval/revocation invariants."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "8c97c023f5f1250cfd5c5bf50dccb403b01ec2857f8eaaa6e5f45331b5d9e2e8",
+      "source_sha256": "8e0a15784fa3b2df52d8294e692a420cab784a20ea0aa438c484ae231142126c",
+      "exit_code": 0,
+      "scope": "Eleven production executable/TLS/WSS/reverse-proof/bwrap/LSM remote scenarios. New product case joins REST private selections, real controller factory, checked OAuth/vault and a controlled loopback HTTP MCP provider, AHP one-use approvals, original native leases and actual runner stdio/Unix helper. Two turns: exactly one open and session/new, two Submit commands, two external tools/call and two effects. Intentional TurnAccepted/text/ACK loss and replay gap do not resend prompts. Actual stopped/reservation0 and ACK5, held-FD descendant stopped; offline REST retry returns original receipt. Test AHP client, not Chromium UI or a real external account."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "47caec5386850e406731f0ddd8ff314a5e8e41bca04016792965b17466e9469c",
+      "source_sha256": "8e0a15784fa3b2df52d8294e692a420cab784a20ea0aa438c484ae231142126c",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Public remote MCP REST admission, startup factory and AHP approval enabled only with current private account pins, original live actors/leases and opted-in v5 transport. Pending queue validation never installs dispatch/approval authority. Active v5 turn receipts are independently announced with bounded deduplication; no Submit replay. Remote creation UI, full joined negative MCP cases, MRTR/revoke/GC/general scoped secrets, A2A and remaining E0-E10 acceptance remain incomplete. No real accounts/services/tailnet."
+}

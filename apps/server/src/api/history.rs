@@ -1,7 +1,8 @@
 //! Authenticated, project-granted, bounded read-only Git history. The caller
 //! supplies no root/path/command; every operation derives its root from the grant.
+use super::native_io::{NativeGitIo, NativeGitProof};
 use super::{ApiError, AppState, AuthUser, Json, Query, State, StatusCode};
-use crate::store::Project;
+use crate::store::{NativeGrantStamp, Project, local_metadata::MetadataPermission};
 use dunlin_workspace::git::history::{self, Commit, CommitDetails, CommitPatch, HistoryResponse};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -33,7 +34,7 @@ pub(super) async fn overview(
     State(state): State<AppState>,
     Query(query): Query<OverviewQuery>,
 ) -> Result<Json<HistoryResponse<dunlin_workspace::git::overview::Overview>>, ApiError> {
-    let project = state.project_for_user(&user.id, &query.project)?;
+    let project = capture_project(&state, &user.id, &device.id, &query.project).await?;
     read(
         state,
         user.id,
@@ -67,20 +68,82 @@ pub(super) struct PatchQuery {
     file: usize,
 }
 
-fn scope(project: &Project, root: &str) -> String {
+#[derive(Clone)]
+pub(super) struct GrantedProject {
+    pub project: Project,
+    pub grant: NativeGrantStamp,
+    pub git: NativeGitProof,
+}
+pub(super) async fn capture_project(
+    state: &AppState,
+    user: &str,
+    device: &str,
+    id: &str,
+) -> Result<GrantedProject, ApiError> {
+    capture_project_for(state, user, device, id, MetadataPermission::Read).await
+}
+pub(super) async fn capture_project_for(
+    state: &AppState,
+    user: &str,
+    device: &str,
+    id: &str,
+    permission: MetadataPermission,
+) -> Result<GrantedProject, ApiError> {
+    let io = NativeGitIo::capture(state, user, device, id, permission).await?;
+    let git = io.proof();
+    Ok(GrantedProject {
+        project: git.project.clone(),
+        grant: git.grant_stamp().clone(),
+        git,
+    })
+}
+/// Final response cut is SQL-only. All filesystem validation runs in the bounded
+/// worker before this check, never while holding Store or on the async reactor.
+pub(super) fn revalidate_project(
+    state: &AppState,
+    user: &str,
+    device: &str,
+    original: &GrantedProject,
+) -> Result<(), ApiError> {
+    if original.git.user != user || original.git.device != device {
+        return Err(ApiError::forbidden());
+    }
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    store.native_checkout_transaction(|store| original.git.validate_in_transaction(state, store))
+}
+
+fn scope(granted: &GrantedProject, root: &str) -> Result<String, ApiError> {
+    let project = &granted.project;
     let mut hash = Sha256::new();
-    for part in [&project.id, &project.path, root] {
+    let revision = granted.grant.revision.to_string();
+    for part in [
+        project.id.as_str(),
+        granted.git.original_project_path(),
+        root,
+        &granted.grant.user_id,
+        &revision,
+    ] {
         hash.update(part.as_bytes());
         hash.update([0]);
     }
-    hex::encode(hash.finalize())
+    if let Some(metadata) = granted.git.authority().metadata_stamp() {
+        hash.update(
+            serde_json::to_vec(metadata)
+                .map_err(|_| ApiError::internal("Metadata scope unavailable"))?,
+        );
+        hash.update([0]);
+    }
+    Ok(hex::encode(hash.finalize()))
 }
 
 pub(super) async fn read<T, F>(
     state: AppState,
     user: String,
     device: String,
-    project: Project,
+    project: GrantedProject,
     expected: Option<String>,
     operation: F,
 ) -> Result<Json<HistoryResponse<T>>, ApiError>
@@ -105,18 +168,23 @@ where
             )
         })?;
     let original = project.clone();
+    let worker_state = state.clone();
     let result = tokio::task::spawn_blocking(move || {
         // Keep the permit with the blocking work, even if HTTP is cancelled.
         let _permit = permit;
-        let root = history::repository_root(&project.path, None).map_err(ApiError::bad_request)?;
-        let scope = scope(&project, &root);
+        let io = NativeGitIo::resume_blocking(&worker_state, &project.git)?;
+        let root =
+            history::repository_root(io.authority().root(), None).map_err(ApiError::bad_request)?;
+        let scope = scope(&project, &root)?;
         if expected.as_ref().is_some_and(|expected| expected != &scope) {
             return Err(ApiError::conflict(
                 "The repository scope changed. Close and reopen Git history.",
             ));
         }
-        let value = operation(&root).map_err(ApiError::bad_request)?;
-        history::repository_root(&project.path, Some(&root))
+        let outcome = operation(&root);
+        io.after_blocking(false)?;
+        let value = outcome.map_err(ApiError::bad_request)?;
+        history::repository_root(io.authority().root(), Some(&root))
             .map_err(|_| ApiError::conflict("The repository root changed during the read"))?;
         Ok(HistoryResponse {
             version: history::PROTOCOL_VERSION,
@@ -128,21 +196,7 @@ where
     .map_err(|_| ApiError::internal("Git history worker failed"))?;
     // A grant/device may be revoked or a project relocated while Git runs. Never
     // return data merely because authorization succeeded before the blocking job.
-    let active_device = state
-        .store
-        .lock()
-        .map_err(|_| ApiError::internal("store lock poisoned"))?
-        .list_devices(&user)
-        .map_err(ApiError::from)?
-        .into_iter()
-        .any(|entry| entry.id == device && entry.revoked_at.is_none());
-    if !active_device {
-        return Err(ApiError::unauthorized());
-    }
-    let current = state.project_for_user(&user, &original.id)?;
-    if current.path != original.path {
-        return Err(ApiError::conflict("The project changed during the read"));
-    }
+    revalidate_project(&state, &user, &device, &original)?;
     result.map(Json)
 }
 
@@ -163,7 +217,7 @@ pub(super) async fn list(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<HistoryResponse<Vec<Commit>>>, ApiError> {
-    let project = state.project_for_user(&user.id, &query.project)?;
+    let project = capture_project(&state, &user.id, &device.id, &query.project).await?;
     if query.limit == 0
         || query.limit > 2000
         || query.revision.len() > 512
@@ -189,7 +243,7 @@ pub(super) async fn commit(
     State(state): State<AppState>,
     Query(query): Query<CommitQuery>,
 ) -> Result<Json<HistoryResponse<CommitDetails>>, ApiError> {
-    let project = state.project_for_user(&user.id, &query.project)?;
+    let project = capture_project(&state, &user.id, &device.id, &query.project).await?;
     validate_commit(&query.oid, query.parent)?;
     read(
         state,
@@ -218,7 +272,14 @@ pub(super) async fn create_branch(
     State(state): State<AppState>,
     Json(request): Json<BranchCreateRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let project = state.project_for_user(&user.id, &request.project)?;
+    let project = capture_project_for(
+        &state,
+        &user.id,
+        &device.id,
+        &request.project,
+        MetadataPermission::Write,
+    )
+    .await?;
     validate_commit(&request.oid, 0)?;
     if request.scope.len() != 64
         || !request.scope.bytes().all(|b| b.is_ascii_hexdigit())
@@ -246,38 +307,37 @@ pub(super) async fn create_branch(
     let scope = request.scope;
     let oid = request.oid;
     let name = request.name;
-    let result = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        let root = history::repository_root(&project.path, None).map_err(ApiError::bad_request)?;
-        if scope != self::scope(&project, &root) {
-            return Err(ApiError::conflict(
-                "The repository scope changed. Close and reopen Git history.",
-            ));
-        }
-        history::create_branch(&root, &name, &oid).map_err(ApiError::bad_request)?;
-        history::repository_root(&project.path, Some(&root)).map_err(|_| {
-            ApiError::conflict("The repository root changed during branch creation")
-        })?;
-        Ok(())
+    let worker_state = state.clone();
+    let worker_user = user.id.clone();
+    let worker_device = device.id.clone();
+    let (started, result) = tokio::task::spawn_blocking(move || {
+        let mut started = false;
+        let result = (|| -> Result<(), ApiError> {
+            let _permit = permit;
+            let io = NativeGitIo::resume_blocking(&worker_state, &project.git)?;
+            let root = history::repository_root(io.authority().root(), None)
+                .map_err(ApiError::bad_request)?;
+            if scope != self::scope(&project, &root)? {
+                return Err(ApiError::conflict(
+                    "The repository scope changed. Close and reopen Git history.",
+                ));
+            }
+            revalidate_project(&worker_state, &worker_user, &worker_device, &project)?;
+            started = true;
+            let outcome = history::create_branch(&root, &name, &oid);
+            io.after_blocking(true)?;
+            outcome.map_err(ApiError::bad_request)?;
+            history::repository_root(io.authority().root(), Some(&root)).map_err(|_| {
+                ApiError::conflict("The repository root changed during branch creation")
+            })?;
+            Ok(())
+        })();
+        (started, result)
     })
     .await
     .map_err(|_| ApiError::internal("Git history worker failed"))?;
-    let active_device = state
-        .store
-        .lock()
-        .map_err(|_| ApiError::internal("store lock poisoned"))?
-        .list_devices(&user.id)
-        .map_err(ApiError::from)?
-        .into_iter()
-        .any(|entry| entry.id == device.id && entry.revoked_at.is_none());
-    if !active_device {
-        return Err(ApiError::unauthorized());
-    }
-    let current = state.project_for_user(&user.id, &original.id)?;
-    if current.path != original.path {
-        return Err(ApiError::conflict(
-            "The project changed during branch creation",
-        ));
+    if started {
+        revalidate_project(&state, &user.id, &device.id, &original).map_err(|_|ApiError::conflict("Authority changed during branch creation; its outcome may be partial. Refresh before a new action; do not automatically retry."))?;
     }
     result?;
     Ok(StatusCode::OK)
@@ -288,7 +348,7 @@ pub(super) async fn patch(
     State(state): State<AppState>,
     Query(query): Query<PatchQuery>,
 ) -> Result<Json<HistoryResponse<CommitPatch>>, ApiError> {
-    let project = state.project_for_user(&user.id, &query.project)?;
+    let project = capture_project(&state, &user.id, &device.id, &query.project).await?;
     validate_commit(&query.oid, query.parent)?;
     if query.file >= 2000 {
         return Err(ApiError::bad_request(

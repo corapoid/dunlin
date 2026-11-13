@@ -1,0 +1,58 @@
+{
+  "source_sha256": "ab27a153c96f55a1a1c7ff990361b3a9599ae058ff70c5ff849129ecce8e8e04",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "85cb286dd868c1bc5a57fc06b181bfdfe0a98b5222bac437f4cd22cae6225016",
+      "source_sha256": "ab27a153c96f55a1a1c7ff990361b3a9599ae058ff70c5ff849129ecce8e8e04",
+      "exit_code": 0,
+      "scope": "810 backend-family tests: 666 relay, 1 identity, 79 SDK, 27 terminal, 37 usage; 48 acceptance tests ignored. Exact FormSchema mapper/validator, canonical invalid-input rejection and corrected new intent, one-use input scopes/recovery, expanded enum display bound and actual pinned AHP seven-trace oracle."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "2cb7fe2be70652eed710a4a3383146477d9c2ec8c5ce9fb339ff7052ba2943d6",
+      "source_sha256": "ab27a153c96f55a1a1c7ff990361b3a9599ae058ff70c5ff849129ecce8e8e04",
+      "exit_code": 0,
+      "scope": "19 remote scenarios and actual Chromium branches for MCP tool approval, form accept/decline/cancel, and legacy UI. Accept: two MRTR rounds with the same client/Pending/arguments/permit/deadline; invalid integer in API and invalid URI in UI rejected without continuation, corrected by a new clientSeq; duplicate responses never repeat HTTP. All flat field kinds, 0/false/empty selection/__proto__, defaults never auto-filled; no opaque state/bearer in UI and no browser navigation/fetch to form URI. Account disconnect during pending form: Unknown, canceled input, one initial call, zero continuations, stop/ACK2/reservation0 and stopped held-FD descendant. API accept: 2 initial calls/4 continuations/effects2/ACK5; with UI: 3/6/effects3/ACK8. Decline/cancel: 2/2 and with UI 3/3, zero checkout effects. Previous loss/restart/quota/revocation and deterministic terminal/renew race pass."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "99d564547900e7007d31e777b1cbe1af389ca665cb1087453de6b817cf23774b",
+      "source_sha256": "ab27a153c96f55a1a1c7ff990361b3a9599ae058ff70c5ff849129ecce8e8e04",
+      "exit_code": 0,
+      "scope": "All targets, warnings denied."
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "aee50540c95037762a4fcc1e2351e8b1d191b046195407ec4234aad0642903bf",
+      "source_sha256": "f7e931ba9b1909387ef2939752690d677b019303ef380c68cf9ff97b6e554afc",
+      "exit_code": 0,
+      "scope": "147 frontend tests, including pinned SDK parity for input request/draft/round/completion and immutable response/rejection/read-only behavior; explicit empty/zero/false/prototype-safe form answer mapping. Narrow frontend-only snapshot."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "6a4431961805a6f06442fd3e5f9f21f789e436edab612b5a789a8279f4e5bb03",
+      "source_sha256": "87324f68711576bc01dce15ea8e1ffd9f8228f8a980a1346340827efc3c7724d",
+      "exit_code": 0,
+      "scope": "TypeScript check; narrower frontend/config snapshot."
+    }
+  ],
+  "artifact_sha256": {
+    "accept-desktop.png": "cca0b0602c5eeba99deea59084bf5ff32d40dbd3eade26d055f1c429f9a52622",
+    "accept-mobile.png": "b3868f38224cd59397feb03fba001d3d6d2fd3307dc2a91474163d2380a87993",
+    "cancel-desktop.png": "c6e008ca09d939e80d33235d130329fcccf192b195f62f9ed6e451ddcbe1590e",
+    "cancel-mobile.png": "694def9b63f9c3743fc471f498d922ec7b505888b9bd90d0ac102dc66e0cb277",
+    "decline-desktop.png": "f3a0c57b312b8d7d6e0a2d6f94e4212f53d80d43fd316cd8835036879b0a0516",
+    "decline-mobile.png": "90f3e7dbf51878d4b91edee6d6bb6f4fa70475e455573abb01c7015f30eede35",
+    "tool-desktop.png": "734bd672058e1c81da4df1533f9250ed7d51d7e5f1b50d9be2a7e0fc64f9571f",
+    "tool-mobile.png": "366864927dc8427457dcb73b7902d9c86cf22ef06cc430685a5b5428548803f4",
+    "source-current.json": "470efcff7bdc3efa88958413ae66aa959371471370349ef3b149113632623148",
+    "checks-final.log": "8d5acce4ba72bed7976ff9d43f7b304d96c8256b2cb6e0a8495a49a2b1ee55db"
+  },
+  "scope": "Actual production REST/AHP/HTTP/WSS/native proxy/stdio helper/Linux sandbox with controlled OAuth/MCP provider and ACP harness. No real account/provider/tailnet, physical multi-host or native macOS acceptance. Runtime explicitly advertises form input; library default and URL elicitation remain disabled. Opaque Pending/requestState stay on the host; original execution/account/device/schema authority remains required before/after HTTP and before result commit. Durable provider remote revoke/GC, URL elicitation, general scoped secrets, A2A and remaining E0-E10 stay open, formal20/68."
+}

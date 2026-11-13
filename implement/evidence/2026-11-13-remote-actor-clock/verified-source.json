@@ -1,0 +1,31 @@
+{
+  "final_source_sha256": "31b604859705d3f2117365c8bb36466b88460e61855238e0538c366071905b65",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "remote-actor-clock-server.log",
+      "log_sha256": "0b70d48de180e19931095a76905d9380d5ccf0413673774bbca22bb74d060c68",
+      "source_sha256": "d84033db2eed6890d8adb173c1acf8d12613e604cf4ac51168207e53644bd927",
+      "exit_code": 0,
+      "scope": "768 server-family tests, including four new actor turn-clock tests."
+    },
+    {
+      "suite": "runtime",
+      "log": "remote-actor-clock-runtime.log",
+      "log_sha256": "bf04da79cf59fd5879c64df9c9ea54f8151f7a97341878a3c0bb672eaa4264d4",
+      "source_sha256": "31b604859705d3f2117365c8bb36466b88460e61855238e0538c366071905b65",
+      "exit_code": 0,
+      "scope": "Five actual production TLS/WSS/sandbox remote acceptance scenarios for profiles without MCP, including process restarts and successive turns."
+    },
+    {
+      "suite": "clippy",
+      "log": "remote-actor-clock-clippy.log",
+      "log_sha256": "55a92086d37b2107942606f102e08d6548500b851079842ab8733c392e566bb3",
+      "source_sha256": "31b604859705d3f2117365c8bb36466b88460e61855238e0538c366071905b65",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "source_scope_proof": "source-proof.json",
+  "scope": "Original admission Journal lease pinned by the live actor and nonrenewable local turn clock. Server snapshot differs only by the recorded rustfmt wrapping. Remote MCP Host Authority adapter, v5 producer/runner proxy and public remote tools/call remain incomplete."
+}

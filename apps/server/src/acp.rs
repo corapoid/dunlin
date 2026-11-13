@@ -18,16 +18,44 @@ use tokio::process::Command;
 use tokio::sync::{OwnedSemaphorePermit, mpsc};
 
 use crate::api::{AppState, Lease};
-use crate::store::{Device, Project, SessionOwner, User};
+use crate::store::local_metadata::MetadataPermission;
+use crate::store::native_checkout::{NativeCheckoutAuthority, SandboxMetadataRoots};
+use crate::store::{Device, NativeGrantStamp, Project, SessionOwner, User};
 use dunlin_domain::{PermissionMode, ProjectSettings, validate_project_environment};
 mod coordination;
 #[cfg(test)]
 mod coordination_tests;
+#[cfg(test)]
+mod metadata_tests;
+#[cfg(test)]
+mod native_grant_tests;
 
 const SESSION_NOT_FOUND: i64 = -32001;
 const SESSION_BUSY: i64 = -32002;
 const INVALID_PARAMS: i64 = -32602;
 const MAX_PENDING: usize = 256;
+
+// Revoke the entire harness process group on disconnect, revocation or future cancellation.
+struct ProcessGroup(Option<u32>);
+impl ProcessGroup {
+    /// Signal while the leader is still owned and unreaped, then disarm before
+    /// any Child::kill().await can reap it and allow its PID to be reused.
+    fn terminate(&mut self) {
+        if let Some(pid) = self.0.take() {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+            }
+            #[cfg(not(unix))]
+            let _ = pid;
+        }
+    }
+}
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        self.terminate();
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub async fn bridge(
@@ -37,6 +65,7 @@ pub async fn bridge(
     device: Device,
     project: Project,
     allowed_roots: Vec<Project>,
+    native_grants: Vec<NativeGrantStamp>,
     connection_id: String,
     _permit: OwnedSemaphorePermit,
 ) {
@@ -49,12 +78,47 @@ pub async fn bridge(
     let (mut ws_tx, mut ws_rx) = socket.split();
     let (close_tx, mut close_rx) = mpsc::channel::<()>(1);
 
+    if native_grants.len() != allowed_roots.len() + 1
+        || !native_grants
+            .iter()
+            .any(|g| g.project_id == project.id && g.user_id == user.id)
+    {
+        return;
+    }
+    let mut tracker = Tracker {
+        native_grants,
+        native_projects: std::iter::once(project.clone())
+            .chain(allowed_roots.iter().cloned())
+            .collect(),
+        ..Default::default()
+    };
+    let Some(checkouts) = capture_native_checkouts(&state, &user, &tracker.native_projects).await
+    else {
+        return;
+    };
+    tracker.native_checkouts = checkouts;
+    if !tracker.connection_authorized(&state, &user, &device, &project) {
+        return;
+    }
+    let mut authority_changes = match state.store.lock() {
+        Ok(store) => store.subscribe_catalog(),
+        Err(_) => return,
+    };
     let selected_harness = crate::management::harness(&state.config);
     let (program, args) = command_parts(&selected_harness);
-    let current_path = project.path.clone();
-    let extra_paths = allowed_roots
+    let Some(primary_checkout) = tracker
+        .native_checkouts
         .iter()
-        .map(|root| root.path.clone())
+        .find(|a| a.stamp().native_grant.project_id == project.id)
+    else {
+        return;
+    };
+    let current_path = primary_checkout.root().to_owned();
+    let extra_paths = tracker
+        .native_checkouts
+        .iter()
+        .filter(|a| a.stamp().native_grant.project_id != project.id)
+        .map(|a| a.root().to_owned())
         .collect::<Vec<_>>();
     let mut all_projects = state
         .store
@@ -106,16 +170,23 @@ pub async fn bridge(
     {
         broker_paths.push(executable);
     }
+    let mut metadata_roots = SandboxMetadataRoots::default();
+    for checkout in &tracker.native_checkouts {
+        if metadata_roots.extend(&checkout.metadata_roots()).is_err() {
+            return;
+        }
+    }
     let mut harness = harness_command_with_brokers(
         &state.config,
         &program,
         &args,
-        &project.path,
+        &current_path,
         &extra_paths,
         &other_projects,
         &project_settings,
         &user.id,
         &broker_paths,
+        &metadata_roots,
     );
     harness.env("PATH", crate::management::path(&state.config));
     let stderr = if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
@@ -123,8 +194,17 @@ pub async fn bridge(
     } else {
         Stdio::null()
     };
+    // Recheck after checkout/config preparation and before starting a process.
+    if !checkout_filesystems_current(&state, &tracker.native_checkouts).await {
+        return;
+    }
+    if !tracker.connection_authorized(&state, &user, &device, &project) {
+        return;
+    }
+    #[cfg(unix)]
+    harness.process_group(0);
     let mut child = match harness
-        .current_dir(&project.path)
+        .current_dir(&current_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(stderr)
@@ -152,16 +232,22 @@ pub async fn bridge(
         }
     };
 
+    let mut process_group = ProcessGroup(Some(child.id().expect("spawned harness")));
     let Some(mut stdin) = child.stdin.take() else {
+        process_group.terminate();
         let _ = child.kill().await;
         return;
     };
     let Some(stdout) = child.stdout.take() else {
+        process_group.terminate();
         let _ = child.kill().await;
         return;
     };
     let mut lines = BufReader::new(stdout).lines();
-    let mut tracker = Tracker {
+    tracker = Tracker {
+        native_grants: tracker.native_grants,
+        native_projects: tracker.native_projects,
+        native_checkouts: tracker.native_checkouts,
         pending: HashMap::new(),
         allowed_roots: allowed_paths,
         allowed_project_ids: allowed_roots
@@ -173,6 +259,7 @@ pub async fn bridge(
         ..Default::default()
     };
     let mut ticker = tokio::time::interval(Duration::from_secs(30));
+    let mut guardian = tokio::time::interval(Duration::from_secs(1));
     let mut last_activity = Instant::now();
     let mut client_gone = false;
     let mut taken_over = false;
@@ -180,9 +267,15 @@ pub async fn bridge(
 
     loop {
         tokio::select! {
+            _ = guardian.tick() => {
+                if !tracker.connection_authorized(&state,&user,&device,&project)
+                    || !checkout_filesystems_current(&state,&tracker.native_checkouts).await
+                    || !tracker.connection_authorized(&state,&user,&device,&project) {break;}
+            }
             line = lines.next_line() => {
                 match line {
                     Ok(Some(line)) => {
+                        if !tracker.connection_authorized(&state,&user,&device,&project) {break;}
                         if line.len() > state.config.max_frame_bytes {
                             break;
                         }
@@ -236,6 +329,7 @@ pub async fn bridge(
                             &value,
                         ) {
                             Ok(Some(outgoing)) => {
+                                if !tracker.connection_authorized(&state,&user,&device,&project) {break;}
                                 if let Err(error) = stdin.write_all(outgoing.as_bytes()).await {
                                     eprintln!("[relay] harness stdin failed · {error}");
                                     break;
@@ -286,6 +380,9 @@ pub async fn bridge(
                     }
                 }
             }
+            _ = authority_changes.recv() => {
+                if !tracker.connection_authorized(&state,&user,&device,&project) {break;}
+            }
             _ = close_rx.recv() => {
                 eprintln!("[relay] session taken over · {connection_id}");
                 taken_over = true;
@@ -303,9 +400,8 @@ pub async fn bridge(
                     client_gone = true;
                     break;
                 }
-                if !still_authorized(&state, &user, &device, &project) {
+                if !tracker.connection_authorized(&state, &user, &device, &project) {
                     eprintln!("[relay] authorization revoked · {connection_id}");
-                    client_gone = true;
                     break;
                 }
                 let _ = ws_tx.send(Message::Ping(Vec::new().into())).await;
@@ -325,7 +421,13 @@ pub async fn bridge(
         }
     }
 
-    if client_gone && !taken_over && !harness_exited && tracker.has_active_prompt() {
+    if client_gone
+        && !taken_over
+        && !harness_exited
+        && tracker.has_active_prompt()
+        && still_authorized(&state, &user, &device, &project)
+        && tracker.connection_authorized(&state, &user, &device, &project)
+    {
         let timeout = Duration::from_secs(state.config.linger_secs);
         if let Ok(mut leases) = state.leases.lock() {
             for lease in leases.values_mut() {
@@ -351,6 +453,7 @@ pub async fn bridge(
             close_rx,
             timeout,
             _permit,
+            process_group,
         ));
         return;
     }
@@ -359,6 +462,7 @@ pub async fn bridge(
         session.revoke();
     }
     tracker.stop_coordination(&state);
+    process_group.terminate();
     let _ = child.kill().await;
     eprintln!("[relay] acp disconnected · {connection_id}");
     if let Ok(mut leases) = state.leases.lock() {
@@ -383,79 +487,168 @@ async fn linger_turn(
     mut close_rx: mpsc::Receiver<()>,
     timeout: Duration,
     _permit: OwnedSemaphorePermit,
+    mut process_group: ProcessGroup,
 ) {
     let (dummy_tx, _dummy_rx) = mpsc::channel::<()>(1);
     let deadline = tokio::time::Instant::now() + timeout;
-    let mut last_authorization_check = Instant::now();
-    loop {
-        if last_authorization_check.elapsed() >= Duration::from_secs(30) {
-            if !still_authorized(&state, &user, &device, &project) {
-                eprintln!("[relay] lingering turn authorization revoked · {connection_id}");
+    // These state-free pins are the same ones admitted before spawn. The
+    // observer leaving must never reconstruct authority or refresh epochs.
+    let guard_tracker = Tracker {
+        native_grants: tracker.native_grants.clone(),
+        native_projects: tracker.native_projects.clone(),
+        native_checkouts: tracker.native_checkouts.clone(),
+        allowed_project_ids: tracker.allowed_project_ids.clone(),
+        allowed_roots: tracker.allowed_roots.clone(),
+        ..Default::default()
+    };
+    let mut authority_changes = match state.store.lock() {
+        Ok(store) => store.subscribe_catalog(),
+        Err(_) => return,
+    };
+    // Keep both guards outside the I/O future. A peer that stops consuming a
+    // cancellation response cannot suspend revocation, FS checks or deadlines.
+    let authority_guard = async {
+        let mut guardian = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            tokio::select! {
+                _ = guardian.tick() => {},
+                _ = authority_changes.recv() => {},
+            }
+            if !guard_tracker.connection_authorized(&state, &user, &device, &project) {
                 break;
             }
-            last_authorization_check = Instant::now();
         }
-        tokio::select! {
-            line = lines.next_line() => {
-                match line {
-                    Ok(Some(line)) => {
-                        if line.len() > state.config.max_frame_bytes {
-                            break;
-                        }
-                        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-                            continue;
-                        };
-                        if value.get("method").and_then(Value::as_str)
-                            == Some("session/request_permission")
-                            && let Some(id) = value.get("id")
-                        {
-                            let response = json!({
-                                "jsonrpc": "2.0",
-                                "id": id,
-                                "result": { "outcome": { "outcome": "cancelled" } }
-                            });
-                            if stdin.write_all(response.to_string().as_bytes()).await.is_err()
-                                || stdin.write_all(b"\n").await.is_err()
-                                || stdin.flush().await.is_err()
-                            {
-                                break;
-                            }
-                        }
-                        tracker.on_agent_message(
-                            &state,
-                            &user,
-                            &device,
-                            &project,
-                            &connection_id,
-                            &dummy_tx,
-                            &value,
-                        );
-                        if !tracker.has_active_prompt() {
-                            break;
-                        }
-                    }
-                    _ => break,
+    };
+    let filesystem_guard = async {
+        let mut guardian = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            guardian.tick().await;
+            if !checkout_filesystems_current(&state, &guard_tracker.native_checkouts).await
+                || !guard_tracker.connection_authorized(&state, &user, &device, &project)
+            {
+                break;
+            }
+        }
+    };
+    let exchange = async {
+        loop {
+            let Ok(Some(line)) = lines.next_line().await else {
+                break;
+            };
+            if !tracker.connection_authorized(&state, &user, &device, &project)
+                || line.len() > state.config.max_frame_bytes
+            {
+                break;
+            }
+            let Ok(value) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
+            if value.get("method").and_then(Value::as_str) == Some("session/request_permission")
+                && let Some(id) = value.get("id")
+            {
+                let response = json!({
+                    "jsonrpc": "2.0", "id": id,
+                    "result": { "outcome": { "outcome": "cancelled" } }
+                });
+                let mut bytes = response.to_string().into_bytes();
+                bytes.push(b'\n');
+                // A cancelled/partial write is terminal: the stream is never
+                // reused and the process namespace is killed before reaping.
+                if !matches!(
+                    tokio::time::timeout(Duration::from_secs(1), async {
+                        stdin.write_all(&bytes).await?;
+                        stdin.flush().await
+                    })
+                    .await,
+                    Ok(Ok(()))
+                ) {
+                    break;
                 }
             }
-            _ = close_rx.recv() => {
-                eprintln!("[relay] linger cancelled · {connection_id}");
-                break;
-            }
-            _ = tokio::time::sleep_until(deadline) => {
-                eprintln!("[relay] linger timeout · {connection_id}");
+            tracker.on_agent_message(
+                &state,
+                &user,
+                &device,
+                &project,
+                &connection_id,
+                &dummy_tx,
+                &value,
+            );
+            if !tracker.has_active_prompt() {
                 break;
             }
         }
+    };
+    tokio::select! {
+        _ = authority_guard => {},
+        _ = filesystem_guard => {},
+        _ = exchange => {},
+        _ = close_rx.recv() => {},
+        _ = tokio::time::sleep_until(deadline) => {},
     }
     for session in &tracker.vault_sessions {
         session.revoke();
     }
     tracker.stop_coordination(&state);
+    process_group.terminate();
     let _ = child.kill().await;
     if let Ok(mut leases) = state.leases.lock() {
         leases.retain(|_, lease| lease.connection_id != connection_id);
     }
     eprintln!("[relay] lingering turn finished · {connection_id}");
+}
+
+async fn capture_native_checkouts(
+    state: &AppState,
+    user: &User,
+    projects: &[Project],
+) -> Option<Vec<NativeCheckoutAuthority>> {
+    let permit = state.fs_permit().ok()?;
+    let candidates = {
+        let store = state.store.lock().ok()?;
+        projects
+            .iter()
+            .map(|p| store.native_checkout_candidate(&p.id, &user.id, MetadataPermission::Write))
+            .collect::<crate::store::Result<Vec<_>>>()
+            .ok()?
+    };
+    // The permit lives through the actual blocking work, including timeout.
+    let job = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        candidates
+            .into_iter()
+            .map(|c| c.validate_filesystem())
+            .collect::<crate::store::Result<Vec<_>>>()
+    });
+    let validated = tokio::time::timeout(Duration::from_secs(5), job)
+        .await
+        .ok()?
+        .ok()?
+        .ok()?;
+    let store = state.store.lock().ok()?;
+    validated
+        .into_iter()
+        .map(|v| store.authorize_native_checkout(v))
+        .collect::<crate::store::Result<Vec<_>>>()
+        .ok()
+}
+
+async fn checkout_filesystems_current(
+    state: &AppState,
+    checkouts: &[NativeCheckoutAuthority],
+) -> bool {
+    let Ok(permit) = state.fs_permit() else {
+        return false;
+    };
+    let checkouts = checkouts.to_vec();
+    let job = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        checkouts.iter().all(|a| a.validate_filesystem().is_ok())
+    });
+    matches!(
+        tokio::time::timeout(Duration::from_secs(5), job).await,
+        Ok(Ok(true))
+    )
 }
 
 #[derive(Default)]
@@ -465,6 +658,9 @@ struct Tracker {
     /// session may request a subset, never an arbitrary host path.
     allowed_roots: Vec<String>,
     allowed_project_ids: Vec<String>,
+    native_grants: Vec<NativeGrantStamp>,
+    native_projects: Vec<Project>,
+    native_checkouts: Vec<NativeCheckoutAuthority>,
     vault_read_only: bool,
     vault_sessions: Vec<crate::vault::VaultSession>,
     coordination_sessions: HashMap<String, dunlin_coordination::service::SessionHandle>,
@@ -483,28 +679,155 @@ enum Pending {
 }
 
 impl Tracker {
-    fn roots_authorized(&self, state: &AppState, user: &User) -> bool {
-        if self.allowed_project_ids.is_empty() {
-            return true;
+    fn authority_guard(
+        &self,
+        state: &AppState,
+        user: &User,
+        device: &Device,
+        project: &Project,
+    ) -> std::sync::Arc<dyn Fn() -> bool + Send + Sync> {
+        let store = state.store.clone();
+        let config = state.config.clone();
+        let user_id = user.id.clone();
+        let device_id = device.id.clone();
+        let grants = if self.native_grants.is_empty() {
+            store
+                .lock()
+                .ok()
+                .and_then(|db| db.capture_native_grant(&project.id, &user.id).ok())
+                .map(|g| vec![g])
+        } else {
+            Some(self.native_grants.clone())
+        };
+        let projects = if self.native_projects.is_empty() {
+            vec![project.clone()]
+        } else {
+            self.native_projects.clone()
+        };
+        let checkouts = if self.native_checkouts.is_empty() {
+            projects
+                .iter()
+                .map(|p| {
+                    let candidate = {
+                        store
+                            .lock()
+                            .ok()?
+                            .native_checkout_candidate(&p.id, &user_id, MetadataPermission::Write)
+                            .ok()?
+                    };
+                    let validated = candidate.validate_filesystem().ok()?;
+                    store.lock().ok()?.authorize_native_checkout(validated).ok()
+                })
+                .collect::<Option<Vec<_>>>()
+        } else {
+            Some(self.native_checkouts.clone())
+        };
+        std::sync::Arc::new(move || {
+            let fresh = || {
+                let host_accounts = crate::management::host_accounts(&config);
+                let Ok(db) = store.lock() else {
+                    return false;
+                };
+                let (Some(grants), Some(checkouts)) = (grants.as_ref(), checkouts.as_ref()) else {
+                    return false;
+                };
+                db.native_checkout_transaction::<_, crate::store::StoreError>(|db| {
+                    let Some(active) = db
+                        .active_device_user(&device_id)?
+                        .filter(|u| u.id == user_id)
+                    else {
+                        return Ok(false);
+                    };
+                    Ok((active.role == "admin" || !host_accounts)
+                        && db.oidc_device_allowed(&device_id, config.oidc.as_ref())?
+                        && checkouts
+                            .iter()
+                            .all(|a| db.revalidate_native_checkout_in_transaction(a).is_ok())
+                        && grants
+                            .iter()
+                            .all(|g| g.user_id == user_id && db.revalidate_native_grant(g).is_ok())
+                        && projects.iter().all(|p| {
+                            db.project_for_user(&p.id, &user_id)
+                                .ok()
+                                .flatten()
+                                .is_some_and(|v| v.path == p.path)
+                        }))
+                })
+                .unwrap_or(false)
+            };
+            fresh()
+                && checkouts
+                    .as_ref()
+                    .is_some_and(|items| items.iter().all(|a| a.validate_filesystem().is_ok()))
+                && fresh()
+        })
+    }
+
+    fn roots_authorized_in_store(&self, store: &crate::store::Store, user: &User) -> bool {
+        if self
+            .native_grants
+            .iter()
+            .any(|g| g.user_id != user.id || store.revalidate_native_grant(g).is_err())
+            || self.native_projects.iter().any(|p| {
+                !store
+                    .project_for_user(&p.id, &user.id)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|current| current.path == p.path)
+            })
+            || self.native_checkouts.len() != self.native_projects.len()
+            || self
+                .native_checkouts
+                .iter()
+                .any(|a| store.revalidate_native_checkout_in_transaction(a).is_err())
+        {
+            return false;
         }
+        self.allowed_project_ids.iter().all(|id| {
+            self.native_checkouts
+                .iter()
+                .find(|a| a.stamp().native_grant.project_id == *id)
+                .is_some_and(|a| self.allowed_roots.iter().any(|root| root == a.root()))
+        })
+    }
+    #[cfg(test)]
+    fn roots_authorized(&self, state: &AppState, user: &User) -> bool {
         let Ok(store) = state.store.lock() else {
             return false;
         };
-        let Ok(projects) = store.projects_for_user(&user.id) else {
+        store
+            .native_checkout_transaction::<_, crate::store::StoreError>(|db| {
+                Ok(self.roots_authorized_in_store(db, user))
+            })
+            .unwrap_or(false)
+    }
+    fn connection_authorized(
+        &self,
+        state: &AppState,
+        user: &User,
+        device: &Device,
+        project: &Project,
+    ) -> bool {
+        let host_accounts = crate::management::host_accounts(&state.config);
+        let Ok(store) = state.store.lock() else {
             return false;
         };
-        self.allowed_project_ids.iter().all(|id| {
-            let Some(root) = projects.iter().find(|project| &project.id == id) else {
-                return false;
-            };
-            let Ok(canonical) = std::fs::canonicalize(&root.path) else {
-                return false;
-            };
-            let canonical = canonical.to_string_lossy();
-            self.allowed_roots
-                .iter()
-                .any(|path| canonical == path.as_str())
-        })
+        store
+            .native_checkout_transaction::<_, crate::store::StoreError>(|db| {
+                let Some(current) = db
+                    .active_device_user(&device.id)?
+                    .filter(|u| u.id == user.id)
+                else {
+                    return Ok(false);
+                };
+                Ok((current.role == "admin" || !host_accounts)
+                    && db.oidc_device_allowed(&device.id, state.config.oidc.as_ref())?
+                    && db
+                        .project_for_user(&project.id, &current.id)?
+                        .is_some_and(|p| p.path == project.path)
+                    && self.roots_authorized_in_store(db, &current))
+            })
+            .unwrap_or(false)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -520,7 +843,7 @@ impl Tracker {
     ) -> Result<Option<String>, Value> {
         let id = value.get("id").cloned().unwrap_or(Value::Null);
         let mut forwarded = value.clone();
-        if !still_authorized(state, user, device, project) || !self.roots_authorized(state, user) {
+        if !self.connection_authorized(state, user, device, project) {
             return Err(error_response(
                 id,
                 -32003,
@@ -554,7 +877,7 @@ impl Tracker {
                 check_session_scope(value, &self.allowed_roots).map_err(|message| {
                     error_response(id.clone(), INVALID_PARAMS, &message, None)
                 })?;
-                self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_vault(&mut forwarded, state, project, user, device, &id)?;
                 self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending.insert(id_key(&id), Pending::New);
@@ -573,7 +896,7 @@ impl Tracker {
                 })?;
                 check_owner(state, user, project, &session_id, &id)?;
                 acquire_lease(state, &session_id, device, connection_id, close_tx, &id)?;
-                self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_vault(&mut forwarded, state, project, user, device, &id)?;
                 self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending
@@ -592,7 +915,7 @@ impl Tracker {
                     error_response(id.clone(), INVALID_PARAMS, "Missing sessionId", None)
                 })?;
                 let owner = check_owner(state, user, project, &source_id, &id)?;
-                self.inject_vault(&mut forwarded, state, project, &id)?;
+                self.inject_vault(&mut forwarded, state, project, user, device, &id)?;
                 self.inject_coordination(&mut forwarded, state, user, device, project, &id)?;
                 if is_request {
                     self.pending.insert(
@@ -666,15 +989,18 @@ impl Tracker {
         value: &mut Value,
         state: &AppState,
         project: &Project,
+        user: &User,
+        device: &Device,
         id: &Value,
     ) -> Result<(), Value> {
         let Some(vault) = &state.vault else {
             return Ok(());
         };
-        let session = vault.new_session(
+        let session = vault.new_guarded_session(
             project.id.clone(),
             project.path.clone(),
             self.vault_read_only,
+            self.authority_guard(state, user, device, project),
         );
         let executable = std::env::current_exe().map_err(|error| {
             error_response(
@@ -1045,11 +1371,38 @@ pub(crate) fn harness_command(
         settings,
         user_id,
         &[],
+        &SandboxMetadataRoots::default(),
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn harness_command_with_brokers(
+pub(crate) fn harness_command_with_metadata(
+    config: &crate::config::Config,
+    program: &str,
+    args: &[String],
+    project_path: &str,
+    allowed_roots: &[String],
+    other_projects: &[String],
+    settings: &ProjectSettings,
+    user_id: &str,
+    metadata_roots: &SandboxMetadataRoots,
+) -> Command {
+    harness_command_with_brokers(
+        config,
+        program,
+        args,
+        project_path,
+        allowed_roots,
+        other_projects,
+        settings,
+        user_id,
+        &[],
+        metadata_roots,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn harness_command_with_brokers(
     config: &crate::config::Config,
     program: &str,
     args: &[String],
@@ -1059,7 +1412,20 @@ fn harness_command_with_brokers(
     settings: &ProjectSettings,
     user_id: &str,
     broker_paths: &[PathBuf],
+    metadata_roots: &SandboxMetadataRoots,
 ) -> Command {
+    if !metadata_roots_safe(config, metadata_roots)
+        || metadata_roots.iter().any(|(root, _)| {
+            other_projects.iter().any(|p| {
+                let p = Path::new(p)
+                    .canonicalize()
+                    .unwrap_or_else(|_| PathBuf::from(p));
+                p.starts_with(root)
+            })
+        })
+    {
+        return Command::new("/nonexistent/dunlin-metadata-sandbox-scope-denied");
+    }
     let isolated = crate::management::isolated_agents(config);
     let home = crate::management::agent_home(config, user_id);
     if isolated && crate::management::private_dir(&home).is_err() {
@@ -1070,51 +1436,17 @@ fn harness_command_with_brokers(
         && Path::new("/usr/bin/sandbox-exec").is_file()
     {
         let mut command = Command::new("/usr/bin/sandbox-exec");
-        let mut runtime_roots = allowed_roots.to_vec();
-        runtime_roots.push(project_path.to_owned());
-        runtime_roots.extend(
-            broker_paths
-                .iter()
-                .map(|p| p.to_string_lossy().into_owned()),
-        );
-        let tools = crate::management::tools(config);
-        let tools = tools.canonicalize().unwrap_or(tools);
-        let node = crate::management::root(config).join("node");
-        let node = node.canonicalize().unwrap_or(node);
-        for path in [&home, &tools, &node] {
-            runtime_roots.push(path.to_string_lossy().to_string());
-        }
-        let mut profile = sandbox_profile(
-            project_path,
-            &runtime_roots,
-            other_projects,
+        let profile = macos_harness_profile(
+            config,
             program,
-            &config.db,
+            project_path,
+            allowed_roots,
+            other_projects,
+            &home,
+            broker_paths,
+            metadata_roots,
+            isolated,
         );
-        profile.push_str(&server_sandbox_policy(
-            &crate::management::root(config),
-            &runtime_roots,
-        ));
-        if isolated && let Some(host_home) = std::env::var_os("HOME") {
-            for suffix in [
-                ".codex",
-                ".claude",
-                ".local/share/opencode",
-                ".local/state/opencode",
-                ".config/opencode",
-            ] {
-                let path = PathBuf::from(&host_home).join(suffix);
-                profile.push_str(&format!(
-                    "\n(deny file-read* file-write* (subpath \"{}\"))\n",
-                    escape_sandbox_path(&path.to_string_lossy())
-                ));
-            }
-        }
-        profile.push_str(&format!(
-            "\n(deny file-write* (subpath \"{}\") (subpath \"{}\"))\n",
-            escape_sandbox_path(&tools.to_string_lossy()),
-            escape_sandbox_path(&node.to_string_lossy())
-        ));
         if std::env::var_os("DUNLIN_RELAY_DEBUG").is_some() {
             eprintln!("[relay] sandbox profile:\n{profile}");
         }
@@ -1131,6 +1463,7 @@ fn harness_command_with_brokers(
             allowed_roots,
             &home,
             broker_paths,
+            metadata_roots,
         )
     } else {
         let mut command = Command::new(program);
@@ -1164,6 +1497,8 @@ fn harness_command_with_brokers(
     command
 }
 
+// Keep metadata roots distinct from workspace and broker paths.
+#[allow(clippy::too_many_arguments)]
 fn linux_harness_command(
     config: &crate::config::Config,
     program: &str,
@@ -1172,6 +1507,7 @@ fn linux_harness_command(
     roots: &[String],
     home: &Path,
     broker_paths: &[PathBuf],
+    metadata_roots: &SandboxMetadataRoots,
 ) -> Command {
     // Missing bubblewrap fails at spawn, never by silently running unsandboxed.
     let mut command = Command::new(
@@ -1233,6 +1569,14 @@ fn linux_harness_command(
     for root in roots {
         command.args(["--bind", root, root]);
     }
+    for (root, permission) in metadata_roots.iter() {
+        let binding = if permission == MetadataPermission::Write {
+            "--bind"
+        } else {
+            "--ro-bind"
+        };
+        command.args([binding, root, root]);
+    }
     // /tmp is private inside bubblewrap. Bind only exact broker socket inodes
     // and the proxy executable, never the host temp directory or ledger.
     for path in broker_paths {
@@ -1243,6 +1587,69 @@ fn linux_harness_command(
         .arg(program)
         .args(args);
     command
+}
+
+/// Complete production seatbelt profile, also exported verbatim by the focused
+/// Linux generator for an actual macOS-kernel probe without a host Rust build.
+#[allow(clippy::too_many_arguments)]
+fn macos_harness_profile(
+    config: &crate::config::Config,
+    program: &str,
+    project_path: &str,
+    allowed_roots: &[String],
+    other_projects: &[String],
+    home: &Path,
+    broker_paths: &[PathBuf],
+    metadata_roots: &SandboxMetadataRoots,
+    isolated: bool,
+) -> String {
+    let mut runtime_roots = allowed_roots.to_vec();
+    runtime_roots.push(project_path.to_owned());
+    runtime_roots.extend(
+        broker_paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned()),
+    );
+    let tools = crate::management::tools(config);
+    let tools = tools.canonicalize().unwrap_or(tools);
+    let node = crate::management::root(config).join("node");
+    let node = node.canonicalize().unwrap_or(node);
+    for path in [home, tools.as_path(), node.as_path()] {
+        runtime_roots.push(path.to_string_lossy().to_string());
+    }
+    let mut profile = sandbox_profile_with_metadata(
+        project_path,
+        &runtime_roots,
+        other_projects,
+        program,
+        &config.db,
+        metadata_roots,
+    );
+    profile.push_str(&server_sandbox_policy(
+        &crate::management::root(config),
+        &runtime_roots,
+    ));
+    if isolated && let Some(host_home) = std::env::var_os("HOME") {
+        for suffix in [
+            ".codex",
+            ".claude",
+            ".local/share/opencode",
+            ".local/state/opencode",
+            ".config/opencode",
+        ] {
+            let path = PathBuf::from(&host_home).join(suffix);
+            profile.push_str(&format!(
+                "\n(deny file-read* file-write* (subpath \"{}\"))\n",
+                escape_sandbox_path(&path.to_string_lossy())
+            ));
+        }
+    }
+    profile.push_str(&format!(
+        "\n(deny file-write* (subpath \"{}\") (subpath \"{}\"))\n",
+        escape_sandbox_path(&tools.to_string_lossy()),
+        escape_sandbox_path(&node.to_string_lossy())
+    ));
+    profile
 }
 
 fn scrub_harness_environment(command: &mut Command) {
@@ -1327,12 +1734,114 @@ fn deny_siblings(home: &Path, parent: &Path, allowed: &[PathBuf], denied: &mut V
     }
 }
 
+#[cfg(test)]
 fn sandbox_profile(
     project_path: &str,
     allowed_roots: &[String],
     other_projects: &[String],
     program: &str,
     db_path: &Path,
+) -> String {
+    sandbox_profile_with_metadata(
+        project_path,
+        allowed_roots,
+        other_projects,
+        program,
+        db_path,
+        &SandboxMetadataRoots::default(),
+    )
+}
+
+fn metadata_roots_safe(config: &crate::config::Config, roots: &SandboxMetadataRoots) -> bool {
+    if roots.is_empty() {
+        return true;
+    }
+    if !config.sandbox {
+        return false;
+    }
+    let mut protected = vec![
+        crate::management::root(config),
+        config.db.clone(),
+        config.db.with_extension("coordination"),
+    ];
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut sidecar = config.db.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        protected.push(PathBuf::from(sidecar));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        for suffix in [
+            ".ssh",
+            ".gnupg",
+            ".aws",
+            ".azure",
+            ".config/gcloud",
+            ".kube",
+            ".docker",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+            ".git-credentials",
+            ".config/gh",
+            ".codex",
+            ".claude",
+            ".local/share/opencode",
+            ".local/state/opencode",
+            ".config/opencode",
+            "Library/Keychains",
+            "Library/Messages",
+            "Library/Mail",
+            "Library/Safari",
+            "Library/Application Support/Google/Chrome",
+            "Library/Application Support/Firefox",
+            "Library/Application Support/Microsoft Edge",
+            "Library/Application Support/BraveSoftware",
+            "Library/Application Support/Arc",
+            "Library/Application Support/1Password",
+            "Library/Application Support/Bitwarden",
+            "Library/Application Support/Slack",
+            "Library/Application Support/Discord",
+            "Library/Application Support/Signal",
+            "Library/Application Support/Telegram Desktop",
+            "Library/Application Support/Code",
+            "Library/Application Support/Cursor",
+            "Library/Application Support/gh",
+            "Library/Application Support/Dunlin",
+            "Library/Application Support/Kestrel",
+            "Library/Logs/Dunlin",
+            "Library/Logs/Kestrel",
+            "Library/Caches/Dunlin",
+            "Library/Caches/Kestrel",
+            "Library/Application Support/ai.opencode.desktop",
+            ".local/share/dunlin",
+            ".local/share/kestrel",
+            ".config/dunlin",
+            ".cache/dunlin",
+        ] {
+            protected.push(home.join(suffix));
+        }
+    }
+    let protected = protected
+        .into_iter()
+        .map(|p| p.canonicalize().unwrap_or(p))
+        .collect::<Vec<_>>();
+    roots.iter().all(|(root, _)| {
+        !root.chars().any(char::is_control)
+            && Path::new(root).is_absolute()
+            && !protected.iter().any(|p| {
+                !p.as_os_str().is_empty() && (Path::new(root).starts_with(p) || p.starts_with(root))
+            })
+    })
+}
+
+fn sandbox_profile_with_metadata(
+    project_path: &str,
+    allowed_roots: &[String],
+    other_projects: &[String],
+    program: &str,
+    db_path: &Path,
+    metadata_roots: &SandboxMetadataRoots,
 ) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let home_path = Path::new(&home);
@@ -1449,20 +1958,42 @@ fn sandbox_profile(
             .canonicalize()
             .unwrap_or_else(|_| PathBuf::from(path));
         if canonical != project && !allowed.contains(&canonical) {
-            denied.push(path.clone());
+            denied.push(canonical.to_string_lossy().into_owned());
         }
     }
 
     let mut profile = String::from("(version 1)\n(allow default)\n");
-    profile.push_str("(deny file-read*");
-    for path in &denied {
-        profile.push_str(&format!(" (subpath \"{}\")", escape_sandbox_path(path)));
+    for operation in ["file-read*", "file-write*"] {
+        profile.push_str(&format!("(deny {operation}"));
+        for path in &denied {
+            if metadata_roots.is_empty() {
+                profile.push_str(&format!(" (subpath \"{}\")", escape_sandbox_path(path)));
+            } else {
+                profile.push_str(&format!(
+                    " (require-all (subpath \"{}\")",
+                    escape_sandbox_path(path)
+                ));
+                for (root, permission) in metadata_roots.iter() {
+                    if operation == "file-read*" || permission == MetadataPermission::Write {
+                        profile.push_str(&format!(
+                            " (require-not (subpath \"{}\"))",
+                            escape_sandbox_path(root)
+                        ));
+                    }
+                }
+                profile.push(')');
+            }
+        }
+        profile.push_str(")\n");
     }
-    profile.push_str(")\n(deny file-write*");
-    for path in &denied {
-        profile.push_str(&format!(" (subpath \"{}\")", escape_sandbox_path(path)));
+    for (root, permission) in metadata_roots.iter() {
+        if permission == MetadataPermission::Read {
+            profile.push_str(&format!(
+                "(deny file-write* (subpath \"{}\"))\n",
+                escape_sandbox_path(root)
+            ));
+        }
     }
-    profile.push_str(")\n");
     profile
 }
 
@@ -1563,7 +2094,25 @@ mod tests {
             "params": {"cwd": project.path, "mcpServers": []}
         });
         tracker
-            .inject_vault(&mut value, &state, &project, &json!(1))
+            .inject_vault(
+                &mut value,
+                &state,
+                &project,
+                &crate::store::User {
+                    id: "test-user".into(),
+                    name: "test".into(),
+                    role: "admin".into(),
+                },
+                &crate::store::Device {
+                    id: "test-device".into(),
+                    user_id: "test-user".into(),
+                    name: "test".into(),
+                    created_at: 0,
+                    last_seen_at: None,
+                    revoked_at: None,
+                },
+                &json!(1),
+            )
             .unwrap();
         let server = &value.pointer("/params/mcpServers").unwrap()[0];
         assert_eq!(server["name"], "dunlin-relay-secrets");

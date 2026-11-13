@@ -1,0 +1,11 @@
+--- apps/web/src/components/HostHealthLive.tsx
++++ apps/web/src/components/HostHealthLive.tsx
+@@ -1,7 +1,7 @@
+ import { useEffect, useRef, useState } from 'react';
+ import { HostHealthStream } from '../lib/host-health';
+ import type { HostHealthState } from '../lib/host-health';
+-const labels = { 1: 'Diagnostyka', 2: 'Metadane eksportów', 3: 'Pojedyncze zadania', 4: 'Sesje trwałe' };
++const labels = { 1: 'Diagnostyka', 2: 'Metadane eksportów', 3: 'Pojedyncze zadania', 4: 'Sesje trwałe', 5: 'Sesje trwałe' };
+ export function HostHealthLive({ workspace, host, onForbidden }: {
+   workspace: string; host: string; onForbidden: () => void;
+ }) {

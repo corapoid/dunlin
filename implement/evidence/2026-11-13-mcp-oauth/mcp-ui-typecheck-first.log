@@ -1,0 +1,2 @@
+Sandbox suite=typecheck container=dunlin-check-9e882dda95df4c529ad6c3941235fa06 image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=60s source_sha256=0ef25a92491656b16790614876aeeda6c867b4837d43ede52976794678fcc598
+src/lib/mcp-oauth.ts(48,11): error TS2564: Property 'base' has no initializer and is not definitely assigned in the constructor.

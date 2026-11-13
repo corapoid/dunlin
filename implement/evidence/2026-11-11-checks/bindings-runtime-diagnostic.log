@@ -1,0 +1,329 @@
+Sandbox suite=runtime container=dunlin-check-2b7a0635a99843118326d0e972c99a8e image=sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360 platform=linux/arm64 memory=3328m scratch=1280m wall=900s source_sha256=4c97a5b3c98aefdf0919d154fb0927b976a986d0b212abd33d5a7c295a8f91dc
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling serde_core v1.0.229
+   Compiling getrandom v0.4.3
+   Compiling itoa v1.0.19
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling block-buffer v0.12.1
+   Compiling bytes v1.12.1
+   Compiling digest v0.11.3
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling memchr v2.8.3
+   Compiling log v0.4.35
+   Compiling synstructure v0.14.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.23
+   Compiling cc v1.11.1
+   Compiling base64ct v1.8.3
+   Compiling serde_json v1.0.154
+   Compiling zerofrom-derive v0.1.8
+   Compiling http v1.5.0
+   Compiling pin-project-lite v0.2.17
+   Compiling smallvec v1.16.5
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling cpufeatures v0.3.1
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling syn v2.0.119
+   Compiling zerocopy v0.8.63
+   Compiling once_cell v1.21.4
+   Compiling pem-rfc7468 v1.0.0
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling tinystr v0.8.5
+   Compiling sha2 v0.11.1
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling percent-encoding v2.3.2
+   Compiling utf_types v1.0.0
+   Compiling writeable v0.6.4
+   Compiling thiserror v2.0.21
+   Compiling litemap v0.8.3
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling cpubits v0.1.1
+   Compiling futures-core v0.3.34
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling vcpkg v0.2.15
+   Compiling bitflags v2.13.2
+   Compiling rustls v0.23.46
+   Compiling crc32fast v1.5.4
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling foldhash v0.2.0
+   Compiling hex v0.4.3
+   Compiling base16ct v1.0.0
+   Compiling getrandom v0.3.4
+   Compiling adler2 v2.0.1
+   Compiling thiserror v1.0.69
+   Compiling simd-adler32 v0.3.10
+   Compiling base64 v0.23.1
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling hashbrown v0.17.1
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling hmac v0.13.0
+   Compiling signature v3.0.0
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling darling_core v0.24.1
+   Compiling der v0.7.10
+   Compiling flate2 v1.1.11
+   Compiling idna v1.1.0
+   Compiling hashlink v0.12.2
+   Compiling elliptic-curve v0.14.3
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling chacha20 v0.10.2
+   Compiling fallible-iterator v0.3.0
+   Compiling utf8-zero v0.8.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling iana-time-zone v0.1.65
+   Compiling chrono v0.4.45
+   Compiling rusqlite v0.41.1
+   Compiling ureq v3.5.1
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling darling_macro v0.24.1
+   Compiling curve25519-dalek v5.0.0
+   Compiling rfc6979 v0.6.0
+   Compiling http-body v1.1.0
+   Compiling num-integer v0.1.47
+   Compiling futures-macro v0.3.34
+   Compiling crossbeam-utils v0.8.23
+   Compiling slab v0.4.12
+   Compiling spin v0.9.9
+   Compiling num-bigint-dig v0.8.6
+   Compiling cfg_aliases v0.1.1
+   Compiling futures-task v0.3.34
+   Compiling futures-sink v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling futures-util v0.3.34
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling rand_chacha v0.9.0
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling base64 v0.22.1
+   Compiling event-listener v5.4.2
+   Compiling want v0.3.2
+   Compiling rand v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling winnow v1.0.5
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling either v1.19.0
+   Compiling sync_wrapper v1.0.2
+   Compiling arrayvec v0.7.8
+   Compiling jiff-core v0.1.4
+   Compiling httpdate v1.0.3
+   Compiling hyper v1.12.0
+   Compiling jiff v0.2.41
+   Compiling vte v0.15.0
+   Compiling itertools v0.14.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p256 v0.14.0
+   Compiling p384 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling serde_spanned v1.1.3
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serial2 v0.2.39
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling ryu v1.0.23
+   Compiling unicode-width v0.2.3
+   Compiling dyn-clone v1.0.20
+   Compiling mime v0.3.18
+   Compiling downcast-rs v1.2.1
+   Compiling shell-words v1.1.1
+   Compiling portable-pty v0.9.0
+   Compiling axum-core v0.5.6
+   Compiling openidconnect v4.1.0
+   Compiling vt100 v0.18.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+    Finished `dev` profile [unoptimized] target(s) in 2m 32s
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1310720 1024352    286368  79% /scratch
+1024260	/scratch/target
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+   Compiling bitflags v2.13.2
+   Compiling rusqlite v0.41.1
+   Compiling rustix v1.1.6
+   Compiling nix v0.28.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling portable-pty v0.9.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+error: linking with `cc` failed: exit status: 1
+  |
+  = note:  "cc" "-Wl,--fix-cortex-a53-843419" "/scratch/target/debug/deps/rustcCULyre/symbols.o" "<9 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "/scratch/target/debug/deps/{libtokio_rustls-c106dd8debad4676,libdunlin_usage-155052f8e264af5e,libtempfile-91eea27869a49521,libfastrand-40f52e5425f05fc3,librustix-c94294ea3cd29a1a,liblinux_raw_sys-2d986948b94a904e}.rlib" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/{libtest-*,libgetopts-*,librustc_std_workspace_std-*}.rlib" "/scratch/target/debug/deps/{libdunlin_terminal-afb7d4d3302e98ef,libportable_pty-c00f563b21a1aedf,libshell_words-8341e2f2d3d1c3a2,libserial2-4c6792dcf3482620,libfiledescriptor-e33df0dbb88dd11c,libnix-7c7eb672e44085d2,libdowncast_rs-cb3cf90ba3b8ee3b,libanyhow-b47f453fc4a2d13d,libasync_channel-1cc7bc9ba4185bd1,libevent_listener_strategy-9d2ce887ef3f504e,libevent_listener-5734e07b962f17b3,libparking-55169571c663d6cd,libconcurrent_queue-b347cd2a65be5fd8,libcrossbeam_utils-26656047478d2159,libvt100-850998b4dd8493bb,libvte-895d72f5b65220b4,libunicode_width-92a7b83937f60dcf,libdunlin_identity-ffc5d7040ac4ef0f,libdunlin_mcp_client-1a8145ce34d7e1f0,libdunlin_vault-95d70f6e61958d5a,libdunlin_http-690b61c41266776a,libureq-6226e6c5b5f3d04c,libwebpki_roots-b5e7a99a2b57ecf0,librustls-e99d8c79bd938039,libwebpki-3a915bdace288a49,libring-1c4007f740afa448,libuntrusted-8f3e89e89170d942,librustls_pki_types-561c3b6b909ddca5,libflate2-e6cec834d1ba713c,libminiz_oxide-4a68a73b6b36bbe8,libsimd_adler32-a7bf92ba712d8731,libcrc32fast-96453c9a08b54b10,libutf8_zero-11a963f4e84d3e8b,libureq_proto-d7a0a165353cd9b0,libdunlin_storage-6f9209b1e3cbd527,libdunlin_knowledge-39980a1e4a631510,libdunlin_artifacts-02399058b0b53ea6,libopenidconnect-199ae17224cc9140,libserde_plain-fc7aafdfdba3a7b7,libp384-11a4a9ecab21f912,libitertools-6fae6d6ffcfdc470,libeither-34089b4840822690,libdyn_clone-7aa5357f3fddfcbb,libserde_value-f8792edf0df1e972,libordered_float-69a2c69a2e384fb4,libhmac-71395ebeb3f37e73,libserde_with-2d690bc8150711da,librsa-62ef9b34fdcdfa32,libpkcs1-d5b084a53dadae60,libpkcs8-f0bd5d155dba6d5c,libspki-149a5d62910ea792,libder-502e4d8be3d585d7,libpem_rfc7468-19a863bc42bd5c41,libsignature-69301ae2597b6bfd,libnum_bigint_dig-2f65c3d855923ce1,liblibm-dae6a7388a21947f,libnum_iter-ff95f82468cb4b3b,libnum_integer-56a61516fbc979ff,liblazy_static-c0227245d612f774,libspin-30f6702f4be1e47e,libed25519_dalek-10952f4e35c6273b,libcurve25519_dalek-6393405b100010a1,libed25519-44f7a4b48840054f,libp256-fd686a88af779f42,libprimeorder-27887f504a9aafb8,libwnaf-641bc3692052b854,libprimefield-bfb4919b82e21762,libecdsa-38a984a942a71033,librfc6979-a06a4a95f05ac927,libhmac-f9d583a50ae4ab96,libsignature-382511a7254bb945,libelliptic_curve-16b84c35d20ccb91,libpkcs8-f7c0ce882a809a32,libspki-d7465fd8c3861552,libsec1-a720d39db26dfd32,libder-31317952525ce584,libpem_rfc7468-1387aba4563f32a8,libbase64ct-8bcdbf254867ce0d,libbase16ct-4e20ac1be1e3d6a4,libgroup-85027db0509e3a27,libff-48421e6e5461d636,libcrypto_bigint-7629a337dd4de425,libcpubits-61182d71072ffe6f,liboauth2-a9f3e48d7d2a77b0,libthiserror-8819ccb799b3ca08,libsha2-86d9530e0171ce31,librand-89097b0efb3ca2c1,librand_chacha-c60d2d44c4ed1ad0,librand_core-8870a7514721b4f4,libgetrandom-72af13ba4127d30f,libchrono-c1687681d5987fba,libiana_time_zone-af5f351f40ce5d61,libnum_traits-42a5c8491f1ed175,liburl-80c4767ba83c54ea,libidna-fc9a75cf919ce7bf,libidna_adapter-561b78bd996fc5c4,libicu_properties-27fefb62e13a9e85,libicu_properties_data-6438d6ce89e39164,libicu_normalizer-1d70a8ea92d4f300,libicu_normalizer_data-7da071351578ac17,libicu_collections-c3541b5729a4b53a,libutf8_iter-b6fc3237d4548772,libutf_types-9eae786011687d83,libpotential_utf-a4fe0ab683f0b0f3,libicu_provider-c24c27206e9dbb72,libicu_locale_core-2b8dca520048a181,libtinystr-833388e3e2ba0cc7,liblitemap-8f12084b8f03d189,libwriteable-cb7a7ef48892f3a0,libzerovec-21e7b11bb9573fae,libzerotrie-a0295e76eec8a047,libyoke-ad2dd1c4344256fa,libstable_deref_trait-163ce718e7d04cef,libzerofrom-da33cb9a26c43f2c,libdunlin_session_runtime-693067578c8e76d3,libahp-ce5231ccf3ec6289,libjiff-c14b866536c075cf,libjiff_core-d4826dc01ca882df,libahp_types-1abfa678a0abfed5,libdunlin_workspace-a0813baa3edab79b,libtoml-c107f1b7e322c637,libtoml_writer-7bc41e2b59ca6b97,libtoml_parser-fd14b7cc2ea4282b,libwinnow-9dfcd983798bf412,libserde_spanned-cc349504ad91b872,libtoml_datetime-d2a4eb7befbdce07,libhex-19560ef8845ae471,libsyn-10eea4090a827577,libquote-7c311807251ec927,libproc_macro2-26a80cca3c663bc7,libunicode_ident-bdea3fb97085f13f}.rlib" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/{libproc_macro-*,librustc_literal_escaper-*}.rlib" "/scratch/target/debug/deps/{libdunlin_relay_protocol-d48d4aed15bdd44c,libbase64-e0a7c262dc63e9f9,libtokio_tungstenite-25b88098120ae397,libtungstenite-7b713d45a3ac6de1,libsha1-d23a2ce852f8a821,libsha2-6b0d58fae9b611a8,libcpufeatures-5f40b66212c7bc9b,libdigest-daeb14d5413457b5,libctutils-bd225141e5bd5a78,libcmov-93a11d255696c31d,libconst_oid-253cababfc89e17f,libcrypto_common-b07f49277d74dc16,libblock_buffer-d67ba6ec694b9800,libhybrid_array-b054cfd68de32d92,libzeroize-94083cd3f8f49920,libdunlin_coordination-7e55c7245d86583d,libuuid-ed5549c9a7181ef1,librusqlite-6a93ae30eb079d70,libbitflags-8f6b320c656d9e47,libhashlink-1bc06eb3b15925c3,libhashbrown-e80fdecee293ee1d,libfoldhash-35928bbbeb81d180,liblibsqlite3_sys-7d80ddfba8a96288,libfallible_streaming_iterator-cbc1857fe62e51a4,libfallible_iterator-40c7f6b50305f8ad,librand-43f4e13cd291e761,libgetrandom-ea74ebdb5667ca40,libchacha20-2ed517fb5fb5276d,librand_core-a571060b7d0aa52b,libdunlin_domain-a615b4b821ab41dc,libaxum-f7e33f8f3cc0b5e0,libserde_json-2fdbad3393b8935c,libmemchr-f6d04575b2c827ec,libzmij-6b331a7634d5d579,libserde_path_to_error-bdb3b24ca63a475d,libserde_urlencoded-7c4f51370f5208bb,libryu-e510f60df9e89d64,libserde-7c0713df9e772744,libform_urlencoded-4c72ee68b70f5f7b,libpercent_encoding-9e4f25c24a7d3cd4,libmatchit-12588acb384d2f68,libbase64-4fdc78a8cc2ad164,libtokio_tungstenite-ebe599ddb72cef8b,libtungstenite-e767379c7f078b9d,libdata_encoding-106cbeec977c15b1,librand-a00d2ee4b1d0640c,librand_chacha-f3a519874a08af19,libppv_lite86-6fc68c783bfe2d67,libzerocopy-49d691c320fd864a,librand_core-10d416d9053fd82c,libgetrandom-3bb0ae128592b50d,libthiserror-c11cfc44147aae31,libsha1-e60058d7b34820dd,libcfg_if-ee80668b02821107,libdigest-0493895fb0f48650,libsubtle-5f7c863d66a3646a,libconst_oid-b6767f3800dffa7c,libblock_buffer-4576923a47977898,libcrypto_common-992ff91e3a712b2c,libgeneric_array-79b7ea094973573e,libtypenum-19f77cc2cbf62d61,libhyper_util-4f93e6cd5e5378fd,libhyper-053214491b13c934,libwant-851fb60b152af3a1,libtry_lock-725bf0bc077b65d5,libsmallvec-b2480ac8b75da590,libhttparse-8ec0359b1e0820f0,libhttpdate-8d815fb02ae4181f,libatomic_waker-19f6d59ae1dac215,libserde_core-913419efd7348bfc,libaxum_core-a3cda46746367437,libmime-742a75896fd48dff,libhttp_body_util-0afa3a2555ab3c33,libhttp_body-3c2333772f83c5c3,libhttp-d21c182f492f1076,libitoa-febd006da8b3ff22,libtracing-382e199ff0e1e2bf,liblog-39bae0437aa40a4c,libtracing_core-c2b2b2edd96add05,libonce_cell-aa39fd879efc5a7d,libtower-7042905c2f7958b7,libsync_wrapper-1d2cd37a3d5600f2,libtower_layer-767526afb48e694c,libfutures_util-6d69759f387e7207,libslab-4028ff7b43ec74fc,libfutures_sink-80f31a11115cc267,libfutures_task-8adf2a922f58674b,libfutures_core-4c6630b72412ab3f,libtower_service-93c200f19ce92642,libtokio-a55844383e94c362,libsignal_hook_registry-8cc713a9054c2140,liberrno-44608d194b01fb75,libsocket2-d277cefedf312226,libbytes-ee47779046bb7057,libmio-cebff87b15ebe9b1,liblibc-74f3916a2f674a03,libpin_project_lite-d2434ed05065f304}.rlib" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/{libstd-*,libpanic_unwind-*,libobject-*,libmemchr-*,libaddr2line-*,libgimli-*,libcfg_if-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libminiz_oxide-*,libadler2-*,libunwind-*,liblibc-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "-Wl,-Bdynamic" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/scratch/target/debug/deps/rustcCULyre/raw-dylibs" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "/scratch/target/debug/build/libsqlite3-sys-79fbb184e2d8ba9b/out" "-L" "/scratch/target/debug/build/ring-e555b5ca9fd81007/out" "-L" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib" "-o" "/scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47" "-Wl,--gc-sections" "-pie" "-Wl,-z,relro,-z,now" "-nodefaultlibs" "-fuse-ld=lld" "-B<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld" "-Wl,--threads=1"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/ and include the crash backtrace and instructions to reproduce the bug.
+          Stack dump:
+          0.	Program arguments: /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/rust-lld -flavor gnu -plugin /usr/lib/gcc/aarch64-linux-gnu/12/liblto_plugin.so -plugin-opt=/usr/lib/gcc/aarch64-linux-gnu/12/lto-wrapper -plugin-opt=-fresolution=/scratch/ccXhLxhm.res --build-id --eh-frame-hdr --hash-style=gnu --as-needed -dynamic-linker /lib/ld-linux-aarch64.so.1 -X -EL -maarch64linux --fix-cortex-a53-843419 -pie -o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47 /usr/lib/gcc/aarch64-linux-gnu/12/../../../aarch64-linux-gnu/Scrt1.o /usr/lib/gcc/aarch64-linux-gnu/12/../../../aarch64-linux-gnu/crti.o /usr/lib/gcc/aarch64-linux-gnu/12/crtbeginS.o -L/scratch/target/debug/deps/rustcCULyre/raw-dylibs -L/scratch/target/debug/build/libsqlite3-sys-79fbb184e2d8ba9b/out -L/scratch/target/debug/build/ring-e555b5ca9fd81007/out -L/usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib -L/usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld -L/usr/lib/gcc/aarch64-linux-gnu/12 -L/usr/lib/gcc/aarch64-linux-gnu/12/../../../aarch64-linux-gnu -L/usr/lib/gcc/aarch64-linux-gnu/12/../../../../lib -L/lib/aarch64-linux-gnu -L/lib/../lib -L/usr/lib/aarch64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/aarch64-linux-gnu/12/../../.. --fix-cortex-a53-843419 /scratch/target/debug/deps/rustcCULyre/symbols.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.0.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.1.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.2.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.3.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.4.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.5.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.6.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.dunlin_relay.c920933a238656b3-cgu.7.rcgu.o /scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.7gpqd536f9k5czl4eodrb293j.rcgu.o --as-needed -Bstatic /scratch/target/debug/deps/libtokio_rustls-c106dd8debad4676.rlib /scratch/target/debug/deps/libdunlin_usage-155052f8e264af5e.rlib /scratch/target/debug/deps/libtempfile-91eea27869a49521.rlib /scratch/target/debug/deps/libfastrand-40f52e5425f05fc3.rlib /scratch/target/debug/deps/librustix-c94294ea3cd29a1a.rlib /scratch/target/debug/deps/liblinux_raw_sys-2d986948b94a904e.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libtest-308bddd9cbcc769d.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libgetopts-ad84dcb30a62aec7.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/librustc_std_workspace_std-24549a2fdfe64acb.rlib /scratch/target/debug/deps/libdunlin_terminal-afb7d4d3302e98ef.rlib /scratch/target/debug/deps/libportable_pty-c00f563b21a1aedf.rlib /scratch/target/debug/deps/libshell_words-8341e2f2d3d1c3a2.rlib /scratch/target/debug/deps/libserial2-4c6792dcf3482620.rlib /scratch/target/debug/deps/libfiledescriptor-e33df0dbb88dd11c.rlib /scratch/target/debug/deps/libnix-7c7eb672e44085d2.rlib /scratch/target/debug/deps/libdowncast_rs-cb3cf90ba3b8ee3b.rlib /scratch/target/debug/deps/libanyhow-b47f453fc4a2d13d.rlib /scratch/target/debug/deps/libasync_channel-1cc7bc9ba4185bd1.rlib /scratch/target/debug/deps/libevent_listener_strategy-9d2ce887ef3f504e.rlib /scratch/target/debug/deps/libevent_listener-5734e07b962f17b3.rlib /scratch/target/debug/deps/libparking-55169571c663d6cd.rlib /scratch/target/debug/deps/libconcurrent_queue-b347cd2a65be5fd8.rlib /scratch/target/debug/deps/libcrossbeam_utils-26656047478d2159.rlib /scratch/target/debug/deps/libvt100-850998b4dd8493bb.rlib /scratch/target/debug/deps/libvte-895d72f5b65220b4.rlib /scratch/target/debug/deps/libunicode_width-92a7b83937f60dcf.rlib /scratch/target/debug/deps/libdunlin_identity-ffc5d7040ac4ef0f.rlib /scratch/target/debug/deps/libdunlin_mcp_client-1a8145ce34d7e1f0.rlib /scratch/target/debug/deps/libdunlin_vault-95d70f6e61958d5a.rlib /scratch/target/debug/deps/libdunlin_http-690b61c41266776a.rlib /scratch/target/debug/deps/libureq-6226e6c5b5f3d04c.rlib /scratch/target/debug/deps/libwebpki_roots-b5e7a99a2b57ecf0.rlib /scratch/target/debug/deps/librustls-e99d8c79bd938039.rlib /scratch/target/debug/deps/libwebpki-3a915bdace288a49.rlib /scratch/target/debug/deps/libring-1c4007f740afa448.rlib /scratch/target/debug/deps/libuntrusted-8f3e89e89170d942.rlib /scratch/target/debug/deps/librustls_pki_types-561c3b6b909ddca5.rlib /scratch/target/debug/deps/libflate2-e6cec834d1ba713c.rlib /scratch/target/debug/deps/libminiz_oxide-4a68a73b6b36bbe8.rlib /scratch/target/debug/deps/libsimd_adler32-a7bf92ba712d8731.rlib /scratch/target/debug/deps/libcrc32fast-96453c9a08b54b10.rlib /scratch/target/debug/deps/libutf8_zero-11a963f4e84d3e8b.rlib /scratch/target/debug/deps/libureq_proto-d7a0a165353cd9b0.rlib /scratch/target/debug/deps/libdunlin_storage-6f9209b1e3cbd527.rlib /scratch/target/debug/deps/libdunlin_knowledge-39980a1e4a631510.rlib /scratch/target/debug/deps/libdunlin_artifacts-02399058b0b53ea6.rlib /scratch/target/debug/deps/libopenidconnect-199ae17224cc9140.rlib /scratch/target/debug/deps/libserde_plain-fc7aafdfdba3a7b7.rlib /scratch/target/debug/deps/libp384-11a4a9ecab21f912.rlib /scratch/target/debug/deps/libitertools-6fae6d6ffcfdc470.rlib /scratch/target/debug/deps/libeither-34089b4840822690.rlib /scratch/target/debug/deps/libdyn_clone-7aa5357f3fddfcbb.rlib /scratch/target/debug/deps/libserde_value-f8792edf0df1e972.rlib /scratch/target/debug/deps/libordered_float-69a2c69a2e384fb4.rlib /scratch/target/debug/deps/libhmac-71395ebeb3f37e73.rlib /scratch/target/debug/deps/libserde_with-2d690bc8150711da.rlib /scratch/target/debug/deps/librsa-62ef9b34fdcdfa32.rlib /scratch/target/debug/deps/libpkcs1-d5b084a53dadae60.rlib /scratch/target/debug/deps/libpkcs8-f0bd5d155dba6d5c.rlib /scratch/target/debug/deps/libspki-149a5d62910ea792.rlib /scratch/target/debug/deps/libder-502e4d8be3d585d7.rlib /scratch/target/debug/deps/libpem_rfc7468-19a863bc42bd5c41.rlib /scratch/target/debug/deps/libsignature-69301ae2597b6bfd.rlib /scratch/target/debug/deps/libnum_bigint_dig-2f65c3d855923ce1.rlib /scratch/target/debug/deps/liblibm-dae6a7388a21947f.rlib /scratch/target/debug/deps/libnum_iter-ff95f82468cb4b3b.rlib /scratch/target/debug/deps/libnum_integer-56a61516fbc979ff.rlib /scratch/target/debug/deps/liblazy_static-c0227245d612f774.rlib /scratch/target/debug/deps/libspin-30f6702f4be1e47e.rlib /scratch/target/debug/deps/libed25519_dalek-10952f4e35c6273b.rlib /scratch/target/debug/deps/libcurve25519_dalek-6393405b100010a1.rlib /scratch/target/debug/deps/libed25519-44f7a4b48840054f.rlib /scratch/target/debug/deps/libp256-fd686a88af779f42.rlib /scratch/target/debug/deps/libprimeorder-27887f504a9aafb8.rlib /scratch/target/debug/deps/libwnaf-641bc3692052b854.rlib /scratch/target/debug/deps/libprimefield-bfb4919b82e21762.rlib /scratch/target/debug/deps/libecdsa-38a984a942a71033.rlib /scratch/target/debug/deps/librfc6979-a06a4a95f05ac927.rlib /scratch/target/debug/deps/libhmac-f9d583a50ae4ab96.rlib /scratch/target/debug/deps/libsignature-382511a7254bb945.rlib /scratch/target/debug/deps/libelliptic_curve-16b84c35d20ccb91.rlib /scratch/target/debug/deps/libpkcs8-f7c0ce882a809a32.rlib /scratch/target/debug/deps/libspki-d7465fd8c3861552.rlib /scratch/target/debug/deps/libsec1-a720d39db26dfd32.rlib /scratch/target/debug/deps/libder-31317952525ce584.rlib /scratch/target/debug/deps/libpem_rfc7468-1387aba4563f32a8.rlib /scratch/target/debug/deps/libbase64ct-8bcdbf254867ce0d.rlib /scratch/target/debug/deps/libbase16ct-4e20ac1be1e3d6a4.rlib /scratch/target/debug/deps/libgroup-85027db0509e3a27.rlib /scratch/target/debug/deps/libff-48421e6e5461d636.rlib /scratch/target/debug/deps/libcrypto_bigint-7629a337dd4de425.rlib /scratch/target/debug/deps/libcpubits-61182d71072ffe6f.rlib /scratch/target/debug/deps/liboauth2-a9f3e48d7d2a77b0.rlib /scratch/target/debug/deps/libthiserror-8819ccb799b3ca08.rlib /scratch/target/debug/deps/libsha2-86d9530e0171ce31.rlib /scratch/target/debug/deps/librand-89097b0efb3ca2c1.rlib /scratch/target/debug/deps/librand_chacha-c60d2d44c4ed1ad0.rlib /scratch/target/debug/deps/librand_core-8870a7514721b4f4.rlib /scratch/target/debug/deps/libgetrandom-72af13ba4127d30f.rlib /scratch/target/debug/deps/libchrono-c1687681d5987fba.rlib /scratch/target/debug/deps/libiana_time_zone-af5f351f40ce5d61.rlib /scratch/target/debug/deps/libnum_traits-42a5c8491f1ed175.rlib /scratch/target/debug/deps/liburl-80c4767ba83c54ea.rlib /scratch/target/debug/deps/libidna-fc9a75cf919ce7bf.rlib /scratch/target/debug/deps/libidna_adapter-561b78bd996fc5c4.rlib /scratch/target/debug/deps/libicu_properties-27fefb62e13a9e85.rlib /scratch/target/debug/deps/libicu_properties_data-6438d6ce89e39164.rlib /scratch/target/debug/deps/libicu_normalizer-1d70a8ea92d4f300.rlib /scratch/target/debug/deps/libicu_normalizer_data-7da071351578ac17.rlib /scratch/target/debug/deps/libicu_collections-c3541b5729a4b53a.rlib /scratch/target/debug/deps/libutf8_iter-b6fc3237d4548772.rlib /scratch/target/debug/deps/libutf_types-9eae786011687d83.rlib /scratch/target/debug/deps/libpotential_utf-a4fe0ab683f0b0f3.rlib /scratch/target/debug/deps/libicu_provider-c24c27206e9dbb72.rlib /scratch/target/debug/deps/libicu_locale_core-2b8dca520048a181.rlib /scratch/target/debug/deps/libtinystr-833388e3e2ba0cc7.rlib /scratch/target/debug/deps/liblitemap-8f12084b8f03d189.rlib /scratch/target/debug/deps/libwriteable-cb7a7ef48892f3a0.rlib /scratch/target/debug/deps/libzerovec-21e7b11bb9573fae.rlib /scratch/target/debug/deps/libzerotrie-a0295e76eec8a047.rlib /scratch/target/debug/deps/libyoke-ad2dd1c4344256fa.rlib /scratch/target/debug/deps/libstable_deref_trait-163ce718e7d04cef.rlib /scratch/target/debug/deps/libzerofrom-da33cb9a26c43f2c.rlib /scratch/target/debug/deps/libdunlin_session_runtime-693067578c8e76d3.rlib /scratch/target/debug/deps/libahp-ce5231ccf3ec6289.rlib /scratch/target/debug/deps/libjiff-c14b866536c075cf.rlib /scratch/target/debug/deps/libjiff_core-d4826dc01ca882df.rlib /scratch/target/debug/deps/libahp_types-1abfa678a0abfed5.rlib /scratch/target/debug/deps/libdunlin_workspace-a0813baa3edab79b.rlib /scratch/target/debug/deps/libtoml-c107f1b7e322c637.rlib /scratch/target/debug/deps/libtoml_writer-7bc41e2b59ca6b97.rlib /scratch/target/debug/deps/libtoml_parser-fd14b7cc2ea4282b.rlib /scratch/target/debug/deps/libwinnow-9dfcd983798bf412.rlib /scratch/target/debug/deps/libserde_spanned-cc349504ad91b872.rlib /scratch/target/debug/deps/libtoml_datetime-d2a4eb7befbdce07.rlib /scratch/target/debug/deps/libhex-19560ef8845ae471.rlib /scratch/target/debug/deps/libsyn-10eea4090a827577.rlib /scratch/target/debug/deps/libquote-7c311807251ec927.rlib /scratch/target/debug/deps/libproc_macro2-26a80cca3c663bc7.rlib /scratch/target/debug/deps/libunicode_ident-bdea3fb97085f13f.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libproc_macro-089d8088f9a5e8fc.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/librustc_literal_escaper-9986c77fcb9d52ab.rlib /scratch/target/debug/deps/libdunlin_relay_protocol-d48d4aed15bdd44c.rlib /scratch/target/debug/deps/libbase64-e0a7c262dc63e9f9.rlib /scratch/target/debug/deps/libtokio_tungstenite-25b88098120ae397.rlib /scratch/target/debug/deps/libtungstenite-7b713d45a3ac6de1.rlib /scratch/target/debug/deps/libsha1-d23a2ce852f8a821.rlib /scratch/target/debug/deps/libsha2-6b0d58fae9b611a8.rlib /scratch/target/debug/deps/libcpufeatures-5f40b66212c7bc9b.rlib /scratch/target/debug/deps/libdigest-daeb14d5413457b5.rlib /scratch/target/debug/deps/libctutils-bd225141e5bd5a78.rlib /scratch/target/debug/deps/libcmov-93a11d255696c31d.rlib /scratch/target/debug/deps/libconst_oid-253cababfc89e17f.rlib /scratch/target/debug/deps/libcrypto_common-b07f49277d74dc16.rlib /scratch/target/debug/deps/libblock_buffer-d67ba6ec694b9800.rlib /scratch/target/debug/deps/libhybrid_array-b054cfd68de32d92.rlib /scratch/target/debug/deps/libzeroize-94083cd3f8f49920.rlib /scratch/target/debug/deps/libdunlin_coordination-7e55c7245d86583d.rlib /scratch/target/debug/deps/libuuid-ed5549c9a7181ef1.rlib /scratch/target/debug/deps/librusqlite-6a93ae30eb079d70.rlib /scratch/target/debug/deps/libbitflags-8f6b320c656d9e47.rlib /scratch/target/debug/deps/libhashlink-1bc06eb3b15925c3.rlib /scratch/target/debug/deps/libhashbrown-e80fdecee293ee1d.rlib /scratch/target/debug/deps/libfoldhash-35928bbbeb81d180.rlib /scratch/target/debug/deps/liblibsqlite3_sys-7d80ddfba8a96288.rlib /scratch/target/debug/deps/libfallible_streaming_iterator-cbc1857fe62e51a4.rlib /scratch/target/debug/deps/libfallible_iterator-40c7f6b50305f8ad.rlib /scratch/target/debug/deps/librand-43f4e13cd291e761.rlib /scratch/target/debug/deps/libgetrandom-ea74ebdb5667ca40.rlib /scratch/target/debug/deps/libchacha20-2ed517fb5fb5276d.rlib /scratch/target/debug/deps/librand_core-a571060b7d0aa52b.rlib /scratch/target/debug/deps/libdunlin_domain-a615b4b821ab41dc.rlib /scratch/target/debug/deps/libaxum-f7e33f8f3cc0b5e0.rlib /scratch/target/debug/deps/libserde_json-2fdbad3393b8935c.rlib /scratch/target/debug/deps/libmemchr-f6d04575b2c827ec.rlib /scratch/target/debug/deps/libzmij-6b331a7634d5d579.rlib /scratch/target/debug/deps/libserde_path_to_error-bdb3b24ca63a475d.rlib /scratch/target/debug/deps/libserde_urlencoded-7c4f51370f5208bb.rlib /scratch/target/debug/deps/libryu-e510f60df9e89d64.rlib /scratch/target/debug/deps/libserde-7c0713df9e772744.rlib /scratch/target/debug/deps/libform_urlencoded-4c72ee68b70f5f7b.rlib /scratch/target/debug/deps/libpercent_encoding-9e4f25c24a7d3cd4.rlib /scratch/target/debug/deps/libmatchit-12588acb384d2f68.rlib /scratch/target/debug/deps/libbase64-4fdc78a8cc2ad164.rlib /scratch/target/debug/deps/libtokio_tungstenite-ebe599ddb72cef8b.rlib /scratch/target/debug/deps/libtungstenite-e767379c7f078b9d.rlib /scratch/target/debug/deps/libdata_encoding-106cbeec977c15b1.rlib /scratch/target/debug/deps/librand-a00d2ee4b1d0640c.rlib /scratch/target/debug/deps/librand_chacha-f3a519874a08af19.rlib /scratch/target/debug/deps/libppv_lite86-6fc68c783bfe2d67.rlib /scratch/target/debug/deps/libzerocopy-49d691c320fd864a.rlib /scratch/target/debug/deps/librand_core-10d416d9053fd82c.rlib /scratch/target/debug/deps/libgetrandom-3bb0ae128592b50d.rlib /scratch/target/debug/deps/libthiserror-c11cfc44147aae31.rlib /scratch/target/debug/deps/libsha1-e60058d7b34820dd.rlib /scratch/target/debug/deps/libcfg_if-ee80668b02821107.rlib /scratch/target/debug/deps/libdigest-0493895fb0f48650.rlib /scratch/target/debug/deps/libsubtle-5f7c863d66a3646a.rlib /scratch/target/debug/deps/libconst_oid-b6767f3800dffa7c.rlib /scratch/target/debug/deps/libblock_buffer-4576923a47977898.rlib /scratch/target/debug/deps/libcrypto_common-992ff91e3a712b2c.rlib /scratch/target/debug/deps/libgeneric_array-79b7ea094973573e.rlib /scratch/target/debug/deps/libtypenum-19f77cc2cbf62d61.rlib /scratch/target/debug/deps/libhyper_util-4f93e6cd5e5378fd.rlib /scratch/target/debug/deps/libhyper-053214491b13c934.rlib /scratch/target/debug/deps/libwant-851fb60b152af3a1.rlib /scratch/target/debug/deps/libtry_lock-725bf0bc077b65d5.rlib /scratch/target/debug/deps/libsmallvec-b2480ac8b75da590.rlib /scratch/target/debug/deps/libhttparse-8ec0359b1e0820f0.rlib /scratch/target/debug/deps/libhttpdate-8d815fb02ae4181f.rlib /scratch/target/debug/deps/libatomic_waker-19f6d59ae1dac215.rlib /scratch/target/debug/deps/libserde_core-913419efd7348bfc.rlib /scratch/target/debug/deps/libaxum_core-a3cda46746367437.rlib /scratch/target/debug/deps/libmime-742a75896fd48dff.rlib /scratch/target/debug/deps/libhttp_body_util-0afa3a2555ab3c33.rlib /scratch/target/debug/deps/libhttp_body-3c2333772f83c5c3.rlib /scratch/target/debug/deps/libhttp-d21c182f492f1076.rlib /scratch/target/debug/deps/libitoa-febd006da8b3ff22.rlib /scratch/target/debug/deps/libtracing-382e199ff0e1e2bf.rlib /scratch/target/debug/deps/liblog-39bae0437aa40a4c.rlib /scratch/target/debug/deps/libtracing_core-c2b2b2edd96add05.rlib /scratch/target/debug/deps/libonce_cell-aa39fd879efc5a7d.rlib /scratch/target/debug/deps/libtower-7042905c2f7958b7.rlib /scratch/target/debug/deps/libsync_wrapper-1d2cd37a3d5600f2.rlib /scratch/target/debug/deps/libtower_layer-767526afb48e694c.rlib /scratch/target/debug/deps/libfutures_util-6d69759f387e7207.rlib /scratch/target/debug/deps/libslab-4028ff7b43ec74fc.rlib /scratch/target/debug/deps/libfutures_sink-80f31a11115cc267.rlib /scratch/target/debug/deps/libfutures_task-8adf2a922f58674b.rlib /scratch/target/debug/deps/libfutures_core-4c6630b72412ab3f.rlib /scratch/target/debug/deps/libtower_service-93c200f19ce92642.rlib /scratch/target/debug/deps/libtokio-a55844383e94c362.rlib /scratch/target/debug/deps/libsignal_hook_registry-8cc713a9054c2140.rlib /scratch/target/debug/deps/liberrno-44608d194b01fb75.rlib /scratch/target/debug/deps/libsocket2-d277cefedf312226.rlib /scratch/target/debug/deps/libbytes-ee47779046bb7057.rlib /scratch/target/debug/deps/libmio-cebff87b15ebe9b1.rlib /scratch/target/debug/deps/liblibc-74f3916a2f674a03.rlib /scratch/target/debug/deps/libpin_project_lite-d2434ed05065f304.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libstd-f9f1a1f02cfcb825.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libpanic_unwind-aefade2573ce0bfe.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libobject-9ca758dd3597dbbf.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libmemchr-2de903bc3b0bd6c8.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libaddr2line-de15821c8bbf3ac9.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libgimli-e018e0d9e440a4c2.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libcfg_if-7a1681814558e39c.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/librustc_demangle-5858d3d08a91f11d.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libstd_detect-253925aad6beb300.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libhashbrown-575c05acd191698b.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/librustc_std_workspace_alloc-e84a1bed28f9a072.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libminiz_oxide-0e6ac45fa02c6559.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libadler2-373bc5604614c2d0.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libunwind-f2aa5c058c216eb9.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/liblibc-abb54b70dada8e7c.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/librustc_std_workspace_core-7703448dd424ec43.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/liballoc-f68e2715e2ac2507.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libcore-89b975c6293f41a8.rlib /usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/lib/libcompiler_builtins-6d387bb3469b4925.rlib -Bdynamic -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc --eh-frame-hdr -z noexecstack --gc-sections -z relro -z now --threads=1 /usr/lib/gcc/aarch64-linux-gnu/12/crtendS.o /usr/lib/gcc/aarch64-linux-gnu/12/../../../aarch64-linux-gnu/crtn.o
+          Stack dump without symbol names (ensure you have llvm-symbolizer in your PATH or set the environment var `LLVM_SYMBOLIZER_PATH` to point to it):
+          0  libLLVM.so.23.1-rust-1.99.1-stable 0x0000f586bf7cc410 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int) + 64
+          1  libLLVM.so.23.1-rust-1.99.1-stable 0x0000f586bf7ccd84
+          2  linux-vdso.so.1                    0x0000f586c1d8f8f8 __kernel_rt_sigreturn + 0
+          3  libc.so.6                          0x0000f586b986d22c
+          4  rust-lld                           0x0000b702d9b97594
+          5  rust-lld                           0x0000b702d9b506f4
+          6  rust-lld                           0x0000b702d9b50640
+          7  rust-lld                           0x0000b702d9c1af40
+          8  rust-lld                           0x0000b702d9a400d4
+          9  rust-lld                           0x0000b702d9a224b0
+          10 rust-lld                           0x0000b702d9a1dd84
+          11 rust-lld                           0x0000b702d993e424
+          12 rust-lld                           0x0000b702d993d798
+          13 rust-lld                           0x0000b702d993dce8
+          14 libc.so.6                          0x0000f586b97f7744
+          15 libc.so.6                          0x0000f586b97f7818 __libc_start_main + 152
+          16 rust-lld                           0x0000b702d97dc7f8
+          collect2: fatal error: ld terminated with signal 7 [Bus error]
+          compilation terminated.
+          
+
+error: could not compile `dunlin-relay` (bin "dunlin-relay" test) due to 1 previous error
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1310720 1201884    108836  92% /scratch
+1201788	/scratch/target
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0

@@ -57,9 +57,13 @@ pub(super) fn git(path: &str, args: &[&str]) -> Result<String, String> {
     git_limited(path, args, 65536)
 }
 pub(crate) fn git_limited(path: &str, args: &[&str], limit: u64) -> Result<String, String> {
-    let mut command = Command::new("git");
+    limited(super::command::worktree(path), args, limit)
+}
+pub(super) fn git_object_limited(path: &str, args: &[&str], limit: u64) -> Result<String, String> {
+    limited(super::command::directory(path), args, limit)
+}
+fn limited(mut command: Command, args: &[&str], limit: u64) -> Result<String, String> {
     command
-        .args(["-C", path])
         .args(args)
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -263,11 +267,9 @@ pub fn check_remote_status(path: &str, expected: &BranchActivity) -> Result<Remo
     if remote.starts_with('-') || !remote_ref.starts_with("refs/heads/") {
         return Err("Unsupported upstream configuration".into());
     }
-    let mut command = Command::new("git");
+    let mut command = super::command::worktree(path);
     command
         .args([
-            "-C",
-            path,
             "-c",
             "credential.interactive=false",
             "ls-remote",
@@ -415,6 +417,20 @@ mod tests {
         }
     }
     fn run(path: &Path, args: &[&str]) -> String {
+        if args.first() == Some(&"clone")
+            || (args.first() == Some(&"init") && args.contains(&"--bare"))
+        {
+            let output = super::super::command::directory(path.to_str().unwrap())
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return String::from_utf8(output.stdout).unwrap();
+        }
         super::super::git(path.to_str().unwrap(), args).unwrap()
     }
     fn configure(path: &Path) {

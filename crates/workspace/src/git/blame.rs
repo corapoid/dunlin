@@ -1,6 +1,10 @@
 //! Bounded HEAD-only blame. Never attributes worktree/unsaved lines to authors;
 //! clients map only unchanged lines from this immutable content to their buffer.
-use super::{activity::git_limited, history::repository_root, operations::oid};
+use super::{
+    activity::{git_limited, git_object_limited},
+    history::repository_root,
+    operations::oid,
+};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Line {
@@ -78,9 +82,10 @@ pub fn load(path: &str, file: &str, expected_head: Option<&str>) -> Result<Blame
     // in the working tree. Ignore-revs files and replace refs cannot change the
     // meaning of a cache entry without changing its HEAD/file key.
     let git_dir = read(&root, &["rev-parse", "--absolute-git-dir"], 65536)?;
-    let raw = read(
+    let raw = git_object_limited(
         &root,
         &[
+            "--no-replace-objects",
             "--git-dir",
             git_dir.trim_end_matches('\n'),
             "--bare",

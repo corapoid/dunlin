@@ -1,0 +1,368 @@
+Sandbox suite=macos-profile container=dunlin-check-ac4e7a8e1c1b4f7eaf34b731d1b8f1ca image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=3328m scratch=1280m file_size=134217728 wall=900s source_sha256=7a973869bc7b781d0842f6af85b935f24523c29b751609734d31a478330bf6a8
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling serde_core v1.0.229
+   Compiling itoa v1.0.19
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling block-buffer v0.12.1
+   Compiling bytes v1.12.1
+   Compiling digest v0.11.3
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling memchr v2.8.3
+   Compiling log v0.4.35
+   Compiling synstructure v0.14.0
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling serde_json v1.0.154
+   Compiling base64ct v1.8.3
+   Compiling zerofrom-derive v0.1.8
+   Compiling http v1.5.0
+   Compiling pin-project-lite v0.2.17
+   Compiling smallvec v1.16.5
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling cpufeatures v0.3.1
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling once_cell v1.21.4
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling syn v2.0.119
+   Compiling zerocopy v0.8.63
+   Compiling pem-rfc7468 v1.0.0
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling tinystr v0.8.5
+   Compiling sha2 v0.11.1
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling percent-encoding v2.3.2
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling thiserror v2.0.21
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling icu_properties_data v2.4.0
+   Compiling cpubits v0.1.1
+   Compiling icu_normalizer_data v2.4.0
+   Compiling futures-core v0.3.34
+   Compiling bitflags v2.13.2
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling vcpkg v0.2.15
+   Compiling crc32fast v1.5.4
+   Compiling rustls v0.23.46
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling simd-adler32 v0.3.10
+   Compiling base16ct v1.0.0
+   Compiling hex v0.4.3
+   Compiling adler2 v2.0.1
+   Compiling base64 v0.23.1
+   Compiling thiserror v1.0.69
+   Compiling foldhash v0.2.0
+   Compiling getrandom v0.3.4
+   Compiling hashbrown v0.17.1
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling hmac v0.13.0
+   Compiling signature v3.0.0
+   Compiling strsim v0.11.1
+   Compiling semver v1.0.28
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling rustc_version v0.4.1
+   Compiling der v0.7.10
+   Compiling flate2 v1.1.11
+   Compiling idna v1.1.0
+   Compiling elliptic-curve v0.14.3
+   Compiling hashlink v0.12.2
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling chacha20 v0.10.2
+   Compiling iana-time-zone v0.1.65
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling utf8-zero v0.8.1
+   Compiling fallible-iterator v0.3.0
+   Compiling rusqlite v0.41.1
+   Compiling ureq v3.5.1
+   Compiling chrono v0.4.45
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v5.0.0
+   Compiling darling_macro v0.24.1
+   Compiling rfc6979 v0.6.0
+   Compiling http-body v1.1.0
+   Compiling num-integer v0.1.47
+   Compiling futures-macro v0.3.34
+   Compiling spin v0.9.9
+   Compiling futures-task v0.3.34
+   Compiling cfg_aliases v0.1.1
+   Compiling num-bigint-dig v0.8.6
+   Compiling futures-sink v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling slab v0.4.12
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-util v0.3.34
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling rand_chacha v0.9.0
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling base64 v0.22.1
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling try-lock v0.2.5
+   Compiling tower-service v0.3.3
+   Compiling want v0.3.2
+   Compiling event-listener v5.4.2
+   Compiling rand v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling sync_wrapper v1.0.2
+   Compiling atomic-waker v1.1.2
+   Compiling winnow v1.0.5
+   Compiling rustix v1.1.6
+   Compiling arrayvec v0.7.8
+   Compiling tower-layer v0.3.3
+   Compiling httpdate v1.0.3
+   Compiling either v1.19.0
+   Compiling jiff-core v0.1.4
+   Compiling jiff v0.2.41
+   Compiling itertools v0.14.0
+   Compiling hyper v1.12.0
+   Compiling vte v0.15.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p256 v0.14.0
+   Compiling p384 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling serial2 v0.2.39
+   Compiling linux-raw-sys v0.12.1
+   Compiling ryu v1.0.23
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling unicode-width v0.2.3
+   Compiling downcast-rs v1.2.1
+   Compiling mime v0.3.18
+   Compiling shell-words v1.1.1
+   Compiling dyn-clone v1.0.20
+   Compiling openidconnect v4.1.0
+   Compiling portable-pty v0.9.0
+   Compiling axum-core v0.5.6
+   Compiling vt100 v0.18.1
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling fastrand v2.5.0
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling tempfile v3.27.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+error[E0277]: the trait bound `Array<u8, UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>>: LowerHex` is not satisfied
+   --> apps/server/src/acp/metadata_profile_export.rs:152:80
+    |
+152 |         profiles.push(json!({"permission":mode,"profile_sha256":format!("{:x}",Sha256::digest(profile.as_bytes())),"profile":profile,
+    |                                                                          ----  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `LowerHex` is not implemented for `Array<u8, UInt<UInt<UInt<UInt<UInt<_, B0>, B0>, B0>, B0>, B0>>`
+    |                                                                          |
+    |                                                                          required by this formatting parameter
+    |
+    = help: the following other types implement trait `LowerHex`:
+              &T
+              &mut T
+              Braced
+              Hyphenated
+              OpenFlags
+              PrepFlags
+              Saturating<T>
+              Urn
+            and 129 others
+    = note: the full name for the type has been written to '/scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47.long-type-3448370006386369965.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:288:302
+    |
+288 | ...ring>>(10)?,r.get::<_,i64>(11)?,r.get::<_,u64>(12)?,r.get::<_,Option<String>>(13)?,r.get::<_,bool>(14)?))
+    |                                      ---     ^^^ the trait `FromSql` is not implemented for `u64`
+    |                                      |
+    |                                      required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:395:13
+    |
+395 | ...   params![prepared.candidate.binding.host_id,prepared.workspace,prepared.candidate.binding.host_enrollment_epoch,prepared.candidate.binding.credential_revision],|r...
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:539:17
+    |
+539 |                 params![attempt,sequence,serde_json::to_string(&command)?])?;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0282]: type annotations needed
+  --> apps/server/src/store/remote_bindings/resolver/execution/tests.rs:91:13
+   |
+91 |         let descriptor=serde_json::from_value(json!({"scope":{"controller_node_id":"controller-node","worker_node_id":"worker-node",
+   |             ^^^^^^^^^^
+...
+97 |             ObservedExport::for_test(identity.clone(), lease.clone(), descriptor.clone(), now());
+   |                                                                       ---------- type must be known at this point
+   |
+help: consider giving `descriptor` an explicit type
+   |
+91 |         let descriptor: /* Type */=serde_json::from_value(json!({"scope":{"controller_node_id":"controller-node","worker_node_id":"worker-node",
+   |                       ++++++++++++
+
+Some errors have detailed explanations: E0277, E0282.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `dunlin-relay` (bin "dunlin-relay" test) due to 5 previous errors

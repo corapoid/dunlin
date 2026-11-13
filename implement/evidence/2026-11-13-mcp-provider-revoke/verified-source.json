@@ -1,0 +1,85 @@
+{
+  "source_sha256": "063db015d8a305070bced47e709894ff267c418bade8df87ff41e05303af3a41",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "5c400ef460dd95db4ca593ce030b9fd4829e0fb3c23a59363c8f155eae14fc32",
+      "source_sha256": "063db015d8a305070bced47e709894ff267c418bade8df87ff41e05303af3a41",
+      "exit_code": 0,
+      "scope": "822 backend-family tests: 678 relay, 1 identity, 79 SDK, 27 terminal, 37 usage; 49 separate acceptance tests ignored. Actual HTTP loss/retry (3+2 revoke POST), device revocation between refresh/access POST, configuration change, uncertain rotation, epoch fence before reauthorization and historical receipts; migration43 collision rollback, crash/reopen, frozen target flags, retained acknowledgements, least-recently-attempted progress and full 100000-row audit capacity.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 34\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "32a62317aab84e2c36d89a2ad6c75de49bca127733fd6cf2f0eddc7044ab29ca",
+      "source_sha256": "063db015d8a305070bced47e709894ff267c418bade8df87ff41e05303af3a41",
+      "exit_code": 0,
+      "scope": "151 tests: 114 MCP, 6 HTTP, 31 vault, followed by all-target Clippy with warnings denied. Existing public/basic/post/CIMD OAuth lifecycle plus the guarded revocation transport and vault adapter compile against the final journal types.",
+      "memory": {
+        "memory.peak": "1293910016",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "149efb057f61a11ab4053850e1b4a57a80c09305daf0af640673eef136c1bb6e",
+      "source_sha256": "063db015d8a305070bced47e709894ff267c418bade8df87ff41e05303af3a41",
+      "exit_code": 0,
+      "scope": "One focused Chromium acceptance: actual production web/REST/AHP, real production stdio MCP helper inside Linux sandbox, controlled OAuth/MCP AS and ACP harness. Two credential generations, 4 AS revoke POST, lost successful REST reply followed by GET receipt without retry; metadata is disabled/confirmed_known_tokens, secrets are retained. 726 other tests filtered out; no claim of rerunning all previous remote runtime scenarios. The generic fixture stdout mentions replay dedupe; the mcp-real branch here does not exercise that raw-broker duplicate branch.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 304\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "f3c59c7ce76a3251a6394c5f28283101b4c39d81b63343d7a6cad4972087ed75",
+      "source_sha256": "063db015d8a305070bced47e709894ff267c418bade8df87ff41e05303af3a41",
+      "exit_code": 0,
+      "scope": "Server and companion packages, all-targets, warnings denied; MCP/HTTP/vault Clippy is additionally included in the mcp suite.",
+      "memory": {
+        "memory.peak": "2321743872",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "b0f7c72701e6b875c4209586a2320c541382519c4780a5b5f4c85ac026ad8211",
+      "source_sha256": "f440c4d58e11a0950331921b7dd03dcf938f8d03c3117a8690cc71009e9cf718",
+      "exit_code": 0,
+      "scope": "150 frontend tests, including strict/historical revocation receipts, unfinished-operation guards, one owner-bound CAS, exact response revision and no automatic retry after network loss. Narrow frontend snapshot."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "59f4527b0688cb4a99f48ad9dff63e46e3bb813cd640f5971609a6e6d6aa13ad",
+      "source_sha256": "8ec5c22c6b414f09ceb12e32bd54a40543832813f1d3b13dae890bd7920eab52",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check. Narrow frontend/config snapshot."
+    },
+    {
+      "suite": "tooling",
+      "log": "tooling-final.log",
+      "log_sha256": "c57bcdaec9697282d3510e4106b2c7eaddc68f45499ceba2285e35a6946b884b",
+      "source_sha256": "e94ee6ce6af46544cc51045163b6caf71cf9db3fe5ddaf4a143c2da6c82e803e",
+      "exit_code": 0,
+      "scope": "14 CI-workflow contract tests and 18 launcher tests, including the new explicit production OAuth-revocation browser filter. These contract tests use mocked process calls; their nested fixture-hash log lines are not actual Rust execution or an actual GitHub Actions run."
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "e4b9f289cf2a95db6e0fd369157cec9567dcf7c978682f8e856164c6844a54ae",
+    "revoke-desktop.png": "85a66efa399fc4c60906a3e0afcbef05b59ec85a9ed0fc7ca55080a6bdf78d2d",
+    "revoke-mobile.png": "f87c22b6a8e17fac21aac7f13eb97bb52323cbba8f9635d1b790e4799fb3f0d8",
+    "checks-final.log": "44ee326862501a23424a13ce4c6268912204aeb7e3099bd14ec1db29667a868c"
+  },
+  "scope": "Schema43 personal negative journal and owner-only revoke REST/UI. Local revision fence precedes discovery, keyring and AS requests; exact original envelope context and configuration are required. One-use unknown claims precede I/O, fresh browser/member authority is checked before/after each POST, and completed identical acknowledgements survive explicit retries and registration changes without resending old tokens. Reauthorization after a receipt advances the revision; stale revoke CAS cannot cut the new authorization. Unconfirmed permits explicit retry/new authorization; unfinished blocks pending a separate reconciliation path. Known-token confirmation is not entire-grant revocation. GC, unfinished-operation reconciliation, URL elicitation, general scoped secrets, A2A and remaining E0-E10 remain open. Controlled providers/harness/SecretStore only: no real provider/account/keyring/tailnet or native macOS acceptance, no new GitHub Actions execution. Formal20/68 unchanged.",
+  "static_checks": "PASS: rustfmt selected Rust files (skip_children; preserve the existing root module ordering), Node syntax, Python AST, documentation 122 Markdown/links/anchors, git diff --check."
+}

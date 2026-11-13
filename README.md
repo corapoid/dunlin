@@ -138,6 +138,12 @@ For terminal-only use on macOS/Linux, build the separate client with
 read-only or run a fresh local/remote ACP session without GPUI. See the
 [CLI commands and current limitations](docs/reference/cli.md#standalone-cli).
 
+An independent **web client is under development** in [apps/web](apps/web/README.md).
+The first slice is a read-only live project/session catalog, not a finished chat
+or workflow application. It preserves private Tailscale access between computers
+and allows same-machine loopback. Scope, remaining work and validation status
+are tracked in [implement/](implement/README.md).
+
 ## Set up a remote server
 
 The interactive terminal installer collects the server name,

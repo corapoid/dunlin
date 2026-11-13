@@ -12,7 +12,7 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Component, Path},
-    process::{Command, Stdio},
+    process::Stdio,
     time::{Duration, Instant},
 };
 
@@ -847,11 +847,9 @@ fn run(root: &str, args: &[&str]) -> Result<bool, String> {
     run_with_timeout(root, args, Duration::from_secs(60))
 }
 fn run_with_timeout(root: &str, args: &[&str], timeout: Duration) -> Result<bool, String> {
-    let mut command = Command::new("git");
+    let mut command = super::command::worktree(root);
     command
         .args([
-            "-C",
-            root,
             "-c",
             "core.fsmonitor=false",
             "-c",

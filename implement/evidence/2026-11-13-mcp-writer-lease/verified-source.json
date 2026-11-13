@@ -1,0 +1,102 @@
+{
+  "source_sha256": "6481dd1ea1e5a5078ba416b8153d07a9d2b9d706048bd003ae17103a3daaa956",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "4fbb3cfdd1215842bea23f75ffd61e810f8583349330b3255b96fee68acc0f87",
+      "source_sha256": "da8f90090cfc4abee3a08bf21e8e22942dae1495f0277688ca35c8fbb621ba0b",
+      "exit_code": 0,
+      "scope": "840 tests:696 relay,1 identity,79 SDK,27 terminal,37 usage;49 separate acceptance ignored. Five new tests cover exact writer-protected reference metadata, migration45 collision rollback/default false, callback waiter loss during private set, short parallel credential admission, and cancellation while waiting with zero token exchange. Existing kernel test now checks both lock namespaces and actual SIGKILL. This is the before-observation source; the only subsequent Rust-input change is the ignored Chromium fixture, reconstructed exactly in source-delta.json. Production Rust and ordinary tests are unchanged.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 521\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "2e93a1fe10a24262668bcdde1391f2048c48e935d62ece1eb3a0ab1f6ecc7f57",
+      "source_sha256": "6481dd1ea1e5a5078ba416b8153d07a9d2b9d706048bd003ae17103a3daaa956",
+      "exit_code": 0,
+      "scope": "Current source, all-targets warnings denied for server and companion packages; includes compilation of final observation helper. CGU8 under unchanged2304MiB.",
+      "memory": {
+        "memory.peak": "2333192192",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "97c479c7131ff8023708628f3a0090178b14fa2b3ede4f1edfb3bb04c7d58400",
+      "source_sha256": "6481dd1ea1e5a5078ba416b8153d07a9d2b9d706048bd003ae17103a3daaa956",
+      "exit_code": 0,
+      "scope": "One focused Chromium acceptance,744 other tests filtered out. Current production router/UI and real production MCP helper inside Linux sandbox, controlled AS/ACP/MemoryStore. New probes require writer lease at private set and its absence during authenticated MCP HTTP; Store is observed with a2s bound rather than assuming every try_lock conflict belongs to the caller. Both actual callback generations have writer_protected1. Prior reconcile/lost reply/approval/revoke/cleanup/late-write flow passes. Test ELFs compiled with CGU128, RAM3584MiB/scratch1536MiB/single Cargo job unchanged; test8.56s, OOM0. SIGKILL is a separate backend kernel test, not a whole server crash in this browser fixture. Generic stdout mentions raw replay dedupe; that raw branch is not exercised here.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 466\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "tooling",
+      "log": "tooling-final.log",
+      "log_sha256": "14540867bf9fa98e8b824c98c984a1ccf78dffae1b0081f00cc2814efe2d6555",
+      "source_sha256": "4e09fb4de7fd18b2e9cb964b31c75a148741395d103db6bb058c65fb8e9c1641",
+      "exit_code": 0,
+      "scope": "14 CI-contract and18 launcher tests. Runtime now uses CGU128; tests check that isolation/RAM/scratch/single-job/selection remain bounded in browser and nonbrowser modes. Mocked process commands are not real nested Rust execution or GitHub Actions runs."
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-reconcile/frontend-final.log",
+      "log_sha256": "d7711126c64404bb96a2e05d5a1f90865ae0cd2892f8222ccd303d6e8a17208e",
+      "source_sha256": "63e45ef560be096c42aa6645179798ab62f234a01b88f79a92c02babb7ac3cce",
+      "exit_code": 0,
+      "scope": "153 tests, including one new multi-case reconciliation client test: support flag, fixed owner-bound CAS, unchanged exact receipt counters/revision and no retry after network loss. Narrow frontend snapshot.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-reconcile/typecheck-final.log",
+      "log_sha256": "62318f534cc501645a981e20d766884afb580f102b6a39aa21fb65b3fd0654f9",
+      "source_sha256": "48e3c60cd4a05939de5788ef99c43211564ece27ccdcbb5cd83aa2445eccb100",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check of current frontend/config inputs.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "fb3e823f757b3d0fa97838abbe7fb39818f20c75d757355408555271c97249a6",
+    "source-delta.json": "4ed3931311aa6732b06e4ee139eca9ee89f22cecd98ad773bbec2592be1a12f8",
+    "fixture-before-observation.rs": "66c349e0debf79cfde048522307c7053d233394d9a97dc7d8ccf68c0ca3dfda8",
+    "fixture-observation.patch": "819390260ba045e2f2922f5fdf5bebd1b5241db5163e6cf32dc417e5ed5ea892",
+    "checks-final.log": "af9e2cb623bcc6c8199e9d7b5b2a67bb039c3120f6dcd514a1608b6293e79462"
+  },
+  "diagnostic_runs_not_accepted": [
+    {
+      "log": "server-first.log",
+      "log_sha256": "1f9a56d7c8a58d6f681e29c4bd26068b473e22adf9e46ec6025a60a6413b200a",
+      "cause": "Initial SCHEMA_VERSION44 vs migration45; fixed before passed840."
+    },
+    {
+      "log": "runtime-oom.log",
+      "log_sha256": "aa3318cd332054b2ee2fb0cae1c46480a934b2d345672e30957f377e6681ab6c",
+      "cause": "CGU64 rustc test-ELF OOM, before Chromium."
+    },
+    {
+      "log": "runtime-oom-repeat.log",
+      "log_sha256": "7607b2566b5b8384bb9809fb7551e6ad147107bce42858e2a07fdc00894b824d",
+      "cause": "Same CGU64 source/budget repeated OOM; motivated bounded compiler adjustment."
+    },
+    {
+      "log": "runtime-observation-failure.log",
+      "log_sha256": "4fee998feba13876556eba62b387d87b2a47371a963abea18daf2ae592692f62",
+      "cause": "CGU128 both builds OOM0; incorrect immediate try_lock assumption in new fixture caused scenario failure."
+    },
+    {
+      "log": "tooling-first.log",
+      "log_sha256": "31f5b32b6e6e89804978c5b35c474f94314b0e59e43202f84c4371d1375bdea5",
+      "cause": "New CGU assertion initially placed in non-Rust probe mock; moved to runtime contract tests."
+    }
+  ],
+  "scope": "Schema45 records only reservations made under host writer lease. Callback holds it before code exchange through install/commit; browser/runtime access_token_or_refresh release it before MCP I/O. Admission waits at most5s with fresh authority and no Store mutex during waits/I/O; runtime preserves original deadline/lifetime. Callback rechecks authorizing revision after waiting. Disconnect/revoke remain independent and fence old commit. Lease survives waiter cancellation and kernel releases on process death, but this does not prove completion of an operation already handed to the secret backend; durable write-completion evidence is still required before retention pruning. Cleanup still keeps tombstones and does not reclaim the256-reference quota. Retention, legacy/unknown handling, remaining E5 and E0-E10 are open; formal20/68 unchanged. No real provider/account/keyring/tailnet/native macOS or actual GitHub Actions acceptance. No new MCP/vault source changes; frontend/typecheck reused only after narrow-source and log-hash verification."
+}

@@ -1,0 +1,48 @@
+--- apps/server/src/worker_fixture.rs
++++ apps/server/src/worker_fixture.rs
+@@ -1,4 +1,5 @@
+ //! Complete synthetic private-daemon/TLS/WSS fixture. No real tailnet or daemon.
++mod broker_transport;
+ #[cfg(target_os = "linux")]
+ mod execution_vertical;
+ #[cfg(target_os = "linux")]
+--- crates/relay-protocol/src/worker/execution/tests.rs
++++ crates/relay-protocol/src/worker/execution/tests.rs
+@@ -230,6 +230,8 @@
+     assert_eq!(worker_rate_limit(2), 120);
+     assert_eq!(worker_rate_limit(3), MAX_EXECUTION_FRAMES_PER_MINUTE);
+     assert_eq!(worker_rate_limit(4), 4096);
++    assert_eq!(worker_rate_limit(5), 4096);
++    assert_eq!(worker_rate_limit(6), 120);
+     assert_eq!(MAX_EXECUTION_FRAMES_PER_MINUTE, 1024);
+ }
+ 
+--- crates/relay-protocol/src/worker/session/broker.rs
++++ crates/relay-protocol/src/worker/session/broker.rs
+@@ -1,6 +1,6 @@
+ //! Proposed broker messages for an explicitly negotiated v5 transport.
+ //! Shape/digests are correlation, never authority or an OAuth credential.
+-//! No active handshake selects this contract yet. The controller must resolve
++//! Hello5 requires explicit transport opt-in. The controller must resolve
+ //! private connections itself and attest the actual live channel/session/turn.
+ use super::*;
+ use serde_json::Value;
+--- crates/relay-protocol/src/worker/session/broker/open.rs
++++ crates/relay-protocol/src/worker/session/broker/open.rs
+@@ -1,4 +1,4 @@
+-//! Version-specific handshake/open shapes. No active WS handler selects v5 yet.
++//! Version-specific v5 handshake/open shapes; MCP admission also needs a bound broker.
+ use super::*;
+ use crate::worker::{WorkerMessage, session::WORKER_SESSION_PROTOCOL_VERSION};
+ use dunlin_domain::hosts::HostCapabilities;
+--- apps/server/src/worker_client/broker.rs
++++ apps/server/src/worker_client/broker.rs
+@@ -1,7 +1,7 @@
+ //! Bounded v5 socket work, independent of session jobs and heartbeat renewal.
+ //! This is correlation, not execution authority. The runtime must validate its
+ //! native export/session/turn leases before submission and before using results.
+-//! No active socket selects v5 until the controller and runner bridges exist.
++//! V5 negotiation alone does not attach this dispatcher to the runner runtime.
+ use dunlin_relay_protocol::worker::{
+     ChannelFence,
+     session::broker::{

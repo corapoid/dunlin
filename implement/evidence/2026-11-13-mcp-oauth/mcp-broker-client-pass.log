@@ -1,0 +1,374 @@
+Sandbox suite=mcp container=dunlin-check-b39a5dcc370940a6beb906f619a92919 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=a28711f73ddc966fe435421ada233625751a0ec61d0f678dbb156d5ef9e29058
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling libc v0.2.191
+   Compiling synstructure v0.14.0
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling serde_core v1.0.229
+   Compiling zerovec-derive v0.11.7
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling itoa v1.0.19
+   Compiling serde v1.0.229
+   Compiling zmij v1.0.23
+   Compiling ring v0.17.14
+   Compiling serde_derive v1.0.229
+   Compiling typenum v1.20.1
+   Compiling serde_json v1.0.154
+   Compiling hybrid-array v0.4.15
+   Compiling zeroize v1.9.1
+   Compiling memchr v2.8.3
+   Compiling rustls-pki-types v1.15.1
+   Compiling tinystr v0.8.5
+   Compiling getrandom v0.2.17
+   Compiling cmov v0.5.4
+   Compiling httparse v1.10.1
+   Compiling litemap v0.8.3
+   Compiling crc32fast v1.5.4
+   Compiling utf_types v1.0.0
+   Compiling untrusted v0.9.0
+   Compiling writeable v0.6.4
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling ctutils v0.4.8
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling icu_properties_data v2.4.0
+   Compiling rustls v0.23.46
+   Compiling icu_normalizer_data v2.4.0
+   Compiling simd-adler32 v0.3.10
+   Compiling adler2 v2.0.1
+   Compiling bytes v1.12.1
+   Compiling const-oid v0.10.2
+   Compiling once_cell v1.21.4
+   Compiling percent-encoding v2.3.2
+   Compiling smallvec v1.16.5
+   Compiling log v0.4.35
+   Compiling digest v0.11.3
+   Compiling http v1.5.0
+   Compiling miniz_oxide v0.9.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling subtle v2.6.1
+   Compiling base64 v0.23.1
+   Compiling ureq-proto v0.7.1
+   Compiling flate2 v1.1.11
+   Compiling webpki-roots v1.0.11
+   Compiling cpufeatures v0.3.1
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling utf8-zero v0.8.1
+   Compiling ureq v3.5.1
+   Compiling sha2 v0.11.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling hex v0.4.3
+   Compiling thiserror v2.0.21
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v2.0.21
+   Compiling vcpkg v0.2.15
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling idna v1.1.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling chacha20 v0.10.2
+   Compiling form_urlencoded v1.2.2
+   Compiling bitflags v2.13.2
+   Compiling autocfg v1.5.1
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling num-traits v0.2.19
+   Compiling url v2.5.8
+   Compiling rand v0.10.3
+   Compiling hashlink v0.12.2
+   Compiling rustix v1.1.6
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling rusqlite v0.41.1
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling iana-time-zone v0.1.65
+   Compiling linux-raw-sys v0.12.1
+   Compiling chrono v0.4.45
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling hmac v0.13.0
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+    Finished `test` profile [unoptimized] target(s) in 46.44s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_http-5b083b37736a86b6)
+
+running 6 tests
+test tests::get_and_json_posts_preserve_headers_body_and_per_request_timeout ... ok
+test tests::json_transcripts_do_not_acquire_a_new_implicit_size_limit ... ok
+test tests::malformed_headers_fail_before_connect_and_body_reads_stay_bounded ... ok
+test tests::repeated_authentication_challenges_preserve_order_and_invalid_text_is_reported ... ok
+test tests::status_errors_keep_the_response_without_exposing_its_body_in_display ... ok
+test tests::zero_redirect_policy_never_forwards_authorization_or_post_body ...      Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_mcp_client-c4d24c3efe80ba81)
+ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.14s
+
+
+running 92 tests
+test linear::tests::cached_inboxes_reject_unbounded_duplicate_or_mistagged_rows ... ok
+test linear::tests::issue_snapshots_bind_the_entire_reviewed_task_and_rereads_bind_identity ... ok
+test linear::tests::missing_filter_capability_is_not_an_unfiltered_fallback ... ok
+test linear::tests::missing_pagination_metadata_is_not_silently_treated_as_a_complete_inbox ... ok
+test linear::tests::status_updates_use_an_advertised_tool_and_only_id_and_state ... ok
+test linear::tests::tagged_issues_are_paginated_without_an_llm ... ok
+test linear::tests::wrong_labels_and_untrusted_links_are_not_imported ... ok
+test metadata::tests::annotations_in_arrays_refs_composition_and_conditional_schemas_are_rejected ... ok
+test metadata::tests::metadata_is_owned_by_transport_and_mirrors_the_same_request ... ok
+test metadata::tests::mirrored_names_and_values_cannot_inject_or_impersonate_encoded_literals ... ok
+test metadata::tests::nested_exact_paths_preserve_numbers_and_omit_missing_or_null_values ... ok
+test metadata::tests::projection_budgets_bound_schema_work_and_aggregate_http_headers ... ok
+test negotiated::cache::tests::byte_and_entry_limits_evict_and_invalidation_releases_accounting ... ok
+test negotiated::cache::tests::cache_keys_separate_methods_parameters_and_exclude_mutations_and_mrtr ... ok
+test negotiated::cache::tests::conflicting_page_scopes_discard_all_cached_pages_and_require_a_fresh_start ... ok
+test negotiated::cache::tests::discovery_uses_its_own_key_and_invalid_shapes_are_not_retained ... ok
+test negotiated::cache::tests::each_catalog_page_has_an_independent_ttl_and_cursor_key ... ok
+test negotiated::cache::tests::mrtr_complete_result_is_not_reused_for_a_new_resource_operation ... ok
+test negotiated::cache::tests::observed_authentication_failure_and_expired_client_cannot_serve_cached_reads ... ok
+test negotiated::cache::tests::public_and_private_results_are_both_isolated_between_authenticated_clients ... ok
+test negotiated::cache::tests::resource_cache_hits_expire_on_access_and_never_cross_uri_parameters ... ok
+test negotiated::cache::tests::resource_notification_invalidates_a_fresh_cached_result ... ok
+test negotiated::cache::tests::schema_mismatch_discards_cached_catalog_without_automatically_repeating_the_tool ... ok
+test negotiated::cache::tests::subscription_authentication_failure_also_revokes_cached_resource_reads ... ok
+test negotiated::cache::tests::tool_calls_are_never_cached_and_explicit_refresh_bypasses_catalog_cache ... ok
+test negotiated::cache::tests::ttl_expiry_missing_negative_and_invalid_hints_are_handled_without_sleeping ... ok
+test negotiated::continuation::tests::concurrent_reservations_never_exceed_the_limit_and_drop_releases_each_slot ... ok
+test negotiated::continuation::tests::each_round_replaces_state_and_input_keys_without_carrying_old_values_forward ... ok
+test negotiated::continuation::tests::explicit_url_input_declares_only_that_mode_and_sends_the_users_decision_without_state ... ok
+test negotiated::continuation::tests::invalid_state_unadvertised_requests_and_unsafe_urls_are_not_executed_or_navigated ... ok
+test negotiated::continuation::tests::opaque_state_is_echoed_only_for_the_exact_original_operation_with_new_rpc_id ... ok
+test negotiated::continuation::tests::pending_admission_is_bounded_before_network_and_released_by_drop ... ok
+test negotiated::continuation::tests::pending_handle_cannot_cross_authenticated_clients_even_at_the_same_endpoint ... ok
+test negotiated::continuation::tests::resource_and_prompt_continuations_preserve_their_own_method_and_parameters ... ok
+test negotiated::continuation::tests::rounds_time_wrong_keys_and_stale_catalog_stop_before_continuation_network ... ok
+test negotiated::subscriptions::tests::invalid_filters_and_legacy_subscriptions_do_not_open_a_stream ... ok
+test negotiated::subscriptions::tests::notification_during_page_fetch_prevents_publication_of_a_mixed_catalog ... ok
+test negotiated::subscriptions::tests::notifications_cannot_invalidate_another_authenticated_clients_catalog ... ok
+test negotiated::subscriptions::tests::notifications_must_match_the_acknowledged_filter_and_subscription_id ... ok
+test negotiated::subscriptions::tests::post_subscription_acknowledges_subset_and_invalidates_tools_before_the_next_call ... ok
+test negotiated::subscriptions::tests::resource_notifications_match_exact_uris_and_preserve_client_scope ... ok
+test negotiated::subscriptions::tests::sse_comments_multiline_data_and_strict_memory_bounds ... ok
+test negotiated::subscriptions::tests::stream_drop_or_unexpected_eof_invalidates_catalog_without_automatic_reconnect ... ok
+test negotiated::subscriptions::tests::subscription_budget_is_reserved_before_post_and_released_when_dropped ... ok
+test negotiated::subscriptions::tests::wrong_ack_ids_expanded_filters_and_events_before_ack_fail_closed ... ok
+test negotiated::tests::an_expired_total_budget_stops_before_another_network_operation ... ok
+test negotiated::tests::application_guard_applies_to_initial_probe_and_legacy_dispatch_and_cleanup ... ok
+test negotiated::tests::application_guard_fences_cached_catalog_and_cannot_revive_after_regrant ... ok
+test negotiated::tests::catalog_refresh_is_atomic_and_failure_invalidates_the_previous_snapshot ... ok
+test negotiated::tests::invalid_header_tool_is_excluded_and_forged_schemas_cannot_change_projection ... ok
+test negotiated::tests::modern_discovery_sse_and_tool_headers_have_no_initialize_or_protocol_session ... ok
+test negotiated::tests::recognized_modern_errors_and_authentication_never_trigger_downgrade ... ok
+test negotiated::tests::revocation_during_http_discards_modern_results_and_stops_legacy_initialization ... ok
+test negotiated::tests::tool_errors_input_required_and_missing_result_types_are_not_success_or_retry ... ok
+test negotiated::tests::unrecognized_400_selects_the_legacy_adapter_once_and_preserves_session_semantics ... ok
+test oauth::flow::lifecycle::tests::absent_revocation_support_is_reported_without_claiming_remote_success ... ok
+test oauth::flow::lifecycle::tests::access_only_credentials_can_be_revoked_and_refresh_absence_is_not_an_attempt ... ok
+test oauth::flow::lifecycle::tests::failed_remote_revocation_keeps_local_access_disabled_and_explicit_retry_is_idempotent ... ok
+test oauth::flow::lifecycle::tests::foreign_context_revision_or_registration_cannot_refresh_or_disable_credentials ... ok
+test oauth::flow::lifecycle::tests::lost_refresh_reply_blocks_positive_reuse_but_allows_explicit_revocation ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::dispatch_preparation_keeps_valid_generation_without_refresh ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::dispatch_preparation_refreshes_local_expiry_once_and_never_retries_uncertain_rotation ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::durable_install_failure_leaves_no_active_secret_and_dispatch_rechecks_authorization ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::durable_refresh_lost_response_or_vault_or_commit_failure_never_retries_old_token ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::durable_refresh_publishes_only_after_secret_write_and_survives_flow_reconstruction ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::durable_refresh_reservation_failure_or_lost_authorization_sends_no_http ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::durable_restore_rejects_swapped_corrupt_expired_or_clock_rollback_credentials ... ok
+test oauth::flow::lifecycle::tests::persistence_tests::expired_dispatch_preparation_cannot_rotate_a_concurrently_replaced_generation ... ok
+test oauth::flow::lifecycle::tests::refresh_failure_or_scope_escalation_never_restores_an_active_credential ... ok
+test oauth::flow::lifecycle::tests::revocation_metadata_obeys_origin_policy_reserved_queries_and_authentication_defaults ... ok
+test oauth::flow::lifecycle::tests::rotating_and_non_rotating_refresh_replace_access_and_preserve_the_correct_refresh_token ... ok
+test oauth::flow::tests::callback_shape_and_authenticated_context_cannot_change_or_consume_another_users_record ... ok
+test oauth::flow::tests::expired_state_is_rejected_and_pending_admission_has_a_hard_bound ... ok
+test oauth::flow::tests::issuer_validation_precedes_errors_and_rejects_missing_or_mismatched_iss_without_network ... ok
+test oauth::flow::tests::optional_issuer_can_be_absent_and_token_expiry_is_enforced_locally ... ok
+test oauth::flow::tests::real_code_exchange_preserves_pkce_resource_redirect_and_each_client_authentication_method ... ok
+test oauth::flow::tests::registration_and_endpoint_pins_reject_issuer_changes_and_reserved_query_injection ... ok
+test oauth::flow::tests::token_http_failure_is_not_retried_and_scope_escalation_is_rejected ... ok
+test oauth::tests::actual_unauthenticated_probe_uses_all_challenge_headers_and_the_advertised_location ... ok
+test oauth::tests::challenge_lexer_handles_other_schemes_quoted_commas_escapes_and_bws ... ok
+test oauth::tests::challenge_location_wins_and_challenged_scopes_need_not_be_in_supported_scopes ... ok
+test oauth::tests::explicitly_allowed_separate_authorization_origin_is_supported ... ok
+test oauth::tests::invalid_success_and_http_errors_are_not_hidden_by_discovery_fallback ... ok
+test oauth::tests::metadata_cannot_expand_network_origins_or_substitute_resource_and_issuer ... ok
+test oauth::tests::well_known_construction_preserves_paths_and_root_issuer_priority ... ok
+test oauth::tests::well_known_fallback_obeys_resource_and_oauth_oidc_priority_without_credentials ... ok
+test tests::endpoints_and_credentials_fail_before_network_access ... ok
+test tests::failed_tool_calls_and_expired_sessions_are_never_retried ... ok
+test tests::initializes_negotiates_session_and_reads_sse_tool_results ... ok
+test tests::pagination_and_duplicate_catalog_protection ... ok
+test tests::redirects_duplicate_tools_and_repeated_cursors_fail_closed ... ok
+test tests::rpc_identity_errors_and_tool_failures_are_not_success ... ok
+
+test result: ok. 92 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.43s
+
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_vault-5a1d3fca4558e7f7)
+
+running 31 tests
+test broker::tests::denied_untrusted_expired_read_only_and_ask_never_read_the_key ... ok
+test broker::tests::http_failures_and_recipe_output_are_redacted ... ok
+test broker::tests::list_uses_the_keychain_policy_and_hides_values_and_ids ... ok
+test broker::tests::managed_auto_approve_injects_and_redacts_the_value ... ok
+test broker::tests::missing_policy_denies_without_reading_the_value ... ok
+test broker::tests::recipe_requires_a_keychain_recipe_and_declared_parameters ... ok
+test broker::tests::sqlite_tampering_cannot_widen_the_keychain_policy ... ok
+test broker::tests::stored_only_keys_are_valid_but_unlisted_and_unusable_without_reading_the_value ... ok
+test client::tests::client_handshakes_and_forwards_a_list_request ... ok
+test client::tests::client_surfaces_broker_errors_without_values ... ok
+test http::tests::aws_sigv4_headers_match_a_fixed_reference_signature ... ok
+test http::tests::caller_cannot_set_auth_or_unlisted_headers ... ok
+test http::tests::injection_and_redaction_cover_common_encodings ... ok
+test http::tests::method_and_body_limits_are_enforced ... ok
+test http::tests::named_operations_render_policy_paths_and_reject_free_form_overrides ... ok
+test http::tests::oauth_refresh_exchanges_the_refresh_token_without_exposing_it ... ok
+test http::tests::resolver_rejects_private_and_metadata_addresses ... ok
+test http::tests::ureq3_executor_blocks_local_connections_without_echoing_credentials ... ok
+test http::tests::ureq3_resolver_checks_the_actual_dial_addresses ... ok
+test http::tests::url_policy_is_exact_and_rejects_traversal_redirect_hosts_and_private_targets ... ok
+test linux_store::tests::keyring_namespaces_are_separate_and_invalid_ids_never_start_a_process ... ok
+test mcp::tests::initialize_negotiates_supported_protocols ... ok
+test mcp::tests::tools_have_no_value_reading_surface ... ok
+test oauth::tests::oauth_adapter_isolates_records_from_general_secret_aliases_and_policies ... ok
+test oauth::tests::oauth_adapter_rejects_oversized_secret_records_before_write_and_after_read ... ok
+test oauth::tests::oauth_adapter_storage_errors_do_not_expose_backend_messages_or_fall_back_to_other_storage ... ok
+test protocol::tests::frames_round_trip_and_reject_oversize_messages ... ok
+test protocol::tests::tokens_are_long_and_not_derived_from_time ... ok
+test recipe::tests::captures_output_exit_status_and_timeout ... ok
+test recipe::tests::refuses_programs_inside_the_project_and_supports_hashes ... ok
+test store::tests::memory_store_round_trips_values_and_policies ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+   Doc-tests dunlin_http
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dunlin_mcp_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dunlin_vault
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking cfg-if v1.0.5
+    Checking libc v0.2.191
+    Checking zerofrom v0.1.8
+    Checking stable_deref_trait v1.2.1
+    Checking yoke v0.8.4
+    Checking zerovec v0.11.9
+    Checking serde_core v1.0.229
+    Checking typenum v1.20.1
+    Checking itoa v1.0.19
+    Checking hybrid-array v0.4.15
+    Checking serde v1.0.229
+    Checking zmij v1.0.23
+    Checking tinystr v0.8.5
+    Checking litemap v0.8.3
+    Checking cmov v0.5.4
+    Checking memchr v2.8.3
+    Checking utf_types v1.0.0
+    Checking writeable v0.6.4
+    Checking zeroize v1.9.1
+    Checking rustls-pki-types v1.15.1
+    Checking icu_locale_core v2.4.0
+    Checking utf8_iter v1.1.0
+    Checking serde_json v1.0.154
+    Checking ctutils v0.4.8
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking zerotrie v0.2.5
+    Checking potential_utf v0.1.6
+    Checking getrandom v0.2.17
+    Checking const-oid v0.10.2
+    Checking untrusted v0.9.0
+    Checking smallvec v1.16.5
+    Checking ring v0.17.14
+    Checking digest v0.11.3
+    Checking icu_collections v2.4.0
+    Checking icu_provider v2.4.0
+    Checking once_cell v1.21.4
+    Checking percent-encoding v2.3.2
+    Checking simd-adler32 v0.3.10
+    Checking log v0.4.35
+    Checking bytes v1.12.1
+    Checking adler2 v2.0.1
+    Checking miniz_oxide v0.9.1
+    Checking http v1.5.0
+    Checking crc32fast v1.5.4
+    Checking httparse v1.10.1
+    Checking rustls-webpki v0.103.16
+    Checking icu_properties_data v2.4.0
+    Checking icu_normalizer_data v2.4.0
+    Checking cpufeatures v0.3.1
+    Checking base64 v0.23.1
+    Checking subtle v2.6.1
+    Checking rand_core v0.10.1
+    Checking rustls v0.23.46
+    Checking ureq-proto v0.7.1
+    Checking sha2 v0.11.1
+    Checking icu_normalizer v2.4.0
+    Checking icu_properties v2.4.0
+    Checking flate2 v1.1.11
+    Checking webpki-roots v1.0.11
+    Checking hex v0.4.3
+    Checking utf8-zero v0.8.1
+    Checking ureq v3.5.1
+    Checking idna_adapter v1.2.2
+    Checking getrandom v0.4.3
+    Checking bitflags v2.13.2
+    Checking foldhash v0.2.0
+    Checking hashbrown v0.17.1
+    Checking thiserror v2.0.21
+    Checking idna v1.1.0
+    Checking chacha20 v0.10.2
+    Checking form_urlencoded v1.2.2
+    Checking url v2.5.8
+    Checking rand v0.10.3
+    Checking libsqlite3-sys v0.39.1
+    Checking hashlink v0.12.2
+    Checking dunlin-http v0.2.0 (/repo/crates/http)
+    Checking fallible-streaming-iterator v0.1.9
+    Checking fallible-iterator v0.3.0
+    Checking rusqlite v0.41.1
+    Checking num-traits v0.2.19
+    Checking dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+    Checking dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+    Checking dunlin-domain v0.2.0 (/repo/crates/domain)
+    Checking linux-raw-sys v0.12.1
+    Checking iana-time-zone v0.1.65
+    Checking chrono v0.4.45
+    Checking rustix v1.1.6
+    Checking dunlin-storage v0.2.0 (/repo/crates/storage)
+    Checking dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+    Checking hmac v0.13.0
+    Checking fastrand v2.5.0
+    Checking tempfile v3.27.0
+    Checking dunlin-vault v0.2.0 (/repo/crates/vault)
+    Finished `dev` profile [unoptimized] target(s) in 19.80s
+Sandbox memory: {"memory.peak": "881053696", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

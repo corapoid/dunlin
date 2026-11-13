@@ -1,0 +1,12 @@
+Sandbox suite=probe container=dunlin-check-5b919d415e8243fd9b2b4bdafd35e061 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+.Sandbox suite=probe container=dunlin-check-4a964ad33d804cc3ad4bb99a2c228a6f image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+.....Sandbox suite=macos-profile container=dunlin-check-3a4c410ebf13481d890311241f79999e image=sha256:fixture platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash
+...Sandbox suite=runtime container=dunlin-check-561efc86838346c7979495e4c4d5ccb7 image=sha256:fixture platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash scope=runtime-focused-acceptance-only filter=production_browser_acceptance_runtime_remote_session_journal chromium=remote-session-production-ui pids=256
+.......Sandbox suite=workspace container=dunlin-check-5bfbb4a89aec468aae1ed5dfe4afb3f9 image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=2147483648 wall=1s source_sha256=fixture-hash
+Sandbox suite=mcp container=dunlin-check-2b64659108b44be0891326169d6618f9 image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=1s source_sha256=fixture-hash
+Sandbox suite=server container=dunlin-check-e6cf6425825e42558a70ea7c9856e810 image=sha256:fixture platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash
+.
+----------------------------------------------------------------------
+Ran 17 tests in 0.028s
+
+OK

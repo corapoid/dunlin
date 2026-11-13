@@ -1,0 +1,6576 @@
+// Generated from types/*.ts — do not edit.
+//
+// Regenerate with: npm run generate:rust
+
+#![allow(missing_docs)]
+
+#[allow(unused_imports)]
+use crate::common::{AnyValue, JsonObject, StringOrMarkdown, Uri};
+#[allow(unused_imports)]
+use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use serde_repr::{Deserialize_repr, Serialize_repr};
+
+// ─── Enums ────────────────────────────────────────────────────────────
+
+/// Policy configuration state for a model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PolicyState {
+    #[serde(rename = "enabled")]
+    Enabled,
+    #[serde(rename = "disabled")]
+    Disabled,
+    #[serde(rename = "unconfigured")]
+    Unconfigured,
+}
+
+/// Discriminant for pending message kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PendingMessageKind {
+    /// Injected into the current turn at a convenient point
+    #[serde(rename = "steering")]
+    Steering,
+    /// Sent automatically as a new turn after the current turn finishes
+    #[serde(rename = "queued")]
+    Queued,
+}
+
+/// Session initialization state.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionLifecycle {
+    Creating,
+    Ready,
+    Failed,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for SessionLifecycle {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Creating => serializer.serialize_str("creating"),
+            Self::Ready => serializer.serialize_str("ready"),
+            Self::Failed => serializer.serialize_str("failed"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SessionLifecycle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "creating" => Self::Creating,
+            "ready" => Self::Ready,
+            "failed" => Self::Failed,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Bitset of summary-level session status flags.
+///
+/// Use bitwise checks instead of equality for non-terminal activity. For example,
+/// `status & SessionStatus.InProgress` matches both ordinary in-progress turns
+/// and turns that are paused waiting for input.
+///
+/// Wire form: a bare `u32` bitset. Unknown/forward-compat bits are
+/// preserved across a decode→encode round-trip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(transparent)]
+pub struct SessionStatus(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl SessionStatus {
+    /// Session is idle — no turn is active.
+    pub const Idle: SessionStatus = SessionStatus(1);
+    /// Session ended with an error.
+    pub const Error: SessionStatus = SessionStatus(2);
+    /// A turn is actively streaming.
+    pub const InProgress: SessionStatus = SessionStatus(8);
+    /// A turn is in progress but blocked waiting for user input or tool confirmation.
+    pub const InputNeeded: SessionStatus = SessionStatus(24);
+    /// The client has viewed this session since its last modification.
+    pub const IsRead: SessionStatus = SessionStatus(32);
+    /// The session has been archived by the client.
+    pub const IsArchived: SessionStatus = SessionStatus(64);
+
+    /// The raw `u32` bitset value (every set bit, known or not).
+    #[inline]
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// Wrap a raw `u32` bitset value, preserving every bit verbatim.
+    #[inline]
+    pub const fn from_bits(bits: u32) -> Self {
+        SessionStatus(bits)
+    }
+
+    /// True when every bit set in `other` is also set in `self`.
+    #[inline]
+    pub const fn contains(self, other: SessionStatus) -> bool {
+        (self.0 & other.0) == other.0
+    }
+}
+
+impl From<u32> for SessionStatus {
+    #[inline]
+    fn from(value: u32) -> Self {
+        SessionStatus(value)
+    }
+}
+
+impl From<SessionStatus> for u32 {
+    #[inline]
+    fn from(value: SessionStatus) -> Self {
+        value.0
+    }
+}
+
+impl std::ops::BitOr for SessionStatus {
+    type Output = SessionStatus;
+    #[inline]
+    fn bitor(self, rhs: SessionStatus) -> SessionStatus {
+        SessionStatus(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitOrAssign for SessionStatus {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: SessionStatus) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl std::ops::BitAnd for SessionStatus {
+    type Output = SessionStatus;
+    #[inline]
+    fn bitand(self, rhs: SessionStatus) -> SessionStatus {
+        SessionStatus(self.0 & rhs.0)
+    }
+}
+
+impl std::ops::Not for SessionStatus {
+    type Output = SessionStatus;
+    #[inline]
+    fn not(self) -> SessionStatus {
+        SessionStatus(!self.0)
+    }
+}
+
+/// Discriminant for {@link ChatOrigin} — how a chat came into existence.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChatOriginKind {
+    /// User created the chat explicitly (e.g. via the host UI).
+    User,
+    /// Forked from an existing chat at a specific turn.
+    Fork,
+    /// Created as an independent side conversation from a specific turn.
+    SideChat,
+    /// Spawned by a tool call running in another chat (e.g. a sub-agent delegation).
+    Tool,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChatOriginKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::User => serializer.serialize_str("user"),
+            Self::Fork => serializer.serialize_str("fork"),
+            Self::SideChat => serializer.serialize_str("sideChat"),
+            Self::Tool => serializer.serialize_str("tool"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChatOriginKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "user" => Self::User,
+            "fork" => Self::Fork,
+            "sideChat" => Self::SideChat,
+            "tool" => Self::Tool,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// How a user can interact with a chat.
+///
+/// - `Full` — user can send messages and watch (default when absent)
+/// - `ReadOnly` — user can watch but not send messages (e.g. agent team workers)
+/// - `Hidden` — internal worker not shown in UI at all
+///
+/// Supports the agent-team pattern where a lead chat is fully interactive and
+/// worker chats are read-only (visible for observability) or hidden (internal
+/// implementation detail). The harness sets this based on the chat's role;
+/// the UI uses it to show appropriate controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatInteractivity {
+    /// User can send messages and watch (default when absent)
+    #[serde(rename = "full")]
+    Full,
+    /// User can watch but not send messages
+    #[serde(rename = "read-only")]
+    ReadOnly,
+    /// Internal worker not shown in UI at all
+    #[serde(rename = "hidden")]
+    Hidden,
+}
+
+/// Answer lifecycle state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatInputAnswerState {
+    #[serde(rename = "draft")]
+    Draft,
+    #[serde(rename = "submitted")]
+    Submitted,
+    #[serde(rename = "skipped")]
+    Skipped,
+}
+
+/// Answer value kind.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChatInputAnswerValueKind {
+    Text,
+    Number,
+    Boolean,
+    Selected,
+    SelectedMany,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChatInputAnswerValueKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Text => serializer.serialize_str("text"),
+            Self::Number => serializer.serialize_str("number"),
+            Self::Boolean => serializer.serialize_str("boolean"),
+            Self::Selected => serializer.serialize_str("selected"),
+            Self::SelectedMany => serializer.serialize_str("selected-many"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChatInputAnswerValueKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "text" => Self::Text,
+            "number" => Self::Number,
+            "boolean" => Self::Boolean,
+            "selected" => Self::Selected,
+            "selected-many" => Self::SelectedMany,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Question/input control kind.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChatInputQuestionKind {
+    Text,
+    Number,
+    Integer,
+    Boolean,
+    SingleSelect,
+    MultiSelect,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChatInputQuestionKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Text => serializer.serialize_str("text"),
+            Self::Number => serializer.serialize_str("number"),
+            Self::Integer => serializer.serialize_str("integer"),
+            Self::Boolean => serializer.serialize_str("boolean"),
+            Self::SingleSelect => serializer.serialize_str("single-select"),
+            Self::MultiSelect => serializer.serialize_str("multi-select"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChatInputQuestionKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "text" => Self::Text,
+            "number" => Self::Number,
+            "integer" => Self::Integer,
+            "boolean" => Self::Boolean,
+            "single-select" => Self::SingleSelect,
+            "multi-select" => Self::MultiSelect,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// How a client completed an input request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatInputResponseKind {
+    #[serde(rename = "accept")]
+    Accept,
+    #[serde(rename = "decline")]
+    Decline,
+    #[serde(rename = "cancel")]
+    Cancel,
+}
+
+/// Discriminant for the kinds of outstanding input a session can surface in
+/// {@link SessionState.inputNeeded}.
+///
+/// This is a general/typological union (not a lifecycle), so the discriminant is
+/// a `*Kind`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionInputRequestKind {
+    /// A user-facing elicitation mirrored from an unresolved chat response part.
+    ChatInput,
+    /// A tool call awaiting parameter- or result-confirmation.
+    ToolConfirmation,
+    /// A running tool the session wants an active client to execute.
+    ToolClientExecution,
+    /// A tool call blocked on MCP authentication mid-execution.
+    ToolAuthentication,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for SessionInputRequestKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::ChatInput => serializer.serialize_str("chatInput"),
+            Self::ToolConfirmation => serializer.serialize_str("toolConfirmation"),
+            Self::ToolClientExecution => serializer.serialize_str("toolClientExecution"),
+            Self::ToolAuthentication => serializer.serialize_str("toolAuthentication"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SessionInputRequestKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "chatInput" => Self::ChatInput,
+            "toolConfirmation" => Self::ToolConfirmation,
+            "toolClientExecution" => Self::ToolClientExecution,
+            "toolAuthentication" => Self::ToolAuthentication,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// How a turn ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TurnState {
+    #[serde(rename = "complete")]
+    Complete,
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    #[serde(rename = "error")]
+    Error,
+}
+
+/// Discriminant for {@link MessageOrigin} — identifies who produced a message.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MessageKind {
+    /// Sent directly by the user.
+    User,
+    /// Produced by the agent itself rather than the user — for example, an agent
+    /// that seeds the first message of a chat it spawned.
+    Agent,
+    /// Produced by a tool rather than the user — for example, a tool that spawns a
+    /// worker chat whose first message carries a seed prompt.
+    Tool,
+    /// Emitted automatically when an automation run starts a session.
+    Automation,
+    /// A system-generated notification rather than a direct user message.
+    SystemNotification,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for MessageKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::User => serializer.serialize_str("user"),
+            Self::Agent => serializer.serialize_str("agent"),
+            Self::Tool => serializer.serialize_str("tool"),
+            Self::Automation => serializer.serialize_str("automation"),
+            Self::SystemNotification => serializer.serialize_str("systemNotification"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MessageKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "user" => Self::User,
+            "agent" => Self::Agent,
+            "tool" => Self::Tool,
+            "automation" => Self::Automation,
+            "systemNotification" => Self::SystemNotification,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for {@link MessageAttachment} variants.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MessageAttachmentKind {
+    /// A simple, opaque attachment whose representation is described by the producer.
+    Simple,
+    /// An attachment whose data is embedded inline as a base64 string.
+    EmbeddedResource,
+    /// An attachment that references a resource by URI.
+    Resource,
+    /// An attachment that references annotations on an annotations channel.
+    Annotations,
+    /// An attachment that references a bounded transcript from another chat.
+    Chat,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for MessageAttachmentKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Simple => serializer.serialize_str("simple"),
+            Self::EmbeddedResource => serializer.serialize_str("embeddedResource"),
+            Self::Resource => serializer.serialize_str("resource"),
+            Self::Annotations => serializer.serialize_str("annotations"),
+            Self::Chat => serializer.serialize_str("chat"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MessageAttachmentKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "simple" => Self::Simple,
+            "embeddedResource" => Self::EmbeddedResource,
+            "resource" => Self::Resource,
+            "annotations" => Self::Annotations,
+            "chat" => Self::Chat,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for response part types.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ResponsePartKind {
+    Markdown,
+    ContentRef,
+    ToolCall,
+    Reasoning,
+    SystemNotification,
+    InputRequest,
+    Error,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ResponsePartKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Markdown => serializer.serialize_str("markdown"),
+            Self::ContentRef => serializer.serialize_str("contentRef"),
+            Self::ToolCall => serializer.serialize_str("toolCall"),
+            Self::Reasoning => serializer.serialize_str("reasoning"),
+            Self::SystemNotification => serializer.serialize_str("systemNotification"),
+            Self::InputRequest => serializer.serialize_str("inputRequest"),
+            Self::Error => serializer.serialize_str("error"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ResponsePartKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "markdown" => Self::Markdown,
+            "contentRef" => Self::ContentRef,
+            "toolCall" => Self::ToolCall,
+            "reasoning" => Self::Reasoning,
+            "systemNotification" => Self::SystemNotification,
+            "inputRequest" => Self::InputRequest,
+            "error" => Self::Error,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Status of a tool call in the lifecycle state machine.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolCallStatus {
+    Streaming,
+    PendingConfirmation,
+    Running,
+    /// Running paused because the MCP server backing this call needs
+    /// authentication (typically step-up auth for insufficient scope,
+    /// surfacing mid-execution). See {@link ToolCallAuthRequiredState}.
+    AuthRequired,
+    PendingResultConfirmation,
+    Completed,
+    Cancelled,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolCallStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Streaming => serializer.serialize_str("streaming"),
+            Self::PendingConfirmation => serializer.serialize_str("pending-confirmation"),
+            Self::Running => serializer.serialize_str("running"),
+            Self::AuthRequired => serializer.serialize_str("auth-required"),
+            Self::PendingResultConfirmation => {
+                serializer.serialize_str("pending-result-confirmation")
+            }
+            Self::Completed => serializer.serialize_str("completed"),
+            Self::Cancelled => serializer.serialize_str("cancelled"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolCallStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "streaming" => Self::Streaming,
+            "pending-confirmation" => Self::PendingConfirmation,
+            "running" => Self::Running,
+            "auth-required" => Self::AuthRequired,
+            "pending-result-confirmation" => Self::PendingResultConfirmation,
+            "completed" => Self::Completed,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// How a tool call was confirmed for execution.
+///
+/// - `NotNeeded` — No confirmation required (auto-approved)
+/// - `UserAction` — User explicitly approved
+/// - `Setting` — Approved by a persistent user setting
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolCallConfirmationReason {
+    NotNeeded,
+    UserAction,
+    Setting,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolCallConfirmationReason {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::NotNeeded => serializer.serialize_str("not-needed"),
+            Self::UserAction => serializer.serialize_str("user-action"),
+            Self::Setting => serializer.serialize_str("setting"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolCallConfirmationReason {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "not-needed" => Self::NotNeeded,
+            "user-action" => Self::UserAction,
+            "setting" => Self::Setting,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Identifies a model judge as the source of a confirmation requirement.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolCallRiskAssessmentKind {
+    Judge,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolCallRiskAssessmentKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Judge => serializer.serialize_str("judge"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolCallRiskAssessmentKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "judge" => Self::Judge,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Lifecycle status of an asynchronous model-judge confirmation decision.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolCallRiskAssessmentStatus {
+    Loading,
+    Complete,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolCallRiskAssessmentStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Loading => serializer.serialize_str("loading"),
+            Self::Complete => serializer.serialize_str("complete"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolCallRiskAssessmentStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "loading" => Self::Loading,
+            "complete" => Self::Complete,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Why a tool call was cancelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolCallCancellationReason {
+    #[serde(rename = "denied")]
+    Denied,
+    #[serde(rename = "skipped")]
+    Skipped,
+    #[serde(rename = "result-denied")]
+    ResultDenied,
+}
+
+/// Whether a confirmation option represents an approval or denial action.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConfirmationOptionKind {
+    Approve,
+    Deny,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ConfirmationOptionKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Approve => serializer.serialize_str("approve"),
+            Self::Deny => serializer.serialize_str("deny"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ConfirmationOptionKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "approve" => Self::Approve,
+            "deny" => Self::Deny,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Identifies the source of a tool call's implementation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolCallContributorKind {
+    Client,
+    MCP,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolCallContributorKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Client => serializer.serialize_str("client"),
+            Self::MCP => serializer.serialize_str("mcp"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolCallContributorKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "client" => Self::Client,
+            "mcp" => Self::MCP,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for tool result content types.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ToolResultContentType {
+    Text,
+    EmbeddedResource,
+    Resource,
+    FileEdit,
+    Terminal,
+    Subagent,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ToolResultContentType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Text => serializer.serialize_str("text"),
+            Self::EmbeddedResource => serializer.serialize_str("embeddedResource"),
+            Self::Resource => serializer.serialize_str("resource"),
+            Self::FileEdit => serializer.serialize_str("fileEdit"),
+            Self::Terminal => serializer.serialize_str("terminal"),
+            Self::Subagent => serializer.serialize_str("subagent"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolResultContentType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "text" => Self::Text,
+            "embeddedResource" => Self::EmbeddedResource,
+            "resource" => Self::Resource,
+            "fileEdit" => Self::FileEdit,
+            "terminal" => Self::Terminal,
+            "subagent" => Self::Subagent,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for the kind of customization.
+///
+/// Top-level entries in {@link SessionState.customizations} and
+/// {@link AgentInfo.customizations} are either container customizations
+/// ({@link CustomizationType.Plugin | `Plugin`} or
+/// {@link CustomizationType.Directory | `Directory`}) or
+/// {@link CustomizationType.McpServer | `McpServer`} entries surfaced
+/// directly by the host. The remaining types appear only as children of
+/// a container.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CustomizationType {
+    Plugin,
+    Directory,
+    Agent,
+    Skill,
+    Prompt,
+    Rule,
+    Hook,
+    McpServer,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for CustomizationType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Plugin => serializer.serialize_str("plugin"),
+            Self::Directory => serializer.serialize_str("directory"),
+            Self::Agent => serializer.serialize_str("agent"),
+            Self::Skill => serializer.serialize_str("skill"),
+            Self::Prompt => serializer.serialize_str("prompt"),
+            Self::Rule => serializer.serialize_str("rule"),
+            Self::Hook => serializer.serialize_str("hook"),
+            Self::McpServer => serializer.serialize_str("mcpServer"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CustomizationType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "plugin" => Self::Plugin,
+            "directory" => Self::Directory,
+            "agent" => Self::Agent,
+            "skill" => Self::Skill,
+            "prompt" => Self::Prompt,
+            "rule" => Self::Rule,
+            "hook" => Self::Hook,
+            "mcpServer" => Self::McpServer,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Scope at which customization enablement is decided.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CustomizationEnablementKind {
+    Global,
+    Workspace,
+    Session,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for CustomizationEnablementKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Global => serializer.serialize_str("global"),
+            Self::Workspace => serializer.serialize_str("workspace"),
+            Self::Session => serializer.serialize_str("session"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CustomizationEnablementKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "global" => Self::Global,
+            "workspace" => Self::Workspace,
+            "session" => Self::Session,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant values for {@link CustomizationLoadState}.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CustomizationLoadStatus {
+    #[serde(rename = "loading")]
+    Loading,
+    #[serde(rename = "loaded")]
+    Loaded,
+    #[serde(rename = "degraded")]
+    Degraded,
+    #[serde(rename = "error")]
+    Error,
+}
+
+/// Discriminant for terminal claim kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TerminalClaimKind {
+    #[serde(rename = "client")]
+    Client,
+    #[serde(rename = "session")]
+    Session,
+}
+
+/// Lifecycle status of a terminal process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TerminalLifecycleStatus {
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "exited")]
+    Exited,
+}
+
+/// Kind of {@link BackgroundWork}.
+///
+/// This is a general/typological union (not a lifecycle), so the discriminant is
+/// a `*Kind`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BackgroundWorkKind {
+    /// A shell command that continues after its initiating tool call returns.
+    Shell,
+    /// A subagent running in the background.
+    Subagent,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for BackgroundWorkKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Shell => serializer.serialize_str("shell"),
+            Self::Subagent => serializer.serialize_str("subagent"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BackgroundWorkKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "shell" => Self::Shell,
+            "subagent" => Self::Subagent,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for the {@link McpServerState} union.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum McpServerStatus {
+    /// Server has been registered but is not yet running.
+    Starting,
+    /// Server is running and serving requests.
+    Ready,
+    /// Server is reachable but requires additional authentication before it
+    /// can start, or before it can serve a particular request. Carries the
+    /// RFC 9728 Protected Resource Metadata the client needs to obtain a
+    /// token; the client then pushes the token via the existing
+    /// `authenticate` command.
+    AuthRequired,
+    /// Server failed to start, crashed, or otherwise transitioned to a fatal error.
+    Error,
+    /// Server has been shut down.
+    Stopped,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for McpServerStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Starting => serializer.serialize_str("starting"),
+            Self::Ready => serializer.serialize_str("ready"),
+            Self::AuthRequired => serializer.serialize_str("authRequired"),
+            Self::Error => serializer.serialize_str("error"),
+            Self::Stopped => serializer.serialize_str("stopped"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for McpServerStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "starting" => Self::Starting,
+            "ready" => Self::Ready,
+            "authRequired" => Self::AuthRequired,
+            "error" => Self::Error,
+            "stopped" => Self::Stopped,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Why an MCP server is currently in the {@link McpServerStatus.AuthRequired}
+/// state. Mirrors the three failure modes defined by the
+/// [MCP authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization.md).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum McpAuthRequiredReason {
+    /// No token has been provided yet (HTTP 401, no prior token).
+    Required,
+    /// A previously valid token expired or was revoked (HTTP 401).
+    Expired,
+    /// Step-up auth: a token is present but its scopes are insufficient for
+    /// the requested operation (HTTP 403 with
+    /// `WWW-Authenticate: Bearer error="insufficient_scope"`).
+    ///
+    /// Unlike {@link Required} and {@link Expired} — which typically surface
+    /// before any tool work is in flight — `InsufficientScope` is almost
+    /// always triggered by an MCP request issued mid-turn (a `tools/call`,
+    /// `resources/read`, etc.). The host SHOULD pair the
+    /// {@link McpServerAuthRequiredState} transition with
+    /// {@link SessionStatus.InputNeeded} on
+    /// {@link SessionSummary.status | the session} so the activity becomes
+    /// visible at the session-summary level, and clients SHOULD watch for
+    /// this kind on any
+    /// {@link McpServerCustomization | MCP server} backing a running tool
+    /// call so they can present an explicit "grant more access" affordance
+    /// tied to the blocked tool call.
+    InsufficientScope,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for McpAuthRequiredReason {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Required => serializer.serialize_str("required"),
+            Self::Expired => serializer.serialize_str("expired"),
+            Self::InsufficientScope => serializer.serialize_str("insufficientScope"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for McpAuthRequiredReason {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "required" => Self::Required,
+            "expired" => Self::Expired,
+            "insufficientScope" => Self::InsufficientScope,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Computation lifecycle of a {@link ChangesetState}.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChangesetStatus {
+    /// The server is computing this changeset for the first time.
+    Computing,
+    /// The server is recomputing this changeset. {@link ChangesetState.files}
+    /// remains the previous completed result while recomputation is in progress,
+    /// including when that result is an empty array.
+    Recomputing,
+    /// The changeset has been fully computed and is up-to-date.
+    Ready,
+    /// Computation failed. The cause is described by
+    /// {@link ChangesetState.error}.
+    Error,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChangesetStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Computing => serializer.serialize_str("computing"),
+            Self::Recomputing => serializer.serialize_str("recomputing"),
+            Self::Ready => serializer.serialize_str("ready"),
+            Self::Error => serializer.serialize_str("error"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChangesetStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "computing" => Self::Computing,
+            "recomputing" => Self::Recomputing,
+            "ready" => Self::Ready,
+            "error" => Self::Error,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Execution lifecycle of a {@link ChangesetOperation}.
+///
+/// An operation is invoked imperatively via `invokeChangesetOperation`, but
+/// its progress and outcome are reflected back into changeset state so that
+/// every subscriber observes a consistent view (e.g. a spinner on a "Create
+/// Pull Request" button, or an inline error after a failed "revert").
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChangesetOperationStatus {
+    /// The operation is ready to be invoked. This is the default when
+    /// {@link ChangesetOperation.status} is omitted.
+    Idle,
+    /// An invocation of this operation is currently in flight.
+    Running,
+    /// The most recent invocation failed. The cause is described by
+    /// {@link ChangesetOperation.error}.
+    Error,
+    /// The operation is currently disabled and cannot be invoked.
+    Disabled,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChangesetOperationStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Idle => serializer.serialize_str("idle"),
+            Self::Running => serializer.serialize_str("running"),
+            Self::Error => serializer.serialize_str("error"),
+            Self::Disabled => serializer.serialize_str("disabled"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChangesetOperationStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "idle" => Self::Idle,
+            "running" => Self::Running,
+            "error" => Self::Error,
+            "disabled" => Self::Disabled,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Where a {@link ChangesetOperation} can be invoked.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChangesetOperationScope {
+    /// Applies to the whole changeset.
+    Changeset,
+    /// Applies to a single file within the changeset.
+    Resource,
+    /// Applies to a line range within a single file.
+    Range,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ChangesetOperationScope {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Changeset => serializer.serialize_str("changeset"),
+            Self::Resource => serializer.serialize_str("resource"),
+            Self::Range => serializer.serialize_str("range"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ChangesetOperationScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "changeset" => Self::Changeset,
+            "resource" => Self::Resource,
+            "range" => Self::Range,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for {@link ResourceChange.type}.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResourceChangeType {
+    #[serde(rename = "added")]
+    Added,
+    #[serde(rename = "updated")]
+    Updated,
+    #[serde(rename = "deleted")]
+    Deleted,
+}
+
+/// Discriminant describing the durable provenance of a session.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionOriginKind {
+    /// The session was created as part of an automation run.
+    Automation,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for SessionOriginKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Automation => serializer.serialize_str("automation"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SessionOriginKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "automation" => Self::Automation,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Operations the host currently permits for an automation.
+///
+/// The list on {@link AutomationEntry.operations} is authoritative and may
+/// change over time. Clients MUST NOT infer permission from capabilities alone:
+/// capabilities describe what the host implementation can support, while
+/// operations describe what is allowed for this particular automation now.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AutomationOperation {
+    /// Replace editable fields using {@link AutomationUpdateRequestedAction | `automation/updateRequested`}.
+    Update,
+    /// Permanently remove the automation using {@link AutomationRemovedAction | `automation/removed`}.
+    Remove,
+    /// Start a manual run using {@link RunAutomationParams | runAutomation}.
+    Run,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for AutomationOperation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Update => serializer.serialize_str("update"),
+            Self::Remove => serializer.serialize_str("remove"),
+            Self::Run => serializer.serialize_str("run"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AutomationOperation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "update" => Self::Update,
+            "remove" => Self::Remove,
+            "run" => Self::Run,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// How a host handles schedule occurrences missed while automatic execution was
+/// unavailable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AutomationMisfirePolicy {
+    /// Discard missed occurrences and wait for the next future occurrence.
+    Skip,
+    /// Start at most one catch-up run when execution becomes available, regardless
+    /// of how many occurrences were missed.
+    RunOnce,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for AutomationMisfirePolicy {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Skip => serializer.serialize_str("skip"),
+            Self::RunOnce => serializer.serialize_str("runOnce"),
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AutomationMisfirePolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "skip" => Self::Skip,
+            "runOnce" => Self::RunOnce,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+/// Discriminant for automatic trigger definitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AutomationTriggerKind {
+    /// A portable recurring {@link AutomationSchedule}.
+    #[serde(rename = "schedule")]
+    Schedule,
+    /// A host-defined external event discovered from trigger definitions.
+    #[serde(rename = "event")]
+    Event,
+}
+
+/// Discriminant for an {@link AutomationDisableCondition}.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AutomationDisableConditionKind {
+    /// Stop scheduling after a fixed number of scheduled runs.
+    #[serde(rename = "afterRuns")]
+    AfterRuns,
+    /// Stop scheduling once a wall-clock date passes.
+    #[serde(rename = "afterDate")]
+    AfterDate,
+}
+
+/// Lifecycle status of one automation run.
+///
+/// `completed`, `failed`, and `cancelled` are terminal. A run remains `running`
+/// while any linked session awaits input or client-side work; linked session
+/// state is authoritative for those interactions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AutomationRunStatus {
+    /// The durable run record exists but execution has not started.
+    #[serde(rename = "pending")]
+    Pending,
+    /// One or more linked sessions are executing or awaiting interaction.
+    #[serde(rename = "running")]
+    Running,
+    /// Execution finished successfully.
+    #[serde(rename = "completed")]
+    Completed,
+    /// Execution ended with an error.
+    #[serde(rename = "failed")]
+    Failed,
+    /// Execution ended because cancellation was accepted.
+    #[serde(rename = "cancelled")]
+    Cancelled,
+}
+
+/// Discriminant describing what created an automation run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AutomationRunOriginKind {
+    /// A client explicitly invoked {@link RunAutomationParams | runAutomation}.
+    #[serde(rename = "manual")]
+    Manual,
+    /// An automatic schedule or event trigger fired.
+    #[serde(rename = "trigger")]
+    Trigger,
+}
+
+// ─── Structs ──────────────────────────────────────────────────────────
+
+/// An optionally-sized icon that can be displayed in a user interface.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Icon {
+    /// A standard URI pointing to an icon resource. May be an HTTP/HTTPS URL or a
+    /// `data:` URI with Base64-encoded image data.
+    ///
+    /// Consumers SHOULD take steps to ensure URLs serving icons are from the
+    /// same domain as the client/server or a trusted domain.
+    ///
+    /// Consumers SHOULD take appropriate precautions when consuming SVGs as they can contain
+    /// executable JavaScript.
+    pub src: Uri,
+    /// Optional MIME type override if the source MIME type is missing or generic.
+    /// For example: `"image/png"`, `"image/jpeg"`, or `"image/svg+xml"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Optional array of strings that specify sizes at which the icon can be used.
+    /// Each string should be in WxH format (e.g., `"48x48"`, `"96x96"`) or `"any"` for scalable formats like SVG.
+    ///
+    /// If not provided, the client should assume that the icon can be used at any size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<Vec<String>>,
+    /// Optional specifier for the theme this icon is designed for. `"light"` indicates
+    /// the icon is designed to be used with a light background, and `"dark"` indicates
+    /// the icon is designed to be used with a dark background.
+    ///
+    /// If not provided, the client should assume the icon can be used with any theme.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+}
+
+/// Describes a protected resource's authentication requirements using
+/// [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) (OAuth 2.0
+/// Protected Resource Metadata) semantics.
+///
+/// Field names use snake_case to match the RFC 9728 JSON format.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectedResourceMetadata {
+    /// REQUIRED. The protected resource's resource identifier, a URL using the
+    /// `https` scheme with no fragment component (e.g. `"https://api.github.com"`).
+    pub resource: String,
+    /// OPTIONAL. Human-readable name of the protected resource.
+    #[serde(
+        rename = "resource_name",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub resource_name: Option<String>,
+    /// OPTIONAL. JSON array of OAuth authorization server identifier URLs.
+    #[serde(
+        rename = "authorization_servers",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub authorization_servers: Option<Vec<String>>,
+    /// OPTIONAL. URL of the protected resource's JWK Set document.
+    #[serde(rename = "jwks_uri", default, skip_serializing_if = "Option::is_none")]
+    pub jwks_uri: Option<String>,
+    /// RECOMMENDED. JSON array of OAuth 2.0 scope values used in authorization requests.
+    #[serde(
+        rename = "scopes_supported",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub scopes_supported: Option<Vec<String>>,
+    /// OPTIONAL. JSON array of Bearer Token presentation methods supported.
+    #[serde(
+        rename = "bearer_methods_supported",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bearer_methods_supported: Option<Vec<String>>,
+    /// OPTIONAL. JSON array of JWS signing algorithms supported.
+    #[serde(
+        rename = "resource_signing_alg_values_supported",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub resource_signing_alg_values_supported: Option<Vec<String>>,
+    /// OPTIONAL. URL of human-readable documentation for the resource.
+    #[serde(
+        rename = "resource_documentation",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub resource_documentation: Option<String>,
+    /// OPTIONAL. URL of the resource's data-usage policy.
+    #[serde(
+        rename = "resource_policy_uri",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub resource_policy_uri: Option<String>,
+    /// OPTIONAL. URL of the resource's terms of service.
+    #[serde(
+        rename = "resource_tos_uri",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub resource_tos_uri: Option<String>,
+    /// AHP extension. Whether authentication is required for this resource.
+    ///
+    /// - `true` (default) — the agent cannot be used without a valid token.
+    ///   The server SHOULD return `AuthRequired` (`-32007`) if the client
+    ///   attempts to use the agent without authenticating.
+    /// - `false` — the agent works without authentication but MAY offer
+    ///   enhanced capabilities when a token is provided.
+    ///
+    /// Clients SHOULD treat an absent field the same as `true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+}
+
+/// Global state shared with every client subscribed to `ahp-root://`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootState {
+    /// Available agent backends and their models
+    pub agents: Vec<AgentInfo>,
+    /// Number of active (non-disposed) sessions on the server
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_sessions: Option<i64>,
+    /// Known terminals on the server. Subscribe to individual terminal URIs for full state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminals: Option<Vec<TerminalInfo>>,
+    /// Agent host configuration schema and current values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<RootConfigState>,
+    /// Additional implementation-defined metadata about the agent host itself.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Live agent-host configuration metadata.
+///
+/// The schema describes the available configuration properties and the values
+/// contain the current value for each resolved property.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootConfigState {
+    /// JSON Schema describing available configuration properties
+    pub schema: ConfigSchema,
+    /// Current configuration values
+    pub values: JsonObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInfo {
+    /// Agent provider ID (e.g. `'copilot'`)
+    pub provider: String,
+    /// Human-readable name
+    pub display_name: String,
+    /// Description string
+    pub description: String,
+    /// Available models for this agent
+    pub models: Vec<SessionModelInfo>,
+    /// Protected resources this agent requires authentication for.
+    ///
+    /// Each entry describes an OAuth 2.0 protected resource using
+    /// [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) semantics.
+    /// Clients should obtain tokens from the declared `authorization_servers`
+    /// and push them via the `authenticate` command before creating sessions
+    /// with this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_resources: Option<Vec<ProtectedResourceMetadata>>,
+    /// Customizations associated with this agent.
+    ///
+    /// Either container customizations —
+    /// {@link PluginCustomization | `PluginCustomization`} entries the agent
+    /// bundles, plus {@link DirectoryCustomization | `DirectoryCustomization`}
+    /// entries it watches in any workspace it's used with — or top-level
+    /// {@link McpServerCustomization | `McpServerCustomization`} entries
+    /// the agent host declares directly. When a session is created with
+    /// this agent, these entries are augmented (e.g. directory URIs are
+    /// resolved against the workspace, children are parsed) and propagated
+    /// into the session's `customizations` list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customizations: Option<Vec<Customization>>,
+    /// Static capabilities the agent advertises about itself. Clients use these
+    /// to gate features (multi-chat, fork) instead of switching on the provider
+    /// id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<AgentCapabilities>,
+}
+
+/// Static capabilities an {@link AgentInfo} advertises. Modelled after MCP
+/// capabilities: each field is opt-in and its presence (an empty object `{}`)
+/// signals support, while absence means the feature is unsupported and the
+/// corresponding client commands MUST NOT be used. Sub-fields carry
+/// per-capability options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCapabilities {
+    /// The agent can host more than one concurrent chat per session. When absent,
+    /// clients MUST NOT call `createChat` to open chats beyond the default one the
+    /// session starts with. An empty object `{}` advertises multi-chat without
+    /// source-based creation; set {@link MultipleChatsCapability.fork} or
+    /// {@link MultipleChatsCapability.sideChat} to allow the corresponding
+    /// creation mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_chats: Option<MultipleChatsCapability>,
+    /// The session's agent can be granted tool access to more than one working
+    /// directory. The directories are treated as equal peers except where the
+    /// agent advertises a protected primary-slot option (some backends pin or
+    /// replace their first directory as a process root).
+    ///
+    /// When absent, clients MUST NOT mutate a session's or chat's working-directory
+    /// set and MUST NOT set more than one entry in
+    /// {@link CreateSessionParams.workingDirectories}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_working_directories: Option<MultipleWorkingDirectoriesCapability>,
+}
+
+/// Options for the {@link AgentCapabilities.multipleChats} capability.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MultipleChatsCapability {
+    /// The agent can fork a chat from a specific turn. When absent or `false`,
+    /// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+    /// `createChat`.
+    /// Forking always implies multi-chat support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork: Option<bool>,
+    /// The agent can create a side chat from a specific turn. When absent or
+    /// `false`, clients MUST NOT pass a {@link ChatSource} with
+    /// `kind: "sideChat"` to `createChat`.
+    ///
+    /// A side chat receives the source turn as context without copying the source
+    /// transcript into its own visible history. The source is identified by a
+    /// stable `turnId`, which the host resolves against the source chat's current
+    /// `activeTurn` or retained history. When it names the current active turn,
+    /// the host snapshots the available partial assistant response at creation
+    /// time. Side-chat support always implies multi-chat support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_chat: Option<bool>,
+}
+
+/// Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MultipleWorkingDirectoriesCapability {
+    /// The agent's **first** working directory (index `0` of
+    /// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
+    /// its URI is fixed for the lifetime of the session — clients MUST NOT remove,
+    /// reorder, or replace it. Additional directories after it remain equal peers
+    /// that can be added and removed freely. When
+    /// {@link primaryReplacement} is also `true`, clients that recognize that
+    /// capability MUST instead treat the primary as protected and replaceable.
+    ///
+    /// Advertised by backends whose agent process is rooted at a single directory
+    /// that cannot change once the session has started. A backend MAY also
+    /// advertise this with {@link primaryReplacement} for compatibility with
+    /// clients that do not recognize the newer capability: those clients retain
+    /// the safe immutable-primary behavior, while newer clients allow only the
+    /// targeted replacement action. When both are absent or `false`, all
+    /// directories are equal peers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub immutable_primary: Option<bool>,
+    /// The agent's first working-directory slot (index `0`) is a protected primary
+    /// whose URI can be atomically replaced with
+    /// `session/workingDirectoryReplaced`. Clients MUST NOT remove that slot with
+    /// generic membership actions; additional directories remain equal peers.
+    ///
+    /// Backends use this when their cwd-bearing directory can move during a
+    /// session. It MAY be `true` together with {@link immutablePrimary}; this
+    /// preserves the immutable-primary guarantee for older clients that do not
+    /// recognize this capability. Clients that recognize this capability MUST
+    /// allow a targeted replacement even when `immutablePrimary` is also `true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_replacement: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionModelInfo {
+    /// Model identifier
+    pub id: String,
+    /// Provider this model belongs to
+    pub provider: String,
+    /// Human-readable model name
+    pub name: String,
+    /// Maximum context window size
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_context_window: Option<i64>,
+    /// Maximum number of output tokens the model can generate
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<i64>,
+    /// Maximum number of prompt (input) tokens the model accepts
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_prompt_tokens: Option<i64>,
+    /// Whether the model supports vision
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_vision: Option<bool>,
+    /// Policy configuration state
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_state: Option<PolicyState>,
+    /// Configuration schema describing model-specific options (e.g. thinking
+    /// level). Clients present this as a form and pass the resolved values in
+    /// {@link ModelSelection.config} when creating or changing sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_schema: Option<ConfigSchema>,
+    /// Additional provider-specific metadata for this model.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `pricing` key may carry model pricing metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A model selection: the chosen model ID together with any model-specific
+/// configuration values whose keys correspond to the model's
+/// {@link SessionModelInfo.configSchema}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSelection {
+    /// Model identifier
+    pub id: String,
+    /// Model-specific configuration values. Values are JSON primitives: most
+    /// pickers produce strings, but some (e.g. a numeric context-size picker)
+    /// produce numbers or booleans, which are carried through as-is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<std::collections::HashMap<String, AnyValue>>,
+}
+
+/// A selected custom agent for a session.
+///
+/// The `uri` identifies a specific custom agent (matching an
+/// {@link AgentCustomization.uri | `AgentCustomization.uri`} exposed via
+/// the session's effective customizations). Consumers resolve the agent's
+/// display name by looking up `uri` in the session's customization tree.
+///
+/// A message with no `agent` selected uses the provider's default behavior.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSelection {
+    /// Stable agent URI (matches an {@link AgentCustomization.uri}).
+    pub uri: Uri,
+}
+
+/// A JSON Schema-compatible property descriptor with display extensions.
+///
+/// Standard JSON Schema fields (`type`, `title`, `description`, `default`,
+/// `enum`) allow validators to process the schema. Display extensions
+/// (`enumLabels`, `enumDescriptions`) are parallel arrays that provide UI
+/// metadata for each `enum` value.
+///
+/// This is the generic base type. See {@link SessionConfigPropertySchema} for
+/// session-specific extensions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigPropertySchema {
+    /// JSON Schema: property type
+    pub r#type: String,
+    /// JSON Schema: human-readable label for the property
+    pub title: String,
+    /// JSON Schema: description / tooltip
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// JSON Schema: default value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<AnyValue>,
+    /// JSON Schema: allowed values. May be primitives of any JSON type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#enum: Option<Vec<AnyValue>>,
+    /// Display extension: human-readable label per enum value (parallel array)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_labels: Option<Vec<String>>,
+    /// Display extension: description per enum value (parallel array)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_descriptions: Option<Vec<String>>,
+    /// JSON Schema: when `true`, the property is displayed but cannot be modified by the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
+    /// JSON Schema: schema for array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Box<ConfigPropertySchema>>,
+    /// JSON Schema: minimum number of array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_items: Option<i64>,
+    /// JSON Schema: maximum number of array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<i64>,
+    /// JSON Schema: property descriptors for object properties (used when `type` is `'object'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties: Option<std::collections::HashMap<String, Box<ConfigPropertySchema>>>,
+    /// JSON Schema: list of required property ids (used when `type` is `'object'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+    /// JSON Schema: schema for additional properties not listed in `properties` (used when `type` is `'object'`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<Box<ConfigPropertySchema>>,
+}
+
+/// A JSON Schema object describing available configuration properties.
+///
+/// This is the generic base type. See {@link SessionConfigSchema} for
+/// session-specific usage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigSchema {
+    /// JSON Schema: always `'object'`
+    pub r#type: String,
+    /// JSON Schema: property descriptors keyed by property id
+    pub properties: std::collections::HashMap<String, ConfigPropertySchema>,
+    /// JSON Schema: list of required property ids
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+}
+
+/// A message queued for future delivery to the agent.
+///
+/// Steering messages are injected into the current turn mid-flight.
+/// Queued messages are automatically started as new turns after the
+/// current turn naturally finishes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingMessage {
+    /// Unique identifier for this pending message
+    pub id: String,
+    /// The message that will start the next turn
+    pub message: Message,
+}
+
+/// Full state for a single chat, loaded when a client subscribes to the chat's
+/// URI.
+///
+/// The lightweight catalog representation of a chat is {@link ChatSummary},
+/// carried in {@link SessionState.chats | `SessionState.chats`}. `ChatState`
+/// **denormalizes** every {@link ChatSummary} field directly onto itself so
+/// subscribers receive one flat object instead of having to merge a nested
+/// `summary` sub-object. Producers MUST keep the two representations
+/// consistent: any change to the inlined fields below SHOULD also be
+/// announced on the parent session via the matching
+/// {@link SessionChatUpdatedAction | `session/chatUpdated`} action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatState {
+    /// Chat URI
+    pub resource: Uri,
+    /// Chat title
+    pub title: String,
+    /// Current chat status (reuses SessionStatus shape)
+    pub status: u32,
+    /// Human-readable description of what the chat is currently doing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    /// Last modification timestamp (ISO 8601, e.g. `"2025-03-10T18:42:03.123Z"`)
+    pub modified_at: String,
+    /// Aggregate summary of file changes associated with this chat. Servers may
+    /// populate this to give clients a quick at-a-glance view of the chat's
+    /// footprint without requiring the client to subscribe to a changeset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesSummary>,
+    /// How this chat came into existence
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ChatOrigin>,
+    /// Whether this chat is eligible to be the source of `moveChat`, including
+    /// same-session ordering.
+    ///
+    /// The host is authoritative. Absence means `false`. A `true` value does not
+    /// guarantee that a particular request will succeed. A chat referenced by its
+    /// owning session's `defaultChat` MUST NOT be movable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub movable: Option<bool>,
+    /// How the user can interact with this chat. See {@link ChatInteractivity}.
+    ///
+    /// Supports agent-team patterns where worker chats are read-only or hidden.
+    /// Absence defaults to {@link ChatInteractivity.Full} for backward
+    /// compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactivity: Option<ChatInteractivity>,
+    /// The subset of the session's
+    /// {@link SessionState.workingDirectories | `workingDirectories`} that this
+    /// chat's agent has tool access to. Every entry MUST be present in the owning
+    /// session's `workingDirectories`; servers MUST reject a
+    /// `chat/workingDirectorySet` action that violates this constraint.
+    ///
+    /// When absent, the chat inherits the full session set. When present but empty
+    /// (not recommended), the chat has no working-directory tool access at all.
+    ///
+    /// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+    /// update the subset on a running chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+    /// Catalogue of changesets the server can produce for this chat. Each entry
+    /// advertises a subscribable view of file changes scoped to the chat's
+    /// effective working directories and the URI template the client expands
+    /// before subscribing. See {@link Changeset} for the full shape and
+    /// {@link /guide/changesets | Changesets} for an overview of the model.
+    ///
+    /// This catalogue is intentionally absent from {@link ChatSummary}; clients
+    /// obtain it by subscribing to the chat channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changesets: Option<Vec<Changeset>>,
+    /// Work running in the background for this chat, such as shells and
+    /// subagents. Only active work is listed: hosts remove an entry once the work
+    /// ends. An entry may have been started by an earlier turn rather than the
+    /// {@link ChatState.activeTurn | activeTurn}.
+    ///
+    /// Like {@link ChatState.changesets | changesets}, this is intentionally
+    /// absent from {@link ChatSummary}; clients obtain it by subscribing to the
+    /// chat channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_work: Option<Vec<BackgroundWork>>,
+    /// Live canvases currently exposed by this chat.
+    ///
+    /// Entries intentionally contain only subscribable channel references.
+    /// Clients subscribe to each resource for the experimental presentation
+    /// state, including its current live source URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canvases: Option<Vec<CanvasReference>>,
+    /// Completed turns
+    pub turns: Vec<Turn>,
+    /// Cursor for loading older completed turns into this chat state.
+    ///
+    /// Presence means `turns` is a tail window and more historical turns are
+    /// available. Pass this opaque cursor to `fetchTurns`; the host MUST insert
+    /// the loaded turns into state and update or clear this cursor before
+    /// responding. Absence means the state contains all retained turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turns_next_cursor: Option<String>,
+    /// Currently in-progress turn
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn: Option<ActiveTurn>,
+    /// Message to inject into the current turn at a convenient point
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steering_message: Option<PendingMessage>,
+    /// Messages to send automatically as new turns after the current turn finishes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_messages: Option<Vec<PendingMessage>>,
+    /// The user's in-progress draft input for this chat — the message they are
+    /// composing but have not sent yet, including its
+    /// {@link Message.model | model} / {@link Message.agent | agent} selection
+    /// and attachments.
+    ///
+    /// Clients MAY periodically sync their local input state into this field so
+    /// a draft survives reloads and is visible to other clients viewing the same
+    /// chat. Eager syncing is **not** required — clients SHOULD debounce and MAY
+    /// sync only at convenient points. When presenting input UI for an existing
+    /// chat, clients SHOULD use any `draft` to initialize their input state.
+    /// Cleared (set to `undefined`) once the message is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<Message>,
+    /// Additional provider-specific metadata for this chat.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Stable reference to a subscribable canvas channel.
+///
+/// Chat state intentionally carries only this reference so the experimental
+/// canvas presentation model can evolve without changing the stable chat
+/// channel shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasReference {
+    /// Canvas channel URI. Subscribe to this resource for the full state.
+    pub resource: Uri,
+}
+
+/// Full state for one live canvas, returned when a client subscribes to its
+/// `ahp-canvas:` URI.
+///
+/// The client already knows the subscribed resource, so the state does not
+/// redundantly carry its channel URI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasState {
+    /// Stable caller-supplied instance identifier.
+    pub instance_id: String,
+    /// Owning extension/provider identifier.
+    pub extension_id: String,
+    /// Owning extension display name, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_name: Option<String>,
+    /// Provider-local canvas type identifier.
+    pub canvas_id: String,
+    /// Provider-supplied title, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Provider-supplied status text, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Current absolute HTTP(S) source URL; absent when the live source is unavailable.
+    /// Hosts MUST clear this field when the provider becomes unavailable.
+    ///
+    /// Source URLs MUST be redacted from diagnostic logs and MUST NOT be reused
+    /// from persisted state after a provider or host restart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<Uri>,
+}
+
+/// Lightweight catalog entry for a chat, carried in
+/// {@link SessionState.chats | `SessionState.chats`}. The full conversation
+/// lives in {@link ChatState}, which inlines (denormalizes) every field below.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSummary {
+    /// Chat URI
+    pub resource: Uri,
+    /// Chat title
+    pub title: String,
+    /// Current chat status (reuses SessionStatus shape)
+    pub status: u32,
+    /// Human-readable description of what the chat is currently doing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    /// Last modification timestamp (ISO 8601, e.g. `"2025-03-10T18:42:03.123Z"`)
+    pub modified_at: String,
+    /// Aggregate summary of file changes associated with this chat. Servers may
+    /// populate this to give clients a quick at-a-glance view of the chat's
+    /// footprint without requiring the client to subscribe to a changeset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesSummary>,
+    /// How this chat came into existence
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ChatOrigin>,
+    /// Whether this chat is structurally eligible to be the source of
+    /// `moveChat`. Absence means `false`.
+    ///
+    /// See {@link ChatState.movable} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub movable: Option<bool>,
+    /// How the user can interact with this chat. See {@link ChatInteractivity}.
+    ///
+    /// Supports agent-team patterns where worker chats are read-only or hidden.
+    /// Absence defaults to {@link ChatInteractivity.Full} for backward
+    /// compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactivity: Option<ChatInteractivity>,
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+}
+
+/// A shell command continuing outside its initiating tool call. Covers shells
+/// tied to the agent's lifetime (attached) and shells that outlive it
+/// (detached). Whether a shell is attached is provider-specific and goes in its
+/// `_meta`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundShellWork {
+    /// Identifier of this entry, unique within the owning chat across all kinds.
+    /// The host derives it however it likes (for example from the kind plus the
+    /// agent's own task id); consumers MUST treat it as opaque. It is the key for
+    /// the `chat/backgroundWorkSet` / `chat/backgroundWorkRemoved` upsert
+    /// convention.
+    pub id: String,
+    /// Human-readable label, such as the command's purpose or the subagent's name.
+    pub label: String,
+    /// ISO 8601 timestamp when the work started.
+    pub started_at: String,
+    /// Provider-specific metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Command line, displayed as plain text.
+    pub command: String,
+    /// Terminal carrying this shell's output. Hosts SHOULD set this whenever they
+    /// can show that output. Clients open it like
+    /// {@link ToolResultTerminalContent.resource}; `isPty` on its
+    /// {@link TerminalState} says whether the output is plain text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<Uri>,
+}
+
+/// A subagent running in the background. Its own state lives in its chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundSubagentWork {
+    /// Identifier of this entry, unique within the owning chat across all kinds.
+    /// The host derives it however it likes (for example from the kind plus the
+    /// agent's own task id); consumers MUST treat it as opaque. It is the key for
+    /// the `chat/backgroundWorkSet` / `chat/backgroundWorkRemoved` upsert
+    /// convention.
+    pub id: String,
+    /// Human-readable label, such as the command's purpose or the subagent's name.
+    pub label: String,
+    /// ISO 8601 timestamp when the work started.
+    pub started_at: String,
+    /// Provider-specific metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// The subagent's chat: the same chat the spawning tool call's
+    /// {@link ToolResultSubagentContent.resource} points to.
+    pub chat: Uri,
+}
+
+/// Immutable selected-text snapshot captured when a side chat is created.
+///
+/// The host records this exact text when it accepts `createChat`; later changes
+/// to the source chat do not alter it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatSelection {
+    /// Exact selected-text snapshot captured at `createChat` acceptance.
+    ///
+    /// MUST be non-empty.
+    pub text: String,
+    /// Optional provenance for the response part that contained {@link text} when
+    /// the host took the snapshot.
+    ///
+    /// Advisory only: this is not a live range or offset and MUST NOT be used to
+    /// recompute `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_part_id: Option<String>,
+}
+
+/// Full state for a single session, loaded when a client subscribes to the session's URI.
+///
+/// Inlines (denormalizes) every {@link SessionMetadata} field directly onto
+/// itself so subscribers receive one flat object instead of a nested summary.
+/// The lightweight catalog representation is {@link SessionSummary}, surfaced on
+/// the root channel; the host keeps the two in sync via
+/// `root/sessionSummaryChanged`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionState {
+    /// Agent provider ID
+    pub provider: String,
+    /// Session title
+    pub title: String,
+    /// Current session status
+    pub status: u32,
+    /// Human-readable description of what the session is currently doing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    /// Durable {@link AutomationSessionOrigin}, when an automation run created this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<SessionOrigin>,
+    /// Server-owned project for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectInfo>,
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by working-directory actions. Directories are equal peers except
+    /// when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} without
+    /// {@link MultipleWorkingDirectoriesCapability.primaryReplacement} (the first
+    /// entry is then a fixed process root), or advertises `primaryReplacement`
+    /// (the first entry is a protected, replaceable primary slot). Individual chats
+    /// MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+    /// chat that sets none operates against this full set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+    /// Lightweight summary of this session's inline annotations channel
+    /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
+    /// annotation / entry counts without subscribing. Absent when the session
+    /// does not expose an annotations channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<AnnotationsSummary>,
+    /// Session initialization state
+    pub lifecycle: SessionLifecycle,
+    /// Error details if creation failed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_error: Option<ErrorInfo>,
+    /// Tools provided by the server (agent host) for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tools: Option<Vec<ToolDefinition>>,
+    /// The clients currently providing tools and interactive capabilities to this
+    /// session. If multiple tools or customizations are provided by the same
+    /// active client, an agent host MAY deduplicate them when exposed to a model,
+    /// with a preference given to the client that started the turn.
+    ///
+    /// Membership is host-managed: clients add (or refresh) themselves with
+    /// `session/activeClientSet`, and the host removes them with
+    /// `session/activeClientRemoved` when they unsubscribe, disconnect without
+    /// reconnecting in time, or reconnect without resubscribing to the session.
+    pub active_clients: Vec<SessionActiveClient>,
+    /// Catalog of chats in this session.
+    ///
+    /// Order is host-authoritative and durable. Catalog order is independent of
+    /// `defaultChat`.
+    pub chats: Vec<ChatSummary>,
+    /// The chat that receives input when the user addresses the session without
+    /// selecting a specific chat. This routing designation does not determine the
+    /// chat's catalog position. Hosts MAY change it over the session's lifetime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_chat: Option<Uri>,
+    /// Session configuration schema and current values
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<SessionConfigState>,
+    /// Top-level customizations active in this session.
+    ///
+    /// Always one of the {@link Customization} variants:
+    ///
+    /// - Container customizations ({@link PluginCustomization},
+    ///   {@link DirectoryCustomization}) whose children — agents, skills,
+    ///   prompts, rules, hooks, MCP servers — live in each container's
+    ///   {@link ContainerCustomizationBase.children | `children`} array.
+    /// - Top-level {@link McpServerCustomization} entries the host
+    ///   surfaces directly (for example a globally-configured MCP server
+    ///   that isn't bundled in a plugin or directory). MCP servers may
+    ///   also appear as children of a container.
+    ///
+    /// Client-published plugins arrive via
+    /// {@link SessionActiveClient.customizations | `activeClients[].customizations`}
+    /// and the host propagates them into this list (typically with the
+    /// container's `clientId` set and `children` populated). Clients
+    /// publish in container shape only; bare MCP servers at the top level
+    /// are server-originated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customizations: Option<Vec<Customization>>,
+    /// Catalogue of changesets the server can produce for this session. Each
+    /// entry advertises a subscribable view of file changes (uncommitted,
+    /// session-wide, per-turn, etc.) and the URI template the client expands
+    /// before subscribing. See {@link Changeset} for the full shape and
+    /// {@link /guide/changesets | Changesets} for an overview of the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changesets: Option<Vec<Changeset>>,
+    /// Outstanding input the session is blocked on, aggregated across every chat
+    /// so a client can discover and answer it from the session channel alone,
+    /// without subscribing to individual chats.
+    ///
+    /// Each entry is self-sufficient: it carries the owning chat's URI plus every
+    /// identifier the client needs to respond. A client answers by dispatching the
+    /// ordinary `chat/*` action to that chat's channel — see
+    /// {@link SessionInputRequest} for the per-variant response path. A list
+    /// holding any entry other than
+    /// {@link SessionInputRequestKind.ToolClientExecution} implies
+    /// {@link SessionStatus.InputNeeded} on {@link SessionSummary.status};
+    /// client-execution entries are work delegated to a client rather than a
+    /// prompt, so they leave the session's activity unchanged.
+    ///
+    /// Host-managed: the host upserts entries with `session/inputNeededSet` as
+    /// chats raise requests and removes them with `session/inputNeededRemoved`
+    /// once the underlying request resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_needed: Option<Vec<SessionInputRequest>>,
+    /// Additional provider-specific metadata for this session.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `git` key may provide extra git metadata about the session's
+    /// working directories.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A client currently providing tools and interactive capabilities to a session.
+///
+/// A session MAY have several active clients at once; entries in
+/// {@link SessionState.activeClients} are keyed by `clientId`. The server SHOULD
+/// automatically remove an active client when that client disconnects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActiveClient {
+    /// Client identifier (matches `clientId` from `initialize`)
+    pub client_id: String,
+    /// Human-readable client name (e.g. `"VS Code"`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Tools this client provides to the session
+    pub tools: Vec<ToolDefinition>,
+    /// Plugin customizations this client contributes to the session.
+    ///
+    /// Clients publish in [Open Plugins](https://open-plugins.com/) format
+    /// — i.e. always container-shaped plugins. They MAY synthesize virtual
+    /// plugins in memory and rely on the host to expand them into concrete
+    /// children inside {@link SessionState.customizations}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customizations: Option<Vec<ClientPluginCustomization>>,
+}
+
+/// A user-input elicitation surfaced at the session level, mirroring the request
+/// from an unresolved {@link InputRequestResponsePart} in the owning chat.
+///
+/// Respond by dispatching `chat/inputCompleted` (or syncing drafts with
+/// `chat/inputAnswerChanged`) to {@link SessionInputRequestBase.chat | `chat`},
+/// keyed by {@link ChatInputRequest.id | `request.id`}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatInputRequest {
+    /// Stable key for this entry, unique within the session's
+    /// {@link SessionState.inputNeeded} list. The host derives it however it likes
+    /// (for example from the chat URI plus the underlying request or tool-call
+    /// id); consumers MUST treat it as opaque. It is the key for the
+    /// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+    pub id: String,
+    /// The chat the underlying request lives in. This is the channel a client
+    /// dispatches its response to — it does not need to have subscribed to that
+    /// chat first.
+    pub chat: Uri,
+    /// The mirrored chat input request.
+    pub request: ChatInputRequest,
+}
+
+/// A tool call blocked on confirmation — either parameter confirmation before
+/// execution or result confirmation after — surfaced at the session level.
+///
+/// Respond by dispatching `chat/toolCallConfirmed` (for
+/// {@link ToolCallPendingConfirmationState}) or `chat/toolCallResultConfirmed`
+/// (for {@link ToolCallPendingResultConfirmationState}) to
+/// {@link SessionInputRequestBase.chat | `chat`}, keyed by `turnId` and
+/// `toolCall.toolCallId`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionToolConfirmationRequest {
+    /// Stable key for this entry, unique within the session's
+    /// {@link SessionState.inputNeeded} list. The host derives it however it likes
+    /// (for example from the chat URI plus the underlying request or tool-call
+    /// id); consumers MUST treat it as opaque. It is the key for the
+    /// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+    pub id: String,
+    /// The chat the underlying request lives in. This is the channel a client
+    /// dispatches its response to — it does not need to have subscribed to that
+    /// chat first.
+    pub chat: Uri,
+    /// The turn the tool call belongs to.
+    pub turn_id: String,
+    /// The tool call awaiting confirmation.
+    pub tool_call: ToolCallConfirmationState,
+}
+
+/// A running tool whose execution is delegated to an active client. Surfaced so
+/// a client that provides the tool can pick up the work without subscribing to
+/// the owning chat.
+///
+/// The {@link toolCall} is always a {@link ToolCallRunningState} (a
+/// {@link ToolCallState} in `running` status) whose
+/// {@link ToolCallRunningState.contributor | `contributor`} is a client
+/// {@link ToolCallClientContributor} whose `clientId` matches the denormalized
+/// {@link clientId} here. Execute and report the result by dispatching
+/// `chat/toolCallComplete` (and optionally streaming with
+/// `chat/toolCallContentChanged`) to {@link SessionInputRequestBase.chat |
+/// `chat`}, keyed by `turnId` and `toolCall.toolCallId`.
+///
+/// Unlike the other variants this does **not** raise
+/// {@link SessionStatus.InputNeeded}: the call has already cleared its
+/// confirmation gate and is merely executing elsewhere, so the session stays
+/// {@link SessionStatus.InProgress} while it runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionToolClientExecutionRequest {
+    /// Stable key for this entry, unique within the session's
+    /// {@link SessionState.inputNeeded} list. The host derives it however it likes
+    /// (for example from the chat URI plus the underlying request or tool-call
+    /// id); consumers MUST treat it as opaque. It is the key for the
+    /// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+    pub id: String,
+    /// The chat the underlying request lives in. This is the channel a client
+    /// dispatches its response to — it does not need to have subscribed to that
+    /// chat first.
+    pub chat: Uri,
+    /// The turn the tool call belongs to.
+    pub turn_id: String,
+    /// The `clientId` expected to execute the tool. Matches the `clientId` of the
+    /// tool call's client {@link ToolCallContributor}.
+    pub client_id: String,
+    /// The running tool call the session wants the owning client to execute. The
+    /// host only ever populates this with a {@link ToolCallRunningState}.
+    #[serde(
+        serialize_with = "serialize_running_tool_call",
+        deserialize_with = "deserialize_running_tool_call"
+    )]
+    pub tool_call: ToolCallRunningState,
+}
+
+fn serialize_running_tool_call<S>(
+    value: &ToolCallRunningState,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut raw = serde_json::to_value(value).map_err(serde::ser::Error::custom)?;
+    let serde_json::Value::Object(object) = &mut raw else {
+        return Err(serde::ser::Error::custom(
+            "running tool call must serialize to an object",
+        ));
+    };
+    object.insert(
+        "status".to_owned(),
+        serde_json::Value::String("running".to_owned()),
+    );
+    serde::Serialize::serialize(&raw, serializer)
+}
+
+fn deserialize_running_tool_call<'de, D>(deserializer: D) -> Result<ToolCallRunningState, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    if raw.get("status").and_then(serde_json::Value::as_str) != Some("running") {
+        return Err(serde::de::Error::custom(
+            "expected running tool-call status",
+        ));
+    }
+    serde_json::from_value(raw).map_err(serde::de::Error::custom)
+}
+
+/// A tool call blocked on MCP authentication mid-execution, surfaced at the
+/// session level.
+///
+/// The {@link toolCall} is always a {@link ToolCallAuthRequiredState} (a
+/// {@link ToolCallState} in `auth-required` status). Unlike
+/// {@link SessionToolConfirmationRequest}, this is **not** answered by
+/// dispatching a `chat/*` action directly: the client obtains a token for
+/// {@link ToolCallAuthRequiredState.auth | `toolCall.auth`}`.resource` and
+/// pushes it via the existing `authenticate` command (see
+/// {@link /specification/authentication | Authentication}). The host resumes
+/// the tool call and dispatches `chat/toolCallAuthResolved` once the token is
+/// accepted, at which point it also removes this entry with
+/// `session/inputNeededRemoved`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionToolAuthenticationRequest {
+    /// Stable key for this entry, unique within the session's
+    /// {@link SessionState.inputNeeded} list. The host derives it however it likes
+    /// (for example from the chat URI plus the underlying request or tool-call
+    /// id); consumers MUST treat it as opaque. It is the key for the
+    /// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+    pub id: String,
+    /// The chat the underlying request lives in. This is the channel a client
+    /// dispatches its response to — it does not need to have subscribed to that
+    /// chat first.
+    pub chat: Uri,
+    /// The turn the tool call belongs to.
+    pub turn_id: String,
+    /// The tool call awaiting authentication.
+    pub tool_call: ToolCallAuthRequiredState,
+}
+
+/// Lightweight catalog entry summarizing one session. Surfaced via
+/// {@link RootChannelCommands.listSessions | `root/listSessions`} and
+/// `root/sessionAdded`/`root/sessionSummaryChanged` notifications.
+///
+/// **Aggregation across chats.** Once a session contains more than one chat,
+/// several `SessionSummary` fields are derived from the underlying
+/// {@link SessionState.chats | chat catalog}. Producers SHOULD follow these
+/// rules so clients that only consume the session summary (e.g. a session
+/// list) still see meaningful state:
+///
+/// - `status`: take the activity bits (`Idle` / `InProgress` / `InputNeeded` /
+///   `Error` — bits 0–4) from the
+///   {@link SessionState.defaultChat | default chat} when present, else from
+///   the most recently modified chat. **Promote** `InputNeeded` whenever any
+///   chat in the session needs input, and **promote** `Error` whenever any
+///   chat is in an error state — both override the default-chat bits. The
+///   orthogonal flag bits (`IsRead`, `IsArchived`) remain session-scoped.
+/// - `activity`: mirror the activity string of the default chat, or of the
+///   chat currently driving the promoted status bits when a non-default chat
+///   wins (e.g. the chat that raised `InputNeeded`).
+/// - `modifiedAt`: the max of all chats' `modifiedAt`.
+/// - `workingDirectories`: the session-level set. Individual chats MAY restrict
+///   to a subset via {@link ChatSummary.workingDirectories}; aggregating these
+///   up is meaningless and SHOULD NOT be attempted.
+/// - `changes`: optional roll-up across all chats. Producers MAY sum the
+///   per-chat {@link ChatSummary.changes | changes summaries} or report the
+///   most expensive chat's stats —
+///   whichever is cheaper for the host to compute.
+///
+/// Sessions with a single chat trivially satisfy all of the above (the chat's
+/// values pass through unchanged). The rules only matter once a session
+/// carries multiple chats.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSummary {
+    /// Agent provider ID
+    pub provider: String,
+    /// Session title
+    pub title: String,
+    /// Current session status
+    pub status: u32,
+    /// Human-readable description of what the session is currently doing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    /// Durable {@link AutomationSessionOrigin}, when an automation run created this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<SessionOrigin>,
+    /// Server-owned project for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectInfo>,
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by working-directory actions. Directories are equal peers except
+    /// when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} without
+    /// {@link MultipleWorkingDirectoriesCapability.primaryReplacement} (the first
+    /// entry is then a fixed process root), or advertises `primaryReplacement`
+    /// (the first entry is a protected, replaceable primary slot). Individual chats
+    /// MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+    /// chat that sets none operates against this full set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+    /// Lightweight summary of this session's inline annotations channel
+    /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
+    /// annotation / entry counts without subscribing. Absent when the session
+    /// does not expose an annotations channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<AnnotationsSummary>,
+    /// Session URI
+    pub resource: Uri,
+    /// Creation timestamp (ISO 8601, e.g. `"2025-03-10T18:42:03.123Z"`)
+    pub created_at: String,
+    /// Last modification timestamp (ISO 8601, e.g. `"2025-03-10T18:42:03.123Z"`)
+    pub modified_at: String,
+    /// Aggregate summary of file changes associated with this session. Servers
+    /// may populate this to give clients a quick at-a-glance view of the
+    /// session's footprint (e.g., for list rendering) without requiring the
+    /// client to subscribe to a changeset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesSummary>,
+    /// Lightweight server-defined metadata clients may use for the session
+    /// presentation. The protocol does not interpret these values; producers
+    /// SHOULD keep the payload small because summaries appear in session lists
+    /// and session notifications.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Lightweight host-authoritative ordered chat catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chats: Option<Vec<SessionChatSummary>>,
+    /// Chat that receives input when none is selected, independent of catalog position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_chat: Option<Uri>,
+}
+
+/// Lightweight chat information in a session catalog.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatSummary {
+    /// Canonical chat URI
+    pub resource: Uri,
+    /// Human-readable chat title
+    pub title: String,
+    /// How this chat was created, when known
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ChatOrigin>,
+    /// How the user can interact with this chat.
+    ///
+    /// Generic clients use this to omit hidden chats and disable input for
+    /// read-only chats. Absence defaults to {@link ChatInteractivity.Full} for
+    /// backward compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactivity: Option<ChatInteractivity>,
+    /// Current chat status, matching {@link ChatSummary.status}.
+    ///
+    /// Includes the activity bits and the orthogonal {@link SessionStatus.IsRead}
+    /// and {@link SessionStatus.IsArchived} flags. Generic clients use these bits
+    /// to present read, unread, or archived chats in session lists without
+    /// subscribing to the session or chat channel. Absence means the host did
+    /// not provide the status; clients MUST treat it as unknown, not as unread
+    /// or unarchived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u32>,
+    /// Aggregate summary of file changes associated with this chat.
+    ///
+    /// Servers may populate this so session lists can show per-chat change
+    /// counts without subscribing to the session or chat channel. Updates travel
+    /// with the rest of the catalog in `root/sessionSummaryChanged`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesSummary>,
+}
+
+/// Aggregate counts describing the file changes associated with a session or
+/// chat.
+///
+/// All fields are optional so servers can populate only the metrics they
+/// cheaply have available.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesSummary {
+    /// Total number of inserted lines across all changed files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additions: Option<i64>,
+    /// Total number of deleted lines across all changed files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deletions: Option<i64>,
+    /// Number of files that have changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<i64>,
+}
+
+/// Server-owned project metadata for a session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInfo {
+    /// Project URI
+    pub uri: Uri,
+    /// Human-readable project name
+    pub display_name: String,
+}
+
+/// A session configuration property descriptor.
+///
+/// Extends the generic {@link ConfigPropertySchema} with session-specific
+/// display extensions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigPropertySchema {
+    /// JSON Schema: property type
+    pub r#type: String,
+    /// JSON Schema: human-readable label for the property
+    pub title: String,
+    /// JSON Schema: description / tooltip
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// JSON Schema: default value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<AnyValue>,
+    /// JSON Schema: allowed values. May be primitives of any JSON type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#enum: Option<Vec<AnyValue>>,
+    /// Display extension: human-readable label per enum value (parallel array)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_labels: Option<Vec<String>>,
+    /// Display extension: description per enum value (parallel array)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_descriptions: Option<Vec<String>>,
+    /// JSON Schema: when `true`, the property is displayed but cannot be modified by the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
+    /// JSON Schema: schema for array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<ConfigPropertySchema>,
+    /// JSON Schema: minimum number of array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_items: Option<i64>,
+    /// JSON Schema: maximum number of array items (used when `type` is `'array'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<i64>,
+    /// JSON Schema: property descriptors for object properties (used when `type` is `'object'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties: Option<std::collections::HashMap<String, ConfigPropertySchema>>,
+    /// JSON Schema: list of required property ids (used when `type` is `'object'`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+    /// JSON Schema: schema for additional properties not listed in `properties` (used when `type` is `'object'`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<ConfigPropertySchema>,
+    /// Display extension: when `true`, the full set of allowed values is too large
+    /// to enumerate statically. The client SHOULD use `sessionConfigCompletions`
+    /// to fetch matching values based on user input. Any values in `enum` are
+    /// seed/recent values for initial display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_dynamic: Option<bool>,
+    /// When `true`, the user may change this property after session creation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_mutable: Option<bool>,
+}
+
+/// A JSON Schema object describing available session configuration metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigSchema {
+    /// JSON Schema: always `'object'`
+    pub r#type: String,
+    /// JSON Schema: property descriptors keyed by property id
+    pub properties: std::collections::HashMap<String, SessionConfigPropertySchema>,
+    /// JSON Schema: list of required property ids
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+}
+
+/// Live session configuration metadata.
+///
+/// The schema describes the available configuration properties and the values
+/// contain the current value for each resolved property.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigState {
+    /// JSON Schema describing available configuration properties
+    pub schema: SessionConfigSchema,
+    /// Current configuration values
+    pub values: JsonObject,
+}
+
+/// A completed request/response cycle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Turn {
+    /// Turn identifier
+    pub id: String,
+    /// ISO 8601 timestamp when this turn started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    /// Turn duration in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<i64>,
+    /// The message that initiated the turn
+    pub message: Message,
+    /// All response content in stream order: text, tool calls, reasoning, and content refs.
+    ///
+    /// Consumers should derive display text by concatenating markdown parts,
+    /// and find tool calls by filtering for `ToolCall` parts.
+    pub response_parts: Vec<ResponsePart>,
+    /// Token usage info
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
+    /// How the turn ended
+    pub state: TurnState,
+}
+
+/// An in-progress turn — the assistant is actively streaming.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveTurn {
+    /// Turn identifier
+    pub id: String,
+    /// ISO 8601 timestamp when this turn started.
+    pub started_at: String,
+    /// The message that initiated the turn
+    pub message: Message,
+    /// All response content in stream order: text, tool calls, reasoning, and content refs.
+    ///
+    /// Tool call parts include `pendingPermissions` when permissions are awaiting user approval.
+    pub response_parts: Vec<ResponsePart>,
+    /// Token usage info
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
+}
+
+/// A message that initiates or steers a turn. Messages can originate from the
+/// user, the agent, a tool, an automation, or be system-generated (see
+/// {@link MessageOrigin}).
+///
+/// Attachments MAY be referenced inside {@link Message.text} via their
+/// {@link MessageAttachmentBase.range} field. Attachments without a range are
+/// still associated with the message but do not correspond to a specific span
+/// in the text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Message {
+    /// Message text
+    pub text: String,
+    /// The origin of the message
+    pub origin: MessageOrigin,
+    /// File/selection attachments
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<MessageAttachment>>,
+    /// The model this message was, or will be, sent with.
+    ///
+    /// For historic user/agent messages this records the model actually used, so
+    /// a client editing or resending the message can retain that selection. For a
+    /// {@link ChatState.draft | draft} it carries the model the user picked for
+    /// the message they are composing. Absent means the agent host's default
+    /// model applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelSelection>,
+    /// The custom agent this message was, or will be, sent with.
+    ///
+    /// For historic messages this records the agent actually used; for a
+    /// {@link ChatState.draft | draft} it carries the agent the user picked.
+    /// Absent means no custom agent — the provider's default behavior applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentSelection>,
+    /// Additional provider-specific metadata for this message.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry context that does not fit any other
+    /// field. Mirrors the MCP `_meta` convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Identifies the origin of a {@link Message} — who produced it. For the message
+/// that initiates a turn ({@link Turn.message}), this is also the origin of the
+/// turn; for steering or queued messages it is just the origin of that message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageOrigin {
+    /// The kind of actor that produced the message.
+    pub kind: MessageKind,
+}
+
+/// A choice in a select-style question.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputOption {
+    /// Stable option identifier; for MCP enum values this is the enum string
+    pub id: String,
+    /// Display label
+    pub label: String,
+    /// Optional secondary text
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether this option is the recommended/default choice
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended: Option<bool>,
+}
+
+/// Value captured for one answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputTextAnswerValue {
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputNumberAnswerValue {
+    pub value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputBooleanAnswerValue {
+    pub value: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputSelectedAnswerValue {
+    pub value: String,
+    /// Free-form text entered instead of selecting an option
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freeform_values: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputSelectedManyAnswerValue {
+    pub value: Vec<String>,
+    /// Free-form text entered in addition to selected options
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freeform_values: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputAnswered {
+    /// Answer value
+    pub value: ChatInputAnswerValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputSkipped {
+    /// Free-form reason or value captured while skipping, if any
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freeform_values: Option<Vec<String>>,
+}
+
+/// Text question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputTextQuestion {
+    /// Stable question identifier used as the key in `answers`
+    pub id: String,
+    /// Short display title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Prompt shown to the user
+    pub message: String,
+    /// Whether the user must answer this question to accept the request
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// Format hint for text questions, such as `email`, `uri`, `date`, or `date-time`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// Minimum string length
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<i64>,
+    /// Maximum string length
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<i64>,
+    /// Default text
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<String>,
+}
+
+/// Numeric question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputNumberQuestion {
+    /// Stable question identifier used as the key in `answers`
+    pub id: String,
+    /// Short display title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Prompt shown to the user
+    pub message: String,
+    /// Whether the user must answer this question to accept the request
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// Minimum value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    /// Maximum value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    /// Default numeric value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<f64>,
+}
+
+/// Boolean question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputBooleanQuestion {
+    /// Stable question identifier used as the key in `answers`
+    pub id: String,
+    /// Short display title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Prompt shown to the user
+    pub message: String,
+    /// Whether the user must answer this question to accept the request
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// Default boolean value
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<bool>,
+}
+
+/// Single-select question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputSingleSelectQuestion {
+    /// Stable question identifier used as the key in `answers`
+    pub id: String,
+    /// Short display title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Prompt shown to the user
+    pub message: String,
+    /// Whether the user must answer this question to accept the request
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// Options the user may select from
+    pub options: Vec<ChatInputOption>,
+    /// Whether the user may enter text instead of selecting an option
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_freeform_input: Option<bool>,
+}
+
+/// Multi-select question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputMultiSelectQuestion {
+    /// Stable question identifier used as the key in `answers`
+    pub id: String,
+    /// Short display title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Prompt shown to the user
+    pub message: String,
+    /// Whether the user must answer this question to accept the request
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required: Option<bool>,
+    /// Options the user may select from
+    pub options: Vec<ChatInputOption>,
+    /// Whether the user may enter text in addition to selecting options
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_freeform_input: Option<bool>,
+    /// Minimum selected item count
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<i64>,
+    /// Maximum selected item count
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<i64>,
+}
+
+/// The request payload carried by an {@link InputRequestResponsePart}.
+///
+/// The server creates or replaces the containing response part with
+/// `chat/inputRequested`. Clients sync drafts with `chat/inputAnswerChanged`
+/// and submit responses with `chat/inputCompleted`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputRequest {
+    /// Stable request identifier
+    pub id: String,
+    /// Display message for the request as a whole
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// URL the user should review or open, for URL-style elicitations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<Uri>,
+    /// Ordered questions to ask the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub questions: Option<Vec<ChatInputQuestion>>,
+    /// Current draft or submitted answers, keyed by question ID
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answers: Option<std::collections::HashMap<String, ChatInputAnswer>>,
+}
+
+/// A zero-based position within a textual document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextPosition {
+    /// Zero-based line number.
+    pub line: i64,
+    /// Zero-based character offset within the line.
+    pub character: i64,
+}
+
+/// A range within a textual document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextRange {
+    /// Start position of the range.
+    pub start: TextPosition,
+    /// End position of the range.
+    pub end: TextPosition,
+}
+
+/// A selection within a textual resource.
+///
+/// This is only meaningful for textual resources. Binary resources may still
+/// use resource or embedded resource attachments, but they should not use this
+/// text selection field.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextSelection {
+    /// The range covered by the selection.
+    pub range: TextRange,
+}
+
+/// A simple, opaque attachment whose model representation is described by
+/// the producer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimpleMessageAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Representation of the attachment as it should be shown to the model.
+    ///
+    /// If the attachment was produced by the client, this property MUST be
+    /// defined so the agent host can correctly interpret the attachment. This
+    /// property MAY be omitted when the attachment originated from a
+    /// `completions` response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_representation: Option<String>,
+}
+
+/// An attachment whose data is embedded inline as a base64 string.
+///
+/// Use this for small binary payloads (e.g. a pasted image) that should be
+/// delivered with the user message itself rather than fetched separately.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageEmbeddedResourceAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Base64-encoded binary data
+    pub data: String,
+    /// Content MIME type (e.g. `"image/png"`, `"application/pdf"`)
+    pub content_type: String,
+    /// Optional selection within the attached textual resource.
+    ///
+    /// Only meaningful for textual resources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<TextSelection>,
+}
+
+/// An attachment that references a resource by URI. The content is not
+/// delivered inline; consumers can fetch it via `resourceRead` when needed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageResourceAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Content URI
+    pub uri: Uri,
+    /// Approximate size in bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_hint: Option<i64>,
+    /// Content MIME type
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Content nonce
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    /// Optional selection within the referenced textual resource.
+    ///
+    /// Only meaningful for textual resources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<TextSelection>,
+}
+
+/// An attachment that references annotations on a session's annotations
+/// channel (see {@link AnnotationsState}).
+///
+/// When {@link annotationIds} is omitted the attachment references every
+/// annotation on the channel; when present it references only the listed
+/// {@link Annotation.id | annotation ids}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageAnnotationsAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// The annotations channel URI (typically `ahp-session:/<uuid>/annotations`).
+    /// Matches {@link AnnotationsSummary.resource}.
+    pub resource: Uri,
+    /// Specific {@link Annotation.id | annotation ids} to reference. When
+    /// omitted, the attachment references all annotations on the channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotation_ids: Option<Vec<String>>,
+}
+
+/// An attachment that references a chat transcript through a fixed completed
+/// turn.
+///
+/// The referenced chat MAY belong to a different session than the message's
+/// chat. The attachment's model representation identifies the chat in a way
+/// that hosts can resolve regardless of the session that owns it.
+///
+/// When `endTurn` is omitted, the host MUST resolve and pin the referenced
+/// chat's latest completed turn when accepting the message. This lets clients
+/// attach a chat without knowing its turn identifiers. When provided, `endTurn`
+/// MUST reference a completed, retained turn. The host resolves the transcript
+/// from its first retained turn through the pinned turn, inclusive. Later turns
+/// do not change the context represented by an already-sent attachment.
+///
+/// When the referenced chat has no completed retained turns, the resolved
+/// transcript is empty and hosts MUST NOT reject the attachment on that basis.
+///
+/// Hosts MUST NOT recursively expand chat attachments found inside the
+/// referenced transcript. Clients SHOULD keep rendering `label` if the
+/// referenced chat is later pruned, and treat opening `resource` as best-effort.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageChatAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// URI of the referenced chat.
+    pub resource: Uri,
+    /// Last completed turn included in the referenced transcript. When omitted,
+    /// the host pins the latest completed turn when accepting the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_turn: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownResponsePart {
+    /// Part identifier, used by `chat/delta` to target this part for content appends
+    pub id: String,
+    /// Markdown content
+    pub content: String,
+}
+
+/// A reference to large content stored outside the state tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentRef {
+    /// Content URI
+    pub uri: Uri,
+    /// Approximate size in bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_hint: Option<i64>,
+    /// Content MIME type
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Content nonce
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+}
+
+/// A content part that's a reference to large content stored outside the state tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceResponsePart {
+    /// Content URI
+    pub uri: Uri,
+    /// Approximate size in bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_hint: Option<i64>,
+    /// Content MIME type
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Content nonce
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+}
+
+/// A tool call represented as a response part.
+///
+/// Tool calls are part of the response stream, interleaved with text and
+/// reasoning. The `toolCall.toolCallId` serves as the part identifier for
+/// actions that target this part.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallResponsePart {
+    /// Full tool call lifecycle state
+    pub tool_call: ToolCallState,
+}
+
+/// Reasoning/thinking content from the model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReasoningResponsePart {
+    /// Part identifier, used by `chat/reasoning` to target this part for content appends
+    pub id: String,
+    /// Accumulated reasoning text
+    pub content: String,
+}
+
+/// A system notification surfaced as part of the response stream.
+///
+/// System notifications are messages authored by the agent harness
+/// that need to be visible to both the agent (for situational awareness) and
+/// the user (for transcript continuity). Examples include "background subagent
+/// X completed" or "task Y was cancelled".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemNotificationResponsePart {
+    /// The text of the system notification
+    pub content: StringOrMarkdown,
+    /// Additional provider-specific metadata for this notification.
+    ///
+    /// A host MAY attach a machine-readable descriptor of what triggered the
+    /// notification so clients can categorize, icon, group, filter, or localize
+    /// it without parsing `content`. Clients MAY look for well-known keys here to
+    /// provide enhanced UI, and MUST render coherently from `content` alone when
+    /// `_meta` is absent or unrecognized.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A live or resolved input request (elicitation) in the turn response stream.
+///
+/// The server inserts the part with `chat/inputRequested`. While
+/// {@link response} is absent, clients can update answer drafts with
+/// `chat/inputAnswerChanged` and submit a response with `chat/inputCompleted`.
+/// Completion updates this part in place so its stream position is stable and
+/// the full interaction remains durable and backfillable via `fetchTurns`.
+///
+/// If the turn ends without a submitted response, the unresolved part remains
+/// in the completed turn transcript with {@link response} absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputRequestResponsePart {
+    /// The request, carrying its `id`, `message`, `url`, `questions`, and current
+    /// draft or submitted `answers`.
+    pub request: ChatInputRequest,
+    /// How the request was resolved. Absent until a client submits `accept`,
+    /// `decline`, or `cancel` with `chat/inputCompleted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<ChatInputResponseKind>,
+}
+
+/// An error encountered while processing a turn.
+///
+/// This is the detailed source of truth for the error. {@link Turn.state}
+/// remains {@link TurnState.Error} while the turn is stopped at this error so
+/// clients can detect the terminal state without inspecting response parts.
+///
+/// When {@link resumable} is `true`, a client may dispatch `chat/turnResume`
+/// while this is the latest turn and its state is {@link TurnState.Error}.
+/// Clients decide whether and how to present that affordance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorResponsePart {
+    /// Error details.
+    pub error: ErrorInfo,
+    /// Whether the host can resume the turn from this error. Only `true` enables resume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resumable: Option<bool>,
+}
+
+/// Tool execution result details, available after execution completes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallResult {
+    /// Whether the tool succeeded
+    pub success: bool,
+    /// Past-tense description of what the tool did
+    pub past_tense_message: StringOrMarkdown,
+    /// Unstructured result content blocks.
+    ///
+    /// This mirrors the `content` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+    /// Optional structured result object.
+    ///
+    /// This mirrors the `structuredContent` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<JsonObject>,
+    /// Error details if the tool failed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<AnyValue>,
+}
+
+/// The model judge is still evaluating the tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRiskAssessmentLoadingState {
+    pub kind: ToolCallRiskAssessmentKind,
+}
+
+/// The model judge has completed its evaluation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRiskAssessmentCompleteState {
+    pub kind: ToolCallRiskAssessmentKind,
+    pub reason: StringOrMarkdown,
+    /// The judge's normalized safety score, where `0` is unsafe and `1` is safe.
+    pub safety: f64,
+}
+
+/// A confirmation option that the server offers for a tool call awaiting
+/// approval. Allows richer choices beyond simple approve/deny — for example,
+/// "Approve in this Session" or "Deny with reason."
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmationOption {
+    /// Unique identifier for the option, returned in the confirmed action
+    pub id: String,
+    /// Human-readable label displayed to the user
+    pub label: String,
+    /// Whether this option represents an approval or denial
+    pub kind: ConfirmationOptionKind,
+    /// Logical group number for visual categorisation.
+    ///
+    /// Clients SHOULD display options in the order they are defined and MAY
+    /// use differing group numbers to insert dividers between logical clusters
+    /// of options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<i64>,
+}
+
+/// LM is streaming the tool call parameters.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallStreamingState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Partial parameters accumulated from tool-call deltas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partial_input: Option<String>,
+    /// Progress message shown while parameters are streaming
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation_message: Option<StringOrMarkdown>,
+}
+
+/// Parameters are complete, or a running tool requires re-confirmation
+/// (e.g. a mid-execution permission check).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallPendingConfirmationState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation_title: Option<StringOrMarkdown>,
+    /// Risk assessment that informed the confirmation requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_assessment: Option<ToolCallRiskAssessment>,
+    /// File edits that this tool call will perform, for preview before confirmation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edits: Option<FileEditCollection>,
+    /// Whether the agent host allows the client to edit the tool's input parameters before confirming
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable: Option<bool>,
+    /// Options the server offers for this confirmation. When present, the client
+    /// SHOULD render these instead of a plain approve/deny UI. Each option
+    /// belongs to a {@link ConfirmationOptionGroup} so the client can still
+    /// categorise the choices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<ConfirmationOption>>,
+}
+
+/// Tool is actively executing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRunningState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// How the tool was confirmed for execution
+    pub confirmed: ToolCallConfirmationReason,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+    /// Partial content produced while the tool is still executing.
+    ///
+    /// For example, a terminal content block lets clients subscribe to live
+    /// output before the tool completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+}
+
+/// A running tool call is paused because the MCP server backing it needs
+/// authentication — most commonly {@link McpAuthRequirement.reason |
+/// `insufficientScope`} step-up auth triggered by the `tools/call` request
+/// itself. Only ever reached from {@link ToolCallRunningState}, and normally
+/// returns there once authenticated: `running` → `auth-required` → `running`
+/// → …. A client MAY instead cancel the invocation without authenticating by
+/// dispatching a `chat/toolCallComplete` with a **failed** result, always
+/// moving straight to {@link ToolCallCompletedState} —
+/// `requiresResultConfirmation` is ignored on this path, so it can never
+/// enter {@link ToolCallPendingResultConfirmationState}. A **successful**
+/// result dispatched from this state is invalid and MUST be rejected/ignored
+/// as a no-op by the reducer, since execution never resumed after the
+/// challenge.
+///
+/// This is the tool-call-level counterpart to
+/// {@link McpServerAuthRequiredState} — that state means the MCP *server*
+/// cannot serve any request; this one means *this specific invocation* is
+/// waiting on the same kind of challenge. The two are dispatched
+/// independently and MAY be true at the same time, or not: an
+/// `insufficientScope` challenge triggered by a single tool call, for
+/// example, need not block the whole server.
+///
+/// Because the challenge is always resolved by pushing a token via the
+/// existing `authenticate` command, this state can only originate from a
+/// tool call {@link ToolCallContributorKind.MCP | contributed by an MCP
+/// server} — `contributor` is narrowed accordingly (unlike the optional,
+/// multi-kind `contributor` on other tool call states).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallAuthRequiredState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// How the tool was confirmed for execution
+    pub confirmed: ToolCallConfirmationReason,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+    pub status: ToolCallStatus,
+    /// The authentication challenge blocking this invocation.
+    pub auth: McpAuthRequirement,
+    /// Partial content produced before the call paused for authentication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+}
+
+/// Tool finished executing, waiting for client to approve the result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallPendingResultConfirmationState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// Whether the tool succeeded
+    pub success: bool,
+    /// Past-tense description of what the tool did
+    pub past_tense_message: StringOrMarkdown,
+    /// Unstructured result content blocks.
+    ///
+    /// This mirrors the `content` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+    /// Optional structured result object.
+    ///
+    /// This mirrors the `structuredContent` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<JsonObject>,
+    /// Error details if the tool failed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<AnyValue>,
+    /// How the tool was confirmed for execution
+    pub confirmed: ToolCallConfirmationReason,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+}
+
+/// Tool completed successfully or with an error.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallCompletedState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// Whether the tool succeeded
+    pub success: bool,
+    /// Past-tense description of what the tool did
+    pub past_tense_message: StringOrMarkdown,
+    /// Unstructured result content blocks.
+    ///
+    /// This mirrors the `content` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+    /// Optional structured result object.
+    ///
+    /// This mirrors the `structuredContent` field of MCP `CallToolResult`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_content: Option<JsonObject>,
+    /// Error details if the tool failed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<AnyValue>,
+    /// How the tool was confirmed for execution
+    pub confirmed: ToolCallConfirmationReason,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+}
+
+/// Tool call was cancelled before execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallCancelledState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input.
+    ///
+    /// Referenced input is mutable until the tool call leaves
+    /// `pending-confirmation`. When the client confirms with `editedToolInput`,
+    /// the host MUST replace the resource contents before echoing the accepted
+    /// confirmation action. Clients MUST NOT cache tool input across confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// Why the tool was cancelled
+    pub reason: ToolCallCancellationReason,
+    /// Optional message explaining the cancellation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_message: Option<StringOrMarkdown>,
+    /// What the user suggested doing instead
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_suggestion: Option<Message>,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+}
+
+/// Describes a tool available in a session, provided by either the server or the active client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolDefinition {
+    /// Unique tool identifier
+    pub name: String,
+    /// Human-readable display name
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Description of what the tool does
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// JSON Schema defining the expected input parameters.
+    ///
+    /// Optional because client-provided tools may not have formal schemas.
+    /// Mirrors MCP `Tool.inputSchema`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<AnyValue>,
+    /// JSON Schema defining the structure of the tool's output.
+    ///
+    /// Mirrors MCP `Tool.outputSchema`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<AnyValue>,
+    /// Behavioral hints about the tool. All properties are advisory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
+    /// Additional provider-specific metadata.
+    ///
+    /// Mirrors the MCP `_meta` convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Behavioral hints about a tool. All properties are advisory and not
+/// guaranteed to faithfully describe tool behavior.
+///
+/// Mirrors MCP `ToolAnnotations` from the Model Context Protocol specification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    /// Alternate human-readable title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Tool does not modify its environment (default: false)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    /// Tool may perform destructive updates (default: true)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+    /// Repeated calls with the same arguments have no additional effect (default: false)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+    /// Tool may interact with external entities (default: true)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
+}
+
+/// Text content in a tool result.
+///
+/// Mirrors MCP `TextContent`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultTextContent {
+    /// The text content
+    pub text: String,
+}
+
+/// Base64-encoded binary content embedded in a tool result.
+///
+/// Mirrors MCP `EmbeddedResource` for inline binary data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultEmbeddedResourceContent {
+    /// Base64-encoded data
+    pub data: String,
+    /// Content type (e.g. `"image/png"`, `"application/pdf"`)
+    pub content_type: String,
+}
+
+/// A reference to a resource stored outside the tool result.
+///
+/// Wraps {@link ContentRef} for lazy-loading large results.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultResourceContent {
+    /// Content URI
+    pub uri: Uri,
+    /// Approximate size in bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_hint: Option<i64>,
+    /// Content MIME type
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Content nonce
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+}
+
+/// Describes a file modification performed by a tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultFileEditContent {
+    /// The file state before the edit. Absent for file creations or for in-place file edits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<FileEditSide>,
+    /// The file state after the edit. Absent for file deletions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<FileEditSide>,
+    /// Optional diff display metadata
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<FileEditDiffStats>,
+}
+
+/// A reference to a terminal whose output is relevant to this tool result.
+///
+/// Clients can subscribe to the terminal's URI to stream its output in real
+/// time, providing live feedback while a tool is executing. The same URI
+/// remains subscribable for historical results: when the referenced resource's
+/// lifecycle is `exited`, subscribing returns an exited {@link TerminalState}
+/// containing the retained terminal content. Servers may reconstruct that state
+/// lazily and do not need to retain a live terminal process.
+///
+/// When the command exits, {@link result} is filled in on the completed
+/// result, retaining the outcome for clients that did not subscribe. This
+/// records the command's exit, not the terminal's — the terminal may keep
+/// running afterwards.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultTerminalContent {
+    /// Terminal URI (subscribable for live or retained terminal state)
+    pub resource: Uri,
+    /// Display title for the terminal content
+    pub title: String,
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_pty: Option<bool>,
+    /// Outcome of the command, present once it has exited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<TerminalCommandResult>,
+}
+
+/// A reference, embedded in a tool result, to a worker chat spawned by the tool
+/// call (a sub-agent delegation), referenced by a chat URI (`ahp-chat:/...`).
+///
+/// This is the spawning tool call's forward view of the worker. The worker chat
+/// records the same edge in reverse via its {@link ChatOrigin} (`kind: 'tool'`),
+/// whose `toolCallId` identifies the tool call that emitted this content.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultSubagentContent {
+    /// Worker chat URI (subscribable for full chat state)
+    pub resource: Uri,
+    /// Display title for the subagent
+    pub title: String,
+    /// Internal agent name
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+    /// Human-readable description of the subagent's task
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Container is being loaded by the host.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomizationLoadingState {}
+
+/// Container loaded successfully.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomizationLoadedState {}
+
+/// Container partially loaded but has warnings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomizationDegradedState {
+    /// Human-readable description of the warning.
+    pub message: String,
+}
+
+/// Container failed to load.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomizationErrorState {
+    /// Human-readable error message.
+    pub message: String,
+}
+
+/// An [Open Plugins](https://open-plugins.com/) plugin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// `clientId` of the client that contributed this container. Absent for
+    /// server-originated entries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Host-reported load state. Absent means the host has not yet reported
+    /// a load state for this container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<CustomizationLoadState>,
+    /// Children discovered inside this container.
+    ///
+    /// Absent means the host has not parsed this container yet. An empty
+    /// array means the host parsed the container and it contributes
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ChildCustomization>>,
+    /// Explicit enablement decisions. See {@link McpServerCustomization.enablement}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enablement: Option<Vec<CustomizationEnablement>>,
+    /// Version of the plugin, sourced from the
+    /// [Open Plugins](https://open-plugins.com/) manifest's optional
+    /// `version` field (semver, e.g. `"1.2.0"`). Absent when the manifest
+    /// declares no version — the field is optional there — or the source
+    /// has no version concept. Provenance / display only: the host neither
+    /// parses nor enforces it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+/// A {@link PluginCustomization} as published by a client. Extends the
+/// server-facing shape with an opaque `nonce` so the host can detect when
+/// the client's view of a plugin has changed and re-parse only as needed.
+///
+/// Clients SHOULD include a `nonce`. Server-side fields like
+/// {@link ContainerCustomizationBase.children | `children`} and
+/// {@link ContainerCustomizationBase.load | `load`} are typically left
+/// absent on publication and populated by the host when the resolved
+/// plugin appears in {@link SessionState.customizations}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientPluginCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// `clientId` of the client that contributed this container. Absent for
+    /// server-originated entries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Host-reported load state. Absent means the host has not yet reported
+    /// a load state for this container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<CustomizationLoadState>,
+    /// Children discovered inside this container.
+    ///
+    /// Absent means the host has not parsed this container yet. An empty
+    /// array means the host parsed the container and it contributes
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ChildCustomization>>,
+    pub r#type: CustomizationType,
+    /// Explicit enablement decisions. See {@link McpServerCustomization.enablement}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enablement: Option<Vec<CustomizationEnablement>>,
+    /// Version of the plugin, sourced from the
+    /// [Open Plugins](https://open-plugins.com/) manifest's optional
+    /// `version` field (semver, e.g. `"1.2.0"`). Absent when the manifest
+    /// declares no version — the field is optional there — or the source
+    /// has no version concept. Provenance / display only: the host neither
+    /// parses nor enforces it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Opaque version token used by the host to detect changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    /// Explicit enablement decisions for children this plugin contributes,
+    /// keyed by child name (for MCP servers, the server name as it appears in
+    /// the bundled `.mcp.json`).
+    ///
+    /// Bundled children are discovered by the host rather than published by the
+    /// client, so the client cannot attach `enablement` to them directly. This
+    /// carries the client's global decision for each one; the host applies it
+    /// under the child's durable key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_enablement: Option<std::collections::HashMap<String, Vec<CustomizationEnablement>>>,
+}
+
+/// A directory the host watches for this session.
+///
+/// Presence in the customization list signals that the host may discover
+/// customizations from this directory. When `writable` is `true`, clients
+/// MAY persist new customizations into the directory using
+/// [`resourceWrite`](/reference/common#resourcewrite); the host will
+/// then surface the resulting child via the customization actions.
+///
+/// The directory may not yet exist on disk.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// `clientId` of the client that contributed this container. Absent for
+    /// server-originated entries.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Host-reported load state. Absent means the host has not yet reported
+    /// a load state for this container.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<CustomizationLoadState>,
+    /// Children discovered inside this container.
+    ///
+    /// Absent means the host has not parsed this container yet. An empty
+    /// array means the host parsed the container and it contributes
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ChildCustomization>>,
+    /// Whether this container is currently enabled.
+    pub enabled: bool,
+    /// Which child customization type this directory holds.
+    pub contents: CustomizationType,
+    /// Whether clients may write into this directory.
+    pub writable: bool,
+}
+
+/// A custom agent contributed by a plugin or directory.
+///
+/// Mirrors the [Open Plugins agent](https://open-plugins.com/agent-builders/components/agents)
+/// format: a markdown file with YAML frontmatter, where the body is the
+/// agent's system prompt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether this child is individually enabled. Absent means enabled, so a
+    /// producer only needs to set it to surface a child that exists but is
+    /// turned off on its own.
+    ///
+    /// This flag is independent of the parent container's: the **effective**
+    /// enabled state of a plugin child is the plugin's derived enabled value and
+    /// `(child.enabled ?? true)`, so a disabled plugin disables every child
+    /// regardless of each child's own flag. A directory child instead uses the
+    /// directory's `enabled` value and its own flag.
+    ///
+    /// A child is turned on or off by id with
+    /// {@link SessionCustomizationToggledAction | `session/customizationToggled`}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Short description of what the agent specializes in and when to
+    /// invoke it. Sourced from the agent file's frontmatter `description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Model the agent is pinned to, sourced from the agent file's
+    /// frontmatter `model`. Absent means the agent inherits the session's
+    /// default model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Allowlist of tool names the agent is scoped to, sourced from the
+    /// agent file's frontmatter `tools`. A non-empty list restricts the
+    /// agent to exactly those tools. Absent — or an empty list — imposes no
+    /// restriction beyond the session default: the agent may use any
+    /// available tool. Producers express "no restriction" by omitting the
+    /// field rather than sending an empty array, so an empty list carries no
+    /// meaning distinct from absence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<String>>,
+    /// When `true`, the agent will not auto-delegate to this custom agent
+    /// as a sub-agent; it can only be selected by the user. Absent or
+    /// `false` means the agent may delegate to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_model_invocation: Option<bool>,
+    /// When `true`, the user cannot select this custom agent (for example,
+    /// in a picker); it remains available for the agent to auto-delegate
+    /// to. Absent or `false` means the user may select it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_user_invocation: Option<bool>,
+}
+
+/// A skill contributed by a plugin or directory.
+///
+/// Covers both [Open Plugins skill formats](https://open-plugins.com/agent-builders/components/skills)
+/// — the `skills/` directory layout (one subdirectory per skill, each with
+/// a `SKILL.md`) and the flatter `commands/` directory of slash-command
+/// skills.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether this child is individually enabled. Absent means enabled, so a
+    /// producer only needs to set it to surface a child that exists but is
+    /// turned off on its own.
+    ///
+    /// This flag is independent of the parent container's: the **effective**
+    /// enabled state of a plugin child is the plugin's derived enabled value and
+    /// `(child.enabled ?? true)`, so a disabled plugin disables every child
+    /// regardless of each child's own flag. A directory child instead uses the
+    /// directory's `enabled` value and its own flag.
+    ///
+    /// A child is turned on or off by id with
+    /// {@link SessionCustomizationToggledAction | `session/customizationToggled`}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Short description used for help text and auto-invocation matching.
+    /// Sourced from the skill's frontmatter `description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// When `true`, only the user can invoke this skill — the agent will not
+    /// auto-invoke it. Sourced from the command skill's frontmatter
+    /// `disable-model-invocation` flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_model_invocation: Option<bool>,
+    /// When `true`, the user cannot directly invoke this skill (for example,
+    /// as a slash command); it remains available for the agent to
+    /// auto-invoke. Absent or `false` means the user may invoke it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_user_invocation: Option<bool>,
+}
+
+/// A prompt contributed by a plugin or directory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether this child is individually enabled. Absent means enabled, so a
+    /// producer only needs to set it to surface a child that exists but is
+    /// turned off on its own.
+    ///
+    /// This flag is independent of the parent container's: the **effective**
+    /// enabled state of a plugin child is the plugin's derived enabled value and
+    /// `(child.enabled ?? true)`, so a disabled plugin disables every child
+    /// regardless of each child's own flag. A directory child instead uses the
+    /// directory's `enabled` value and its own flag.
+    ///
+    /// A child is turned on or off by id with
+    /// {@link SessionCustomizationToggledAction | `session/customizationToggled`}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Short description of what the prompt does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// A rule contributed by a plugin or directory.
+///
+/// Mirrors the [Open Plugins rule](https://open-plugins.com/agent-builders/components/rules)
+/// format: a markdown file (e.g. `.mdc`) whose body is injected into
+/// context while the rule is active. This type also covers tool-specific
+/// "instruction" formats (e.g. VS Code Copilot's
+/// `.github/instructions/*.md`), which differ only in naming — they
+/// share the same semantics of `description`, optional always-on
+/// activation, and optional glob scoping.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether this child is individually enabled. Absent means enabled, so a
+    /// producer only needs to set it to surface a child that exists but is
+    /// turned off on its own.
+    ///
+    /// This flag is independent of the parent container's: the **effective**
+    /// enabled state of a plugin child is the plugin's derived enabled value and
+    /// `(child.enabled ?? true)`, so a disabled plugin disables every child
+    /// regardless of each child's own flag. A directory child instead uses the
+    /// directory's `enabled` value and its own flag.
+    ///
+    /// A child is turned on or off by id with
+    /// {@link SessionCustomizationToggledAction | `session/customizationToggled`}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Description of what the rule enforces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// When `true`, the rule is always active (subject to `globs` if any).
+    /// When `false` or absent, the agent or user decides whether to apply
+    /// the rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always_apply: Option<bool>,
+    /// Glob patterns the rule applies to. When present, the rule is only
+    /// active for matching files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub globs: Option<Vec<String>>,
+}
+
+/// A hook manifest contributed by a plugin or directory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether this child is individually enabled. Absent means enabled, so a
+    /// producer only needs to set it to surface a child that exists but is
+    /// turned off on its own.
+    ///
+    /// This flag is independent of the parent container's: the **effective**
+    /// enabled state of a plugin child is the plugin's derived enabled value and
+    /// `(child.enabled ?? true)`, so a disabled plugin disables every child
+    /// regardless of each child's own flag. A directory child instead uses the
+    /// directory's `enabled` value and its own flag.
+    ///
+    /// A child is turned on or off by id with
+    /// {@link SessionCustomizationToggledAction | `session/customizationToggled`}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+/// An MCP server contributed by a plugin or directory.
+///
+/// When the server is declared inline in the containing plugin manifest,
+/// `uri` points at the manifest file and
+/// {@link CustomizationBase.range | `range`} narrows it to the
+/// declaration's span.
+///
+/// The MCP server customization also reflects its current status.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerCustomization {
+    /// Session-unique opaque identifier. Used by every action that targets a
+    /// specific customization. Minted by whoever publishes the customization
+    /// (typically the agent host).
+    pub id: String,
+    /// Source URI for this customization. A plugin URL, a file URI, or a
+    /// directory URI.
+    ///
+    /// For declarations that live inside a larger file — e.g. an MCP
+    /// server declared inline in a `plugins.json` manifest — `uri` points
+    /// to the containing file and {@link CustomizationBase.range | `range`}
+    /// narrows it to the declaration's span.
+    pub uri: Uri,
+    /// Human-readable name.
+    pub name: String,
+    /// Icons for UI display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icons: Option<Vec<Icon>>,
+    /// Optional span within {@link CustomizationBase.uri | `uri`} when this
+    /// customization is a subset of a larger file (for example, one entry
+    /// in an inline `mcpServers` block of a `plugins.json` manifest).
+    /// Absent when the customization covers the whole resource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Additional provider-specific metadata for this customization.
+    ///
+    /// Mirrors the MCP `_meta` convention. Optional and opaque to the
+    /// protocol; producers and consumers agree on its contents
+    /// out-of-band.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Explicit enablement decisions for this customization, one entry per scope
+    /// that has one. This is a wire contract: producers MUST publish entries
+    /// sorted by descending specificity (Session, Workspace, then Global).
+    /// The agent host emits at most one Workspace entry, for the session's primary
+    /// working directory. Consumers MAY treat
+    /// `enablement[0]` as the decisive decision and
+    /// `enablement?.[0]?.enabled ?? true` as the effective enabled value. An
+    /// absent or empty array means no explicit decision exists, so the
+    /// customization is enabled by default.
+    ///
+    /// Flows in both directions. A client publishes this alongside a customization
+    /// to assert its global decision, which is authoritative for the Global scope;
+    /// a client always includes its global entry, even when enabled. The host
+    /// publishes the fully resolved set across all scopes, and consumers derive
+    /// the effective enabled value from that set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enablement: Option<Vec<CustomizationEnablement>>,
+    /// Current lifecycle state of the MCP server.
+    pub state: McpServerState,
+    /// An `mcp://`-protocol channel the client uses to side-channel traffic
+    /// into the upstream MCP server itself. The channel is NOT a fresh raw MCP
+    /// connection: it piggybacks on the AHP transport
+    /// and skips the MCP `initialize` sequence.
+    ///
+    /// The agent host MAY only serve a subset of MCP on this
+    /// channel; the served subset is described by domain-specific
+    /// capabilities such as those in
+    /// {@link McpServerCustomizationApps.capabilities}.
+    ///
+    /// The channel URI SHOULD be stable across the server's lifetime, but
+    /// the agent host MAY change it (for example across a restart) and
+    /// MAY only expose it while the server is in
+    /// {@link McpServerStatus.Ready | `Ready`}. Absence means no
+    /// side-channel is currently available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<Uri>,
+    /// MCP App support. This property SHOULD be advertised for MCP servers
+    /// which support apps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_app: Option<McpServerCustomizationApps>,
+}
+
+/// Information from the agent host needed to render MCP Apps served
+/// by this MCP server.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerCustomizationApps {
+    /// The subset of MCP App
+    /// [`HostCapabilities`](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/draft/apps.mdx)
+    /// the AHP host can satisfy for Views backed by this server. The
+    /// client feeds these straight through into the `hostCapabilities` of
+    /// the `ui/initialize` response delivered to the View.
+    pub capabilities: AhpMcpUiHostCapabilities,
+}
+
+/// The subset of MCP App
+/// [`HostCapabilities`](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/draft/apps.mdx)
+/// an AHP host can derive from the upstream MCP server (and from AHP's own
+/// forwarding plumbing). Advertised on
+/// {@link McpServerCustomizationApps.capabilities} so clients can pass it
+/// through into the `hostCapabilities` of the `ui/initialize` response
+/// delivered to an MCP App View.
+///
+/// Field names mirror the MCP Apps spec exactly, so the AHP-side producer
+/// can pass them straight through into the `hostCapabilities` of the
+/// `ui/initialize` response delivered to the View.
+///
+/// Capabilities outside this set (`openLinks`, `downloadFile`, `sandbox`,
+/// `experimental`) are decided locally by whichever AHP client renders the
+/// View and are NOT part of this AHP-level advertisement — only the
+/// server-derived subset is.
+///
+/// An agent host MUST only advertise a capability when it actually accepts the
+/// corresponding methods/notifications on the `mcp://` channel:
+///
+/// - {@link serverTools}: host proxies `tools/list` and `tools/call` to
+///   the MCP server. When `listChanged` is `true`, the host also forwards
+///   `notifications/tools/list_changed`.
+/// - {@link serverResources}: host proxies `resources/read`,
+///   `resources/list`, and `resources/templates/list` to the MCP server.
+///   When `listChanged` is `true`, the host also forwards
+///   `notifications/resources/list_changed`.
+/// - {@link logging}: host accepts `notifications/message` log entries
+///   from the App and forwards them via `mcpNotification` (and forwards
+///   `logging/setLevel` calls to the server).
+/// - {@link sampling}: host serves `sampling/createMessage` via
+///   `mcpMethodCall`. When `sampling.tools` is present, the host also
+///   accepts SEP-1577 `tools` / `toolChoice` / `tool_use` content blocks
+///   inside `CreateMessageRequest`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AhpMcpUiHostCapabilities {
+    /// Producer proxies the MCP `tools/*` methods to the upstream server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_tools: Option<AnyValue>,
+    /// Producer proxies the MCP `resources/*` methods to the upstream server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_resources: Option<AnyValue>,
+    /// Producer accepts `notifications/message` log entries from the App via `mcpNotification`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logging: Option<JsonObject>,
+    /// Producer serves `sampling/createMessage` via `mcpMethodCall`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<AnyValue>,
+}
+
+/// Server is registered with the host but has not yet started.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerStartingState {
+    /// Hosts SHOULD set this to `true` when this server's startup will hold back
+    /// the processing of new messages (for example, the next turn) while the
+    /// server's contributions — such as its tools — are discovered.
+    ///
+    /// Clients MAY dispatch
+    /// {@link SessionMcpServerBackgroundRequestedAction | `session/mcpServerBackgroundRequested`}
+    /// through an appropriate affordance to ask the host to background the
+    /// startup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking: Option<bool>,
+}
+
+/// Server is running and serving requests.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerReadyState {}
+
+/// Server is reachable but cannot serve requests until the client
+/// authenticates. Mirrors the discovery flow defined by
+/// [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728)
+/// (Protected Resource Metadata) and the OAuth 2.1 / RFC 6750 challenge
+/// semantics required by the MCP authorization spec.
+///
+/// Clients react to this state by calling the existing `authenticate`
+/// command with the {@link ProtectedResourceMetadata.resource | resource}
+/// carried here. There is **no** `notify/authRequired` notification for
+/// MCP servers — the action stream is the single source of truth.
+///
+/// When the transition is triggered by a request issued during a turn
+/// — most commonly
+/// {@link McpAuthRequiredReason.InsufficientScope | `InsufficientScope`}
+/// surfacing mid-tool-call — the host SHOULD also raise
+/// {@link SessionStatus.InputNeeded} on the session so the block is
+/// visible at the summary level. Clients SHOULD watch this status on
+/// any MCP server backing a running tool call and surface an explicit
+/// affordance (e.g. a "grant additional access" prompt) tied to that
+/// tool call, rather than relying on the user to notice the
+/// customization’s status badge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerAuthRequiredState {
+    /// Why authentication is required.
+    pub reason: McpAuthRequiredReason,
+    /// Pre-registered OAuth client to use for authorization. When present, clients
+    /// MUST use these credentials instead of dynamic client registration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client: Option<McpOAuthClient>,
+    /// RFC 9728 Protected Resource Metadata. The `resource` field is the
+    /// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
+    /// indicator. `authorization_servers` is REQUIRED by the MCP
+    /// authorization spec.
+    pub resource: ProtectedResourceMetadata,
+    /// Scopes required for the current challenge, parsed from the
+    /// `WWW-Authenticate: Bearer scope="…"` header (or `scopes_supported`
+    /// fallback). Authoritative for the next authorization request — clients
+    /// MUST NOT assume any subset/superset relationship to
+    /// `resource.scopes_supported`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_scopes: Option<Vec<String>>,
+    /// Human-readable hint, typically from the OAuth `error_description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Server failed to start, crashed, or otherwise transitioned to a
+/// non-recoverable error. Use {@link McpServerStatus.AuthRequired}
+/// for authentication failures.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerErrorState {
+    /// Error details.
+    pub error: ErrorInfo,
+}
+
+/// Server has been shut down. The host MAY remove the server from the
+/// session entirely shortly after this state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerStoppedState {}
+
+/// A pre-registered OAuth client that clients use instead of dynamic client
+/// registration when resolving an MCP authentication challenge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOAuthClient {
+    /// OAuth client identifier registered with the authorization server.
+    pub client_id: String,
+    /// OAuth client secret for a confidential client. Absence means the client is
+    /// public and uses a secretless flow such as authorization code with PKCE.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+}
+
+/// Reusable MCP authentication challenge — the RFC 9728 discovery info a
+/// client needs to obtain a token and push it via the `authenticate` command.
+/// Deliberately carries **no token**: this describes what is being asked for,
+/// never the bearer token itself.
+///
+/// Shared by two independent state machines that describe the same OAuth
+/// challenge from different vantage points:
+///
+/// - {@link McpServerAuthRequiredState} — the MCP server itself cannot serve
+///   *any* request until the client authenticates.
+/// - {@link ToolCallAuthRequiredState} — a specific in-flight tool call is
+///   paused pending authentication (typically
+///   {@link McpAuthRequiredReason.InsufficientScope} step-up auth
+///   mid-execution). The server state and the tool-call state remain
+///   separate on purpose: the server saying "I need auth" and a tool
+///   invocation saying "I am waiting on that auth" are different facts that
+///   can be true independently.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuthRequirement {
+    /// Why authentication is required.
+    pub reason: McpAuthRequiredReason,
+    /// Pre-registered OAuth client to use for authorization. When present, clients
+    /// MUST use these credentials instead of dynamic client registration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client: Option<McpOAuthClient>,
+    /// RFC 9728 Protected Resource Metadata. The `resource` field is the
+    /// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
+    /// indicator. `authorization_servers` is REQUIRED by the MCP
+    /// authorization spec.
+    pub resource: ProtectedResourceMetadata,
+    /// Scopes required for the current challenge, parsed from the
+    /// `WWW-Authenticate: Bearer scope="…"` header (or `scopes_supported`
+    /// fallback). Authoritative for the next authorization request — clients
+    /// MUST NOT assume any subset/superset relationship to
+    /// `resource.scopes_supported`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_scopes: Option<Vec<String>>,
+    /// Human-readable hint, typically from the OAuth `error_description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallClientContributor {
+    /// If this tool is provided by a client, the `clientId` of the owning client.
+    /// Absent for server-side tools.
+    ///
+    /// When set, the identified client is responsible for executing the tool and
+    /// dispatching `chat/toolCallComplete` with the result.
+    pub client_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallMcpContributor {
+    /// Customization ID of the corresponding MCP server in {@link SessionState.customizations}.
+    pub customization_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEditSide {
+    /// URI of the file on this side of the edit
+    pub uri: Uri,
+    /// Reference to the file content on this side of the edit
+    pub content: ContentRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEditDiffStats {
+    /// Number of items added (e.g., lines for text files, cells for notebooks)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added: Option<i64>,
+    /// Number of items removed (e.g., lines for text files, cells for notebooks)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed: Option<i64>,
+}
+
+/// Describes a file modification with before/after state and diff metadata.
+///
+/// Supports creates (only `after`), deletes (only `before`), renames/moves
+/// (different `uri` in `before` and `after`), and edits (same `uri`, different content).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEdit {
+    /// The file state before the edit. Absent for file creations or for in-place file edits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<FileEditSide>,
+    /// The file state after the edit. Absent for file deletions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<FileEditSide>,
+    /// Optional diff display metadata
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<FileEditDiffStats>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEditCollection {
+    pub items: Vec<FileEdit>,
+}
+
+/// Outcome of a command run in a terminal-style tool, filled in on
+/// {@link ToolResultTerminalContent.result} once the command exits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandResult {
+    /// Exit code from the completed command, if reported by the runtime
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed. When `isPty` is
+    /// `true` the preview may contain VT sequences; when `false` it is plain
+    /// text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// Whether `preview` is known to be incomplete or truncated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
+}
+
+/// Lightweight terminal metadata exposed on the root state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalInfo {
+    /// Terminal URI (subscribable for full terminal state)
+    pub resource: Uri,
+    /// Human-readable terminal title
+    pub title: String,
+    /// Who currently holds this terminal
+    pub claim: TerminalClaim,
+    /// Current terminal process lifecycle.
+    pub lifecycle: TerminalLifecycleState,
+}
+
+/// A terminal claimed by a connected client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalClientClaim {
+    /// The `clientId` of the claiming client
+    pub client_id: String,
+}
+
+/// A terminal claimed by a session, optionally scoped to a specific turn or tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSessionClaim {
+    /// Session URI that claimed the terminal
+    pub session: Uri,
+    /// Chat URI that claimed the terminal.
+    pub chat: Uri,
+    /// Optional turn identifier within the chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    /// Optional tool call identifier within the turn
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+/// A terminal process that is still running.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalRunningLifecycleState {}
+
+/// A terminal process that has exited.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalExitedLifecycleState {
+    /// Process exit code, if the runtime reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+}
+
+/// Full state for a single terminal, loaded when a client subscribes to the terminal's URI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalState {
+    /// Human-readable terminal title
+    pub title: String,
+    /// Current working directory of the terminal process
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<Uri>,
+    /// Terminal width in columns
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cols: Option<i64>,
+    /// Terminal height in rows
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rows: Option<i64>,
+    /// Typed content parts, replacing the flat `content: string`.
+    ///
+    /// Naive consumers that only need the raw VT stream can reconstruct it with:
+    ///   `content.map(p => p.type === 'command' ? p.output : p.value).join('')`
+    ///
+    /// Consumers that need command boundaries can filter by part type.
+    pub content: Vec<TerminalContentPart>,
+    /// Current terminal process lifecycle.
+    pub lifecycle: TerminalLifecycleState,
+    /// Who currently holds this terminal
+    pub claim: TerminalClaim,
+    /// Whether this terminal emits `terminal/commandExecuted` and
+    /// `terminal/commandFinished` actions and populates `command`-typed parts.
+    ///
+    /// Clients MUST check this flag before relying on command detection.
+    /// Do NOT use the presence of a `command` part as a feature flag — parts
+    /// are absent in the normal idle state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_command_detection: Option<bool>,
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_pty: Option<bool>,
+}
+
+/// Unstructured terminal output — content before, between, or after commands,
+/// or from terminals that do not support command detection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalUnclassifiedPart {
+    /// Accumulated VT output. Appended to by `terminal/data` when no command is executing.
+    pub value: String,
+}
+
+/// A single command: its command line and the output it produced.
+///
+/// While `isComplete` is false the command is still executing; `output` grows
+/// as `terminal/data` actions arrive. At `terminal/commandFinished` the part
+/// is mutated in-place with `isComplete: true` and the completion metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandPart {
+    /// Stable id matching the `commandId` on the corresponding
+    /// `terminal/commandExecuted` and `terminal/commandFinished` actions.
+    pub command_id: String,
+    /// The command line submitted to the shell.
+    pub command_line: String,
+    /// Accumulated VT output. Appended to by `terminal/data` while `isComplete`
+    /// is false. Shell integration escape sequences are stripped by the server.
+    pub output: String,
+    /// Unix timestamp (ms) when execution started, as reported by the server.
+    pub timestamp: i64,
+    /// Whether the command has finished.
+    pub is_complete: bool,
+    /// Shell exit code. Set at completion. `undefined` if unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Wall-clock duration in milliseconds. Set at completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageInfo {
+    /// Input tokens consumed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    /// Output tokens generated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    /// Model used
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Tokens read from cache
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i64>,
+    /// Additional provider-specific metadata for this usage report.
+    /// Clients MAY look for well-known optional keys here to provide enhanced UI.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorInfo {
+    /// Error type identifier
+    pub error_type: String,
+    /// Human-readable error message
+    pub message: String,
+    /// Stack trace
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack: Option<String>,
+    /// Additional provider-specific metadata for this error.
+    /// Clients MAY look for well-known optional keys here to provide enhanced UI
+    /// (e.g. a structured chat fetch error for richer, localized messaging).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A point-in-time snapshot of a subscribed resource's state, returned by
+/// `initialize`, `reconnect`, and `subscribe`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    /// The subscribed channel URI (e.g. `ahp-root://`, `ahp-session:/<uuid>`, `ahp-chat:/<uuid>`, or `ahp-canvas:/<uuid>`)
+    pub resource: Uri,
+    /// The current state of the resource
+    pub state: SnapshotState,
+    /// The `serverSeq` at which this snapshot was taken. Subsequent actions will have `serverSeq > fromSeq`.
+    pub from_seq: i64,
+}
+
+/// Catalogue entry describing one changeset the server can produce for a
+/// session or chat.
+///
+/// Catalogue entries are intentionally lightweight — just enough to render a
+/// chip or list row without subscribing. Full per-changeset detail
+/// ({@link ChangesetState}) lives on the subscribable URI obtained by
+/// expanding {@link uriTemplate}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Changeset {
+    /// Human-readable label, e.g. `"Uncommitted Changes"`.
+    pub label: String,
+    /// RFC 6570 URI template. Clients parse the variables directly out of the
+    /// template using the standard `{name}` syntax — they are not redeclared
+    /// here.
+    ///
+    /// Only the following template shapes are defined by this protocol; any
+    /// other variable name MUST be ignored by clients (there is no
+    /// protocol-defined way to obtain values for unknown variables):
+    ///
+    /// | Variables in template                       | Meaning                                                                              |
+    /// | ------------------------------------------- | ------------------------------------------------------------------------------------ |
+    /// | _(none)_                                    | A static changeset scoped to the advertising session or chat. The template is itself a subscribable URI. |
+    /// | `{turnId}`                                  | Per-turn slice. Expand with a `Turn.id` from the advertising chat or session.        |
+    /// | `{originalTurnId}` and `{modifiedTurnId}`   | Diff between two turns. Both variables MUST be present.                              |
+    ///
+    /// Future protocol versions MAY add new well-known variables.
+    pub uri_template: String,
+    /// Optional longer description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Advisory hint describing what kind of changeset this is, so clients can
+    /// group, sort, or render an appropriate icon without parsing
+    /// {@link uriTemplate}. Recognized values include:
+    ///
+    /// - `'session'`: a static, session-wide changeset covering all changes the
+    ///   agent has produced in this session.
+    /// - `'branch'`: changes relative to a base branch (e.g. a feature branch
+    ///   diffed against `main`).
+    /// - `'uncommitted'`: the workspace's current uncommitted changes.
+    /// - `'turn'`: changes produced by a single turn. Typically paired with a
+    ///   `{turnId}` variable in {@link uriTemplate}.
+    /// - `'compare-turns'`: a diff between two turns. Typically paired with
+    ///   `{originalTurnId}` and `{modifiedTurnId}` variables in
+    ///   {@link uriTemplate}.
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    pub change_kind: String,
+    /// Optional capability declarations for this changeset. Absent (or an empty
+    /// object) means the changeset advertises no optional capabilities.
+    ///
+    /// Because the catalogue entry is delivered up-front on the advertising
+    /// session or chat's changeset list, clients can decide whether to surface
+    /// capability-gated UI (such as review checkboxes) without first subscribing
+    /// to the changeset URI. Mirrors the presence-flag convention of
+    /// `ClientCapabilities`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ChangesetCapabilities>,
+}
+
+/// Optional capabilities a changeset advertises on its catalogue
+/// {@link Changeset} entry.
+///
+/// Each field is a presence flag: an empty object `{}` means "supported",
+/// absence means "not supported". Sub-fields on individual capabilities are
+/// reserved for future per-capability options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetCapabilities {
+    /// The changeset supports the per-file **review** workflow. When declared,
+    /// clients MAY surface a GitHub-style "Viewed" toggle per file and dispatch
+    /// {@link ChangesetFilesReviewChangedAction | `changeset/filesReviewChanged`} to
+    /// set each file's {@link ChangesetFile.reviewed} flag. Clients that omit
+    /// handling MUST treat the changeset as non-reviewable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<JsonObject>,
+}
+
+/// Full state for a single changeset, returned when a client subscribes to
+/// an expanded changeset URI.
+///
+/// The client already knows the URI it subscribed to, so this state does
+/// not redundantly carry it (or the catalogue's `id`, `label`, etc.).
+/// Aggregate counts (`additions`, `deletions`, `files`) are likewise
+/// omitted: clients trivially compute them from `files[].edit.diff`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetState {
+    /// Computation lifecycle.
+    pub status: ChangesetStatus,
+    /// Present iff `status === ChangesetStatus.Error`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorInfo>,
+    /// Files in this changeset, keyed by {@link ChangesetFile.id}.
+    pub files: Vec<ChangesetFile>,
+    /// Operations the client may invoke against this changeset. Omit when no
+    /// operations are available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operations: Option<Vec<ChangesetOperation>>,
+}
+
+/// One file entry within a {@link ChangesetState}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetFile {
+    /// Stable identifier within the changeset. Typically `after.uri`
+    /// (or `before.uri` for deletions).
+    pub id: String,
+    /// Reuses the existing {@link FileEdit} shape. Clients derive line
+    /// additions, deletions, and rename/create/delete semantics from this.
+    pub edit: FileEdit,
+    /// Whether a reviewer has marked this file as reviewed (the GitHub-style
+    /// "Viewed" checkbox). Absent is equivalent to `false` — clients MUST treat
+    /// a missing value as not-yet-reviewed.
+    ///
+    /// Requires the changeset to advertise {@link ChangesetCapabilities.review}.
+    /// Clients toggle it by dispatching
+    /// {@link ChangesetFilesReviewChangedAction | `changeset/filesReviewChanged`};
+    /// the server MAY also originate it (e.g. an agent self-reviewing its own
+    /// output).
+    ///
+    /// There is no content version in the protocol, so review is **not** reset
+    /// automatically when a file's contents change under a stable id. The server,
+    /// which is the authority on what changed, resets review explicitly — either
+    /// by re-emitting the file (via {@link ChangesetFileSetAction} or
+    /// {@link ChangesetContentChangedAction}) without `reviewed: true`, or by
+    /// dispatching `changeset/filesReviewChanged` with `reviewed: false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed: Option<bool>,
+    /// Server-defined opaque metadata, surfaced to operations and tooling
+    /// but not interpreted by the protocol.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A server-declared invokable verb the client can run against a
+/// changeset, a file, or a range — `"stage"`, `"revert"`, `"create-pr"`,
+/// and so on.
+///
+/// The term "operation" is used deliberately to avoid colliding with the
+/// protocol-level [Actions](/guide/actions) that mutate state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetOperation {
+    /// Stable identifier, unique within this changeset.
+    pub id: String,
+    /// Human-readable button/menu label.
+    pub label: String,
+    /// Optional longer description shown on hover or in tooltips.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Where this operation can be invoked.
+    pub scopes: Vec<ChangesetOperationScope>,
+    /// Optional confirmation prompt to show before invoking. When present,
+    /// the client MUST display this message to the user (typically in a
+    /// confirmation dialog) and only invoke the operation after the user
+    /// accepts. The presence of this field also signals that the operation
+    /// is destructive — clients SHOULD style the affirmative button
+    /// accordingly (e.g. with a warning colour).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation: Option<StringOrMarkdown>,
+    /// Optional generic icon hint, e.g. `"check"`, `"trash"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Optional group identifier, used to group related operations together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Current execution status. The server sets
+    /// {@link ChangesetOperationStatus.Running | Running} while an invocation
+    /// is in flight, {@link ChangesetOperationStatus.Error | Error} when the
+    /// most recent invocation failed, and
+    /// {@link ChangesetOperationStatus.Idle | Idle} otherwise.
+    ///
+    /// Clients SHOULD reflect this state in the UI — e.g. disabling the
+    /// control or showing a spinner while `Running`, and surfacing
+    /// {@link error} while `Error`.
+    pub status: ChangesetOperationStatus,
+    /// Cause of failure. Present iff
+    /// `status === ChangesetOperationStatus.Error`; otherwise omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorInfo>,
+}
+
+/// Lightweight per-session summary of the annotations channel, surfaced on
+/// {@link SessionSummary.annotations} so badge UI can render annotation /
+/// entry counts without subscribing to the channel itself.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsSummary {
+    /// The subscribable annotations channel URI for the owning session
+    /// (typically `ahp-session:/<uuid>/annotations`). Surfaced explicitly even
+    /// though it is derivable from the session URI so badge UI does not need
+    /// to know the derivation rule.
+    pub resource: Uri,
+    /// Total number of {@link Annotation} entries in the channel.
+    pub annotation_count: i64,
+    /// Total number of {@link AnnotationEntry} entries across every annotation.
+    pub entry_count: i64,
+}
+
+/// Full state for a session's annotations channel, returned when a client
+/// subscribes to an `ahp-session:/<uuid>/annotations` URI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsState {
+    /// Annotations in this channel, keyed by {@link Annotation.id}.
+    pub annotations: Vec<Annotation>,
+}
+
+/// Provenance of the content an annotation is anchored to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationOrigin {
+    /// Owning session URI.
+    pub session: Uri,
+    /// Owning chat URI, when the annotation is scoped to a chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<Uri>,
+    /// Turn identifier within {@link chat}, when the annotation is scoped to a turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+/// A conversation anchored to a specific file in a session, optionally scoped
+/// to a chat and turn and narrowed to a range within that file.
+///
+/// {@link origin} identifies the owning session and, when available, the chat
+/// and turn that produced the file version. When {@link range} is omitted the
+/// annotation is anchored to the entire file.
+///
+/// Every annotation MUST contain at least one {@link AnnotationEntry}. An
+/// {@link AnnotationsSetAction} that creates an annotation therefore carries
+/// its mandatory first entry, and removing the last remaining entry collapses
+/// the annotation via {@link AnnotationsRemovedAction} rather than leaving an
+/// empty annotation behind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Annotation {
+    /// Stable identifier within the annotations channel. Assigned by the client
+    /// that dispatches the creating {@link AnnotationsSetAction}.
+    pub id: String,
+    /// Provenance of the content this annotation is anchored to.
+    pub origin: AnnotationOrigin,
+    /// The file the annotation is anchored to.
+    pub resource: Uri,
+    /// Range within {@link resource} the annotation is anchored to. When
+    /// omitted the annotation is anchored to the entire file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Whether the annotation has been resolved. Newly created annotations are
+    /// always unresolved (`false`); a client marks an annotation resolved (or
+    /// re-opens it) by dispatching an {@link AnnotationsUpdatedAction} carrying
+    /// the updated flag (or an {@link AnnotationsSetAction} when replacing the
+    /// whole annotation).
+    pub resolved: bool,
+    /// Entries in this annotation, in dispatch order (oldest first). MUST
+    /// contain at least one entry.
+    pub entries: Vec<AnnotationEntry>,
+    /// Producer-defined opaque metadata, surfaced to tooling but not
+    /// interpreted by the protocol.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A single entry within an {@link Annotation}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationEntry {
+    /// Stable identifier within the enclosing annotation. Assigned by the client
+    /// that dispatches the {@link AnnotationsEntrySetAction} (or the enclosing
+    /// {@link AnnotationsSetAction}) introducing the entry.
+    pub id: String,
+    /// Entry body. A bare `string` is rendered as plain text; pass
+    /// `{ markdown: "…" }` to opt into Markdown rendering. See
+    /// {@link StringOrMarkdown}.
+    pub text: StringOrMarkdown,
+    /// Producer-defined opaque metadata, surfaced to tooling but not
+    /// interpreted by the protocol.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// OTLP telemetry channels the agent host emits.
+///
+/// Each field, when present, is either a literal channel URI or an
+/// [RFC 6570](https://datatracker.ietf.org/doc/html/rfc6570) URI template
+/// a client expands and then subscribes to. Absent fields indicate the host
+/// does not emit that signal.
+///
+/// Channel URIs use the `ahp-otlp:` scheme. The scheme identifies the
+/// protocol (OpenTelemetry over AHP) so clients can recognise the channel
+/// type by URI alone; the host is free to choose any authority/path that
+/// makes sense for its implementation. Clients MUST treat the URI as
+/// opaque (apart from expanding any well-known template variables defined
+/// below) and subscribe with the resulting concrete URI.
+///
+/// Payloads delivered on these channels are OTLP/JSON values — see
+/// [opentelemetry-proto](https://github.com/open-telemetry/opentelemetry-proto)
+/// for the wire shapes (`ExportLogsServiceRequest`,
+/// `ExportTraceServiceRequest`, `ExportMetricsServiceRequest`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetryCapabilities {
+    /// Channel URI (or RFC 6570 URI template) for OTLP log records
+    /// (`otlp/exportLogs` notifications).
+    ///
+    /// The following template variables are defined by this protocol; any
+    /// other variable name MUST be ignored by clients (there is no
+    /// protocol-defined way to obtain values for unknown variables):
+    ///
+    /// | Variables in template | Meaning                                                                                                 |
+    /// | --------------------- | ------------------------------------------------------------------------------------------------------- |
+    /// | _(none)_              | The host does not support subscriber-side severity filtering. The template is itself a subscribable URI. |
+    /// | `{level}`             | Minimum OTLP severity to deliver. Expand to one of the [OTLP `SeverityNumber`](https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber) short names (case-insensitive): `trace`, `debug`, `info`, `warn`, `error`, `fatal`. The server delivers log records whose `severityNumber` falls in the corresponding band or above. |
+    ///
+    /// Hosts SHOULD honour the expanded `{level}`; clients MUST still filter
+    /// defensively in case a host ignores the parameter. Hosts that do not
+    /// advertise `{level}` deliver all severities.
+    ///
+    /// Future protocol versions MAY add new well-known variables (e.g. scope
+    /// or attribute filters).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logs: Option<Uri>,
+    /// Channel URI for OTLP spans (`otlp/exportTraces` notifications). No
+    /// template variables are defined by this protocol version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traces: Option<Uri>,
+    /// Channel URI for OTLP metric data points (`otlp/exportMetrics`
+    /// notifications). No template variables are defined by this protocol
+    /// version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<Uri>,
+}
+
+/// Full state for a single resource watch, returned when a client subscribes
+/// to an `ahp-resource-watch:` URI.
+///
+/// Watches are otherwise stateless: the watcher exists to deliver
+/// {@link ResourceWatchChangedAction} events. The state carries only the
+/// descriptor of what is being watched so a re-subscribing client can
+/// recover the watch configuration after reconnecting.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceWatchState {
+    /// The URI being watched. For recursive watches this is the root of the
+    /// subtree; for non-recursive watches this is the single file or
+    /// directory.
+    pub root: Uri,
+    /// `true` if the watcher reports changes for descendants of `root`;
+    /// `false` if it only reports changes to `root` itself (and, when
+    /// `root` is a directory, its direct children).
+    pub recursive: bool,
+    /// Optional glob patterns or paths relative to `root` to exclude from
+    /// change reporting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excludes: Option<AnyValue>,
+    /// Optional glob patterns or paths relative to `root` to restrict
+    /// change reporting to. Omit to report every change under `root`
+    /// subject to `excludes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub includes: Option<AnyValue>,
+}
+
+/// A single change observed by a resource watcher.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceChange {
+    /// The URI of the resource that changed.
+    pub uri: Uri,
+    /// The kind of change observed.
+    pub r#type: ResourceChangeType,
+}
+
+/// Provenance recorded on a session created for an automation run.
+///
+/// The links let clients navigate from an ordinary session to the task-level
+/// run and its durable definition. The session channel remains authoritative
+/// for this session's transcript, tools, confirmations, and changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationSessionOrigin {
+    /// Owning {@link AutomationEntry.resource}.
+    pub automation: Uri,
+    /// Owning {@link AutomationRunState.resource}.
+    pub run: Uri,
+}
+
+/// A portable recurring schedule evaluated in a named time zone.
+///
+/// The expression uses exactly five whitespace-separated fields, in this
+/// order:
+///
+/// | Field | Values |
+/// | --- | --- |
+/// | minute | `0`–`59` |
+/// | hour | `0`–`23` |
+/// | day of month | `1`–`31` |
+/// | month | `1`–`12` or `JAN`–`DEC` |
+/// | day of week | `0`–`7` or `SUN`–`SAT`; both `0` and `7` mean Sunday |
+///
+/// Month and weekday names are ASCII and case-insensitive. Each field accepts
+/// `*`, a single value, an inclusive range (`1-5`), a comma-separated list of
+/// values or ranges (`1,3,8-10`), or a step applied to `*` or a range (for
+/// example, &#42;/15 or `1-30/2`). A step MUST be a positive integer. AHP does
+/// not support seconds, years, macros such as `@daily`, or Quartz extensions
+/// such as `?`, `L`, `W`, and `#`.
+///
+/// Minute, hour, and month must all match. When both day-of-month and
+/// day-of-week are restricted (not `*`), an occurrence matches when either day
+/// field matches, following Unix cron semantics.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationSchedule {
+    /// Five-field AHP cron expression described by {@link AutomationSchedule}.
+    pub expression: String,
+    /// IANA Time Zone Database identifier used to interpret the expression, for
+    /// example `"UTC"` or `"Europe/Berlin"`.
+    pub time_zone: String,
+}
+
+/// Starts runs from a recurring cron schedule evaluated by the host.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationScheduleTrigger {
+    /// Identifier unique and stable within this automation definition. Recorded in
+    /// {@link AutomationTriggeredRunOrigin.triggerId} when this trigger creates a
+    /// run.
+    pub id: String,
+    /// Recurrence and time zone evaluated by the host.
+    pub schedule: AutomationSchedule,
+    /// Policy for missed occurrences. Omission is equivalent to
+    /// {@link AutomationMisfirePolicy.RunOnce}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub misfire_policy: Option<AutomationMisfirePolicy>,
+}
+
+/// Starts runs from events understood by the owning host.
+///
+/// Event trigger types, events, and configuration are discovered through
+/// {@link ListAutomationTriggerDefinitionsParams |
+/// listAutomationTriggerDefinitions}. The saved trigger includes the matching
+/// human-readable metadata so it remains displayable without repeating
+/// discovery.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationEventTrigger {
+    /// Identifier unique and stable within this automation definition. Recorded in
+    /// {@link AutomationTriggeredRunOrigin.triggerId} when this trigger creates a
+    /// run.
+    pub id: String,
+    /// Matches {@link AutomationTriggerDefinition.type}.
+    pub r#type: String,
+    /// Host-normalized human-readable trigger type name.
+    pub title: String,
+    /// Optional host-normalized explanation of the trigger source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Selected events for this trigger type.
+    ///
+    /// Event ids carry the trigger semantics. Titles and descriptions are
+    /// last-known display metadata and do not indicate current availability.
+    pub events: Vec<AutomationTriggerEventDefinition>,
+    /// Values described by {@link AutomationTriggerDefinition.configSchema}.
+    /// Clients MUST preserve unknown entries when editing other fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<JsonObject>,
+}
+
+/// Describes one host-defined trigger event.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationTriggerEventDefinition {
+    /// Stable event id.
+    pub id: String,
+    /// Human-readable event name.
+    pub title: String,
+    /// Optional longer explanation of when this event fires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Describes one host-defined event trigger type available for a prospective
+/// automation session template.
+///
+/// Trigger definitions are discovery metadata, not durable automation state.
+/// Hosts may return different definitions for different providers, working
+/// directories, or session configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationTriggerDefinition {
+    /// Stable type id stored in {@link AutomationEventTrigger.type}.
+    pub r#type: String,
+    /// Human-readable trigger type name.
+    pub title: String,
+    /// Optional longer explanation of the trigger source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Events available for selection. Saved triggers retain their selected event descriptors.
+    pub events: Vec<AutomationTriggerEventDefinition>,
+    /// Optional schema for {@link AutomationEventTrigger.config}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_schema: Option<ConfigSchema>,
+}
+
+/// Template from which the host creates a fresh session for each automation run.
+///
+/// The host revalidates every selection when the run starts. Definitions never
+/// carry credentials, confirmation decisions, or durable permission grants.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationSessionTemplate {
+    /// Provider id matching {@link AgentInfo.provider}. Omit to use the host's default provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Optional model selection resolved when a run starts. Its
+    /// {@link ModelSelection.id} matches a {@link SessionModelInfo.id} advertised
+    /// by the selected provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelSelection>,
+    /// Optional custom agent selection identified by {@link AgentSelection.uri}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentSelection>,
+    /// Ordered working-directory URIs for each created session, equivalent to
+    /// {@link CreateSessionParams.workingDirectories}. Absence means a
+    /// workspace-less session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+    /// Session configuration values equivalent to
+    /// {@link CreateSessionParams.config}, normally obtained from
+    /// {@link ResolveSessionConfigResult.values}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<JsonObject>,
+    /// Client plugins to make available in every run session, in the same
+    /// published shape as
+    /// {@link SessionActiveClient.customizations | `activeClients[].customizations`}.
+    /// Entries are keyed by `id`.
+    ///
+    /// Runs usually start when no client is connected, so the host does not
+    /// resolve these URIs at run time. Instead, when it accepts a
+    /// {@link AutomationCreateRequestedAction | `automation/createRequested`} or
+    /// {@link AutomationUpdateRequestedAction | `automation/updateRequested`}
+    /// that adds an entry or changes an entry's `uri` or `nonce`, the host
+    /// captures a host-owned copy of the plugin. For client-served URIs such as
+    /// `virtual://…`, it reads the contents from the dispatching client with
+    /// server→client `resource*` requests. If a capture fails, the host rejects
+    /// the whole action. Entries whose `id`, `uri`, and `nonce` are unchanged keep
+    /// their existing copy, so any client can re-submit a template it received
+    /// without being able to serve the plugin itself. The resulting copies are
+    /// reported in {@link AutomationEntry.customizations}.
+    ///
+    /// The host MAY share one stored copy between entries with equal `uri` and
+    /// `nonce`, including across automations; this is not observable to clients.
+    ///
+    /// Clients MUST NOT set this field unless the host advertises
+    /// {@link AutomationCapabilities.customizations}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub customizations: Option<Vec<ClientPluginCustomization>>,
+}
+
+/// Durable, client-editable definition of an automation.
+///
+/// A definition combines the initial automation message, the session template
+/// used for each run, and zero or more automatic triggers. Run history,
+/// timestamps, and currently allowed operations live on
+/// {@link AutomationEntry} rather than in the definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationDefinition {
+    /// Human-readable automation name.
+    pub title: String,
+    /// Initial message sent to every newly created run session. Its
+    /// {@link Message.origin} kind MUST be {@link MessageKind.Automation}.
+    pub message: Message,
+    /// Template used to create fresh sessions for each run.
+    pub session: AutomationSessionTemplate,
+    /// Whether automatic triggers may create runs. Manual runs remain available
+    /// whenever {@link AutomationOperation.Run} is advertised.
+    pub enabled: bool,
+    /// Automatic triggers. An empty list means manual-only.
+    pub triggers: Vec<AutomationTrigger>,
+    /// Self-disable rules combined with logical OR: the host sets
+    /// {@link AutomationDefinition.enabled} to `false` when any condition is met.
+    /// Absent or empty means no automatic disable conditions. Each
+    /// {@link AutomationDisableConditionKind} may appear at most once; hosts MUST
+    /// reject create or update requests containing duplicate kinds.
+    ///
+    /// Only automatic (scheduled) runs are governed; manual runs via
+    /// {@link RunAutomationParams | runAutomation} are never blocked. For a
+    /// {@link AutomationAfterRunsCondition}, usage is tracked by the host-owned
+    /// {@link AutomationEntry.runCount}. Adding that kind when absent or
+    /// a disabled→enabled transition starts a fresh allowance. Clearing the
+    /// conditions does not re-enable a disabled automation. See the
+    /// {@link /guide/automations | Automations Guide}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_conditions: Option<Vec<AutomationDisableCondition>>,
+    /// Opaque implementation-defined metadata. Clients MUST preserve unknown
+    /// entries when updating the definition.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Partial replacement of editable {@link AutomationDefinition} fields.
+///
+/// Omitted fields are unchanged. Supplied arrays and objects replace their
+/// corresponding values in full; they are not merged recursively.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationDefinitionPatch {
+    /// Replacement {@link AutomationDefinition.title}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Replacement {@link AutomationDefinition.message}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<Message>,
+    /// Replacement {@link AutomationDefinition.session}. The host revalidates
+    /// affected event triggers when their discovery context changes, and
+    /// captures {@link AutomationSessionTemplate.customizations} entries that
+    /// are new or whose `uri` or `nonce` changed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<AutomationSessionTemplate>,
+    /// Replacement {@link AutomationDefinition.enabled}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Complete replacement {@link AutomationDefinition.triggers}. The host
+    /// validates event ids and normalizes event-trigger titles and descriptions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub triggers: Option<Vec<AutomationTrigger>>,
+    /// Complete replacement {@link AutomationDefinition.disableConditions}.
+    /// Omit to leave unchanged; supply an empty array to remove all conditions.
+    /// Each kind may appear at most once; hosts MUST reject duplicate kinds.
+    /// Clearing conditions does not change {@link AutomationDefinition.enabled}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_conditions: Option<Vec<AutomationDisableCondition>>,
+    /// Complete replacement {@link AutomationDefinition._meta}.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Stops scheduling after a fixed number of scheduled runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationAfterRunsCondition {
+    /// Positive-integer cap on scheduled runs.
+    pub max: i64,
+}
+
+/// Stops scheduling once a wall-clock date passes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationAfterDateCondition {
+    /// ISO 8601 timestamp after which scheduling stops.
+    pub date: String,
+}
+
+/// Authoritative state of one automation in {@link AutomationState.entries}.
+///
+/// The host owns trigger evaluation, run claims, run retention, and operation
+/// availability. Clients render this state and submit actions or commands; they
+/// never run a fallback scheduler for a host-owned definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationEntry {
+    /// Stable `ahp-automation:/<id>` resource identifier.
+    pub resource: Uri,
+    /// Current durable definition.
+    pub definition: AutomationDefinition,
+    /// Earliest schedule occurrence awaiting evaluation, as an ISO 8601 timestamp. It may be in the past while catch-up is pending.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_run_at: Option<String>,
+    /// Host-owned count of scheduled runs consumed against the current
+    /// {@link AutomationAfterRunsCondition} allowance. Authoritative usage for the
+    /// **current** allowance, not a lifetime total: the host resets it to `0` when
+    /// a disabled→enabled transition starts a fresh allowance or a
+    /// {@link AutomationAfterRunsCondition} is added when none was present. It is NOT
+    /// reconstructed from {@link runs} (a bounded, prunable window). The host
+    /// increments it atomically when it admits a scheduled run, including runs
+    /// later cancelled or failed.
+    ///
+    /// Absent when {@link AutomationDefinition.disableConditions} contains no
+    /// {@link AutomationAfterRunsCondition}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_count: Option<i64>,
+    /// Newest-first retained run summaries. This is a bounded window; use
+    /// {@link FetchAutomationRunsParams | fetchAutomationRuns} when
+    /// {@link AutomationEntry.runsNextCursor} is present.
+    pub runs: Vec<AutomationRunSummary>,
+    /// Opaque cursor passed as {@link FetchAutomationRunsParams.cursor} for the next older run-history page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runs_next_cursor: Option<String>,
+    /// Operations currently permitted for this automation.
+    pub operations: Vec<AutomationOperation>,
+    /// Host-owned copies of the plugins in
+    /// {@link AutomationSessionTemplate.customizations}, one per template entry
+    /// with the same `id`. Absent when the template has no customizations.
+    ///
+    /// Each copy's `uri` identifies the captured contents, which clients can
+    /// browse with `resourceRead`. `children` and `load` report what the host
+    /// found in that copy, independent of whether the originating client is
+    /// connected. `clientId` is absent because the copy no longer depends on a
+    /// client.
+    ///
+    /// Every run session receives these plugins in
+    /// {@link SessionState.customizations}, with the enablement from the
+    /// matching template entry.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_plugin_customizations",
+        deserialize_with = "deserialize_plugin_customizations"
+    )]
+    pub customizations: Option<Vec<PluginCustomization>>,
+    /// Creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// Last definition modification timestamp in ISO 8601 format.
+    pub modified_at: String,
+    /// Opaque host-defined state metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+fn serialize_plugin_customizations<S>(
+    value: &Option<Vec<PluginCustomization>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let Some(items) = value else {
+        return serializer.serialize_none();
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let mut raw = serde_json::to_value(item).map_err(serde::ser::Error::custom)?;
+        let serde_json::Value::Object(object) = &mut raw else {
+            return Err(serde::ser::Error::custom(
+                "plugin customization must serialize to an object",
+            ));
+        };
+        object.insert(
+            "type".to_owned(),
+            serde_json::Value::String("plugin".to_owned()),
+        );
+        out.push(raw);
+    }
+    serde::Serialize::serialize(&out, serializer)
+}
+
+fn deserialize_plugin_customizations<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<PluginCustomization>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let Some(items) = Option::<Vec<serde_json::Value>>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    items
+        .into_iter()
+        .map(|raw| {
+            if raw.get("type").and_then(serde_json::Value::as_str) != Some("plugin") {
+                return Err(serde::de::Error::custom(
+                    "expected plugin customization type",
+                ));
+            }
+            serde_json::from_value(raw).map_err(serde::de::Error::custom)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+/// Authoritative automation catalogue exposed on the `ahp-automations://`
+/// channel.
+///
+/// A subscription snapshot contains every automation visible to the client.
+/// Subsequent {@link AutomationSetAction | `automation/set`} and
+/// {@link AutomationRemovedAction | `automation/removed`} actions keep the
+/// catalogue synchronized and participate in normal reconnect replay.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationState {
+    /// Full automation entries keyed by {@link AutomationEntry.resource}.
+    pub entries: Vec<AutomationEntry>,
+    /// Opaque host-defined catalogue metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Origin recorded for a client-requested manual run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationManualRunOrigin {}
+
+/// Origin recorded for a run created by one of the automation's triggers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationTriggeredRunOrigin {
+    /// Matches the stable {@link AutomationScheduleTrigger.id} or
+    /// {@link AutomationEventTrigger.id} in the definition.
+    pub trigger_id: String,
+    /// Intended schedule occurrence as an ISO 8601 timestamp. Present for
+    /// schedule triggers and normally absent for event triggers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduled_for: Option<String>,
+    /// `true` when this is a catch-up run created by
+    /// {@link AutomationMisfirePolicy.RunOnce}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catch_up: Option<bool>,
+    /// Host-defined, non-secret event provenance suitable for display or audit.
+    /// This is descriptive context, not an input that clients replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<JsonObject>,
+}
+
+/// A durable run exists but has not begun external execution.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationPendingRunLifecycle {
+    /// Run creation timestamp in ISO 8601 format.
+    pub created_at: String,
+}
+
+/// The run is executing linked sessions or awaiting interaction on them.
+///
+/// Linked {@link SessionState.status} and {@link SessionState.inputNeeded}
+/// remain authoritative for whether user attention or client-side work is
+/// required.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunningRunLifecycle {
+    /// Run creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// First execution start timestamp in ISO 8601 format.
+    pub started_at: String,
+}
+
+/// Terminal lifecycle for a successfully completed run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationCompletedRunLifecycle {
+    /// Run creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// First execution start timestamp in ISO 8601 format.
+    pub started_at: String,
+    /// Completion timestamp in ISO 8601 format.
+    pub completed_at: String,
+    /// Optional aggregate model usage across all linked sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageInfo>,
+}
+
+/// Terminal lifecycle for a run that ended with an error.
+///
+/// `startedAt` is absent when failure occurred before execution began, such as
+/// session-template validation or workspace preparation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationFailedRunLifecycle {
+    /// Run creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// First execution start timestamp in ISO 8601 format, when execution began.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    /// Failure timestamp in ISO 8601 format.
+    pub completed_at: String,
+    /// Stable machine-readable and human-readable failure information.
+    pub error: ErrorInfo,
+}
+
+/// Terminal lifecycle for a cancelled run.
+///
+/// `startedAt` is absent when cancellation completed while the run was still
+/// pending.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationCancelledRunLifecycle {
+    /// Run creation timestamp in ISO 8601 format.
+    pub created_at: String,
+    /// First execution start timestamp in ISO 8601 format, when execution began.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    /// Cancellation completion timestamp in ISO 8601 format.
+    pub completed_at: String,
+}
+
+/// Lightweight projection of a run retained in its automation's history.
+///
+/// A summary contains enough information to render run history without
+/// subscribing to every `ahp-automation-run:` resource.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunSummary {
+    /// Subscribable `ahp-automation-run:` URI matching {@link AutomationRunState.resource}.
+    pub resource: Uri,
+    /// Owning `ahp-automation:` URI matching {@link AutomationRunState.automation}.
+    pub automation: Uri,
+    /// Immutable provenance matching {@link AutomationRunState.origin}.
+    pub origin: AutomationRunOrigin,
+    /// Current or terminal lifecycle snapshot matching {@link AutomationRunState.lifecycle}.
+    pub lifecycle: AutomationRunLifecycle,
+    /// Session matching {@link AutomationRunState.primarySession}, when selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_session: Option<Uri>,
+    /// Number of entries in {@link AutomationRunState.sessions}.
+    pub session_count: i64,
+    /// Opaque host-defined summary metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Authoritative state of one subscribed `ahp-automation-run:` resource.
+///
+/// The run channel owns task-level lifecycle, provenance, and linked-session
+/// membership. Linked session and chat channels remain authoritative for
+/// transcripts, tools, interaction requirements, changesets, and per-session
+/// lifecycle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunState {
+    /// URI of this automation-run channel.
+    pub resource: Uri,
+    /// Owning `ahp-automation:` URI matching {@link AutomationEntry.resource}.
+    pub automation: Uri,
+    /// Immutable provenance describing how this run was created.
+    pub origin: AutomationRunOrigin,
+    /// Current or terminal lifecycle.
+    pub lifecycle: AutomationRunLifecycle,
+    /// Ordered, unique session URIs belonging to this run, each matching
+    /// {@link SessionState.resource}. Entries may represent retries, parallel
+    /// workers, or delegated attempts.
+    pub sessions: Vec<Uri>,
+    /// Member of {@link AutomationRunState.sessions} that the host recommends opening first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_session: Option<Uri>,
+    /// Opaque host-defined run metadata.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+// ─── Customization Enablement Union ───────────────────────────────────────
+
+/// A single explicit customization enablement decision.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum CustomizationEnablement {
+    #[serde(rename = "global")]
+    Global { enabled: bool },
+    #[serde(rename = "workspace")]
+    Workspace { uri: Uri, enabled: bool },
+    #[serde(rename = "session")]
+    Session { enabled: bool },
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Raw tool input represented inline or by content reference.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ToolInput {
+    Inline(String),
+    ContentRef(ContentRef),
+}
+
+// ─── Discriminated Unions ─────────────────────────────────────────────
+
+/// How a chat came into existence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ChatOrigin {
+    /// Created directly by a user.
+    #[serde(rename = "user")]
+    User,
+    /// Forked from a specific turn of another chat.
+    #[serde(rename = "fork")]
+    Fork {
+        /// URI of the chat this one was forked from.
+        chat: Uri,
+        /// Completed source-turn identifier the fork was taken from.
+        #[serde(rename = "turnId")]
+        turn_id: String,
+    },
+    /// Independent side conversation created from a specific turn.
+    #[serde(rename = "sideChat")]
+    SideChat {
+        /// URI of the chat that supplied the side-chat context.
+        chat: Uri,
+        /// Stable source-turn identifier through which context was supplied.
+        #[serde(rename = "turnId")]
+        turn_id: String,
+        /// Optional immutable selected-text snapshot captured when the side chat was created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection: Option<SideChatSelection>,
+    },
+    /// Spawned by a tool call in another chat.
+    #[serde(rename = "tool")]
+    Tool {
+        /// URI of the chat whose tool call spawned this one.
+        chat: Uri,
+        /// Tool call that spawned this chat.
+        #[serde(rename = "toolCallId")]
+        tool_call_id: String,
+    },
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// A single part of a response stream (text, tool call, reasoning, content reference).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ResponsePart {
+    #[serde(rename = "markdown")]
+    Markdown(MarkdownResponsePart),
+    #[serde(rename = "contentRef")]
+    ContentRef(ResourceResponsePart),
+    #[serde(rename = "toolCall")]
+    ToolCall(Box<ToolCallResponsePart>),
+    #[serde(rename = "reasoning")]
+    Reasoning(ReasoningResponsePart),
+    #[serde(rename = "systemNotification")]
+    SystemNotification(SystemNotificationResponsePart),
+    #[serde(rename = "inputRequest")]
+    InputRequest(InputRequestResponsePart),
+    #[serde(rename = "error")]
+    Error(ErrorResponsePart),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Full tool call lifecycle state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum ToolCallState {
+    #[serde(rename = "streaming")]
+    Streaming(ToolCallStreamingState),
+    #[serde(rename = "pending-confirmation")]
+    PendingConfirmation(ToolCallPendingConfirmationState),
+    #[serde(rename = "running")]
+    Running(ToolCallRunningState),
+    #[serde(rename = "auth-required")]
+    AuthRequired(Box<ToolCallAuthRequiredState>),
+    #[serde(rename = "pending-result-confirmation")]
+    PendingResultConfirmation(ToolCallPendingResultConfirmationState),
+    #[serde(rename = "completed")]
+    Completed(ToolCallCompletedState),
+    #[serde(rename = "cancelled")]
+    Cancelled(ToolCallCancelledState),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// A tool call blocked on parameter- or result-confirmation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum ToolCallConfirmationState {
+    #[serde(rename = "pending-confirmation")]
+    PendingConfirmation(ToolCallPendingConfirmationState),
+    #[serde(rename = "pending-result-confirmation")]
+    PendingResultConfirmation(ToolCallPendingResultConfirmationState),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Who currently holds a terminal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum TerminalClaim {
+    #[serde(rename = "client")]
+    Client(TerminalClientClaim),
+    #[serde(rename = "session")]
+    Session(TerminalSessionClaim),
+}
+
+/// A content part within terminal output.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum TerminalContentPart {
+    #[serde(rename = "unclassified")]
+    Unclassified(TerminalUnclassifiedPart),
+    #[serde(rename = "command")]
+    Command(TerminalCommandPart),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// One question within a chat input request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ChatInputQuestion {
+    #[serde(rename = "text")]
+    Text(ChatInputTextQuestion),
+    #[serde(rename = "number")]
+    Number(ChatInputNumberQuestion),
+    #[serde(rename = "integer")]
+    Integer(ChatInputNumberQuestion),
+    #[serde(rename = "boolean")]
+    Boolean(ChatInputBooleanQuestion),
+    #[serde(rename = "single-select")]
+    SingleSelect(ChatInputSingleSelectQuestion),
+    #[serde(rename = "multi-select")]
+    MultiSelect(ChatInputMultiSelectQuestion),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Value captured for one answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ChatInputAnswerValue {
+    #[serde(rename = "text")]
+    Text(ChatInputTextAnswerValue),
+    #[serde(rename = "number")]
+    Number(ChatInputNumberAnswerValue),
+    #[serde(rename = "boolean")]
+    Boolean(ChatInputBooleanAnswerValue),
+    #[serde(rename = "selected")]
+    Selected(ChatInputSelectedAnswerValue),
+    #[serde(rename = "selected-many")]
+    SelectedMany(ChatInputSelectedManyAnswerValue),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Draft, submitted, or skipped answer for one question.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state")]
+pub enum ChatInputAnswer {
+    #[serde(rename = "draft")]
+    Draft(ChatInputAnswered),
+    #[serde(rename = "submitted")]
+    Submitted(ChatInputAnswered),
+    #[serde(rename = "skipped")]
+    Skipped(ChatInputSkipped),
+}
+
+/// Content block in a tool result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ToolResultContent {
+    #[serde(rename = "text")]
+    Text(ToolResultTextContent),
+    #[serde(rename = "embeddedResource")]
+    EmbeddedResource(ToolResultEmbeddedResourceContent),
+    #[serde(rename = "resource")]
+    Resource(ToolResultResourceContent),
+    #[serde(rename = "fileEdit")]
+    FileEdit(ToolResultFileEditContent),
+    #[serde(rename = "terminal")]
+    Terminal(ToolResultTerminalContent),
+    #[serde(rename = "subagent")]
+    Subagent(ToolResultSubagentContent),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// An attachment associated with a `Message`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MessageAttachment {
+    #[serde(rename = "simple")]
+    Simple(SimpleMessageAttachment),
+    #[serde(rename = "embeddedResource")]
+    EmbeddedResource(MessageEmbeddedResourceAttachment),
+    #[serde(rename = "resource")]
+    Resource(MessageResourceAttachment),
+    #[serde(rename = "annotations")]
+    Annotations(MessageAnnotationsAttachment),
+    #[serde(rename = "chat")]
+    Chat(MessageChatAttachment),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// A top-level customization (plugin, directory, or bare MCP server).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Customization {
+    #[serde(rename = "plugin")]
+    Plugin(PluginCustomization),
+    #[serde(rename = "directory")]
+    Directory(DirectoryCustomization),
+    #[serde(rename = "mcpServer")]
+    McpServer(Box<McpServerCustomization>),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// A child customization living inside a plugin or directory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ChildCustomization {
+    #[serde(rename = "agent")]
+    Agent(AgentCustomization),
+    #[serde(rename = "skill")]
+    Skill(SkillCustomization),
+    #[serde(rename = "prompt")]
+    Prompt(PromptCustomization),
+    #[serde(rename = "rule")]
+    Rule(RuleCustomization),
+    #[serde(rename = "hook")]
+    Hook(HookCustomization),
+    #[serde(rename = "mcpServer")]
+    McpServer(Box<McpServerCustomization>),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Host-reported load state for a container customization.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum CustomizationLoadState {
+    #[serde(rename = "loading")]
+    Loading(CustomizationLoadingState),
+    #[serde(rename = "loaded")]
+    Loaded(CustomizationLoadedState),
+    #[serde(rename = "degraded")]
+    Degraded(CustomizationDegradedState),
+    #[serde(rename = "error")]
+    Error(CustomizationErrorState),
+}
+
+/// Discriminated lifecycle status of an MCP server customization.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum McpServerState {
+    #[serde(rename = "starting")]
+    Starting(McpServerStartingState),
+    #[serde(rename = "ready")]
+    Ready(McpServerReadyState),
+    #[serde(rename = "authRequired")]
+    AuthRequired(Box<McpServerAuthRequiredState>),
+    #[serde(rename = "error")]
+    Error(McpServerErrorState),
+    #[serde(rename = "stopped")]
+    Stopped(McpServerStoppedState),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Reference to the contributor of the tool being called.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ToolCallContributor {
+    #[serde(rename = "client")]
+    Client(ToolCallClientContributor),
+    #[serde(rename = "mcp")]
+    Mcp(ToolCallMcpContributor),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Asynchronous model-judge confirmation rationale.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum ToolCallRiskAssessment {
+    #[serde(rename = "loading")]
+    Loading(ToolCallRiskAssessmentLoadingState),
+    #[serde(rename = "complete")]
+    Complete(ToolCallRiskAssessmentCompleteState),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Current lifecycle of a terminal process.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum TerminalLifecycleState {
+    #[serde(rename = "running")]
+    Running(TerminalRunningLifecycleState),
+    #[serde(rename = "exited")]
+    Exited(TerminalExitedLifecycleState),
+}
+
+/// One outstanding piece of input a session is blocked on, aggregated across all chats.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum SessionInputRequest {
+    #[serde(rename = "chatInput")]
+    ChatInput(SessionChatInputRequest),
+    #[serde(rename = "toolConfirmation")]
+    ToolConfirmation(SessionToolConfirmationRequest),
+    #[serde(rename = "toolClientExecution")]
+    ToolClientExecution(SessionToolClientExecutionRequest),
+    #[serde(rename = "toolAuthentication")]
+    ToolAuthentication(Box<SessionToolAuthenticationRequest>),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+/// Work that keeps running after the tool call that started it returns and will resume the owning chat when it finishes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum BackgroundWork {
+    #[serde(rename = "shell")]
+    Shell(BackgroundShellWork),
+    #[serde(rename = "subagent")]
+    Subagent(BackgroundSubagentWork),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Durable origin of a session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum SessionOrigin {
+    #[serde(rename = "automation")]
+    Automation(AutomationSessionOrigin),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
+/// Automatic trigger for an automation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum AutomationTrigger {
+    #[serde(rename = "schedule")]
+    Schedule(AutomationScheduleTrigger),
+    #[serde(rename = "event")]
+    Event(AutomationEventTrigger),
+}
+
+/// Self-disable rule for an automation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum AutomationDisableCondition {
+    #[serde(rename = "afterRuns")]
+    AfterRuns(AutomationAfterRunsCondition),
+    #[serde(rename = "afterDate")]
+    AfterDate(AutomationAfterDateCondition),
+}
+
+/// Provenance describing how an automation run was created.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum AutomationRunOrigin {
+    #[serde(rename = "manual")]
+    Manual(AutomationManualRunOrigin),
+    #[serde(rename = "trigger")]
+    Trigger(AutomationTriggeredRunOrigin),
+}
+
+/// Lifecycle of an automation run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum AutomationRunLifecycle {
+    #[serde(rename = "pending")]
+    Pending(AutomationPendingRunLifecycle),
+    #[serde(rename = "running")]
+    Running(AutomationRunningRunLifecycle),
+    #[serde(rename = "completed")]
+    Completed(AutomationCompletedRunLifecycle),
+    #[serde(rename = "failed")]
+    Failed(AutomationFailedRunLifecycle),
+    #[serde(rename = "cancelled")]
+    Cancelled(AutomationCancelledRunLifecycle),
+}
+
+/// The state payload of a snapshot.
+///
+/// Deserialized by trying session first (has required `lifecycle`), then
+/// chat (has required `turns`), then canvas (has required instance/provider/type
+/// identifiers), then terminal (has required `content`),
+/// then changeset (has required `status` and `files`), then resource-watch
+/// (has required `root` and `recursive`), then annotations (has required
+/// `annotations`), then the automation catalogue (has required
+/// `automations`), then root.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SnapshotState {
+    Session(Box<SessionState>),
+    Chat(Box<ChatState>),
+    Canvas(Box<CanvasState>),
+    Terminal(Box<TerminalState>),
+    Changeset(Box<ChangesetState>),
+    ResourceWatch(Box<ResourceWatchState>),
+    Annotations(Box<AnnotationsState>),
+    Automations(Box<AutomationState>),
+    AutomationRun(Box<AutomationRunState>),
+    Root(Box<RootState>),
+}

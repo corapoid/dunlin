@@ -1,0 +1,131 @@
+{
+  "source_sha256": "2cdb317814515646d50bcbc984b2129d920df91fba6f38634b5a5299bde1e6bf",
+  "checks": [
+    {
+      "suite": "mcp",
+      "exit_code": 0,
+      "log": "mcp-final.log",
+      "log_sha256": "aefc8711b59faf0d8c59be3ec0fe658cf2cde52135c2a722209f93edc7d068c7",
+      "source_sha256": "2cdb317814515646d50bcbc984b2129d920df91fba6f38634b5a5299bde1e6bf",
+      "scope": "163 tests:116 MCP,6 HTTP,41 vault;package all-targets Clippy -D warnings. Ten new vault cases cover sticky denial/expiry,revocation during approval/value read/HTTP success and error,protected policy changes,legacy refresh cutoff,recipe approval,redaction and actual Unix process-group cancellation.",
+      "memory": {
+        "memory.peak": "1216901120",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "server",
+      "exit_code": 0,
+      "log": "server-final.log",
+      "log_sha256": "9d12bc70cb5023656a11bb2d0dcfad720277afe6c7eabb29c8c5fa3d967c0f34",
+      "source_sha256": "2cdb317814515646d50bcbc984b2129d920df91fba6f38634b5a5299bde1e6bf",
+      "scope": "861 tests:716 relay,1 identity,80 SDK,27 terminal,37 usage;54 separate acceptance ignored. One new RelayVault test covers session/read-only pins,sticky request denial and shutdown revocation. No new production executable or browser acceptance in this increment.",
+      "memory": {
+        "memory.peak": "3531628544",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "exit_code": 0,
+      "log": "clippy-final.log",
+      "log_sha256": "45f154966673620a071aed713504b1c6c87b310f48957a96033f0bf2a9583ade",
+      "source_sha256": "2cdb317814515646d50bcbc984b2129d920df91fba6f38634b5a5299bde1e6bf",
+      "scope": "Server and companion packages all-targets Clippy -D warnings;1m58s.",
+      "memory": {
+        "memory.peak": "2321469440",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-url-input/frontend-final.log",
+      "log_sha256": "d27c8d57549c0ad06ac60f1fb7e12ef5a337a8115efa48c6177037ffe7563b4b",
+      "source_sha256": "86f046de06716554f67e5c6ad83c2a7a31c9f7b0dea9982526feda74d4a6b35d",
+      "exit_code": 0,
+      "scope": "157 tests,including full URL/ASCII host/punycode/parser ambiguity and immutable URL action without answers. Absolute parsed href differs from original display address when needed; tests cover https: relative-special parsing.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-url-input/typecheck-final.log",
+      "log_sha256": "26d632c5bafc5059233b27168bdbab52f36ad66a0d024883226496303933d18a",
+      "source_sha256": "d800150d96d1f92150ddfbd103554a2223f87a768d5e67fb914ab23ce524f0b3",
+      "exit_code": 0,
+      "scope": "Final TypeScript noEmit check of current frontend and configuration.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "ci-contract",
+      "log": "../2026-11-13-mcp-url-input/ci-contract-final.log",
+      "log_sha256": "80a8da2e12329a24b64bdc54557a72dca687bd2962d3191735bf615f1d10a47c",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "14 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "launcher",
+      "log": "../2026-11-13-mcp-url-input/launcher-final.log",
+      "log_sha256": "d8a5e6f40e696cef2a23743dfc5c5264a374d87192bac5e9b25d15bf189656aa",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "18 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "local_checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--check",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true",
+        "crates/vault/src/access.rs",
+        "crates/vault/src/broker.rs",
+        "crates/vault/src/recipe.rs",
+        "apps/server/src/vault.rs"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "02c378e517ebcd8a540990937f6cc67e699d44cdfce8700cc8884111fae43915",
+    "run-results.json": "5af57b44c3d152655bb72a882df387425fc9d56852fb235f2f8d2cb88bde7a88",
+    "local-checks.log": "844390ff3b4bd35f79e20cebf95cf0a81b6d595455fb186cfd925861a22cc61c",
+    "local-results.json": "230275dbf9f11acfce4c2415ce795035dda82d0356ec36896457271cd2c63d89"
+  },
+  "milestone": {
+    "id": "E5.3",
+    "status": "partial",
+    "formal_progress": "21/68=30.9%;whole E0-E10 goal remains active"
+  },
+  "boundaries": [
+    "Existing local Unix vault only;not a managed actor/workspace/turn/profile one-use scoped permit.",
+    "Protected policy equality and SQL timestamp do not establish absence of policy/value ABA;immutable scoped credential generation and grant journal remain required.",
+    "HTTP effects cannot be rolled back;revoked responses are discarded as outcome unknown without retry.",
+    "Recipe watchdog checks live host authority;policy is rechecked at broker boundaries,not polled from keyring inside the watchdog.",
+    "Transport-disconnect kill switch,managed runner integration and general scoped secrets remain open.",
+    "No real keyring,accounts,tailnet or services;no new browser or production executable acceptance."
+  ],
+  "diagnostics": {
+    "mcp-first.log": "161 tests PASS;Clippy blocks_in_conditions rejected the original OAuth match layout. Final snapshot refactors let/match and adds audit,shutdown/pin integration and two further vault cases;final163 and backend861 supersede it."
+  }
+}

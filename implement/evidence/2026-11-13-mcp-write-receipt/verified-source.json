@@ -1,0 +1,98 @@
+{
+  "source_sha256": "6fdc1c188d5a9362b1a6ef7a3daf3cdc37d5a4dc9abb6f55796625cbc2e044c5",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "19c4fbee80ace43cbef1ec31a5bbb870ee01f48a1b54dfd012776eb5e73eba02",
+      "source_sha256": "6fdc1c188d5a9362b1a6ef7a3daf3cdc37d5a4dc9abb6f55796625cbc2e044c5",
+      "exit_code": 0,
+      "scope": "846 tests:702 relay,1 identity,79 SDK,27 terminal,37 usage;49 separate acceptance ignored. Six new Store/HTTP cases cover exact one-use claim/capability, negative revision and authority fencing, restart without invented acknowledgement, guarded commit, migration46 last-column collision rollback, receipt-storage failure and set-error-after-effect without retry. Actual backend uses CGU256/strip=symbols under unchanged3584MiB RAM and1536MiB scratch.",
+      "memory": {
+        "memory.peak": "3754598400",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "3d42a2f6f15eb2fa755a7d649383b0a97778d8f50e6b5dcad5b25b64b8efa71f",
+      "source_sha256": "6fdc1c188d5a9362b1a6ef7a3daf3cdc37d5a4dc9abb6f55796625cbc2e044c5",
+      "exit_code": 0,
+      "scope": "153 tests:116 MCP,6 HTTP,31 vault; package Clippy all-targets warnings denied. Two new real-flow tests cover claim failure/no private I/O and set/ack/commit/revoke outcomes, exactly one write and no automatic retry. Mutex journal forwards both new operations without holding its lock through private callbacks.",
+      "memory": {
+        "memory.peak": "1218838528",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "9bd79fc156fe5f90a10c666ff5bef03d27367ffbcae402eb0d2a61d828c77c75",
+      "source_sha256": "6fdc1c188d5a9362b1a6ef7a3daf3cdc37d5a4dc9abb6f55796625cbc2e044c5",
+      "exit_code": 0,
+      "scope": "Server and companion packages,all-targets,-D warnings; current source includes all new journal adapters, Store migrations/tests and browser receipt assertion. MCP/HTTP/vault Clippy additionally covered by mcp suite.",
+      "memory": {
+        "memory.peak": "2312773632",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "57782ea8f483df5adabc112f9d07b0a5b81d54b50552b1705319d7534925f133",
+      "source_sha256": "6fdc1c188d5a9362b1a6ef7a3daf3cdc37d5a4dc9abb6f55796625cbc2e044c5",
+      "exit_code": 0,
+      "scope": "One selected Chromium acceptance,750 other tests filtered out,7.91s. Real production MCP helper in Linux sandbox with controlled AS/ACP/MemoryStore and production web/router. Both callback generations require writer_protected1/write_claimed1/write_acknowledged1, including after revoke/cleanup; earlier reconcile/lost reply/AHP tool/revoke/cleanup flow also passes. AS auth2/token2/revoke4/tool1, private writes2/deletes4/late write1. Host/kernel SIGKILL is a separate backend test; the browser interrupted journal cut is prepared, not a whole server crash. Generic stdout raw replay-dedupe wording is not an additional exercised mcp-real branch. CGU256/strip=symbols,unchanged RAM/scratch/CPU/one build job,OOM0/max0.",
+      "memory": {
+        "memory.peak": "3699486720",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "tooling",
+      "log": "tooling-final.log",
+      "log_sha256": "2af9535dd98cc048fa65b1bac9b94c60fb5446d45fbd9b29c8a15aa7de9179c0",
+      "source_sha256": "93ef677648bc44e33a7715779f058ec17a2259878f01d8f5fcdc07f130f0e7e3",
+      "exit_code": 0,
+      "scope": "14 CI-contract and18 launcher tests; mocks validate CGU256/strip=symbols and retained CPU/RAM/scratch/selection/isolation/single-job requirements. This is not actual nested Rust execution or a GitHub Actions run."
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-reconcile/frontend-final.log",
+      "log_sha256": "d7711126c64404bb96a2e05d5a1f90865ae0cd2892f8222ccd303d6e8a17208e",
+      "source_sha256": "63e45ef560be096c42aa6645179798ab62f234a01b88f79a92c02babb7ac3cce",
+      "exit_code": 0,
+      "scope": "153 tests, including one new multi-case reconciliation client test: support flag, fixed owner-bound CAS, unchanged exact receipt counters/revision and no retry after network loss. Narrow frontend snapshot.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-reconcile/typecheck-final.log",
+      "log_sha256": "62318f534cc501645a981e20d766884afb580f102b6a39aa21fb65b3fd0654f9",
+      "source_sha256": "48e3c60cd4a05939de5788ef99c43211564ece27ccdcbb5cd83aa2445eccb100",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check of current frontend/config inputs.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "bc105cbd7ba9913b86adbb3df686d04d962add09ad029939a7760d389625965a",
+    "checks-final.log": "4bc93f91c1d343a6207cb4c8aad86409695d34343be3f7953ababe2172993b74"
+  },
+  "diagnostic_runs": [
+    {
+      "log": "server-oom.log",
+      "log_sha256": "fc3264b36549c98f53399572e7afe44d4f045d8012a17136c405d0482809e4ba",
+      "cause": "CGU64 test rustc killed by cgroup OOM before any tests.",
+      "accepted": false
+    },
+    {
+      "log": "server-oom-128.log",
+      "log_sha256": "33e815f5474062655e0c66b3d1a6451d01698f5d7e690c61f5031ce1014a1874",
+      "cause": "CGU128 test rustc also OOM before tests; prompted bounded compiler-output change.",
+      "accepted": false
+    }
+  ],
+  "scope": "Schema46 private one-use write claim and durable acknowledgement. Pipeline:prepare/claim/set/ack/commit. Only a successful backend set is acknowledged, using exact original nonce/reference/context/revision/binding/generation/hash. Negative completion remains possible after disconnect/device/runtime authority loss; it grants nothing and is not exposed by REST/MCP. Positive commit still requires fresh authority/current generation, and protected claim/ack/commit retain writer lease. Failed/absent set or receipt stays unknown across restart; no implicit retry or acknowledgement inferred from active/age/read. Legacy rows defaultNULL/0/0 and gain no proof. No plaintext added to SQL or receipts. Cleanup still keeps tombstones and does not reclaim256-reference quota; bounded retention, stable AS acknowledgements, legacy/unknown handling, remaining E5 and E0-E10 stay open. Controlled fixtures only,no real provider/account/keyring/tailnet/native macOS or actual GitHub Actions acceptance; no claim of full MCP conformance or all runtime cases. Formal20/68 unchanged."
+}

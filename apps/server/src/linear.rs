@@ -105,6 +105,139 @@ pub(crate) struct DeliveryError {
     pub retry: bool,
     pub message: String,
 }
+fn job_status_sql_authorized(
+    state: &AppState,
+    record: &crate::store::jobs::Record,
+) -> Result<(), String> {
+    let host_accounts = crate::management::host_accounts(&state.config);
+    let store = state.store.lock().map_err(|_| "Store unavailable")?;
+    store
+        .native_checkout_transaction::<_, crate::store::StoreError>(|store| {
+            let denied = || {
+                crate::store::StoreError::Conflict(
+                    "Job authority changed; inspect status manually".into(),
+                )
+            };
+            let user = store
+                .active_device_user(&record.task.device)?
+                .filter(|u| u.id == record.job.owner)
+                .ok_or_else(denied)?;
+            if (user.role != "admin" && host_accounts)
+                || !store.oidc_device_allowed(&record.task.device, state.config.oidc.as_ref())?
+            {
+                return Err(denied());
+            }
+            let source = record
+                .task
+                .source_checkout_stamp
+                .as_ref()
+                .ok_or_else(denied)?;
+            if source.native_grant.project_id != record.job.project_id
+                || source.native_grant.user_id != record.job.owner
+                || record.task.native_grant.as_ref() != Some(&source.native_grant)
+                || source.settings_digest != record.task.settings_digest
+            {
+                return Err(denied());
+            }
+            store.validate_native_checkout_stamp_in_transaction(source)?;
+            match (&record.job.checkout_project, &record.checkout_stamp) {
+                (Some(project), Some(stamp))
+                    if stamp.native_grant.project_id == *project
+                        && stamp.native_grant.user_id == record.job.owner
+                        && record.checkout_grant.as_ref() == Some(&stamp.native_grant) =>
+                {
+                    store.validate_native_checkout_stamp_in_transaction(stamp)?
+                }
+                (None, None) if record.job.status != dunlin_domain::jobs::Status::Review => {}
+                _ => return Err(denied()),
+            }
+            let current = store.job(&record.job.id)?.ok_or_else(denied)?;
+            if current.job.cancel_requested
+                || current.job.status != record.job.status
+                || current.job.owner != record.job.owner
+                || current.job.project_id != record.job.project_id
+                || current.task.source_checkout_stamp != record.task.source_checkout_stamp
+                || current.checkout_stamp != record.checkout_stamp
+            {
+                return Err(denied());
+            }
+            if store.linear_revision(&record.job.owner)?.as_deref()
+                != Some(record.task.linear_revision.as_str())
+            {
+                return Err(crate::store::StoreError::Conflict(
+                    "Linear authorization changed since approval; update the issue manually".into(),
+                ));
+            }
+            Ok(())
+        })
+        .map_err(|error| match error {
+            crate::store::StoreError::Conflict(message)
+                if message
+                    == "Linear authorization changed since approval; update the issue manually" =>
+            {
+                message
+            }
+            _ => "Native job authority changed since approval; inspect status manually".into(),
+        })
+}
+
+fn job_status_checkout_current(
+    state: &AppState,
+    stamp: &crate::store::native_checkout::NativeCheckoutStamp,
+) -> Result<(), String> {
+    let permit = state
+        .fs_permit()
+        .map_err(|_| "Checkout validation is busy; inspect status manually")?;
+    let candidate = {
+        let store = state.store.lock().map_err(|_| "Store unavailable")?;
+        store
+            .native_checkout_candidate(
+                &stamp.native_grant.project_id,
+                &stamp.native_grant.user_id,
+                stamp.permission,
+            )
+            .map_err(|_| "Approved checkout authority is unavailable")?
+    };
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    // No runtime handle is needed by this synchronous MCP worker. A timed-out
+    // filesystem job retains its permit until it really completes.
+    std::thread::Builder::new()
+        .name("dunlin-status-checkout".into())
+        .spawn(move || {
+            let _permit = permit;
+            let _ = send.send(candidate.validate_filesystem());
+        })
+        .map_err(|_| "Checkout validation worker unavailable")?;
+    let validated = receive
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| "Checkout validation expired; inspect status manually")?
+        .map_err(|_| "Approved checkout identity changed; inspect status manually")?;
+    let store = state.store.lock().map_err(|_| "Store unavailable")?;
+    let authority = store
+        .authorize_native_checkout(validated)
+        .map_err(|_| "Approved checkout authority changed")?;
+    if authority.stamp() != *stamp {
+        return Err("Approved checkout stamp changed; inspect status manually".into());
+    }
+    Ok(())
+}
+
+fn native_job_status_authorized(
+    state: &AppState,
+    record: &crate::store::jobs::Record,
+) -> Result<(), String> {
+    job_status_sql_authorized(state, record)?;
+    let source = record
+        .task
+        .source_checkout_stamp
+        .as_ref()
+        .ok_or("Legacy task has no pinned checkout authority")?;
+    job_status_checkout_current(state, source)?;
+    if let Some(derived) = &record.checkout_stamp {
+        job_status_checkout_current(state, derived)?;
+    }
+    job_status_sql_authorized(state, record)
+}
 pub(crate) fn job_status(
     state: &AppState,
     record: &crate::store::jobs::Record,
@@ -117,6 +250,7 @@ pub(crate) fn job_status(
         retry: false,
         message,
     };
+    native_job_status_authorized(state, record).map_err(review)?;
     let user = &record.job.owner;
     authorized(state, user, None)
         .map_err(|_| review("User authorization no longer permits status delivery".into()))?;
@@ -145,12 +279,14 @@ pub(crate) fn job_status(
         .secrets
         .get(&connection.credential_id)
         .map_err(|_| retry("Unlock the relay keyring to deliver the review status".into()))?;
+    native_job_status_authorized(state, record).map_err(review)?;
     let mut client = Client::connect(&state.linear.endpoint, &token)
         .map_err(|error| retry(error.to_string()))?;
     let result = (|| {
         let tools = client.tools().map_err(|error| retry(error.to_string()))?;
         let current = linear::get_issue(&mut client, &tools, &record.task.issue.id)
             .map_err(|error| retry(error.to_string()))?;
+        native_job_status_authorized(state, record).map_err(review)?;
         if current.status == record.job.profile.review_state {
             return Ok(());
         }
@@ -167,13 +303,15 @@ pub(crate) fn job_status(
         state
             .project_for_user(user, &record.job.project_id)
             .map_err(|_| review("Project grant revoked before status mutation".into()))?;
+        native_job_status_authorized(state, record).map_err(review)?;
         linear::set_status(
             &mut client,
             &tools,
             &record.task.issue.id,
             &record.job.profile.review_state,
         )
-        .map_err(|error| review(error.to_string()))
+        .map_err(|error| review(error.to_string()))?;
+        native_job_status_authorized(state,record).map_err(|_|review("Native authority changed during status mutation; inspect Linear before reconciling".into()))
     })();
     let _ = client.close();
     result

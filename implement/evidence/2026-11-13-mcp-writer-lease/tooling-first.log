@@ -1,0 +1,70 @@
+Sandbox suite=tooling container=dunlin-check-f0357b20fd164539b0f48f9b2b0b6f4d image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=60s source_sha256=e01f4eda02a6d3e871d5ddeebe1b8b8e3589a947871f0e662dbd38a731cde4f7
+test_default_still_builds_a_standalone_release (test_ci_workflows.RelayBundleTests.test_default_still_builds_a_standalone_release) ... ok
+test_invalid_arguments_fail_before_building (test_ci_workflows.RelayBundleTests.test_invalid_arguments_fail_before_building) ... ok
+test_no_build_copies_existing_binary_without_invoking_cargo (test_ci_workflows.RelayBundleTests.test_no_build_copies_existing_binary_without_invoking_cargo) ... ok
+test_no_build_rejects_missing_or_non_executable_binary (test_ci_workflows.RelayBundleTests.test_no_build_rejects_missing_or_non_executable_binary) ... ok
+test_desktop_packages_are_not_generated_or_published (test_ci_workflows.WorkflowTests.test_desktop_packages_are_not_generated_or_published) ... ok
+test_headless_checks_are_required_and_publish_separate_cli_artifacts (test_ci_workflows.WorkflowTests.test_headless_checks_are_required_and_publish_separate_cli_artifacts) ... ok
+test_installation_docs_recommend_source_without_package_commands (test_ci_workflows.WorkflowTests.test_installation_docs_recommend_source_without_package_commands) ... ok
+test_macos_checks_and_build_are_independent_and_keep_full_checks (test_ci_workflows.WorkflowTests.test_macos_checks_and_build_are_independent_and_keep_full_checks) ... ok
+test_only_main_warmer_writes_shared_macos_caches_without_running_tests (test_ci_workflows.WorkflowTests.test_only_main_warmer_writes_shared_macos_caches_without_running_tests) ... ok
+test_platform_releases_wait_for_authorization_not_each_other (test_ci_workflows.WorkflowTests.test_platform_releases_wait_for_authorization_not_each_other) ... ok
+test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results (test_ci_workflows.WorkflowTests.test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results) ... ok
+test_runtime_requires_named_kernel_policy_and_offline_launcher (test_ci_workflows.WorkflowTests.test_runtime_requires_named_kernel_policy_and_offline_launcher) ... ok
+test_web_application_has_independent_required_checks (test_ci_workflows.WorkflowTests.test_web_application_has_independent_required_checks) ... ok
+test_website_does_not_link_to_withdrawn_desktop_packages (test_ci_workflows.WorkflowTests.test_website_does_not_link_to_withdrawn_desktop_packages) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 2.423s
+
+OK
+test_termination_unwinds_through_scoped_cleanup (test_web_sandbox_launcher.CleanupTests.test_termination_unwinds_through_scoped_cleanup) ... Sandbox suite=probe container=dunlin-check-76e589c12e024b6b8e821017c595c625 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+FAIL
+test_timeout_removes_only_this_invocations_container (test_web_sandbox_launcher.CleanupTests.test_timeout_removes_only_this_invocations_container) ... Sandbox suite=probe container=dunlin-check-ddb7e8d2bcad4336827a9e0b9611f85d image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+FAIL
+test_browser_and_server_share_the_bounded_large_test_binary_budget (test_web_sandbox_launcher.FileSizeTests.test_browser_and_server_share_the_bounded_large_test_binary_budget) ... ok
+test_large_rust_test_artifacts_and_sparse_cases_have_a_bounded_distinct_limit (test_web_sandbox_launcher.FileSizeTests.test_large_rust_test_artifacts_and_sparse_cases_have_a_bounded_distinct_limit) ... ok
+test_rust_filter_is_a_bounded_identifier_not_a_shell_command_or_cargo_option (test_web_sandbox_launcher.FilterTests.test_rust_filter_is_a_bounded_identifier_not_a_shell_command_or_cargo_option) ... ok
+test_fixture_flag_is_exclusive_required_canonical_and_symlink_free (test_web_sandbox_launcher.MacProfileTests.test_fixture_flag_is_exclusive_required_canonical_and_symlink_free) ... ok
+test_fixture_rejects_descriptor_scope_drift_and_oversized_regular_file (test_web_sandbox_launcher.MacProfileTests.test_fixture_rejects_descriptor_scope_drift_and_oversized_regular_file) ... ok
+test_generator_keeps_readonly_samepath_mount_and_separate_cargo_home_without_lsm (test_web_sandbox_launcher.MacProfileTests.test_generator_keeps_readonly_samepath_mount_and_separate_cargo_home_without_lsm) ... Sandbox suite=macos-profile container=dunlin-check-7152ce0007244db688ee5f40b4bb16c8 image=sha256:fixture platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=64
+ok
+test_profile_precheck_filter_is_validated_and_cannot_select_ignored_flags (test_web_sandbox_launcher.MacProfileTests.test_profile_precheck_filter_is_validated_and_cannot_select_ignored_flags) ... ok
+test_browser_opt_in_is_exclusive_and_cannot_hide_behind_another_filter (test_web_sandbox_launcher.RuntimeBrowserTests.test_browser_opt_in_is_exclusive_and_cannot_hide_behind_another_filter) ... ok
+test_browser_runtime_keeps_containment_and_uses_only_readonly_dependency_caches (test_web_sandbox_launcher.RuntimeBrowserTests.test_browser_runtime_keeps_containment_and_uses_only_readonly_dependency_caches) ... Sandbox suite=runtime container=dunlin-check-2630e98a2631447bb997deca008b0399 image=sha256:fixture platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash scope=runtime-focused-acceptance-only filter=production_browser_acceptance_runtime_remote_session_journal chromium=remote-session-production-ui pids=256 codegen_units=128
+ok
+test_focused_runtime_retains_actual_containment_and_binary_build_but_not_full_pretests (test_web_sandbox_launcher.RuntimeFilterTests.test_focused_runtime_retains_actual_containment_and_binary_build_but_not_full_pretests) ... ok
+test_only_bounded_runtime_acceptance_names_are_accepted (test_web_sandbox_launcher.RuntimeFilterTests.test_only_bounded_runtime_acceptance_names_are_accepted) ... ok
+test_runtime_policy_rejects_changed_bytes_or_symlinks_before_use (test_web_sandbox_launcher.RuntimePolicyTests.test_runtime_policy_rejects_changed_bytes_or_symlinks_before_use) ... ok
+test_oversized_file_is_rejected_before_copying (test_web_sandbox_launcher.SourceTests.test_oversized_file_is_rejected_before_copying) ... ok
+test_source_copy_excludes_secrets_and_build_caches_without_following_symlinks (test_web_sandbox_launcher.SourceTests.test_source_copy_excludes_secrets_and_build_caches_without_following_symlinks) ... ok
+test_workspace_accepts_only_the_same_bounded_rust_identifier (test_web_sandbox_launcher.WorkspaceTests.test_workspace_accepts_only_the_same_bounded_rust_identifier) ... ok
+test_workspace_mcp_and_server_packages_keep_default_containment (test_web_sandbox_launcher.WorkspaceTests.test_workspace_mcp_and_server_packages_keep_default_containment) ... Sandbox suite=workspace container=dunlin-check-9981e95d25004e5ab8f1b179b85efec1 image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=8
+Sandbox suite=mcp container=dunlin-check-3fc56110e7d046469f734749564e943a image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=1s source_sha256=fixture-hash codegen_units=8
+Sandbox suite=server container=dunlin-check-fed29a5f5155428e9c3cc286c8d93c4d image=sha256:fixture platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=64
+ok
+
+======================================================================
+FAIL: test_termination_unwinds_through_scoped_cleanup (test_web_sandbox_launcher.CleanupTests.test_termination_unwinds_through_scoped_cleanup)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/scripts/tests/test_web_sandbox_launcher.py", line 232, in test_termination_unwinds_through_scoped_cleanup
+    self.launch(SystemExit(143))
+  File "/repo/scripts/tests/test_web_sandbox_launcher.py", line 217, in launch
+    self.assertIn("RUSTFLAGS=-C debuginfo=0 -C codegen-units=128", command)
+AssertionError: 'RUSTFLAGS=-C debuginfo=0 -C codegen-units=128' not found in ['/fixture/docker', '--host', 'unix:///fixture/docker.sock', 'run', '--rm', '--name', 'dunlin-check-76e589c12e024b6b8e821017c595c625', '--pull=never', '--platform', 'linux/arm64', '--network=none', '--read-only', '--memory', '512m', '--memory-swap', '512m', '--cpus=1', '--pids-limit=64', '--ulimit', 'cpu=30:30', '--ulimit', 'fsize=134217728:134217728', '--ipc=none', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--user=65534:65534', '--log-driver=none', '--tmpfs', '/scratch:rw,exec,nosuid,nodev,size=128m,mode=1777', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777', '--workdir=/repo/apps/web', '--mount', 'type=bind,src=/scratch/tmpp_gj5ukm,dst=/repo,readonly', '--entrypoint=/usr/bin/env', 'sha256:fixture', '-i', 'PATH=/usr/local/bin:/usr/bin:/bin', 'HOME=/scratch', 'TMPDIR=/scratch', '/usr/bin/timeout', '--kill-after=5', '1', '/usr/local/bin/node', '-e', "\nconst fs = require('node:fs');\nconst os = require('node:os');\nconst assert = require('node:assert/strict');\nassert.equal(process.getuid(), 65534);\nassert.equal(fs.existsSync('/var/run/docker.sock'), false);\nassert.equal(fs.existsSync('/repo/.git'), false);\nassert.equal(fs.existsSync('/Users'), false);\nassert.deepEqual(Object.keys(process.env).sort(), ['HOME', 'PATH', 'TMPDIR']);\nassert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);\nassert.equal(fs.readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim(), '536870912');\nassert.equal(fs.readFileSync('/sys/fs/cgroup/pids.max', 'utf8').trim(), '64');\nassert.equal(fs.readFileSync('/sys/fs/cgroup/cpu.max', 'utf8').trim(), '100000 100000');\nassert.throws(() => fs.writeFileSync('/repo/apps/web/src/.probe-write', 'denied'));\nassert.throws(() => fs.writeFileSync('/etc/.probe-write', 'denied'));\nfs.writeFileSync('/scratch/probe', 'allowed');\nfs.writeFileSync('/tmp/probe', 'allowed');\nconst tmp = fs.statfsSync('/tmp');\nassert.ok(tmp.blocks * tmp.bsize <= 16 * 1024 * 1024);\nconst stat = fs.statfsSync('/scratch');\nassert.ok(stat.blocks * stat.bsize <= 128 * 1024 * 1024);\nconsole.log('Isolation probe passed: no network/home/socket/git, readonly source/root, empty env, hard CPU/RAM/pids/disk limits.');\n"]
+
+======================================================================
+FAIL: test_timeout_removes_only_this_invocations_container (test_web_sandbox_launcher.CleanupTests.test_timeout_removes_only_this_invocations_container)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/scripts/tests/test_web_sandbox_launcher.py", line 229, in test_timeout_removes_only_this_invocations_container
+    self.launch(subprocess.TimeoutExpired("fixture", 1))
+  File "/repo/scripts/tests/test_web_sandbox_launcher.py", line 217, in launch
+    self.assertIn("RUSTFLAGS=-C debuginfo=0 -C codegen-units=128", command)
+AssertionError: 'RUSTFLAGS=-C debuginfo=0 -C codegen-units=128' not found in ['/fixture/docker', '--host', 'unix:///fixture/docker.sock', 'run', '--rm', '--name', 'dunlin-check-ddb7e8d2bcad4336827a9e0b9611f85d', '--pull=never', '--platform', 'linux/arm64', '--network=none', '--read-only', '--memory', '512m', '--memory-swap', '512m', '--cpus=1', '--pids-limit=64', '--ulimit', 'cpu=30:30', '--ulimit', 'fsize=134217728:134217728', '--ipc=none', '--cap-drop=ALL', '--security-opt=no-new-privileges', '--user=65534:65534', '--log-driver=none', '--tmpfs', '/scratch:rw,exec,nosuid,nodev,size=128m,mode=1777', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777', '--workdir=/repo/apps/web', '--mount', 'type=bind,src=/scratch/tmpkxpmeqla,dst=/repo,readonly', '--entrypoint=/usr/bin/env', 'sha256:fixture', '-i', 'PATH=/usr/local/bin:/usr/bin:/bin', 'HOME=/scratch', 'TMPDIR=/scratch', '/usr/bin/timeout', '--kill-after=5', '1', '/usr/local/bin/node', '-e', "\nconst fs = require('node:fs');\nconst os = require('node:os');\nconst assert = require('node:assert/strict');\nassert.equal(process.getuid(), 65534);\nassert.equal(fs.existsSync('/var/run/docker.sock'), false);\nassert.equal(fs.existsSync('/repo/.git'), false);\nassert.equal(fs.existsSync('/Users'), false);\nassert.deepEqual(Object.keys(process.env).sort(), ['HOME', 'PATH', 'TMPDIR']);\nassert.deepEqual(Object.keys(os.networkInterfaces()), ['lo']);\nassert.equal(fs.readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim(), '536870912');\nassert.equal(fs.readFileSync('/sys/fs/cgroup/pids.max', 'utf8').trim(), '64');\nassert.equal(fs.readFileSync('/sys/fs/cgroup/cpu.max', 'utf8').trim(), '100000 100000');\nassert.throws(() => fs.writeFileSync('/repo/apps/web/src/.probe-write', 'denied'));\nassert.throws(() => fs.writeFileSync('/etc/.probe-write', 'denied'));\nfs.writeFileSync('/scratch/probe', 'allowed');\nfs.writeFileSync('/tmp/probe', 'allowed');\nconst tmp = fs.statfsSync('/tmp');\nassert.ok(tmp.blocks * tmp.bsize <= 16 * 1024 * 1024);\nconst stat = fs.statfsSync('/scratch');\nassert.ok(stat.blocks * stat.bsize <= 128 * 1024 * 1024);\nconsole.log('Isolation probe passed: no network/home/socket/git, readonly source/root, empty env, hard CPU/RAM/pids/disk limits.');\n"]
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.017s
+
+FAILED (failures=2)

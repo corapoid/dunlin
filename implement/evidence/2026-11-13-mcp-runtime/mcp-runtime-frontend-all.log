@@ -1,0 +1,885 @@
+TAP version 13
+# (node:73395) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: agent codec preserves literal versioned instructions and schema defaults without resolving resources
+ok 1 - agent codec preserves literal versioned instructions and schema defaults without resolving resources
+  ---
+  duration_ms: 5.751917
+  type: 'test'
+  ...
+# Subtest: agent codec enforces UTF8, combined instruction and skill bounds, unknown fields and immutable version provenance
+ok 2 - agent codec enforces UTF8, combined instruction and skill bounds, unknown fields and immutable version provenance
+  ---
+  duration_ms: 25.142125
+  type: 'test'
+  ...
+# Subtest: draft save and publish use explicit CAS, do not replay conflict, and do not publish unsaved data
+ok 3 - draft save and publish use explicit CAS, do not replay conflict, and do not publish unsaved data
+  ---
+  duration_ms: 47.982666
+  type: 'test'
+  ...
+# Subtest: publication response must refer to exactly the submitted draft revision
+ok 4 - publication response must refer to exactly the submitted draft revision
+  ---
+  duration_ms: 2.798583
+  type: 'test'
+  ...
+# Subtest: MCP policy is explicit schema two, exact and has no personal credentials
+ok 5 - MCP policy is explicit schema two, exact and has no personal credentials
+  ---
+  duration_ms: 0.602208
+  type: 'test'
+  ...
+# (node:73396) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: pinned SDK parity: queued-text-reasoning-flags-timestamps
+ok 6 - pinned SDK parity: queued-text-reasoning-flags-timestamps
+  ---
+  duration_ms: 59.763542
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: tool-raw-input-progress-metadata-running-gates
+ok 7 - pinned SDK parity: tool-raw-input-progress-metadata-running-gates
+  ---
+  duration_ms: 0.451208
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: multiple-host-permissions-decision-revoke-metadata
+ok 8 - pinned SDK parity: multiple-host-permissions-decision-revoke-metadata
+  ---
+  duration_ms: 0.462458
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: terminal-cancel-finalizes-streaming-and-running-tools
+ok 9 - pinned SDK parity: terminal-cancel-finalizes-streaming-and-running-tools
+  ---
+  duration_ms: 0.323542
+  type: 'test'
+  ...
+# Subtest: known SDK divergence: known-sdk-partial-reorder-original-order-divergence
+ok 10 - known SDK divergence: known-sdk-partial-reorder-original-order-divergence
+  ---
+  duration_ms: 0.257958
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: history-prepend-overlap-cursor-and-live-turns
+ok 11 - pinned SDK parity: history-prepend-overlap-cursor-and-live-turns
+  ---
+  duration_ms: 0.424125
+  type: 'test'
+  ...
+# (node:73397) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:73397) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# Subtest: same-origin observer endpoint rejects arbitrary discovery paths
+ok 12 - same-origin observer endpoint rejects arbitrary discovery paths
+  ---
+  duration_ms: 1.089125
+  type: 'test'
+  ...
+# Subtest: read-only projection preserves reasoning, tools, completion and errors
+ok 13 - read-only projection preserves reasoning, tools, completion and errors
+  ---
+  duration_ms: 1.6195
+  type: 'test'
+  ...
+# Subtest: selection is snapshot based and duplicates do not duplicate streamed text
+ok 14 - selection is snapshot based and duplicates do not duplicate streamed text
+  ---
+  duration_ms: 2.656833
+  type: 'test'
+  ...
+# Subtest: late subscription snapshot cannot replace a newly selected conversation
+ok 15 - late subscription snapshot cannot replace a newly selected conversation
+  ---
+  duration_ms: 0.384666
+  type: 'test'
+  ...
+# Subtest: reconnect replays actions and refreshes root listing without write methods
+ok 16 - reconnect replays actions and refreshes root listing without write methods
+  ---
+  duration_ms: 2.284125
+  type: 'test'
+  ...
+# Subtest: revocation removes protected data and stale socket messages are ignored
+ok 17 - revocation removes protected data and stale socket messages are ignored
+  ---
+  duration_ms: 0.658166
+  type: 'test'
+  ...
+# Subtest: root summary notifications update parent status independently of chat actions
+ok 18 - root summary notifications update parent status independently of chat actions
+  ---
+  duration_ms: 0.148792
+  type: 'test'
+  ...
+# Subtest: unknown reconnect identity reinitializes and requests a fresh selected snapshot
+ok 19 - unknown reconnect identity reinitializes and requests a fresh selected snapshot
+  ---
+  duration_ms: 1.688792
+  type: 'test'
+  ...
+# Subtest: malformed and oversized wire frames fail closed
+ok 20 - malformed and oversized wire frames fail closed
+  ---
+  duration_ms: 1.624583
+  type: 'test'
+  ...
+# Subtest: initial pagination accumulates pages before publishing and rejects repeated cursors
+ok 21 - initial pagination accumulates pages before publishing and rejects repeated cursors
+  ---
+  duration_ms: 1.727083
+  type: 'test'
+  ...
+# Subtest: reconnect before initial chat snapshot reacquires its missing baseline
+ok 22 - reconnect before initial chat snapshot reacquires its missing baseline
+  ---
+  duration_ms: 1.056583
+  type: 'test'
+  ...
+# Subtest: live tool parameters match standard snapshots after ready and completion
+ok 23 - live tool parameters match standard snapshots after ready and completion
+  ---
+  duration_ms: 0.62825
+  type: 'test'
+  ...
+# Subtest: only a full chat with explicit queue capability can dispatch user text
+ok 24 - only a full chat with explicit queue capability can dispatch user text
+  ---
+  duration_ms: 1.471416
+  type: 'test'
+  ...
+# Subtest: rejected optimistic commands restore draft without applying the action
+ok 25 - rejected optimistic commands restore draft without applying the action
+  ---
+  duration_ms: 0.269666
+  type: 'test'
+  ...
+# Subtest: snapshot reconnect retries exact immutable identity and old echo acknowledges without replaying a consumed prompt
+ok 26 - snapshot reconnect retries exact immutable identity and old echo acknowledges without replaying a consumed prompt
+  ---
+  duration_ms: 0.4615
+  type: 'test'
+  ...
+# Subtest: reconnect replay confirms a pending command and does not resend acknowledged text
+ok 27 - reconnect replay confirms a pending command and does not resend acknowledged text
+  ---
+  duration_ms: 1.435917
+  type: 'test'
+  ...
+# Subtest: unknown reconnect identity with an uncertain outbox never initializes or auto redispatches
+ok 28 - unknown reconnect identity with an uncertain outbox never initializes or auto redispatches
+  ---
+  duration_ms: 1.195167
+  type: 'test'
+  ...
+# Subtest: UTF-8 and JSON frame preflight retain oversized drafts without dispatch or sequence consumption
+ok 29 - UTF-8 and JSON frame preflight retain oversized drafts without dispatch or sequence consumption
+  ---
+  duration_ms: 1.414458
+  type: 'test'
+  ...
+# Subtest: queued upsert keeps position and reorder preserves omitted messages without duplicates
+ok 30 - queued upsert keeps position and reorder preserves omitted messages without duplicates
+  ---
+  duration_ms: 1.256541
+  type: 'test'
+  ...
+# Subtest: control rejections restore confirmed queue and active turn without requiring text payload
+ok 31 - control rejections restore confirmed queue and active turn without requiring text payload
+  ---
+  duration_ms: 2.48775
+  type: 'test'
+  ...
+# Subtest: canonical cancellation replaces prediction with server duration and has no duplicate terminal turn
+ok 32 - canonical cancellation replaces prediction with server duration and has no duplicate terminal turn
+  ---
+  duration_ms: 0.306
+  type: 'test'
+  ...
+# Subtest: control outbox reconnect retries exact removal and old acknowledgement cannot modify newer snapshot
+ok 33 - control outbox reconnect retries exact removal and old acknowledgement cannot modify newer snapshot
+  ---
+  duration_ms: 0.440042
+  type: 'test'
+  ...
+# Subtest: controls require explicit permission and current server targets; pending controls block selection
+ok 34 - controls require explicit permission and current server targets; pending controls block selection
+  ---
+  duration_ms: 0.246292
+  type: 'test'
+  ...
+# Subtest: terminal turn finalizes unfinished tools exactly like a pinned SDK snapshot
+ok 35 - terminal turn finalizes unfinished tools exactly like a pinned SDK snapshot
+  ---
+  duration_ms: 0.526625
+  type: 'test'
+  ...
+# Subtest: late old cancel acknowledgement drops prediction without cancelling a newer snapshot tool
+ok 36 - late old cancel acknowledgement drops prediction without cancelling a newer snapshot tool
+  ---
+  duration_ms: 0.407542
+  type: 'test'
+  ...
+# Subtest: ready without confirmed matches a standard pending-confirmation snapshot
+ok 37 - ready without confirmed matches a standard pending-confirmation snapshot
+  ---
+  duration_ms: 0.4245
+  type: 'test'
+  ...
+# Subtest: approve and deny use exact host option identity and preserve input without claiming local human evidence
+ok 38 - approve and deny use exact host option identity and preserve input without claiming local human evidence
+  ---
+  duration_ms: 0.694458
+  type: 'test'
+  ...
+# Subtest: permission rejection restores challenge, never text draft or an invented approval receipt
+ok 39 - permission rejection restores challenge, never text draft or an invented approval receipt
+  ---
+  duration_ms: 0.205791
+  type: 'test'
+  ...
+# Subtest: another tab first decision supersedes a local conflicting prediction
+ok 40 - another tab first decision supersedes a local conflicting prediction
+  ---
+  duration_ms: 21.927375
+  type: 'test'
+  ...
+# Subtest: permission reconnect exact retry and old receipt cannot approve a newer nonce challenge
+ok 41 - permission reconnect exact retry and old receipt cannot approve a newer nonce challenge
+  ---
+  duration_ms: 6.73075
+  type: 'test'
+  ...
+# Subtest: approval requires explicit capability, active pending tool and advertised option; read-only cannot vote
+ok 42 - approval requires explicit capability, active pending tool and advertised option; read-only cannot vote
+  ---
+  duration_ms: 0.564916
+  type: 'test'
+  ...
+# Subtest: revoked consumed permission completion replaces proof metadata and matches SDK snapshot
+ok 43 - revoked consumed permission completion replaces proof metadata and matches SDK snapshot
+  ---
+  duration_ms: 0.401
+  type: 'test'
+  ...
+# Subtest: late producer completion cannot convert denied tool into successful execution
+ok 44 - late producer completion cannot convert denied tool into successful execution
+  ---
+  duration_ms: 4.734625
+  type: 'test'
+  ...
+# Subtest: one decision keeps InputNeeded while another tool still awaits permission
+ok 45 - one decision keeps InputNeeded while another tool still awaits permission
+  ---
+  duration_ms: 0.56725
+  type: 'test'
+  ...
+# Subtest: valid snapshots with absent interactivity use the pinned default full while writes remain separately gated
+ok 46 - valid snapshots with absent interactivity use the pinned default full while writes remain separately gated
+  ---
+  duration_ms: 0.144
+  type: 'test'
+  ...
+# Subtest: history fetch is explicit and one page notification precedes RPC acknowledgement without replacing live state
+ok 47 - history fetch is explicit and one page notification precedes RPC acknowledgement without replacing live state
+  ---
+  duration_ms: 0.485958
+  type: 'test'
+  ...
+# Subtest: expired one-use cursor preserves transcript and requires explicit fresh-view reload without automatic retry
+ok 48 - expired one-use cursor preserves transcript and requires explicit fresh-view reload without automatic retry
+  ---
+  duration_ms: 0.236625
+  type: 'test'
+  ...
+# Subtest: history forbidden error clears protected pages and never retries with revoked authority
+ok 49 - history forbidden error clears protected pages and never retries with revoked authority
+  ---
+  duration_ms: 0.123917
+  type: 'test'
+  ...
+# Subtest: history selection generation prevents old page/error and A-to-B-to-A subscription snapshots from leaking
+ok 50 - history selection generation prevents old page/error and A-to-B-to-A subscription snapshots from leaking
+  ---
+  duration_ms: 0.183709
+  type: 'test'
+  ...
+# Subtest: late initial snapshot for an earlier visit to the same chat cannot replace its new history cursor
+ok 51 - late initial snapshot for an earlier visit to the same chat cannot replace its new history cursor
+  ---
+  duration_ms: 0.236834
+  type: 'test'
+  ...
+# Subtest: paged reconnect uses a fresh bounded snapshot and cursor while retaining exact optimistic outbox identity
+ok 52 - paged reconnect uses a fresh bounded snapshot and cursor while retaining exact optimistic outbox identity
+  ---
+  duration_ms: 8.701166
+  type: 'test'
+  ...
+# Subtest: missing page notification or timeout leaves an explicit recoverable history error with no polling
+ok 53 - missing page notification or timeout leaves an explicit recoverable history error with no polling
+  ---
+  duration_ms: 5.249416
+  type: 'test'
+  ...
+# (node:73398) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: snapshot and resync wire contract
+ok 54 - snapshot and resync wire contract
+  ---
+  duration_ms: 25.439417
+  type: 'test'
+  ...
+# Subtest: the shared Rust/browser fixture matches the browser decoder
+ok 55 - the shared Rust/browser fixture matches the browser decoder
+  ---
+  duration_ms: 0.658792
+  type: 'test'
+  ...
+# Subtest: reject invalid versions, unsafe sequences and unrelated scope
+ok 56 - reject invalid versions, unsafe sequences and unrelated scope
+  ---
+  duration_ms: 1.563
+  type: 'test'
+  ...
+# Subtest: reconnect accepts authoritative new stream; old sequence never overwrites newer state
+ok 57 - reconnect accepts authoritative new stream; old sequence never overwrites newer state
+  ---
+  duration_ms: 0.129375
+  type: 'test'
+  ...
+# (node:73399) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: channel diagnostic preserves raw expired active phase and reports boot mismatch without claiming health
+ok 58 - channel diagnostic preserves raw expired active phase and reports boot mismatch without claiming health
+  ---
+  duration_ms: 5.424292
+  type: 'test'
+  ...
+# Subtest: channel codec refuses cross-scope, unsafe clocks, fabricated authority and unexpected secret fields
+ok 59 - channel codec refuses cross-scope, unsafe clocks, fabricated authority and unexpected secret fields
+  ---
+  duration_ms: 0.88175
+  type: 'test'
+  ...
+# Subtest: reader makes explicit same-origin GET only and keeps no record after failed refresh
+ok 60 - reader makes explicit same-origin GET only and keeps no record after failed refresh
+  ---
+  duration_ms: 96.14625
+  type: 'test'
+  ...
+# Subtest: later explicit read wins when an aborted old GET still completes
+ok 61 - later explicit read wins when an aborted old GET still completes
+  ---
+  duration_ms: 0.5225
+  type: 'test'
+  ...
+# Subtest: permission loss removes diagnostic and notifies registry, while late denied reads cannot revoke a newer scope
+ok 62 - permission loss removes diagnostic and notifies registry, while late denied reads cannot revoke a newer scope
+  ---
+  duration_ms: 0.814459
+  type: 'test'
+  ...
+# Subtest: catalog invalidation clears metadata and fences late replies without automatically fetching
+ok 63 - catalog invalidation clears metadata and fences late replies without automatically fetching
+  ---
+  duration_ms: 0.405792
+  type: 'test'
+  ...
+# Subtest: malformed secret-bearing response never enters rendered state or propagates raw server text
+ok 64 - malformed secret-bearing response never enters rendered state or propagates raw server text
+  ---
+  duration_ms: 2.17
+  type: 'test'
+  ...
+# (node:73400) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:73400) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# Subtest: health codec separates live observation from metadata and denies cross-scope/secret/contradictory data
+ok 65 - health codec separates live observation from metadata and denies cross-scope/secret/contradictory data
+  ---
+  duration_ms: 2.098791
+  type: 'test'
+  ...
+# Subtest: only a scoped ordered snapshot makes the monitor live; gaps clear data and require explicit reconnect
+ok 66 - only a scoped ordered snapshot makes the monitor live; gaps clear data and require explicit reconnect
+  ---
+  duration_ms: 1.895584
+  type: 'test'
+  ...
+# Subtest: late frames from a stopped socket cannot restore data after scope lifecycle or restart
+ok 67 - late frames from a stopped socket cannot restore data after scope lifecycle or restart
+  ---
+  duration_ms: 0.678292
+  type: 'test'
+  ...
+# Subtest: server keepalives never extend the worker lease observation
+ok 68 - server keepalives never extend the worker lease observation
+  ---
+  duration_ms: 0.898917
+  type: 'test'
+  ...
+# Subtest: an offline host stays observable with keepalives but a silent server becomes stale
+ok 69 - an offline host stays observable with keepalives but a silent server becomes stale
+  ---
+  duration_ms: 0.200625
+  type: 'test'
+  ...
+# Subtest: unexpected stream/controller identities and malformed frames cannot replace a live observation
+ok 70 - unexpected stream/controller identities and malformed frames cannot replace a live observation
+  ---
+  duration_ms: 0.548375
+  type: 'test'
+  ...
+# (node:73401) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: host registry keeps untrusted above-policy reports distinct from execution authority
+ok 71 - host registry keeps untrusted above-policy reports distinct from execution authority
+  ---
+  duration_ms: 4.792417
+  type: 'test'
+  ...
+# Subtest: host codec rejects arbitrary executable policies, unstable node IDs and unsafe Serve origins
+ok 72 - host codec rejects arbitrary executable policies, unstable node IDs and unsafe Serve origins
+  ---
+  duration_ms: 2.94825
+  type: 'test'
+  ...
+# Subtest: ticket exists only in explicit enrollment response and malformed scope/expiry is rejected
+ok 73 - ticket exists only in explicit enrollment response and malformed scope/expiry is rejected
+  ---
+  duration_ms: 0.25725
+  type: 'test'
+  ...
+# Subtest: host mutations send one explicit CAS request and never retry conflict or network uncertainty
+ok 74 - host mutations send one explicit CAS request and never retry conflict or network uncertainty
+  ---
+  duration_ms: 32.525708
+  type: 'test'
+  ...
+# Subtest: host response identities cannot redirect a mutation to another registered node
+ok 75 - host response identities cannot redirect a mutation to another registered node
+  ---
+  duration_ms: 2.556083
+  type: 'test'
+  ...
+# Subtest: registry inputs do not accept browser-supplied verification, credentials or executable paths
+ok 76 - registry inputs do not accept browser-supplied verification, credentials or executable paths
+  ---
+  duration_ms: 0.180458
+  type: 'test'
+  ...
+# Subtest: registry read fence rejects pre-mutation snapshots and preserves authority loss during pending mutation
+ok 77 - registry read fence rejects pre-mutation snapshots and preserves authority loss during pending mutation
+  ---
+  duration_ms: 0.247542
+  type: 'test'
+  ...
+# Subtest: fresh authorized registry preserves only an already-held unspent matching enrollment epoch
+ok 78 - fresh authorized registry preserves only an already-held unspent matching enrollment epoch
+  ---
+  duration_ms: 0.224875
+  type: 'test'
+  ...
+# (node:73402) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:73402) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# Subtest: socket opening alone is not live; the first scoped snapshot is authoritative
+ok 79 - socket opening alone is not live; the first scoped snapshot is authoritative
+  ---
+  duration_ms: 2.673208
+  type: 'test'
+  ...
+# Subtest: a late snapshot for the previous project cannot replace current project state
+ok 80 - a late snapshot for the previous project cannot replace current project state
+  ---
+  duration_ms: 0.345666
+  type: 'test'
+  ...
+# Subtest: revocation closes the stream and does not reconnect with revoked authority
+ok 81 - revocation closes the stream and does not reconnect with revoked authority
+  ---
+  duration_ms: 0.120167
+  type: 'test'
+  ...
+# Subtest: restart ignores callbacks from an old socket
+ok 82 - restart ignores callbacks from an old socket
+  ---
+  duration_ms: 0.277708
+  type: 'test'
+  ...
+# Subtest: reconnect resubscribes but never replays a mutation
+ok 83 - reconnect resubscribes but never replays a mutation
+  ---
+  duration_ms: 1.946792
+  type: 'test'
+  ...
+# (node:73403) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: local binding codecs preserve explicit linked approval and saved metadata when own Read is unavailable
+ok 84 - local binding codecs preserve explicit linked approval and saved metadata when own Read is unavailable
+  ---
+  duration_ms: 1.331416
+  type: 'test'
+  ...
+# Subtest: local binding saves preserve ordinary wire JSON and pin explicit linked approval plus CAS
+ok 85 - local binding saves preserve ordinary wire JSON and pin explicit linked approval plus CAS
+  ---
+  duration_ms: 42.998542
+  type: 'test'
+  ...
+# Subtest: local binding unknown write has one attempt and requires explicit reload before another intent
+ok 86 - local binding unknown write has one attempt and requires explicit reload before another intent
+  ---
+  duration_ms: 0.794666
+  type: 'test'
+  ...
+# Subtest: local binding stale approval is terminal conflict and readonly configuration cannot be edited
+ok 87 - local binding stale approval is terminal conflict and readonly configuration cannot be edited
+  ---
+  duration_ms: 0.6305
+  type: 'test'
+  ...
+# Subtest: local binding catalog/auth invalidation fences late mutation receipts and clears CAS baseline
+ok 88 - local binding catalog/auth invalidation fences late mutation receipts and clears CAS baseline
+  ---
+  duration_ms: 1.543
+  type: 'test'
+  ...
+# Subtest: local binding selection teardown fences a late read from another project
+ok 89 - local binding selection teardown fences a late read from another project
+  ---
+  duration_ms: 0.314959
+  type: 'test'
+  ...
+# (node:73404) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: catalog checks are explicit CAS writes and validate observations against the selected connection
+ok 90 - catalog checks are explicit CAS writes and validate observations against the selected connection
+  ---
+  duration_ms: 98.647917
+  type: 'test'
+  ...
+# Subtest: MCP client preserves the native browser fetch calling convention
+ok 91 - MCP client preserves the native browser fetch calling convention
+  ---
+  duration_ms: 0.363209
+  type: 'test'
+  ...
+# Subtest: MCP catalog decoders reject duplicates, unsafe revisions and oversized/malformed data
+ok 92 - MCP catalog decoders reject duplicates, unsafe revisions and oversized/malformed data
+  ---
+  duration_ms: 0.36725
+  type: 'test'
+  ...
+# Subtest: authorization navigation is pinned to code/S256 and the same callback; secret-shaped parameters never navigate
+ok 93 - authorization navigation is pinned to code/S256 and the same callback; secret-shaped parameters never navigate
+  ---
+  duration_ms: 1.079458
+  type: 'test'
+  ...
+# Subtest: mutations send a fixed same-origin path, identity expectation and CAS once; errors never replay or expose body
+ok 94 - mutations send a fixed same-origin path, identity expectation and CAS once; errors never replay or expose body
+  ---
+  duration_ms: 0.693083
+  type: 'test'
+  ...
+# Subtest: late successful response after scope cancellation is discarded even if fetch ignores abort
+ok 95 - late successful response after scope cancellation is discarded even if fetch ignores abort
+  ---
+  duration_ms: 0.405542
+  type: 'test'
+  ...
+# Subtest: streamed replies are bounded before JSON parsing and malformed payload errors contain no server content
+ok 96 - streamed replies are bounded before JSON parsing and malformed payload errors contain no server content
+  ---
+  duration_ms: 0.98875
+  type: 'test'
+  ...
+# Subtest: return preference contains only user/workspace, is consumed once, and storage failure never blocks authorization
+ok 97 - return preference contains only user/workspace, is consumed once, and storage failure never blocks authorization
+  ---
+  duration_ms: 0.287583
+  type: 'test'
+  ...
+# Subtest: catalog tool pins match the observed connection/provider and exact tool names
+ok 98 - catalog tool pins match the observed connection/provider and exact tool names
+  ---
+  duration_ms: 0.69425
+  type: 'test'
+  ...
+# (node:73405) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: resolver codec observes caller-specific Read independently of saved administrator principal and grant
+ok 99 - resolver codec observes caller-specific Read independently of saved administrator principal and grant
+  ---
+  duration_ms: 4.897292
+  type: 'test'
+  ...
+# Subtest: resolver codec refuses stale ref, target drift, wrong caller, fabricated execution and secret fields
+ok 100 - resolver codec refuses stale ref, target drift, wrong caller, fabricated execution and secret fields
+  ---
+  duration_ms: 1.515959
+  type: 'test'
+  ...
+# Subtest: only an explicit check sends the exact immutable BindingRef and never session/grant metadata
+ok 101 - only an explicit check sends the exact immutable BindingRef and never session/grant metadata
+  ---
+  duration_ms: 91.402375
+  type: 'test'
+  ...
+# Subtest: connected worker Read revocation removes earlier observation, does not reuse stored admin grant or retry
+ok 102 - connected worker Read revocation removes earlier observation, does not reuse stored admin grant or retry
+  ---
+  duration_ms: 0.519041
+  type: 'test'
+  ...
+# Subtest: selection change and newer check fence delayed replies even when transport ignores cancellation
+ok 103 - selection change and newer check fence delayed replies even when transport ignores cancellation
+  ---
+  duration_ms: 0.492292
+  type: 'test'
+  ...
+# Subtest: authority invalidation or unmount clears state and ignores late successful RPC without automatic replacement
+ok 104 - authority invalidation or unmount clears state and ignores late successful RPC without automatic replacement
+  ---
+  duration_ms: 0.519167
+  type: 'test'
+  ...
+# Subtest: stale references are denied once and malformed/inactive scope cannot start a resolver request
+ok 105 - stale references are denied once and malformed/inactive scope cannot start a resolver request
+  ---
+  duration_ms: 0.41025
+  type: 'test'
+  ...
+# (node:73406) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: remote binding codec preserves observed descriptor, tombstone and service principal without manufacturing execution authority
+ok 106 - remote binding codec preserves observed descriptor, tombstone and service principal without manufacturing execution authority
+  ---
+  duration_ms: 4.910292
+  type: 'test'
+  ...
+# Subtest: remote binding codec rejects scope drift, unsafe revisions, duplicates, caller paths and fabricated readiness
+ok 107 - remote binding codec rejects scope drift, unsafe revisions, duplicates, caller paths and fabricated readiness
+  ---
+  duration_ms: 0.5545
+  type: 'test'
+  ...
+# Subtest: create/rebind/revoke send explicit target and captured CAS exactly once without local fallback
+ok 108 - create/rebind/revoke send explicit target and captured CAS exactly once without local fallback
+  ---
+  duration_ms: 48.782
+  type: 'test'
+  ...
+# Subtest: unknown mutation outcome requires explicit read; catalog refresh never retries or clears reconciliation requirement
+ok 109 - unknown mutation outcome requires explicit read; catalog refresh never retries or clears reconciliation requirement
+  ---
+  duration_ms: 1.185542
+  type: 'test'
+  ...
+# Subtest: newer observed binding revision cannot silently upgrade the CAS attached to an older user selection
+ok 110 - newer observed binding revision cannot silently upgrade the CAS attached to an older user selection
+  ---
+  duration_ms: 0.52325
+  type: 'test'
+  ...
+# Subtest: permission loss while save is pending clears observed metadata and fences the late accepted response
+ok 111 - permission loss while save is pending clears observed metadata and fences the late accepted response
+  ---
+  duration_ms: 11.995583
+  type: 'test'
+  ...
+# Subtest: scope disposal ignores late metadata; a newer read wins despite a fetch implementation ignoring abort
+ok 112 - scope disposal ignores late metadata; a newer read wins despite a fetch implementation ignoring abort
+  ---
+  duration_ms: 0.440209
+  type: 'test'
+  ...
+# (node:73407) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: private MCP connection choices are frozen across an uncertain retry
+ok 113 - private MCP connection choices are frozen across an uncertain retry
+  ---
+  duration_ms: 64.339834
+  type: 'test'
+  ...
+# Subtest: MCP choices reject duplicate providers, invalid revisions and remote targets
+ok 114 - MCP choices reject duplicate providers, invalid revisions and remote targets
+  ---
+  duration_ms: 0.253333
+  type: 'test'
+  ...
+# Subtest: explicit intent freezes UUID, profile, scope and exact bytes across lost acceptance then manual retry
+ok 115 - explicit intent freezes UUID, profile, scope and exact bytes across lost acceptance then manual retry
+  ---
+  duration_ms: 1.160292
+  type: 'test'
+  ...
+# Subtest: concurrent submit calls share one in-flight attempt
+ok 116 - concurrent submit calls share one in-flight attempt
+  ---
+  duration_ms: 14.496667
+  type: 'test'
+  ...
+# Subtest: capacity and server failures never auto retry or replace the intent key
+ok 117 - capacity and server failures never auto retry or replace the intent key
+  ---
+  duration_ms: 5.649
+  type: 'test'
+  ...
+# Subtest: conflict and authority rejection block automatic retry and another create identity
+ok 118 - conflict and authority rejection block automatic retry and another create identity
+  ---
+  duration_ms: 1.0845
+  type: 'test'
+  ...
+# Subtest: identity or device change cannot carry an uncertain create into a new browser principal
+ok 119 - identity or device change cannot carry an uncertain create into a new browser principal
+  ---
+  duration_ms: 0.302959
+  type: 'test'
+  ...
+# Subtest: cookie identity switch after preflight sends immutable expected authority and blocks rejected intent
+ok 120 - cookie identity switch after preflight sends immutable expected authority and blocks rejected intent
+  ---
+  duration_ms: 0.403333
+  type: 'test'
+  ...
+# Subtest: malformed or mismatched accepted snapshots retain uncertainty and exact identity
+ok 121 - malformed or mismatched accepted snapshots retain uncertainty and exact identity
+  ---
+  duration_ms: 11.426167
+  type: 'test'
+  ...
+# Subtest: a historical interrupted acceptance never claims the actor is currently usable
+ok 122 - a historical interrupted acceptance never claims the actor is currently usable
+  ---
+  duration_ms: 0.8775
+  type: 'test'
+  ...
+# Subtest: invalid or unsafe scope/profile never starts networking or consumes a workflow intent
+ok 123 - invalid or unsafe scope/profile never starts networking or consumes a workflow intent
+  ---
+  duration_ms: 0.817083
+  type: 'test'
+  ...
+# Subtest: published profile intent pins version and digest across uncertain retry with no raw model overrides
+ok 124 - published profile intent pins version and digest across uncertain retry with no raw model overrides
+  ---
+  duration_ms: 0.585084
+  type: 'test'
+  ...
+# Subtest: remote intent pins the binding revision across an uncertain retry and rejects ambiguous targets
+ok 125 - remote intent pins the binding revision across an uncertain retry and rejects ambiguous targets
+  ---
+  duration_ms: 0.558833
+  type: 'test'
+  ...
+# (node:73418) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: sharing decoder binds session and owner while retaining inactive reader and bounded audit
+ok 126 - sharing decoder binds session and owner while retaining inactive reader and bounded audit
+  ---
+  duration_ms: 1.79075
+  type: 'test'
+  ...
+# Subtest: sharing endpoints reject unsafe paths and external redirects before fetch
+ok 127 - sharing endpoints reject unsafe paths and external redirects before fetch
+  ---
+  duration_ms: 1.367375
+  type: 'test'
+  ...
+# Subtest: explicit sharing update uses one same-origin CAS request and validated authoritative response
+ok 128 - explicit sharing update uses one same-origin CAS request and validated authoritative response
+  ---
+  duration_ms: 22.114875
+  type: 'test'
+  ...
+# Subtest: CAS conflict refetches authoritative state once without replaying changes
+ok 129 - CAS conflict refetches authoritative state once without replaying changes
+  ---
+  duration_ms: 0.733667
+  type: 'test'
+  ...
+# Subtest: invalid CAS input and duplicate recipients never send mutations
+ok 130 - invalid CAS input and duplicate recipients never send mutations
+  ---
+  duration_ms: 0.27125
+  type: 'test'
+  ...
+# Subtest: authorization failure does not retry or fetch owner audit and cross-user responses are rejected
+ok 131 - authorization failure does not retry or fetch owner audit and cross-user responses are rejected
+  ---
+  duration_ms: 0.342042
+  type: 'test'
+  ...
+# Subtest: initial sharing selection preserves active grants and never silently refreshes inactive entries
+ok 132 - initial sharing selection preserves active grants and never silently refreshes inactive entries
+  ---
+  duration_ms: 0.129708
+  type: 'test'
+  ...
+# Subtest: truncated eligible catalog keeps existing grants available for explicit revocation
+ok 133 - truncated eligible catalog keeps existing grants available for explicit revocation
+  ---
+  duration_ms: 0.250833
+  type: 'test'
+  ...
+# (node:73419) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: team decoders retain explicit roles and revisions
+ok 134 - team decoders retain explicit roles and revisions
+  ---
+  duration_ms: 0.840375
+  type: 'test'
+  ...
+# Subtest: workspace catalog rejects other users, inactive memberships and duplicate ids
+ok 135 - workspace catalog rejects other users, inactive memberships and duplicate ids
+  ---
+  duration_ms: 0.178333
+  type: 'test'
+  ...
+# Subtest: roster rejects mismatched scopes, unknown roles and invalid revisions
+ok 136 - roster rejects mismatched scopes, unknown roles and invalid revisions
+  ---
+  duration_ms: 0.160791
+  type: 'test'
+  ...
+# Subtest: team requests cannot be redirected to external hosts
+ok 137 - team requests cannot be redirected to external hosts
+  ---
+  duration_ms: 0.358083
+  type: 'test'
+  ...
+# Subtest: logical project decoders bind authority to this user, workspace and project
+ok 138 - logical project decoders bind authority to this user, workspace and project
+  ---
+  duration_ms: 0.18175
+  type: 'test'
+  ...
+# (node:73420) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: remote transport is Tailscale-only and local HTTP/WS is allowed
+ok 139 - remote transport is Tailscale-only and local HTTP/WS is allowed
+  ---
+  duration_ms: 0.94725
+  type: 'test'
+  ...
+# Subtest: live URL has no credentials or token and preserves secure transport
+ok 140 - live URL has no credentials or token and preserves secure transport
+  ---
+  duration_ms: 0.112917
+  type: 'test'
+  ...
+1..140
+# tests 140
+# suites 0
+# pass 140
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 886.678208

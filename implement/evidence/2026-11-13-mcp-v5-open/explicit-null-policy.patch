@@ -1,0 +1,36 @@
+--- apps/server/src/worker_exports/policy.rs
++++ apps/server/src/worker_exports/policy.rs
+@@ -17,8 +17,17 @@
+     max_parallel: u16,
+     #[serde(default)]
+     acknowledge_repository_wide_metadata_write: bool,
+-    #[serde(default, skip_serializing_if = "Option::is_none")]
++    #[serde(
++        default,
++        skip_serializing_if = "Option::is_none",
++        deserialize_with = "explicit_mcp_broker"
++    )]
+     mcp_broker: Option<bool>,
++}
++fn explicit_mcp_broker<'de, D: serde::Deserializer<'de>>(
++    deserializer: D,
++) -> std::result::Result<Option<bool>, D::Error> {
++    bool::deserialize(deserializer).map(Some)
+ }
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "snake_case")]
+--- apps/server/src/worker_exports/policy/tests.rs
++++ apps/server/src/worker_exports/policy/tests.rs
+@@ -27,6 +27,12 @@
+             }
+         }
+     }
++    for version in [1, 2] {
++        let mut value: serde_json::Value = serde_json::from_slice(RAW).unwrap();
++        value["schema_version"] = serde_json::json!(version);
++        value["mcp_broker"] = serde_json::Value::Null;
++        assert!(PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).is_err());
++    }
+     assert_eq!(legacy.raw, RAW);
+ }
+ struct Fixture {

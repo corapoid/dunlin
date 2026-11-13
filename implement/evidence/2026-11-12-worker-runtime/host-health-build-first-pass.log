@@ -1,0 +1,22 @@
+Sandbox suite=build container=dunlin-check-94ccd52115c8492fb5a35f086eace1a7 image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=120s source_sha256=4350c4d4bb1a212c35f03e73d8f3cd85fd90e843ab01da34f97f7d9152b813db
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 47 modules transformed.
+
+(!) outDir /scratch/dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../scratch/dist/index.html                   0.51 kB │ gzip:   0.31 kB
+../../../scratch/dist/REUI-LICENSE.txt             1.07 kB │ gzip:   0.64 kB
+../../../scratch/dist/assets/index-CJ92hb6S.css   19.42 kB │ gzip:   4.91 kB
+../../../scratch/dist/assets/index-DUD7M8X-.js   369.59 kB │ gzip: 108.21 kB
+
+✓ built in 4.66s
+[33m[PLUGIN_TIMINGS] [0mJavaScript callbacks ran for 2.0s of this 4.5s build (45%).
+The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - plugin vite:css transform (38%, 1.7s, 1 call)
+Additional callback time came from callbacks under 1s.
+See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+

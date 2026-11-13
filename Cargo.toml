@@ -4,6 +4,8 @@ members = ["apps/desktop", "apps/cli", "apps/server", "crates/*"]
 exclude = ["vendor/*", "plugins/*"]
 
 [patch.crates-io]
+ahp = { path = "vendor/ahp-1.0.0" }
+ahp-types = { path = "vendor/ahp-types-1.0.0" }
 block = { path = "vendor/block-0.1.6" }
 gpui-kit = { path = "vendor/gpui-kit-0.9.0" }
 gpui-kit-assets = { path = "vendor/gpui-kit-assets-0.9.0" }
@@ -25,10 +27,13 @@ repository = "https://github.com/corapoid/dunlin"
 homepage = "https://github.com/corapoid/dunlin"
 
 [workspace.dependencies]
+sha2 = "0.11.1"
 hex = "0.4.3"
 gpui-kit = { version = "0.9.0", features = ["syntect"] }
 dunlin-ui = { path = "crates/ui" }
 dunlin-http = { path = "crates/http" }
+dunlin-identity = { path = "crates/identity" }
+dunlin-session-runtime = { path = "crates/session-runtime" }
 dunlin-relay-protocol = { path = "crates/relay-protocol" }
 dunlin-relay-client = { path = "crates/relay-client" }
 dunlin-runtime = { path = "crates/runtime" }

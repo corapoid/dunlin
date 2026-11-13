@@ -17,25 +17,7 @@ impl Tracker {
         let Some(service) = &state.coordination else {
             return Ok(());
         };
-        let store = state.store.clone();
-        let user_id = user.id.clone();
-        let device_id = device.id.clone();
-        let project_id = project.id.clone();
-        let root = project.path.clone();
-        let authorize = std::sync::Arc::new(move || {
-            let Ok(db) = store.lock() else {
-                return false;
-            };
-            db.list_devices(&user_id).ok().is_some_and(|devices| {
-                devices
-                    .iter()
-                    .any(|d| d.id == device_id && d.revoked_at.is_none())
-            }) && db
-                .project_for_user(&project_id, &user_id)
-                .ok()
-                .flatten()
-                .is_some_and(|p| p.path == root)
-        });
+        let authorize = self.authority_guard(state, user, device, project);
         let handle = service
             .grant_guarded(
                 Scope {

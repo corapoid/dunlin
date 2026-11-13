@@ -1,0 +1,77 @@
+{
+  "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "8559587f36a38f61587e9292b35f32372975a2c69c6d027e22a1e2c996807445",
+      "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+      "exit_code": 0,
+      "scope": "829 backend-family tests: 685 relay, 1 identity, 79 SDK, 27 terminal, 37 usage; 49 separate acceptance tests ignored. Four new Store cleanup tests cover restart/nonce fencing, current generation protection, exact AS-confirmed subset and migration44 rollback. Three new real-HTTP tests cover late writes, lost delete/device revocation and reauthorization; the audit-cap test also exercises cleanup at 100000 rows.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 161\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "014f58f02c7981e22c31c3bfab506df10e6939d72980273b125f9fac20ab506b",
+      "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+      "exit_code": 0,
+      "scope": "151 tests: 114 MCP, 6 HTTP, 31 vault, followed by all-target Clippy with warnings denied. Cleanup library/vault adapter compile against the final journal types; focused cleanup behavior is exercised by server and runtime tests.",
+      "memory": {
+        "memory.peak": "1274994688",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "6bd2ca8bf1a161e39bde3ccbb902335a9e3b357fcc078f52532df34204fb3e65",
+      "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+      "exit_code": 0,
+      "scope": "One focused Chromium acceptance with production stdio MCP helper and Linux sandbox, controlled OAuth/MCP AS and ACP fixture. AHP tool approval, 4 AS revoke POST, lost revoke response, lost cleanup response followed by GET receipt, explicit second cleanup after one simulated late write, 4 deletes, no additional AS I/O, disabled connection with sweep2 complete. 733 other tests filtered out. Generic fixture stdout mentions replay dedupe; this mcp-real branch does not exercise the raw-broker duplicate branch.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 497\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "5b926cee858c56a7900918cc394deb29b08e1269186d255104c5d798291f9348",
+      "source_sha256": "c167978c3c5a1f772ecfe7ae784c5cb792491309f403dd7646c89536762eecd2",
+      "exit_code": 0,
+      "scope": "Server and companion packages, all-targets, warnings denied; MCP/HTTP/vault Clippy additionally covered by the mcp suite.",
+      "memory": {
+        "memory.peak": "2261188608",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "f5a79de280b1b5e45d4b62211bcf956341f001228fde212b6a498752066ba7f4",
+      "source_sha256": "21103ba34467926bd94854383dc26ddc74f6d989a553198b5adfc70b6dd58bdf",
+      "exit_code": 0,
+      "scope": "152 tests including strict/historical cleanup receipts, separate cleanup CAS sequence, refusal without confirmed tokens and no automatic retry after response loss. Narrow frontend snapshot."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "7b79ec4198a2f7c092b2de718524e1480c360391ae4b2490d9201fd75f571086",
+      "source_sha256": "ebff148222aefa817e0986872dea802769088f458b69c3cb083271f2f8345963",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check; narrow frontend/config snapshot."
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "eb805ada81f0588a8dfc73e34326cc37dd49a5affe277404d5677f4cc3cce63d",
+    "cleanup-desktop.png": "3235b76e5fb4df3bfd387f5567a2a12c4ad309ae8814b8cc7c1684246dcd5b7d",
+    "cleanup-mobile.png": "f98407a9a798665ca3533e7fdba57c39d0ef1701fe6da7ce0e9bb836906c031c",
+    "checks-final.log": "e0074c88e457c05d82da1e627601781f7f1d457177167e33914b51b284d62725"
+  },
+  "scope": "Schema44 explicit owner-only cleanup of exact AS-confirmed immutable credential references. Current active/staged credentials are protected. Durable CAS sweep journal keeps tombstones and includes previous delete acknowledgements on explicit resweep to handle late writes. No AS network, plaintext read or implicit retry. A delete acknowledgement is not proof of permanent absence. The 256-reference quota is not reclaimed; retention/quota policy, unconfirmed-AS secrets, unfinished AS-revocation reconciliation, URL elicitation, general scoped secrets, A2A and remaining E0-E10 requirements remain open. Controlled fixtures and MemoryStore only; no real provider/account/keyring/tailnet/native macOS acceptance, no GitHub Actions run. Formal20/68 unchanged.",
+  "static_checks": "PASS selected rustfmt, Node syntax, 122 Markdown local links/anchors/navigation and git diff --check. Original Chromium desktop/mobile PNGs viewed (1440/390 width). Mobile fullPage capture contains the fixed skip-link above its actual clipped viewport; no broader accessibility claim."
+}

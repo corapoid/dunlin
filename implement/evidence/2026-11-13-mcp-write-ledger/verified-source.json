@@ -1,0 +1,44 @@
+{
+  "source_sha256": "2e57e18b9e97809afd1e72db43ab0c630787774dfc0fb04d81144aad9d341d54",
+  "checks": [
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "b188460f13ea63078be3bed4ed26e48e5b744fb874173e1f07a28aa5609a34ee",
+      "source_sha256": "2e57e18b9e97809afd1e72db43ab0c630787774dfc0fb04d81144aad9d341d54",
+      "exit_code": 0,
+      "scope": "151 tests: 114 MCP, 6 HTTP, 31 vault; all-target Clippy with warnings denied for these packages. Ordering test checks durable envelope identity before secret callback, uncertain write, and no secret write after rejected preparation."
+    },
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "d2eeae42198ac6a77624a87fb7315eaa1a7860703740aa44a359d891d7dbb1de",
+      "source_sha256": "2e57e18b9e97809afd1e72db43ab0c630787774dfc0fb04d81144aad9d341d54",
+      "exit_code": 0,
+      "scope": "812 backend-family tests: 668 relay, 1 identity, 79 SDK, 27 terminal, 37 usage; 48 separate acceptance tests ignored. Immutable prepared envelope, restart/revision fence, migration42 backfill/unknown disabled references and atomic collision rollback; real HTTP/SecretStore fault matrix checks prepared digest before set and retained metadata after restart."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "f6ca61c94c0fa11a2236de4849080f0bb8cb98fc98ba7651ca3199f493dff4ba",
+      "source_sha256": "2e57e18b9e97809afd1e72db43ab0c630787774dfc0fb04d81144aad9d341d54",
+      "exit_code": 0,
+      "scope": "One focused production remote MCP product pipeline, including actual Chromium desktop/mobile; 715 other tests filtered out. Actual REST/AHP/WSS/native proxy/stdio helper/Linux sandbox with controlled OAuth/MCP provider and ACP harness. The 19 previous remote acceptance cases were not all rerun."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "bc444a1c714fc9e3aef43ea2f9a093c04eadfb957aa1674ec6a9287229dee8f5",
+      "source_sha256": "2e57e18b9e97809afd1e72db43ab0c630787774dfc0fb04d81144aad9d341d54",
+      "exit_code": 0,
+      "scope": "Server and companion packages, all-targets, warnings denied; additional MCP/HTTP/vault Clippy is in mcp suite."
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "67a7f3cfec7ade65bfcaf57c8740ffbc45bd7f1a950d34ce3d847cd38ac1af1b",
+    "desktop.png": "e6fb4c818f2f0ed9185c37b78c67d94e58ae8aa6c66eb96240d91e8b5af4d95f",
+    "mobile.png": "8a7d956d39b0d9645764832d3001c902e72ad371f01d9af6dcfbef6d26c64294",
+    "checks-final.log": "8d5acce4ba72bed7976ff9d43f7b304d96c8256b2cb6e0a8495a49a2b1ee55db"
+  },
+  "scope": "Required prepare_write is forwarded by Store, checked browser/runtime journals and shared Mutex adapter; exact prepared metadata is required on commit. Schema42 keeps original revision/binding/generation/digest for new references before vault writes. Historical current active/refreshing envelopes can be backfilled; disabled/retired references without proof remain unknown. This increment does not implement provider revoke or GC. No real provider/account/tailnet/keyring or native macOS acceptance; E5.2/E5.3 and the full E0-E10 goal remain open, formal20/68."
+}

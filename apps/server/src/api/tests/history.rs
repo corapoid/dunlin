@@ -467,7 +467,9 @@ async fn saturation_is_bounded_and_revoked_devices_cannot_receive_inflight_resul
         .authenticate(&f.token)
         .unwrap()
         .unwrap();
-    let project = f.state.project_for_user(&user.id, &f.project).unwrap();
+    let project = crate::api::history::capture_project(&f.state, &user.id, &device.id, &f.project)
+        .await
+        .unwrap();
     let state = f.state.clone();
     let device_id = device.id.clone();
     let result = crate::api::history::read(
@@ -552,7 +554,9 @@ async fn cancelled_http_work_keeps_its_slot_until_the_blocking_read_finishes() {
         .authenticate(&f.token)
         .unwrap()
         .unwrap();
-    let project = f.state.project_for_user(&user.id, &f.project).unwrap();
+    let project = crate::api::history::capture_project(&f.state, &user.id, &device.id, &f.project)
+        .await
+        .unwrap();
     let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
     let (release_tx, release_rx) = std::sync::mpsc::channel();
     let state = f.state.clone();
@@ -633,4 +637,332 @@ async fn relay_merge_parent_selection_matches_each_local_comparison() {
             if parent == 0 { "side" } else { "main" }
         );
     }
+}
+
+#[tokio::test]
+async fn history_inflight_read_cannot_escape_after_atomic_revoke_and_regrant() {
+    let f = Fixture::new();
+    f.git_history_fixture();
+    let (user, device) = f
+        .state
+        .store
+        .lock()
+        .unwrap()
+        .authenticate(&f.token)
+        .unwrap()
+        .unwrap();
+    let project = crate::api::history::capture_project(&f.state, &user.id, &device.id, &f.project)
+        .await
+        .unwrap();
+    let state = f.state.clone();
+    let user_id = user.id.clone();
+    let project_id = f.project.clone();
+    let result = crate::api::history::read(
+        f.state.clone(),
+        user.id,
+        device.id,
+        project,
+        None,
+        move |_| {
+            let store = state.store.lock().unwrap();
+            store.revoke_grant(&project_id, &user_id).unwrap();
+            store.grant(&project_id, &user_id).unwrap();
+            assert!(
+                store
+                    .project_for_user(&project_id, &user_id)
+                    .unwrap()
+                    .is_some()
+            );
+            Ok(json!("PRIVATE_HISTORY_RESULT_MUST_NOT_ESCAPE"))
+        },
+    )
+    .await;
+    assert_eq!(result.unwrap_err().status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        f.history_get(
+            &format!("/v1/git/history?project={}", f.project),
+            Some(&f.token)
+        )
+        .await
+        .0,
+        StatusCode::OK,
+        "A new request can use the new epoch"
+    );
+}
+
+#[tokio::test]
+async fn history_scope_and_branch_consent_do_not_revive_after_regrant() {
+    let f = Fixture::new();
+    let (first, _) = f.git_history_fixture();
+    let (_, page) = f
+        .history_get(
+            &format!("/v1/git/history?project={}", f.project),
+            Some(&f.token),
+        )
+        .await;
+    let scope = page["scope"].as_str().unwrap();
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store.revoke_grant(&f.project, &user.id).unwrap();
+        store.grant(&f.project, &user.id).unwrap();
+    }
+    assert_eq!(
+        f.history_get(
+            &format!("/v1/git/history?project={}&scope={scope}", f.project),
+            Some(&f.token)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.post(
+            "/v1/git/history/branch",
+            Some(&f.token),
+            json!({"project":f.project,"scope":scope,"oid":first,"name":"must-not-revive"})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert!(
+        f.history_git(&["for-each-ref", "refs/heads/must-not-revive"])
+            .is_empty()
+    );
+    let (_, fresh) = f
+        .history_get(
+            &format!("/v1/git/history?project={}", f.project),
+            Some(&f.token),
+        )
+        .await;
+    assert_ne!(fresh["scope"], page["scope"]);
+}
+
+impl Fixture {
+    pub(super) fn approve_linked_metadata(
+        &self,
+        project: &str,
+        root: &std::path::Path,
+        write: bool,
+    ) {
+        use crate::store::local_metadata::MetadataPermission;
+        let (user, existing, preparation) = {
+            let store = self.state.store.lock().unwrap();
+            let user = store.authenticate(&self.token).unwrap().unwrap().0;
+            let existing = store.local_metadata(project).unwrap();
+            let preparation = if existing.is_none() {
+                Some(store.prepare_local_metadata(project).unwrap())
+            } else {
+                None
+            };
+            (user, existing, preparation)
+        };
+        let approval = if let Some(preparation) = preparation {
+            let pointer = fs::read_to_string(root.join(".git")).unwrap();
+            let git_dir =
+                std::path::PathBuf::from(pointer.trim().strip_prefix("gitdir: ").unwrap());
+            let common = fs::canonicalize(
+                git_dir.join(
+                    fs::read_to_string(git_dir.join("commondir"))
+                        .unwrap()
+                        .trim(),
+                ),
+            )
+            .unwrap();
+            let prepared = preparation.capture(&git_dir, &common).unwrap();
+            self.state
+                .store
+                .lock()
+                .unwrap()
+                .commit_local_metadata(prepared, None)
+                .unwrap()
+        } else {
+            existing.unwrap()
+        };
+        let store = self.state.store.lock().unwrap();
+        let native = store.capture_native_grant(project, &user.id).unwrap();
+        let old = store
+            .local_metadata_grants(project)
+            .unwrap()
+            .into_iter()
+            .find(|grant| grant.user_id == user.id);
+        let permissions = if write {
+            vec![MetadataPermission::Read, MetadataPermission::Write]
+        } else {
+            vec![MetadataPermission::Read]
+        };
+        store
+            .set_local_metadata_grant(
+                project,
+                &user.id,
+                approval.revision,
+                native.revision,
+                &permissions,
+                true,
+                old.map(|g| g.revision),
+                write,
+            )
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn linked_history_requires_own_metadata_read_and_scope_tracks_grant_aba_without_native_refresh()
+ {
+    let f = Fixture::new();
+    let (first, _) = f.git_history_fixture();
+    let directory = tempfile::tempdir().unwrap();
+    let linked = directory.path().join("linked");
+    f.history_git(&[
+        "worktree",
+        "add",
+        "--detach",
+        linked.to_str().unwrap(),
+        "HEAD",
+    ]);
+    let project = {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        let project = store
+            .create_project("linked history", linked.to_str().unwrap())
+            .unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        project.id
+    };
+    let query = format!("/v1/git/history?project={project}");
+    assert_eq!(
+        f.history_get(&query, Some(&f.token)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    f.approve_linked_metadata(&project, &linked, false);
+    let (status, page) = f.history_get(&query, Some(&f.token)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let old = page["scope"].as_str().unwrap().to_owned();
+    assert_eq!(
+        f.post(
+            "/v1/git/history/branch",
+            Some(&f.token),
+            json!({"project":project,"scope":old,"oid":first,"name":"read-cannot-write"})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store
+            .revoke_local_metadata_grant(&project, &user.id, 1)
+            .unwrap();
+    }
+    f.approve_linked_metadata(&project, &linked, false);
+    let (status, stale) = f
+        .history_get(&format!("{query}&scope={old}"), Some(&f.token))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{stale}");
+    let (_, fresh) = f.history_get(&query, Some(&f.token)).await;
+    assert_ne!(old, fresh["scope"].as_str().unwrap());
+    f.approve_linked_metadata(&project, &linked, true);
+    let (_, write) = f.history_get(&query, Some(&f.token)).await;
+    assert_eq!(f.post("/v1/git/history/branch",Some(&f.token),json!({"project":project,"scope":write["scope"],"oid":first,"name":"explicit-linked-write"})).await.0,StatusCode::OK);
+}
+
+#[tokio::test]
+async fn ordinary_history_scope_keeps_the_legacy_native_grant_digest() {
+    use sha2::{Digest, Sha256};
+    let f = Fixture::new();
+    f.git_history_fixture();
+    let (project, user, grant) = {
+        let store = f.state.store.lock().unwrap();
+        let (user, _) = store.authenticate(&f.token).unwrap().unwrap();
+        let project = store
+            .project_for_user(&f.project, &user.id)
+            .unwrap()
+            .unwrap();
+        let grant = store.capture_native_grant(&f.project, &user.id).unwrap();
+        (project, user, grant)
+    };
+    let canonical = fs::canonicalize(&project.path).unwrap();
+    let mut legacy = Sha256::new();
+    let revision = grant.revision.to_string();
+    for part in [
+        project.id.as_str(),
+        project.path.as_str(),
+        canonical.to_str().unwrap(),
+        user.id.as_str(),
+        revision.as_str(),
+    ] {
+        legacy.update(part.as_bytes());
+        legacy.update([0]);
+    }
+    let (status, page) = f
+        .history_get(
+            &format!("/v1/git/history?project={}", f.project),
+            Some(&f.token),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["scope"], hex::encode(legacy.finalize()));
+}
+
+#[tokio::test]
+async fn linked_history_inflight_read_is_withheld_after_metadata_grant_revoke_and_regrant() {
+    let f = Fixture::new();
+    f.git_history_fixture();
+    let directory = tempfile::tempdir().unwrap();
+    let linked = directory.path().join("linked");
+    f.history_git(&[
+        "worktree",
+        "add",
+        "--detach",
+        linked.to_str().unwrap(),
+        "HEAD",
+    ]);
+    let (project, user, device) = {
+        let store = f.state.store.lock().unwrap();
+        let (user, device) = store.authenticate(&f.token).unwrap().unwrap();
+        let project = store
+            .create_project("linked inflight", linked.to_str().unwrap())
+            .unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        (project.id, user, device)
+    };
+    f.approve_linked_metadata(&project, &linked, false);
+    let captured = crate::api::history::capture_project(&f.state, &user.id, &device.id, &project)
+        .await
+        .unwrap();
+    let state = f.state.clone();
+    let actor = user.id.clone();
+    let target = project.clone();
+    let result = crate::api::history::read(
+        f.state.clone(),
+        user.id,
+        device.id,
+        captured,
+        None,
+        move |_| {
+            use crate::store::local_metadata::MetadataPermission;
+            let store = state.store.lock().unwrap();
+            store
+                .revoke_local_metadata_grant(&target, &actor, 1)
+                .unwrap();
+            let native = store.capture_native_grant(&target, &actor).unwrap();
+            store
+                .set_local_metadata_grant(
+                    &target,
+                    &actor,
+                    1,
+                    native.revision,
+                    &[MetadataPermission::Read],
+                    true,
+                    Some(2),
+                    false,
+                )
+                .unwrap();
+            Ok("protected linked history")
+        },
+    )
+    .await;
+    assert_eq!(result.unwrap_err().status, StatusCode::CONFLICT);
 }

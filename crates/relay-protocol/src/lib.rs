@@ -1,6 +1,9 @@
 //! Wire contracts shared by the relay and its clients. No transport or storage.
 use serde::{Deserialize, Serialize};
 
+pub mod web;
+pub mod worker;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct User {
     pub id: String,

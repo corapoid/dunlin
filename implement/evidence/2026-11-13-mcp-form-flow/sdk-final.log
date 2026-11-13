@@ -1,0 +1,152 @@
+Sandbox suite=sessions container=dunlin-check-0c2e70dfbb6a49559075b19141e17d67 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=15fb33aec3fbb9497566f441631ee4d1dff06d8078a082cb453bc6b06845f110
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling serde_core v1.0.229
+   Compiling libc v0.2.191
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling serde v1.0.229
+   Compiling typenum v1.20.1
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling hybrid-array v0.4.15
+   Compiling serde_derive v1.0.229
+   Compiling vcpkg v0.2.15
+   Compiling pkg-config v0.3.34
+   Compiling cfg-if v1.0.5
+   Compiling getrandom v0.4.3
+   Compiling once_cell v1.21.4
+   Compiling serde_json v1.0.154
+   Compiling libsqlite3-sys v0.39.1
+   Compiling syn v2.0.119
+   Compiling pin-project-lite v0.2.17
+   Compiling thiserror v2.0.21
+   Compiling itoa v1.0.19
+   Compiling memchr v2.8.3
+   Compiling bitflags v2.13.2
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling tokio-macros v2.7.2
+   Compiling thiserror-impl v2.0.21
+   Compiling serde_repr v0.1.21
+   Compiling jiff-core v0.1.4
+   Compiling const-oid v0.10.2
+   Compiling rustix v1.1.6
+   Compiling digest v0.11.3
+   Compiling jiff v0.2.41
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling tokio v1.54.1
+   Compiling tracing v0.1.44
+   Compiling hashlink v0.12.2
+   Compiling cpufeatures v0.3.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling smallvec v1.16.5
+   Compiling fallible-iterator v0.3.0
+   Compiling rusqlite v0.41.1
+   Compiling sha2 v0.11.1
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling uuid v1.29.2
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling fastrand v2.5.0
+   Compiling hex v0.4.3
+   Compiling tempfile v3.27.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+    Finished `test` profile [unoptimized] target(s) in 44.52s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_session_runtime-a279fe241c56333c)
+
+running 78 tests
+test admissions::tests::admission_capacity_fails_closed_without_evicting_existing_accepted_identity ... ok
+test admissions::tests::admission_is_bound_to_fingerprint_owner_device_scope_and_current_human_authority ... ok
+test admissions::tests::admission_late_ledger_or_acquire_failure_rolls_back_every_projection_and_notifies_only_commit ... ok
+test admissions::tests::caller_owned_admission_transaction_rolls_back_session_profile_receipt_and_notification ... ok
+test admissions::tests::checked_receipt_lookup_is_authorized_read_only_and_propagates_intent_failure ... ok
+test admissions::tests::exact_admission_retry_reopens_with_original_response_and_never_revives_recovered_runtime ... ok
+test admissions::tests::profile_pin_is_atomic_with_admission_and_survives_recovery_with_fresh_read_authority ... ok
+test admissions::tests::racing_connections_share_one_atomic_admission_and_only_one_original_lease ... ok
+test channels::tests::bounded_multi_channel_replay_and_grant_revalidation_require_resync_or_deny ... ok
+test channels::tests::chat_view_adapts_to_byte_budgets_without_silently_truncating_default_snapshots ... ok
+test channels::tests::explicit_chat_view_freezes_older_completed_turns_and_keeps_active_and_queue ... ok
+test channels::tests::history_clock_overflow_and_invalid_authority_never_advance_the_clock ... ok
+test channels::tests::invalidation_is_after_commit_and_failed_or_idempotent_writes_do_not_notify ... ok
+test channels::tests::migration_baseline_accepts_a_valid_terminal_journal_in_the_recovery_reserve ... ok
+test channels::tests::multi_chat_view_history_turn_budget_fails_explicitly_at_the_boundary ... ok
+test channels::tests::session_catalog_and_root_summary_track_the_chat_and_shared_action_order ... ok
+test claim_tests::inner_claim_requires_transaction_and_preserves_lease_and_authority_checks ... ok
+test claim_tests::late_sibling_failure_rolls_back_claim_events_projection_and_sequences_without_notification ... ok
+test claim_tests::outer_commit_notifies_once_explicitly_and_wrapper_empty_claim_does_not_notify ... ok
+test controls::tests::cancel_reopen_dedupe_scope_and_recovery_never_claim_a_second_turn ... ok
+test controls::tests::cancel_sequences_once_preserves_raw_evidence_and_blocks_next_until_settlement ... ok
+test controls::tests::cancellation_ack_uses_recovery_reserve_after_normal_budget_is_exhausted ... ok
+test controls::tests::canonical_reorder_preserves_missing_original_order_and_stale_controls_are_noops ... ok
+test controls::tests::completion_cancel_race_is_atomic_and_recovery_is_unconfirmed ... ok
+test controls::tests::controls_rollback_all_mutations_when_final_ledger_insert_fails ... ok
+test controls::tests::partial_reorder_canonical_echo_matches_sql_live_sdk_and_snapshot_and_retry_is_immutable ... ok
+test controls::tests::queued_upsert_remove_and_reorder_match_durable_fifo_and_reducers ... ok
+test controls::tests::reorder_unknowns_noops_duplicates_and_bounds_preserve_authoritative_queue ... ok
+test dispatch::tests::accepted_identity_message_mapping_retry_and_reopen_are_durable ... ok
+test dispatch::tests::ledger_identity_is_global_across_channels_and_capacity_never_evicts_acknowledgements ... ok
+test dispatch::tests::ledger_insert_failure_rolls_back_an_already_projected_acceptance ... ok
+test dispatch::tests::new_acceptance_revalidates_authority_but_old_ack_survives_actor_stop ... ok
+test dispatch::tests::projection_failure_rolls_back_queue_source_origin_and_ledger ... ok
+test dispatch::tests::rejection_is_replayed_without_mutating_queue_or_chat_and_retry_keeps_outcome ... ok
+test dispatch::tests::unsupported_payload_and_full_queue_reject_but_queued_message_upserts ... ok
+test permissions::mcp::input::tests::mcp_form_decline_cancel_and_competing_answers_never_send_content_or_change_the_winner ... ok
+test permissions::mcp::input::tests::mcp_form_input_is_atomic_durable_one_use_and_cannot_resume_after_recovery ... ok
+test permissions::mcp::input::tests::mcp_form_input_rejects_cross_invocation_schema_failures_drafts_and_cancellation ... ok
+test permissions::mcp::tests::acp_cannot_register_report_or_complete_a_host_mcp_invocation ... ok
+test permissions::mcp::tests::host_mcp_binds_every_invocation_field_and_consumes_human_approval_once ... ok
+test permissions::mcp::tests::independent_mcp_registrations_race_for_one_durable_request_identity ... ok
+test permissions::mcp::tests::mcp_admission_bounds_payloads_before_registration_or_large_serialization ... ok
+test permissions::mcp::tests::mcp_completion_is_atomic_and_crash_after_consumption_retains_unknown_outcome ... ok
+test permissions::mcp::tests::mcp_denial_uncertainty_and_restart_never_make_an_old_request_dispatchable ... ok
+test permissions::mcp::tests::mcp_permits_expire_and_stop_on_cancellation_and_authority_change ... ok
+test permissions::tests::consumed_undelivered_is_unknown_on_restart_and_never_reconsumed ... ok
+test permissions::tests::decision_and_registration_failures_roll_back_projection_source_and_state ... ok
+test permissions::tests::expiry_authority_change_and_cancel_invalidate_permission_before_delivery ... ok
+test permissions::tests::malformed_challenges_permanent_options_and_scope_are_fail_closed ... ok
+test permissions::tests::nonce_supersession_expiry_and_denial_do_not_enable_late_execution ... ok
+test permissions::tests::one_use_decision_is_durable_consumed_once_and_preserves_confirmation ... ok
+test projection::frontend_oracle::pinned_sdk_frontend_reducer_oracle_matches_checked_in_fixture ... ok
+test projection::tests::failed_projection_rolls_back_source_queue_clock_and_idempotency_together ... ok
+test projection::tests::imported_timestamps_are_marked_and_pre_migration_cursors_require_a_snapshot ... ok
+test projection::tests::interruption_never_projects_unknown_work_as_complete_or_replays_a_prompt ... ok
+test projection::tests::migration_preserves_unsupported_legacy_data_and_refuses_an_empty_projection_success ... ok
+test projection::tests::official_reducer_roundtrip_and_reconnect_reproduce_the_durable_snapshot ... ok
+test projection::tests::projected_actions_have_one_global_order_and_private_reads_remain_scoped ... ok
+test projection::tests::tool_reports_preserve_failure_and_never_invent_a_human_approval ... ok
+test sharing::tests::audit_insert_failure_rolls_back_readers_revision_and_invalidation ... ok
+test sharing::tests::full_audit_capacity_blocks_positive_authority_but_reserves_revocation ... ok
+test sharing::tests::owner_and_recipient_revisions_revoke_and_reaffirm_requires_new_key ... ok
+test sharing::tests::private_is_default_shared_read_covers_all_surfaces_and_never_mutates ... ok
+test sharing::tests::reader_validation_is_atomic_and_never_bypasses_domain_scope_or_human_rules ... ok
+test sharing::tests::remove_readd_cas_audit_and_reopen_preserve_aba_fencing ... ok
+test stream::tests::cross_session_snapshot_and_replay_are_one_order_and_never_repeat_idempotent_writes ... ok
+test stream::tests::cursor_does_not_grant_private_session_access_and_replay_filters_before_limits ... ok
+test stream::tests::migration_backfill_is_a_snapshot_baseline_and_new_records_follow_it ... ok
+test stream::tests::replay_is_complete_or_requires_a_snapshot_for_budget_and_cursor_mismatch ... ok
+test stream::tests::snapshot_budget_counts_serialized_prompts_and_clock_exhaustion_is_atomic ... ok
+test stream::tests::stream_and_journal_rollback_together_and_committed_cursors_survive_reopen ... ok
+test tests::current_authority_and_private_ownership_are_required ... ok
+test tests::queue_and_journal_limits_preserve_space_for_recovery ... ok
+test tests::queue_is_idempotent_serial_and_persists_output_before_completion ... ok
+test tests::reopen_and_recovery_never_replay_ambiguous_dispatch_and_fence_old_workers ... ok
+test update_transaction_tests::inner_updates_require_transaction_and_keep_current_authority_and_lease_checks ... ok
+test update_transaction_tests::late_inbox_failure_rolls_back_output_terminal_projection_and_watermark_before_notification ... ok
+test update_transaction_tests::ready_and_negative_interruption_roll_back_together_and_wrappers_notify_after_commit ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.71s
+
+   Doc-tests dunlin_session_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Sandbox memory: {"memory.peak": "986746880", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

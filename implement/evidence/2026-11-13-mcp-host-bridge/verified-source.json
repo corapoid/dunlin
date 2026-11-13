@@ -1,0 +1,31 @@
+{
+  "source_sha256": "466e0c33885c5b9946fe03b8711ece976376b381033cc8c0189b1d345ab4ae0e",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-host-bridge-server-final.log",
+      "log_sha256": "32c03bdb8e04be3c7a4dcff4b7f5935cfbab78b1e4cf30302bef89d99d611660",
+      "source_sha256": "466e0c33885c5b9946fe03b8711ece976376b381033cc8c0189b1d345ab4ae0e",
+      "scope": "788 server-family tests; seven host bridge cases with actual OAuth/MCP HTTP and controlled native receipts/in-process transport.",
+      "result": "PASS"
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-host-bridge-clippy-final.log",
+      "log_sha256": "1f30c3477e30abe3bbcdbbec7243b61db63f0668e235a8c2694d50d8037e0304",
+      "source_sha256": "466e0c33885c5b9946fe03b8711ece976376b381033cc8c0189b1d345ab4ae0e",
+      "scope": "All targets, warnings denied.",
+      "result": "PASS"
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-host-bridge-runtime-final.log",
+      "log_sha256": "1083258e3ea0b4dd567ff149bdb96cd63aaf75d3847fe54fd452f98819df393c",
+      "source_sha256": "466e0c33885c5b9946fe03b8711ece976376b381033cc8c0189b1d345ab4ae0e",
+      "scope": "Production executable and bwrap/LSM, local stdio MCP approve/deny/disconnect/lost reply; not full remote MCP.",
+      "result": "PASS"
+    }
+  ],
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Private host broker factory verified internally; public remote admission/actor, typed v5 open dispatch and runner proxy are not integrated. No real accounts/services/tailnet."
+}

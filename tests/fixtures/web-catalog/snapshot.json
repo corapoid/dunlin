@@ -1,0 +1,13 @@
+{
+  "type": "snapshot",
+  "snapshot": {
+    "protocol_version": 1,
+    "stream_id": "fixture-stream",
+    "sequence": 1,
+    "server_name": "fixture server",
+    "user": { "id": "u", "name": "member", "role": "member" },
+    "projects": [{ "id": "p", "name": "fixture project" }],
+    "project_id": "p",
+    "sessions": [{ "id": "s", "title": "fixture session", "updated_at": 1000 }]
+  }
+}

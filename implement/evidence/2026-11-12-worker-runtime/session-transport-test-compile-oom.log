@@ -1,0 +1,801 @@
+Sandbox suite=runtime container=dunlin-check-7be2e03315a24bf4999db43c7b81a307 image=sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360 platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=900s source_sha256=f71692c64047275e86f19ce9ffca36f06a15317973054fa587f05408393d480c scope=runtime-full-regression filter=all-runtime-acceptance
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling serde_core v1.0.229
+   Compiling getrandom v0.4.3
+   Compiling itoa v1.0.19
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling serde v1.0.229
+   Compiling block-buffer v0.12.1
+   Compiling serde_derive v1.0.229
+   Compiling digest v0.11.3
+   Compiling bytes v1.12.1
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling log v0.4.35
+   Compiling memchr v2.8.3
+   Compiling synstructure v0.14.0
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling base64ct v1.8.3
+   Compiling serde_json v1.0.154
+   Compiling zerofrom-derive v0.1.8
+   Compiling http v1.5.0
+   Compiling smallvec v1.16.5
+   Compiling pin-project-lite v0.2.17
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling cpufeatures v0.3.1
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling syn v2.0.119
+   Compiling once_cell v1.21.4
+   Compiling zerocopy v0.8.63
+   Compiling sha2 v0.11.1
+   Compiling pem-rfc7468 v1.0.0
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling tinystr v0.8.5
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling writeable v0.6.4
+   Compiling thiserror v2.0.21
+   Compiling litemap v0.8.3
+   Compiling percent-encoding v2.3.2
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling futures-core v0.3.34
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling cpubits v0.1.1
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling pkg-config v0.3.34
+   Compiling hex v0.4.3
+   Compiling vcpkg v0.2.15
+   Compiling bitflags v2.13.2
+   Compiling rustls v0.23.46
+   Compiling crc32fast v1.5.4
+   Compiling libsqlite3-sys v0.39.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling simd-adler32 v0.3.10
+   Compiling base64 v0.23.1
+   Compiling foldhash v0.2.0
+   Compiling base16ct v1.0.0
+   Compiling getrandom v0.3.4
+   Compiling adler2 v2.0.1
+   Compiling thiserror v1.0.69
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling hashbrown v0.17.1
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling signature v3.0.0
+   Compiling hmac v0.13.0
+   Compiling semver v1.0.28
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling rustc_version v0.4.1
+   Compiling der v0.7.10
+   Compiling flate2 v1.1.11
+   Compiling idna v1.1.0
+   Compiling hashlink v0.12.2
+   Compiling elliptic-curve v0.14.3
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling chacha20 v0.10.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling iana-time-zone v0.1.65
+   Compiling fallible-iterator v0.3.0
+   Compiling utf8-zero v0.8.1
+   Compiling ureq v3.5.1
+   Compiling rusqlite v0.41.1
+   Compiling chrono v0.4.45
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v5.0.0
+   Compiling darling_macro v0.24.1
+   Compiling rfc6979 v0.6.0
+   Compiling http-body v1.1.0
+   Compiling num-integer v0.1.47
+   Compiling futures-macro v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-sink v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling slab v0.4.12
+   Compiling spin v0.9.9
+   Compiling cfg_aliases v0.1.1
+   Compiling num-bigint-dig v0.8.6
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling futures-util v0.3.34
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling rand_chacha v0.9.0
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling base64 v0.22.1
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling event-listener v5.4.2
+   Compiling want v0.3.2
+   Compiling rand v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling either v1.19.0
+   Compiling sync_wrapper v1.0.2
+   Compiling httpdate v1.0.3
+   Compiling winnow v1.0.5
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling arrayvec v0.7.8
+   Compiling jiff-core v0.1.4
+   Compiling jiff v0.2.41
+   Compiling vte v0.15.0
+   Compiling hyper v1.12.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling itertools v0.14.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling dyn-clone v1.0.20
+   Compiling shell-words v1.1.1
+   Compiling mime v0.3.18
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling unicode-width v0.2.3
+   Compiling ryu v1.0.23
+   Compiling serde_urlencoded v0.7.1
+   Compiling vt100 v0.18.1
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling axum-core v0.5.6
+   Compiling portable-pty v0.9.0
+   Compiling openidconnect v4.1.0
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+warning: unused import: `ExecutionTransportError`
+  --> apps/server/src/worker_channel.rs:39:72
+   |
+39 |     ExecutionEvent, ExecutionProducerRegistration, ExecutionTransport, ExecutionTransportError,
+   |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `SessionEvent`, `SessionProducerRegistration`, and `SessionTransport`
+  --> apps/server/src/worker_channel.rs:41:27
+   |
+41 | pub(crate) use sessions::{SessionEvent, SessionProducerRegistration, SessionTransport};
+   |                           ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+
+warning: unused import: `self as wire`
+ --> apps/server/src/worker_client/sessions.rs:7:15
+  |
+7 |     session::{self as wire, SessionControllerMessage as Request, SessionWorkerMessage as Reply},
+  |               ^^^^^^^^^^^^
+
+warning: methods `caller`, `running`, `authority`, `prepare`, `describe`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:129:8
+    |
+120 | impl Context {
+    | ------------ methods in this implementation
+...
+129 |     fn caller(
+    |        ^^^^^^
+...
+148 |     fn running(&self) -> crate::store::Result<()> {
+    |        ^^^^^^^
+...
+245 |     async fn authority<T, F>(self: &Arc<Self>, operation: F) -> Result<T>
+    |              ^^^^^^^^^
+...
+265 |     async fn prepare(
+    |              ^^^^^^^
+...
+293 |     async fn describe(
+    |              ^^^^^^^^
+...
+388 |     async fn reconcile(
+    |              ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple fields are never read
+   --> apps/server/src/remote_execution.rs:434:5
+    |
+433 | struct Attempt {
+    |        ------- fields in this struct
+434 |     id: String,
+    |     ^^
+435 |     owner: String,
+    |     ^^^^^
+436 |     device: String,
+    |     ^^^^^^
+437 |     workspace: String,
+    |     ^^^^^^^^^
+438 |     project: String,
+    |     ^^^^^^^
+439 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+440 |     transport: ExecutionTransport,
+    |     ^^^^^^^^^
+
+warning: methods `terminal` and `receipt` are never used
+   --> apps/server/src/remote_execution.rs:446:8
+    |
+445 | impl Attempt {
+    | ------------ methods in this implementation
+446 |     fn terminal(&self) -> bool {
+    |        ^^^^^^^^
+...
+459 |     fn receipt(&self) -> Option<dunlin_relay_protocol::worker::AttemptFence> {
+    |        ^^^^^^^
+
+warning: field `capacity` is never read
+   --> apps/server/src/remote_execution.rs:471:5
+    |
+467 | pub(crate) struct Service {
+    |                   ------- field in this struct
+...
+471 |     capacity: Arc<Semaphore>,
+    |     ^^^^^^^^
+
+warning: methods `submit`, `status`, `cancel`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:531:25
+    |
+474 | impl Service {
+    | ------------ methods in this implementation
+...
+531 |     pub(crate) async fn submit(
+    |                         ^^^^^^
+...
+578 |     pub(crate) async fn status(
+    |                         ^^^^^^
+...
+594 |     pub(crate) async fn cancel(
+    |                         ^^^^^^
+...
+632 |     pub(crate) async fn reconcile(
+    |                         ^^^^^^^^^
+
+warning: function `admit_owned` is never used
+   --> apps/server/src/remote_execution.rs:712:10
+    |
+712 | async fn admit_owned(
+    |          ^^^^^^^^^^^
+
+warning: function `fresh` is never used
+   --> apps/server/src/remote_execution.rs:795:10
+    |
+795 | async fn fresh(context: &Arc<Context>, actor: &Attempt) -> Result<PreparedRemoteExecution> {
+    |          ^^^^^
+
+warning: function `monitor` is never used
+   --> apps/server/src/remote_execution.rs:807:10
+    |
+807 | async fn monitor(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+warning: function `receive_record` is never used
+   --> apps/server/src/remote_execution.rs:846:10
+    |
+846 | async fn receive_record(context: &Arc<Context>, actor: &Attempt, reply: Reply) -> Result<()> {
+    |          ^^^^^^^^^^^^^^
+
+warning: function `control` is never used
+   --> apps/server/src/remote_execution.rs:856:10
+    |
+856 | async fn control(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+warning: function `cancel_cached` is never used
+   --> apps/server/src/remote_execution.rs:994:10
+    |
+994 | async fn cancel_cached(actor: &Attempt) {
+    |          ^^^^^^^^^^^^^
+
+warning: function `run_attempt` is never used
+    --> apps/server/src/remote_execution.rs:1014:10
+     |
+1014 | async fn run_attempt(
+     |          ^^^^^^^^^^^
+
+warning: struct `PreparedRemoteExecution` is never constructed
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:46:19
+   |
+46 | pub(crate) struct PreparedRemoteExecution {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `host_id`, `export_id`, `export_revision`, and `principal` are never used
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:58:12
+   |
+57 | impl PreparedRemoteExecution {
+   | ---------------------------- methods in this implementation
+58 |     pub fn host_id(&self) -> &str {
+   |            ^^^^^^^
+...
+61 |     pub fn export_id(&self) -> &str {
+   |            ^^^^^^^^^
+...
+64 |     pub fn export_revision(&self) -> u64 {
+   |            ^^^^^^^^^^^^^^^
+...
+67 |     pub fn principal(&self) -> ExportPrincipal {
+   |            ^^^^^^^^^
+
+warning: struct `RemoteExecutionReservation` is never constructed
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:105:19
+    |
+105 | pub(crate) struct RemoteExecutionReservation {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:119:5
+    |
+118 | struct StoredExecution {
+    |        --------------- fields in this struct
+119 |     owner: String,
+    |     ^^^^^
+120 |     device: String,
+    |     ^^^^^^
+121 |     workspace: String,
+122 |     project: String,
+    |     ^^^^^^^
+123 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+124 |     intent_digest: String,
+    |     ^^^^^^^^^^^^^
+125 |     binding: String,
+    |     ^^^^^^^
+126 |     authority: AuthorityStamp,
+    |     ^^^^^^^^^
+...
+130 |     created: i64,
+    |     ^^^^^^^
+131 |     renew_sequence: u64,
+    |     ^^^^^^^^^^^^^^
+132 |     renewal: Option<ExecutionControllerMessage>,
+    |     ^^^^^^^
+133 |     cancel_requested: bool,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: method `reservation` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:136:8
+    |
+135 | impl StoredExecution {
+    | -------------------- method in this implementation
+136 |     fn reservation(&self, replayed: bool) -> RemoteExecutionReservation {
+    |        ^^^^^^^^^^^
+
+warning: function `execution_sql_integer` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:157:4
+    |
+157 | fn execution_sql_integer(value: u64) -> Result<i64> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple methods are never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:169:8
+    |
+168 | impl Store {
+    | ---------- methods in this implementation
+169 |     fn remote_execution_caller(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+187 |     pub(crate) fn prepare_remote_execution_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+261 |     pub(crate) fn lookup_remote_execution_intent_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+362 |     fn validate_execution_observation<F>(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+438 |     pub(crate) fn admit_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+455 |     pub(crate) fn admit_remote_execution_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+536 |     fn current_remote_execution(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+564 |     pub(crate) fn dispatch_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+586 |     pub(crate) fn renew_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+715 |     pub(crate) fn remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^
+...
+735 |     fn cancel_remote_execution_in_transaction(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+769 |     pub(crate) fn cancel_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+...
+792 |     pub(crate) fn cancel_remote_execution_from_guard<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+809 |     pub(crate) fn reconcile_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+852 |     pub(crate) fn remote_execution_controller_authority_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+934 |     pub(crate) fn mark_remote_execution_uncertain<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `matches_metadata_slot` is never used
+  --> apps/server/src/worker_channel/execution.rs:84:19
+   |
+71 | impl ExecutionTransport {
+   | ----------------------- method in this implementation
+...
+84 |     pub(super) fn matches_metadata_slot(
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `transport` and `message` are never read
+  --> apps/server/src/worker_channel/sessions.rs:14:9
+   |
+13 | pub(crate) struct SessionEvent {
+   |                   ------------ fields in this struct
+14 |     pub transport: SessionTransport,
+   |         ^^^^^^^^^
+15 |     pub message: Reply,
+   |         ^^^^^^^
+
+warning: struct `SessionProducerRegistration` is never constructed
+  --> apps/server/src/worker_channel/sessions.rs:21:19
+   |
+21 | pub(crate) struct SessionProducerRegistration {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `permits` is never read
+  --> apps/server/src/worker_channel/sessions.rs:37:5
+   |
+29 | struct Slot {
+   |        ---- field in this struct
+...
+37 |     permits: Arc<Semaphore>,
+   |     ^^^^^^^
+
+warning: methods `host_id`, `lease`, `matches_metadata_slot`, `attest_in_transaction`, `request`, and `attest_stream_ack_in_transaction` are never used
+   --> apps/server/src/worker_channel/sessions.rs:53:12
+    |
+ 52 | impl SessionTransport {
+    | --------------------- methods in this implementation
+ 53 |     pub fn host_id(&self) -> &str {
+    |            ^^^^^^^
+...
+ 59 |     pub fn lease(&self) -> &ChannelLease {
+    |            ^^^^^
+...
+ 65 |     pub(super) fn matches_metadata_slot(
+    |                   ^^^^^^^^^^^^^^^^^^^^^
+...
+ 85 |     pub fn attest_in_transaction(
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+140 |     pub async fn request(&self, message: Request) -> std::result::Result<Reply, TransportError> {
+    |                  ^^^^^^^
+...
+164 |     pub fn attest_stream_ack_in_transaction(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `register_session_producer` and `session_transport` are never used
+   --> apps/server/src/worker_channel/sessions.rs:251:19
+    |
+250 | impl Service {
+    | ------------ methods in this implementation
+251 |     pub(crate) fn register_session_producer(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+277 |     pub(crate) fn session_transport(
+    |                   ^^^^^^^^^^^^^^^^^
+
+warning: methods `describe_execution_export`, `describe_session_export`, and `describe_live_export` are never used
+   --> apps/server/src/worker_channel/exports.rs:257:25
+    |
+110 | impl Service {
+    | ------------ methods in this implementation
+...
+257 |     pub(crate) async fn describe_execution_export(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+267 |     pub(crate) async fn describe_session_export(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^
+...
+277 |     async fn describe_live_export(
+    |              ^^^^^^^^^^^^^^^^^^^^
+
+warning: trait `LiveTransport` is never used
+   --> apps/server/src/worker_channel/exports.rs:417:7
+    |
+417 | trait LiveTransport: Send + Sync {
+    |       ^^^^^^^^^^^^^
+
+warning: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:89:5
+   |
+86 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+89 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `observation` is never used
+    --> apps/server/src/worker_execution/runtime/process.rs:1354:19
+     |
+1226 | impl Platform {
+     | ------------- method in this implementation
+...
+1354 |     pub(super) fn observation(&self) -> (&str, &str) {
+     |                   ^^^^^^^^^^^
+
+warning: fields `rpc_id`, `first_turn`, and `prompt` are never read
+  --> apps/server/src/worker_execution/session_acp.rs:57:9
+   |
+55 | pub(crate) struct PromptIntent {
+   |                   ------------ fields in this struct
+56 |     pub turn: TurnSpec,
+57 |     pub rpc_id: u64,
+   |         ^^^^^^
+58 |     pub first_turn: bool,
+   |         ^^^^^^^^^^
+59 |     /// Exact rendered ACP prompt, including immutable instructions on first turn.
+60 |     pub prompt: String,
+   |         ^^^^^^
+   |
+   = note: `PromptIntent` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `scope` is never used
+  --> apps/server/src/worker_exports/execution.rs:44:19
+   |
+27 | impl<'a> ExecutionChannel<'a> {
+   | ----------------------------- method in this implementation
+...
+44 |     pub(super) fn scope(&self) -> &ExportScope {
+   |                   ^^^^^
+
+warning: method `validate_filesystem` is never used
+  --> apps/server/src/worker_exports/execution.rs:83:12
+   |
+63 | impl ExecutionLease {
+   | ------------------- method in this implementation
+...
+83 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: methods `identity` and `validate_filesystem` are never used
+  --> apps/server/src/worker_exports/session.rs:32:12
+   |
+28 | impl WorkerSessionLease {
+   | ----------------------- methods in this implementation
+...
+32 |     pub fn identity(&self) -> &wire::SessionIdentity {
+   |            ^^^^^^^^
+...
+67 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: `dunlin-relay` (bin "dunlin-relay") generated 36 warnings (run `cargo fix --bin "dunlin-relay" -p dunlin-relay` to apply 3 suggestions)
+    Finished `dev` profile [unoptimized] target(s) in 1m 47s
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1572864 1053304    519560  67% /scratch
+1053212	/scratch/target
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+   Compiling bitflags v2.13.2
+   Compiling rusqlite v0.41.1
+   Compiling rustix v1.1.6
+   Compiling linux-raw-sys v0.12.1
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling nix v0.28.0
+   Compiling portable-pty v0.9.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+warning: unused imports: `SessionEvent`, `SessionProducerRegistration`, and `SessionTransport`
+  --> apps/server/src/worker_channel.rs:41:27
+   |
+41 | pub(crate) use sessions::{SessionEvent, SessionProducerRegistration, SessionTransport};
+   |                           ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `self as wire`
+ --> apps/server/src/worker_client/sessions.rs:7:15
+  |
+7 |     session::{self as wire, SessionControllerMessage as Request, SessionWorkerMessage as Reply},
+  |               ^^^^^^^^^^^^
+
+warning: methods `cancel` and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:594:25
+    |
+474 | impl Service {
+    | ------------ methods in this implementation
+...
+594 |     pub(crate) async fn cancel(
+    |                         ^^^^^^
+...
+632 |     pub(crate) async fn reconcile(
+    |                         ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:89:5
+   |
+86 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+89 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `observation` is never used
+    --> apps/server/src/worker_execution/runtime/process.rs:1354:19
+     |
+1226 | impl Platform {
+     | ------------- method in this implementation
+...
+1354 |     pub(super) fn observation(&self) -> (&str, &str) {
+     |                   ^^^^^^^^^^^
+
+warning: method `scope` is never used
+  --> apps/server/src/worker_exports/execution.rs:44:19
+   |
+27 | impl<'a> ExecutionChannel<'a> {
+   | ----------------------------- method in this implementation
+...
+44 |     pub(super) fn scope(&self) -> &ExportScope {
+   |                   ^^^^^
+
+warning: methods `identity` and `validate_filesystem` are never used
+  --> apps/server/src/worker_exports/session.rs:32:12
+   |
+28 | impl WorkerSessionLease {
+   | ----------------------- methods in this implementation
+...
+32 |     pub fn identity(&self) -> &wire::SessionIdentity {
+   |            ^^^^^^^^
+...
+67 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: `dunlin-relay` (bin "dunlin-relay" test) generated 7 warnings (run `cargo fix --bin "dunlin-relay" -p dunlin-relay --tests` to apply 2 suggestions)
+error: could not compile `dunlin-relay` (bin "dunlin-relay" test); 7 warnings emitted
+
+Caused by:
+  process didn't exit successfully: `/usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/bin/rustc --crate-name dunlin_relay --edition=2024 apps/server/src/main.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --emit=dep-info,link -C embed-bitcode=no --test --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=14b97eed0632bcd1 -C extra-filename=-902d08eb11e93041 --out-dir /scratch/target/debug/deps -L dependency=/scratch/target/debug/deps --extern ahp=/scratch/target/debug/deps/libahp-ce5231ccf3ec6289.rlib --extern ahp_types=/scratch/target/debug/deps/libahp_types-1abfa678a0abfed5.rlib --extern axum=/scratch/target/debug/deps/libaxum-f7e33f8f3cc0b5e0.rlib --extern base64=/scratch/target/debug/deps/libbase64-e0a7c262dc63e9f9.rlib --extern dunlin_coordination=/scratch/target/debug/deps/libdunlin_coordination-7e55c7245d86583d.rlib --extern dunlin_domain=/scratch/target/debug/deps/libdunlin_domain-a615b4b821ab41dc.rlib --extern dunlin_identity=/scratch/target/debug/deps/libdunlin_identity-ffc5d7040ac4ef0f.rlib --extern dunlin_mcp_client=/scratch/target/debug/deps/libdunlin_mcp_client-1a8145ce34d7e1f0.rlib --extern dunlin_relay_protocol=/scratch/target/debug/deps/libdunlin_relay_protocol-2e17ffc60464966b.rlib --extern dunlin_session_runtime=/scratch/target/debug/deps/libdunlin_session_runtime-693067578c8e76d3.rlib --extern dunlin_storage=/scratch/target/debug/deps/libdunlin_storage-6f9209b1e3cbd527.rlib --extern dunlin_terminal=/scratch/target/debug/deps/libdunlin_terminal-afb7d4d3302e98ef.rlib --extern dunlin_usage=/scratch/target/debug/deps/libdunlin_usage-155052f8e264af5e.rlib --extern dunlin_vault=/scratch/target/debug/deps/libdunlin_vault-95d70f6e61958d5a.rlib --extern dunlin_workspace=/scratch/target/debug/deps/libdunlin_workspace-a0813baa3edab79b.rlib --extern futures_util=/scratch/target/debug/deps/libfutures_util-6d69759f387e7207.rlib --extern hex=/scratch/target/debug/deps/libhex-19560ef8845ae471.rlib --extern http_body_util=/scratch/target/debug/deps/libhttp_body_util-0afa3a2555ab3c33.rlib --extern hyper=/scratch/target/debug/deps/libhyper-053214491b13c934.rlib --extern hyper_util=/scratch/target/debug/deps/libhyper_util-4f93e6cd5e5378fd.rlib --extern libc=/scratch/target/debug/deps/liblibc-74f3916a2f674a03.rlib --extern openidconnect=/scratch/target/debug/deps/libopenidconnect-199ae17224cc9140.rlib --extern rand=/scratch/target/debug/deps/librand-43f4e13cd291e761.rlib --extern rusqlite=/scratch/target/debug/deps/librusqlite-6a93ae30eb079d70.rlib --extern rustls=/scratch/target/debug/deps/librustls-e99d8c79bd938039.rlib --extern serde=/scratch/target/debug/deps/libserde-7c0713df9e772744.rlib --extern serde_json=/scratch/target/debug/deps/libserde_json-2fdbad3393b8935c.rlib --extern sha2=/scratch/target/debug/deps/libsha2-6b0d58fae9b611a8.rlib --extern tempfile=/scratch/target/debug/deps/libtempfile-91eea27869a49521.rlib --extern thiserror=/scratch/target/debug/deps/libthiserror-c11cfc44147aae31.rlib --extern tokio=/scratch/target/debug/deps/libtokio-a55844383e94c362.rlib --extern tokio_rustls=/scratch/target/debug/deps/libtokio_rustls-c106dd8debad4676.rlib --extern tokio_tungstenite=/scratch/target/debug/deps/libtokio_tungstenite-25b88098120ae397.rlib --extern toml=/scratch/target/debug/deps/libtoml-c107f1b7e322c637.rlib --extern tower=/scratch/target/debug/deps/libtower-7042905c2f7958b7.rlib --extern uuid=/scratch/target/debug/deps/libuuid-ed5549c9a7181ef1.rlib --extern webpki_roots=/scratch/target/debug/deps/libwebpki_roots-b5e7a99a2b57ecf0.rlib --extern zeroize=/scratch/target/debug/deps/libzeroize-94083cd3f8f49920.rlib -C debuginfo=0 -C codegen-units=8 -C link-arg=-fuse-ld=lld -C link-arg=-B/usr/local/rustup/toolchains/1.99.1-aarch64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu/bin/gcc-ld -C link-arg=-Wl,--threads=1 -L native=/scratch/target/debug/build/libsqlite3-sys-79fbb184e2d8ba9b/out -L native=/scratch/target/debug/build/ring-e555b5ca9fd81007/out` (signal: 9, SIGKILL: kill)
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1572864 1254688    318176  80% /scratch
+1254592	/scratch/target
+low 0
+high 0
+max 21
+oom 1
+oom_kill 1
+oom_group_kill 0

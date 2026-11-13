@@ -1,0 +1,176 @@
+{
+  "source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+  "checks": [
+    {
+      "suite": "clippy",
+      "exit_code": 0,
+      "log": "clippy-final.log",
+      "log_sha256": "689748ed8945b37000da07eac9d6a3f25824ec990e7c428e094fe51742b56488",
+      "source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+      "scope": "Root server and companion packages all-targets Clippy -D warnings;2m08s.",
+      "memory": {
+        "memory.peak": "2388971520",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "server",
+      "exit_code": 0,
+      "log": "server-final.log",
+      "log_sha256": "51da0e0b813f98307cca9cd6941c3c1a93eb198a6c21c1071bb62d3f27ed4bd0",
+      "source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+      "scope": "875 tests:730 relay,1 identity,80 SDK,27 terminal,37 usage;54 separate acceptance ignored. Fourteen new cases:9 scoped SQL journal/migration/negative-audit and5 in-process Axum API\u2192SQL\u2192MemoryStore provisioning cases. Six corrected historical fixture cases pass.",
+      "memory": {
+        "memory.peak": "3575078912",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "exit_code": 0,
+      "log": "mcp-final.log",
+      "log_sha256": "7f69b6444751d9bbeb230fbeb0853bb66e39039805faaa08b3a2be677feb2f63",
+      "source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+      "scope": "174 unit/runtime tests:116 MCP,6 HTTP,52 vault;2 additional compile-fail doctests for Permit. Package all-targets Clippy -D warnings;26.84s.",
+      "memory": {
+        "memory.peak": "1289719808",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "exit_code": 0,
+      "log": "runtime-final.log",
+      "log_sha256": "ca6cbbe93fd0980f0a24cc5c052fc8b43632bb3f23cb83f16a32bba502b40ec5",
+      "source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+      "scope": "One actual production executable CLI acceptance:legacy review/recovery on synthetic current-schema48 database,0.11s after build;783 other tests filtered. Not a Chromium/keyring/AS/tailnet acceptance.",
+      "memory": {
+        "memory.peak": "3575861248",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-url-input/frontend-final.log",
+      "log_sha256": "d27c8d57549c0ad06ac60f1fb7e12ef5a337a8115efa48c6177037ffe7563b4b",
+      "source_sha256": "86f046de06716554f67e5c6ad83c2a7a31c9f7b0dea9982526feda74d4a6b35d",
+      "exit_code": 0,
+      "scope": "157 tests,including full URL/ASCII host/punycode/parser ambiguity and immutable URL action without answers. Absolute parsed href differs from original display address when needed; tests cover https: relative-special parsing.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-url-input/typecheck-final.log",
+      "log_sha256": "26d632c5bafc5059233b27168bdbab52f36ad66a0d024883226496303933d18a",
+      "source_sha256": "d800150d96d1f92150ddfbd103554a2223f87a768d5e67fb914ab23ce524f0b3",
+      "exit_code": 0,
+      "scope": "Final TypeScript noEmit check of current frontend and configuration.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "ci-contract",
+      "log": "../2026-11-13-mcp-url-input/ci-contract-final.log",
+      "log_sha256": "80a8da2e12329a24b64bdc54557a72dca687bd2962d3191735bf615f1d10a47c",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "14 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "launcher",
+      "log": "../2026-11-13-mcp-url-input/launcher-final.log",
+      "log_sha256": "d8a5e6f40e696cef2a23743dfc5c5264a374d87192bac5e9b25d15bf189656aa",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "18 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "local_checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--check",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true",
+        "apps/server/src/api.rs",
+        "apps/server/src/api/web.rs",
+        "apps/server/src/api/web/scoped_secrets.rs",
+        "apps/server/src/api/web/tests.rs",
+        "apps/server/src/api/web/tests/scoped_secrets.rs",
+        "apps/server/src/jobs/tests.rs",
+        "apps/server/src/main.rs",
+        "apps/server/src/mcp_oauth/journal.rs",
+        "apps/server/src/mcp_oauth/maintenance/tests.rs",
+        "apps/server/src/scoped_secrets.rs",
+        "apps/server/src/store.rs",
+        "apps/server/src/store/agent_migration_tests.rs",
+        "apps/server/src/store/ahp.rs",
+        "apps/server/src/store/checkout_migration_tests.rs",
+        "apps/server/src/store/host_migration_tests.rs",
+        "apps/server/src/store/local_metadata_migration_tests.rs",
+        "apps/server/src/store/mcp_input_migration_tests.rs",
+        "apps/server/src/store/mcp_oauth/tests.rs",
+        "apps/server/src/store/native_grants.rs",
+        "apps/server/src/store/remote_bindings/resolver/execution/tests.rs",
+        "apps/server/src/store/remote_bindings/resolver/sessions/tests.rs",
+        "apps/server/src/store/scoped_secrets.rs",
+        "apps/server/src/store/scoped_secrets/tests.rs",
+        "crates/vault/src/scoped.rs"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "30987c8777362f07dc522bf5c84eef2c48a00c24fbe59dbccb7bd40132c4f77d",
+    "run-results.json": "b5ca80fb9697921ce84b2596fbb555e288ebd82c0d3c9e31a87461e134be4749",
+    "local-checks.log": "eafaa9d67567a62827a4160e0ae4923019d96f594d6e17bae27b5bf357937b75",
+    "local-results.json": "4ef7e52fd05c853643a98a1df3d5e072d94bc08cf6f73b882d086f832e12d40b"
+  },
+  "milestone": {
+    "id": "E5.3",
+    "status": "partial",
+    "formal_progress": "21/68=30.9%;whole E0-E10 goal active"
+  },
+  "completed_increment": {
+    "schema": 48,
+    "implementation": "Production BrowserJournal and cookie/same-origin provisioning/status/disable API,isolated keyring namespace via Credentials,IMMEDIATE authority/CAS cuts,exact writer ACK after revocation,bounded references and mandatory last_disable receipt even when global audit is saturated/rejects its event. Four blocking keyring slots retained through job completion.",
+    "limits": {
+      "credentials_per_project": 128,
+      "references_per_credential": 256,
+      "references_per_workspace": 4096,
+      "provisioning_body_bytes": 81920,
+      "disable_body_bytes": 1024
+    },
+    "proof": "Actual Store reopen/two connections and migration collisions plus live production Axum handler/Service/SQL with controlled MemoryStore;actual maintenance executable on current schema48. Production keyring branch is compiled,not exercised."
+  },
+  "open": [
+    "Production scoped Authority check/consume/complete,credential-use grants and profile selections are not yet implemented.",
+    "Managed session/runner execution,scoped recipes,UI and full kill-switch/retention acceptance remain open. Provisioning API explicitly reports execution_supported:false.",
+    "No real keyring,account,AS,tailnet or other external service used or migrated. Synthetic host approval proves no network/execution authority.",
+    "No new browser acceptance or GitHub Actions run in this increment."
+  ],
+  "diagnostics": {
+    "server-first.log": "Manually stopped own stale container with exit137 before tests:fixture used wrong Injection tag and nested the same Mutex twice in one assertion. No passing-test claim.",
+    "server-second.log": "Exit101:identity1 PASS,relay723 PASS/6 FAIL/54 ignored;later packages not run. All13 then-new cases passed. Five historical inline downgrade fixtures left schema48 tables;maintenance schema bounds were hardcoded47. Final fixes update only synthetic downgrade/test bounds,not migration collision behavior. Final backend875 supersedes it."
+  },
+  "completion_date": "2026-11-14",
+  "evidence_directory_date": "2026-11-13:increment started before midnight"
+}

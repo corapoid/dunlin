@@ -1,0 +1,1245 @@
+Sandbox suite=runtime container=dunlin-check-80c2b201439d4274a180f5ff0384af31 image=sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360 platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=900s source_sha256=275bdf4b33d357c83473aa00561ba2e7effb162e91f7476d66cac0eb85c348fb scope=runtime-focused-acceptance-only filter=production_browser_acceptance_runtime_worker_session
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling serde_core v1.0.229
+   Compiling getrandom v0.4.3
+   Compiling itoa v1.0.19
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling serde v1.0.229
+   Compiling block-buffer v0.12.1
+   Compiling serde_derive v1.0.229
+   Compiling digest v0.11.3
+   Compiling bytes v1.12.1
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling log v0.4.35
+   Compiling memchr v2.8.3
+   Compiling synstructure v0.14.0
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling base64ct v1.8.3
+   Compiling serde_json v1.0.154
+   Compiling zerofrom-derive v0.1.8
+   Compiling http v1.5.0
+   Compiling smallvec v1.16.5
+   Compiling pin-project-lite v0.2.17
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling cpufeatures v0.3.1
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling syn v2.0.119
+   Compiling once_cell v1.21.4
+   Compiling zerocopy v0.8.63
+   Compiling sha2 v0.11.1
+   Compiling pem-rfc7468 v1.0.0
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling tinystr v0.8.5
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling utf_types v1.0.0
+   Compiling writeable v0.6.4
+   Compiling thiserror v2.0.21
+   Compiling litemap v0.8.3
+   Compiling percent-encoding v2.3.2
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling futures-core v0.3.34
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling cpubits v0.1.1
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling pkg-config v0.3.34
+   Compiling hex v0.4.3
+   Compiling vcpkg v0.2.15
+   Compiling bitflags v2.13.2
+   Compiling rustls v0.23.46
+   Compiling crc32fast v1.5.4
+   Compiling libsqlite3-sys v0.39.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling simd-adler32 v0.3.10
+   Compiling base64 v0.23.1
+   Compiling foldhash v0.2.0
+   Compiling base16ct v1.0.0
+   Compiling getrandom v0.3.4
+   Compiling adler2 v2.0.1
+   Compiling thiserror v1.0.69
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling hashbrown v0.17.1
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling signature v3.0.0
+   Compiling hmac v0.13.0
+   Compiling semver v1.0.28
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling rustc_version v0.4.1
+   Compiling der v0.7.10
+   Compiling flate2 v1.1.11
+   Compiling idna v1.1.0
+   Compiling hashlink v0.12.2
+   Compiling elliptic-curve v0.14.3
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling chacha20 v0.10.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling iana-time-zone v0.1.65
+   Compiling fallible-iterator v0.3.0
+   Compiling utf8-zero v0.8.1
+   Compiling ureq v3.5.1
+   Compiling rusqlite v0.41.1
+   Compiling chrono v0.4.45
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v5.0.0
+   Compiling darling_macro v0.24.1
+   Compiling rfc6979 v0.6.0
+   Compiling http-body v1.1.0
+   Compiling num-integer v0.1.47
+   Compiling futures-macro v0.3.34
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-sink v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling slab v0.4.12
+   Compiling spin v0.9.9
+   Compiling cfg_aliases v0.1.1
+   Compiling num-bigint-dig v0.8.6
+   Compiling futures-task v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling rand_chacha v0.9.0
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling base64 v0.22.1
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling event-listener v5.4.2
+   Compiling want v0.3.2
+   Compiling rand v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling either v1.19.0
+   Compiling sync_wrapper v1.0.2
+   Compiling httpdate v1.0.3
+   Compiling winnow v1.0.5
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling arrayvec v0.7.8
+   Compiling jiff-core v0.1.4
+   Compiling jiff v0.2.41
+   Compiling vte v0.15.0
+   Compiling hyper v1.12.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling itertools v0.14.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling dyn-clone v1.0.20
+   Compiling shell-words v1.1.1
+   Compiling mime v0.3.18
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling unicode-width v0.2.3
+   Compiling ryu v1.0.23
+   Compiling serde_urlencoded v0.7.1
+   Compiling vt100 v0.18.1
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling axum-core v0.5.6
+   Compiling portable-pty v0.9.0
+   Compiling openidconnect v4.1.0
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+warning: unused import: `ExecutionTransportError`
+  --> apps/server/src/worker_channel.rs:38:72
+   |
+38 |     ExecutionEvent, ExecutionProducerRegistration, ExecutionTransport, ExecutionTransportError,
+   |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `caller`, `running`, `authority`, `prepare`, `describe`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:129:8
+    |
+120 | impl Context {
+    | ------------ methods in this implementation
+...
+129 |     fn caller(
+    |        ^^^^^^
+...
+148 |     fn running(&self) -> crate::store::Result<()> {
+    |        ^^^^^^^
+...
+245 |     async fn authority<T, F>(self: &Arc<Self>, operation: F) -> Result<T>
+    |              ^^^^^^^^^
+...
+265 |     async fn prepare(
+    |              ^^^^^^^
+...
+293 |     async fn describe(
+    |              ^^^^^^^^
+...
+388 |     async fn reconcile(
+    |              ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple fields are never read
+   --> apps/server/src/remote_execution.rs:434:5
+    |
+433 | struct Attempt {
+    |        ------- fields in this struct
+434 |     id: String,
+    |     ^^
+435 |     owner: String,
+    |     ^^^^^
+436 |     device: String,
+    |     ^^^^^^
+437 |     workspace: String,
+    |     ^^^^^^^^^
+438 |     project: String,
+    |     ^^^^^^^
+439 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+440 |     transport: ExecutionTransport,
+    |     ^^^^^^^^^
+
+warning: methods `terminal` and `receipt` are never used
+   --> apps/server/src/remote_execution.rs:446:8
+    |
+445 | impl Attempt {
+    | ------------ methods in this implementation
+446 |     fn terminal(&self) -> bool {
+    |        ^^^^^^^^
+...
+459 |     fn receipt(&self) -> Option<dunlin_relay_protocol::worker::AttemptFence> {
+    |        ^^^^^^^
+
+warning: field `capacity` is never read
+   --> apps/server/src/remote_execution.rs:471:5
+    |
+467 | pub(crate) struct Service {
+    |                   ------- field in this struct
+...
+471 |     capacity: Arc<Semaphore>,
+    |     ^^^^^^^^
+
+warning: methods `submit`, `status`, `cancel`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:531:25
+    |
+474 | impl Service {
+    | ------------ methods in this implementation
+...
+531 |     pub(crate) async fn submit(
+    |                         ^^^^^^
+...
+578 |     pub(crate) async fn status(
+    |                         ^^^^^^
+...
+594 |     pub(crate) async fn cancel(
+    |                         ^^^^^^
+...
+632 |     pub(crate) async fn reconcile(
+    |                         ^^^^^^^^^
+
+warning: function `admit_owned` is never used
+   --> apps/server/src/remote_execution.rs:712:10
+    |
+712 | async fn admit_owned(
+    |          ^^^^^^^^^^^
+
+warning: function `fresh` is never used
+   --> apps/server/src/remote_execution.rs:795:10
+    |
+795 | async fn fresh(context: &Arc<Context>, actor: &Attempt) -> Result<PreparedRemoteExecution> {
+    |          ^^^^^
+
+warning: function `monitor` is never used
+   --> apps/server/src/remote_execution.rs:807:10
+    |
+807 | async fn monitor(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+warning: function `receive_record` is never used
+   --> apps/server/src/remote_execution.rs:846:10
+    |
+846 | async fn receive_record(context: &Arc<Context>, actor: &Attempt, reply: Reply) -> Result<()> {
+    |          ^^^^^^^^^^^^^^
+
+warning: function `control` is never used
+   --> apps/server/src/remote_execution.rs:856:10
+    |
+856 | async fn control(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+warning: function `cancel_cached` is never used
+   --> apps/server/src/remote_execution.rs:994:10
+    |
+994 | async fn cancel_cached(actor: &Attempt) {
+    |          ^^^^^^^^^^^^^
+
+warning: function `run_attempt` is never used
+    --> apps/server/src/remote_execution.rs:1014:10
+     |
+1014 | async fn run_attempt(
+     |          ^^^^^^^^^^^
+
+warning: associated function `from_worker_session` is never used
+  --> apps/server/src/store/native_checkout.rs:62:19
+   |
+54 | impl SandboxMetadataRoots {
+   | ------------------------- associated function in this implementation
+...
+62 |     pub(crate) fn from_worker_session(
+   |                   ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `PreparedRemoteExecution` is never constructed
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:46:19
+   |
+46 | pub(crate) struct PreparedRemoteExecution {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `host_id`, `export_id`, `export_revision`, and `principal` are never used
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:58:12
+   |
+57 | impl PreparedRemoteExecution {
+   | ---------------------------- methods in this implementation
+58 |     pub fn host_id(&self) -> &str {
+   |            ^^^^^^^
+...
+61 |     pub fn export_id(&self) -> &str {
+   |            ^^^^^^^^^
+...
+64 |     pub fn export_revision(&self) -> u64 {
+   |            ^^^^^^^^^^^^^^^
+...
+67 |     pub fn principal(&self) -> ExportPrincipal {
+   |            ^^^^^^^^^
+
+warning: struct `RemoteExecutionReservation` is never constructed
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:105:19
+    |
+105 | pub(crate) struct RemoteExecutionReservation {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:119:5
+    |
+118 | struct StoredExecution {
+    |        --------------- fields in this struct
+119 |     owner: String,
+    |     ^^^^^
+120 |     device: String,
+    |     ^^^^^^
+121 |     workspace: String,
+122 |     project: String,
+    |     ^^^^^^^
+123 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+124 |     intent_digest: String,
+    |     ^^^^^^^^^^^^^
+125 |     binding: String,
+    |     ^^^^^^^
+126 |     authority: AuthorityStamp,
+    |     ^^^^^^^^^
+...
+130 |     created: i64,
+    |     ^^^^^^^
+131 |     renew_sequence: u64,
+    |     ^^^^^^^^^^^^^^
+132 |     renewal: Option<ExecutionControllerMessage>,
+    |     ^^^^^^^
+133 |     cancel_requested: bool,
+    |     ^^^^^^^^^^^^^^^^
+
+warning: method `reservation` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:136:8
+    |
+135 | impl StoredExecution {
+    | -------------------- method in this implementation
+136 |     fn reservation(&self, replayed: bool) -> RemoteExecutionReservation {
+    |        ^^^^^^^^^^^
+
+warning: function `execution_sql_integer` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:157:4
+    |
+157 | fn execution_sql_integer(value: u64) -> Result<i64> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple methods are never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:169:8
+    |
+168 | impl Store {
+    | ---------- methods in this implementation
+169 |     fn remote_execution_caller(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+187 |     pub(crate) fn prepare_remote_execution_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+261 |     pub(crate) fn lookup_remote_execution_intent_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+362 |     fn validate_execution_observation<F>(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+438 |     pub(crate) fn admit_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+455 |     pub(crate) fn admit_remote_execution_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+536 |     fn current_remote_execution(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+564 |     pub(crate) fn dispatch_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+586 |     pub(crate) fn renew_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+715 |     pub(crate) fn remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^
+...
+735 |     fn cancel_remote_execution_in_transaction(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+769 |     pub(crate) fn cancel_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+...
+792 |     pub(crate) fn cancel_remote_execution_from_guard<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+809 |     pub(crate) fn reconcile_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+852 |     pub(crate) fn remote_execution_controller_authority_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+934 |     pub(crate) fn mark_remote_execution_uncertain<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `matches_metadata_slot` is never used
+  --> apps/server/src/worker_channel/execution.rs:84:19
+   |
+71 | impl ExecutionTransport {
+   | ----------------------- method in this implementation
+...
+84 |     pub(super) fn matches_metadata_slot(
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `describe_execution_export` is never used
+   --> apps/server/src/worker_channel/exports.rs:257:25
+    |
+110 | impl Service {
+    | ------------ method in this implementation
+...
+257 |     pub(crate) async fn describe_execution_export(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `SessionOwner` is never constructed
+  --> apps/server/src/worker_execution/runtime/process.rs:80:19
+   |
+80 | pub(super) struct SessionOwner {
+   |                   ^^^^^^^^^^^^
+
+warning: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:89:5
+   |
+86 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+89 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: associated items `attest_session` and `never_spawned_session` are never used
+   --> apps/server/src/worker_execution/runtime/process.rs:535:19
+    |
+521 | impl StopProof {
+    | -------------- associated items in this implementation
+...
+535 |     pub(super) fn attest_session(&self, fence: &wire::session::SessionFence) -> local::Result<()> {
+    |                   ^^^^^^^^^^^^^^
+...
+542 |     pub(super) fn never_spawned_session(fence: wire::session::SessionFence) -> Self {
+    |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `spawn_session` is never used
+   --> apps/server/src/worker_execution/runtime/process.rs:736:19
+    |
+688 | impl Owned {
+    | ---------- associated function in this implementation
+...
+736 |     pub(super) fn spawn_session(
+    |                   ^^^^^^^^^^^^^
+
+warning: method `observation` is never used
+    --> apps/server/src/worker_execution/runtime/process.rs:1354:19
+     |
+1226 | impl Platform {
+     | ------------- method in this implementation
+...
+1354 |     pub(super) fn observation(&self) -> (&str, &str) {
+     |                   ^^^^^^^^^^^
+
+warning: fields `lease` and `turn` are never read
+  --> apps/server/src/worker_execution/runtime/sessions.rs:10:5
+   |
+ 9 | struct SessionState {
+   |        ------------ fields in this struct
+10 |     lease: WorkerSessionLease,
+   |     ^^^^^
+11 |     turn: Option<WorkerTurnLease>,
+   |     ^^^^
+
+warning: multiple fields are never read
+  --> apps/server/src/worker_execution/runtime/sessions.rs:14:5
+   |
+13 | pub(super) struct SessionActive {
+   |                   ------------- fields in this struct
+14 |     command: session::SessionOpenCommand,
+   |     ^^^^^^^
+15 |     receipt: session::SessionReceipt,
+   |     ^^^^^^^
+16 |     checkout_root: PathBuf,
+   |     ^^^^^^^^^^^^^
+17 |     connection: Connected,
+18 |     state: Mutex<SessionState>,
+   |     ^^^^^
+19 |     filesystem: SessionFilesystem,
+   |     ^^^^^^^^^^
+20 |     deadline_ms: AtomicU64,
+   |     ^^^^^^^^^^^
+...
+23 |     sender: mpsc::Sender<session::TurnCommand>,
+   |     ^^^^^^
+24 |     finished: AtomicBool,
+25 |     stopped: AtomicBool,
+   |     ^^^^^^^
+
+warning: multiple methods are never used
+   --> apps/server/src/worker_execution/runtime/sessions.rs:34:8
+    |
+ 33 | impl Runtime {
+    | ------------ methods in this implementation
+ 34 |     fn session_live(&self, active: &SessionActive) -> Result<(), Code> {
+    |        ^^^^^^^^^^^^
+...
+ 43 |     fn session_slot(&self, fence: &session::SessionFence) -> Result<Arc<SessionActive>, Code> {
+    |        ^^^^^^^^^^^^
+...
+ 60 |     fn session_deadline(&self, active: &SessionActive, state: &SessionState) -> Result<(), Code> {
+    |        ^^^^^^^^^^^^^^^^
+...
+ 85 |     async fn session_sql<T: Send + 'static>(
+    |              ^^^^^^^^^^^
+...
+131 |     async fn session_validate(self: &Arc<Self>, active: &Arc<SessionActive>) -> Result<(), Code> {
+    |              ^^^^^^^^^^^^^^^^
+...
+180 |     async fn open_live_session(
+    |              ^^^^^^^^^^^^^^^^^
+...
+288 |     async fn submit_session_turn(
+    |              ^^^^^^^^^^^^^^^^^^^
+...
+344 |     async fn session_close(
+    |              ^^^^^^^^^^^^^
+...
+388 |     fn session_hooks(self: &Arc<Self>, active: &Arc<SessionActive>) -> engine::Hooks {
+    |        ^^^^^^^^^^^^^
+...
+449 |     async fn session_prepare(
+    |              ^^^^^^^^^^^^^^^
+...
+488 |     async fn session_record_stop(
+    |              ^^^^^^^^^^^^^^^^^^^
+...
+517 |     async fn session_actor(
+    |              ^^^^^^^^^^^^^
+
+warning: methods `session_guards`, `handle_session`, and `session_read` are never used
+   --> apps/server/src/worker_execution/runtime/sessions.rs:596:8
+    |
+595 | impl Runtime {
+    | ------------ methods in this implementation
+596 |     fn session_guards(
+    |        ^^^^^^^^^^^^^^
+...
+624 |     pub async fn handle_session(
+    |                  ^^^^^^^^^^^^^^
+...
+720 |     async fn session_read(
+    |              ^^^^^^^^^^^^
+
+warning: constant `FRAME_BYTES` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:26:7
+   |
+26 | const FRAME_BYTES: usize = 64 * 1024;
+   |       ^^^^^^^^^^^
+
+warning: constant `INPUT_BYTES` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:27:7
+   |
+27 | const INPUT_BYTES: usize = 16 * 1024;
+   |       ^^^^^^^^^^^
+
+warning: constant `CHUNK_BYTES` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:28:7
+   |
+28 | const CHUNK_BYTES: usize = 4 * 1024;
+   |       ^^^^^^^^^^^
+
+warning: type alias `Result` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:29:17
+   |
+29 | pub(crate) type Result<T> = std::result::Result<T, &'static str>;
+   |                 ^^^^^^
+
+warning: type alias `HookFuture` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:30:17
+   |
+30 | pub(crate) type HookFuture = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+   |                 ^^^^^^^^^^
+
+warning: struct `Hooks` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:34:19
+   |
+34 | pub(crate) struct Hooks {
+   |                   ^^^^^
+
+warning: struct `EngineConfig` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:39:19
+   |
+39 | pub(crate) struct EngineConfig {
+   |                   ^^^^^^^^^^^^
+
+warning: struct `TurnSpec` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:48:19
+   |
+48 | pub(crate) struct TurnSpec {
+   |                   ^^^^^^^^
+
+warning: struct `PromptIntent` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:55:19
+   |
+55 | pub(crate) struct PromptIntent {
+   |                   ^^^^^^^^^^^^
+
+warning: enum `StreamKind` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:63:17
+   |
+63 | pub(crate) enum StreamKind {
+   |                 ^^^^^^^^^^
+
+warning: struct `StreamChunk` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:68:19
+   |
+68 | pub(crate) struct StreamChunk {
+   |                   ^^^^^^^^^^^
+
+warning: struct `ReadyInfo` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:74:19
+   |
+74 | pub(crate) struct ReadyInfo {
+   |                   ^^^^^^^^^
+
+warning: struct `TurnResult` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:80:19
+   |
+80 | pub(crate) struct TurnResult {
+   |                   ^^^^^^^^^^
+
+warning: struct `Queued` is never constructed
+  --> apps/server/src/worker_execution/session_acp.rs:84:8
+   |
+84 | struct Queued {
+   |        ^^^^^^
+
+warning: function `mark_closed` is never used
+  --> apps/server/src/worker_execution/session_acp.rs:88:4
+   |
+88 | fn mark_closed(signal: &watch::Sender<Option<&'static str>>, reason: &'static str) {
+   |    ^^^^^^^^^^^
+
+warning: struct `Engine` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:100:19
+    |
+100 | pub(crate) struct Engine {
+    |                   ^^^^^^
+
+warning: associated items `start`, `ready`, `turn`, and `closed` are never used
+   --> apps/server/src/worker_execution/session_acp.rs:108:25
+    |
+107 | impl Engine {
+    | ----------- associated items in this implementation
+108 |     pub(crate) async fn start(
+    |                         ^^^^^
+...
+206 |     pub(crate) fn ready(&self) -> &ReadyInfo {
+    |                   ^^^^^
+...
+209 |     pub(crate) async fn turn(&self, turn: TurnSpec) -> Result<TurnResult> {
+    |                         ^^^^
+...
+220 |     pub(crate) async fn closed(&self) -> &'static str {
+    |                         ^^^^^^
+
+warning: method `validate` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:239:8
+    |
+238 | impl EngineConfig {
+    | ----------------- method in this implementation
+239 |     fn validate(&self) -> Result<()> {
+    |        ^^^^^^^^
+
+warning: method `validate` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:255:8
+    |
+254 | impl TurnSpec {
+    | ------------- method in this implementation
+255 |     fn validate(&self) -> Result<()> {
+    |        ^^^^^^^^
+
+warning: function `guarded` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:276:10
+    |
+276 | async fn guarded<T>(
+    |          ^^^^^^^
+
+warning: enum `ReadPhase` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:298:6
+    |
+298 | enum ReadPhase {
+    |      ^^^^^^^^^
+
+warning: struct `TaggedFrame` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:302:8
+    |
+302 | struct TaggedFrame {
+    |        ^^^^^^^^^^^
+
+warning: struct `ReaderCleanup` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:307:8
+    |
+307 | struct ReaderCleanup(tokio::task::AbortHandle);
+    |        ^^^^^^^^^^^^^
+
+warning: struct `Reader` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:313:8
+    |
+313 | struct Reader {
+    |        ^^^^^^
+
+warning: method `frame` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:324:14
+    |
+323 | impl Reader {
+    | ----------- method in this implementation
+324 |     async fn frame(&mut self) -> Result<TaggedFrame> {
+    |              ^^^^^
+
+warning: struct `Pipes` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:402:8
+    |
+402 | struct Pipes {
+    |        ^^^^^
+
+warning: methods `frame`, `begin`, and `write` are never used
+   --> apps/server/src/worker_execution/session_acp.rs:410:14
+    |
+409 | impl Pipes {
+    | ---------- methods in this implementation
+410 |     async fn frame(&mut self) -> Result<TaggedFrame> {
+    |              ^^^^^
+...
+413 |     fn begin(&self, id: u64, turn: Option<&TurnSpec>) -> Result<ReadPhase> {
+    |        ^^^^^
+...
+425 |     async fn write(&mut self, bytes: &[u8]) -> Result<()> {
+    |              ^^^^^
+
+warning: function `encode` is never used
+   --> apps/server/src/worker_execution/session_acp.rs:433:4
+    |
+433 | fn encode(value: &Value) -> Result<Vec<u8>> {
+    |    ^^^^^^
+
+warning: struct `Actor` is never constructed
+   --> apps/server/src/worker_execution/session_acp.rs:441:8
+    |
+441 | struct Actor {
+    |        ^^^^^
+
+warning: multiple methods are never used
+   --> apps/server/src/worker_execution/session_acp.rs:452:8
+    |
+451 | impl Actor {
+    | ---------- methods in this implementation
+452 |     fn id(&mut self) -> Result<u64> {
+    |        ^^
+...
+460 |     async fn send(&mut self, value: Value, hard: Instant) -> Result<()> {
+    |              ^^^^
+...
+470 |     async fn deny_request(&mut self, value: &Value, hard: Instant) -> Result<()> {
+    |              ^^^^^^^^^^^^
+...
+488 |     async fn request(
+    |              ^^^^^^^
+...
+531 |     async fn update(&mut self, value: &Value, turn: &TurnSpec, hard: Instant) -> Result<()> {
+    |              ^^^^^^
+...
+574 |     async fn initialize(&mut self) -> Result<ReadyInfo> {
+    |              ^^^^^^^^^^
+...
+638 |     async fn run(&mut self, mut receiver: mpsc::Receiver<Queued>) -> Result<()> {
+    |              ^^^
+...
+670 |     async fn turn(&mut self, turn: TurnSpec) -> Result<TurnResult> {
+    |              ^^^^
+
+warning: methods `scope` and `channel` are never used
+  --> apps/server/src/worker_exports/execution.rs:44:19
+   |
+27 | impl<'a> ExecutionChannel<'a> {
+   | ----------------------------- methods in this implementation
+...
+44 |     pub(super) fn scope(&self) -> &ExportScope {
+   |                   ^^^^^
+...
+47 |     pub(super) fn channel(&self) -> &ChannelFence {
+   |                   ^^^^^^^
+
+warning: method `validate_filesystem` is never used
+  --> apps/server/src/worker_exports/execution.rs:83:12
+   |
+63 | impl ExecutionLease {
+   | ------------------- method in this implementation
+...
+83 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: constant `MAX_SESSIONS` is never used
+  --> apps/server/src/worker_exports/session.rs:12:7
+   |
+12 | const MAX_SESSIONS: i64 = 1024;
+   |       ^^^^^^^^^^^^
+
+warning: constant `MAX_OWNER_SESSIONS` is never used
+  --> apps/server/src/worker_exports/session.rs:13:7
+   |
+13 | const MAX_OWNER_SESSIONS: i64 = 128;
+   |       ^^^^^^^^^^^^^^^^^^
+
+warning: fields `receipt`, `authority`, `deadline`, `lifetime`, `idle`, and `poisoned` are never read
+  --> apps/server/src/worker_exports/session.rs:21:5
+   |
+20 | pub(crate) struct WorkerSessionLease {
+   |                   ------------------ fields in this struct
+21 |     receipt: wire::SessionReceipt,
+   |     ^^^^^^^
+22 |     authority: ExportAuthority,
+   |     ^^^^^^^^^
+23 |     deadline: Instant,
+   |     ^^^^^^^^
+24 |     lifetime: Instant,
+   |     ^^^^^^^^
+25 |     idle: Instant,
+   |     ^^^^
+26 |     poisoned: bool,
+   |     ^^^^^^^^
+
+warning: multiple methods are never used
+  --> apps/server/src/worker_exports/session.rs:29:12
+   |
+28 | impl WorkerSessionLease {
+   | ----------------------- methods in this implementation
+29 |     pub fn fence(&self) -> &wire::SessionFence {
+   |            ^^^^^
+...
+32 |     pub fn identity(&self) -> &wire::SessionIdentity {
+   |            ^^^^^^^^
+...
+35 |     pub fn root(&self) -> &std::path::Path {
+   |            ^^^^
+...
+38 |     pub(crate) fn sandbox_only_checkout(&self) -> &super::CapturedCheckout {
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+...
+41 |     pub fn sandbox_metadata_roots(
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+...
+47 |     pub fn filesystem_guard(&self) -> SessionFilesystem {
+   |            ^^^^^^^^^^^^^^^^
+...
+50 |     pub fn budget_remaining(&self) -> Result<Duration> {
+   |            ^^^^^^^^^^^^^^^^
+...
+56 |     pub fn remaining(&self) -> Result<Duration> {
+   |            ^^^^^^^^^
+...
+67 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: field `0` is never read
+  --> apps/server/src/worker_exports/session.rs:72:37
+   |
+72 | pub(crate) struct SessionFilesystem(super::CapturedCheckout);
+   |                   ----------------- ^^^^^^^^^^^^^^^^^^^^^^^
+   |                   |
+   |                   field in this struct
+   |
+   = help: consider removing this field
+   = note: `SessionFilesystem` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `validate` is never used
+  --> apps/server/src/worker_exports/session.rs:74:12
+   |
+73 | impl SessionFilesystem {
+   | ---------------------- method in this implementation
+74 |     pub fn validate(&self) -> Result<()> {
+   |            ^^^^^^^^
+
+warning: fields `receipt`, `deadline`, `budget`, `poisoned`, and `terminal` are never read
+  --> apps/server/src/worker_exports/session.rs:79:5
+   |
+78 | pub(crate) struct WorkerTurnLease {
+   |                   --------------- fields in this struct
+79 |     receipt: wire::TurnReceipt,
+   |     ^^^^^^^
+80 |     deadline: Instant,
+   |     ^^^^^^^^
+81 |     budget: Instant,
+   |     ^^^^^^
+82 |     poisoned: bool,
+   |     ^^^^^^^^
+83 |     terminal: bool,
+   |     ^^^^^^^^
+
+warning: methods `fence` and `remaining` are never used
+  --> apps/server/src/worker_exports/session.rs:86:12
+   |
+85 | impl WorkerTurnLease {
+   | -------------------- methods in this implementation
+86 |     pub fn fence(&self) -> &wire::TurnFence {
+   |            ^^^^^
+...
+89 |     pub fn remaining(&self) -> Result<Duration> {
+   |            ^^^^^^^^^
+
+warning: struct `SessionAdmission` is never constructed
+   --> apps/server/src/worker_exports/session.rs:100:19
+    |
+100 | pub(crate) struct SessionAdmission {
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: struct `TurnAdmission` is never constructed
+   --> apps/server/src/worker_exports/session.rs:104:19
+    |
+104 | pub(crate) struct TurnAdmission {
+    |                   ^^^^^^^^^^^^^
+
+warning: struct `Pins` is never constructed
+   --> apps/server/src/worker_exports/session.rs:110:8
+    |
+110 | struct Pins {
+    |        ^^^^
+
+warning: struct `Stored` is never constructed
+   --> apps/server/src/worker_exports/session.rs:115:8
+    |
+115 | struct Stored {
+    |        ^^^^^^
+
+warning: multiple methods are never used
+    --> apps/server/src/worker_exports/session.rs:158:8
+     |
+ 140 | impl WorkerStore {
+     | ---------------- methods in this implementation
+...
+ 158 |     fn stored_session(&self, fence: &wire::SessionFence) -> Result<Stored> {
+     |        ^^^^^^^^^^^^^^
+...
+ 179 |     fn authority_for_session(&self, pins: &Pins) -> Result<ExportAuthority> {
+     |        ^^^^^^^^^^^^^^^^^^^^^
+...
+ 206 |     fn session_policy(&self, command: &wire::SessionOpenCommand) -> Result<()> {
+     |        ^^^^^^^^^^^^^^
+...
+ 226 |     fn session_current(
+     |        ^^^^^^^^^^^^^^^
+...
+ 257 |     fn ordinary_capacity(
+     |        ^^^^^^^^^^^^^^^^^
+...
+ 272 |     pub fn open_session(
+     |            ^^^^^^^^^^^^
+...
+ 383 |     pub fn validate_worker_session(
+     |            ^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 394 |     pub fn session_spawn_intent(
+     |            ^^^^^^^^^^^^^^^^^^^^
+...
+ 417 |     pub fn session_ready(
+     |            ^^^^^^^^^^^^^
+...
+ 492 |     fn current_turn(
+     |        ^^^^^^^^^^^^
+...
+ 516 |     pub fn lookup_session_turn(
+     |            ^^^^^^^^^^^^^^^^^^^
+...
+ 543 |     pub fn admit_session_turn(
+     |            ^^^^^^^^^^^^^^^^^^
+...
+ 636 |     pub fn turn_write_intent(
+     |            ^^^^^^^^^^^^^^^^^
+...
+ 660 |     pub fn validate_worker_turn(
+     |            ^^^^^^^^^^^^^^^^^^^^
+...
+ 768 |     fn close_for_budget(&self, session: &wire::SessionFence) -> Result<()> {
+     |        ^^^^^^^^^^^^^^^^
+...
+ 775 |     pub fn append_session_text(
+     |            ^^^^^^^^^^^^^^^^^^^
+...
+ 859 |     pub fn complete_session_turn(
+     |            ^^^^^^^^^^^^^^^^^^^^^
+...
+ 912 |     pub fn renew_worker_session(
+     |            ^^^^^^^^^^^^^^^^^^^^
+...
+ 965 |     pub fn renew_worker_turn(
+     |            ^^^^^^^^^^^^^^^^^
+...
+1012 |     pub fn request_session_close(
+     |            ^^^^^^^^^^^^^^^^^^^^^
+...
+1057 |     fn session_readable(&self, stored: &Stored) -> Result<()> {
+     |        ^^^^^^^^^^^^^^^^
+...
+1114 |     pub fn reconcile_worker_session(
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1146 |     pub fn reconcile_worker_turn(
+     |            ^^^^^^^^^^^^^^^^^^^^^
+...
+1162 |     fn stream_digest(&self, fence: &wire::SessionFence, sequence: u64) -> Result<String> {
+     |        ^^^^^^^^^^^^^
+...
+1172 |     pub fn replay_session_stream(
+     |            ^^^^^^^^^^^^^^^^^^^^^
+...
+1240 |     pub fn acknowledge_session_stream(
+     |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `dunlin-relay` (bin "dunlin-relay") generated 77 warnings (run `cargo fix --bin "dunlin-relay" -p dunlin-relay` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized] target(s) in 2m 18s
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1572864 1048364    524500  67% /scratch
+1048272	/scratch/target
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+   Compiling bitflags v2.13.2
+   Compiling rusqlite v0.41.1
+   Compiling rustix v1.1.6
+   Compiling nix v0.28.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling portable-pty v0.9.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+warning: methods `cancel` and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:594:25
+    |
+474 | impl Service {
+    | ------------ methods in this implementation
+...
+594 |     pub(crate) async fn cancel(
+    |                         ^^^^^^
+...
+632 |     pub(crate) async fn reconcile(
+    |                         ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:89:5
+   |
+86 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+89 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `observation` is never used
+    --> apps/server/src/worker_execution/runtime/process.rs:1354:19
+     |
+1226 | impl Platform {
+     | ------------- method in this implementation
+...
+1354 |     pub(super) fn observation(&self) -> (&str, &str) {
+     |                   ^^^^^^^^^^^
+
+warning: method `scope` is never used
+  --> apps/server/src/worker_exports/execution.rs:44:19
+   |
+27 | impl<'a> ExecutionChannel<'a> {
+   | ----------------------------- method in this implementation
+...
+44 |     pub(super) fn scope(&self) -> &ExportScope {
+   |                   ^^^^^
+
+warning: methods `identity` and `validate_filesystem` are never used
+  --> apps/server/src/worker_exports/session.rs:32:12
+   |
+28 | impl WorkerSessionLease {
+   | ----------------------- methods in this implementation
+...
+32 |     pub fn identity(&self) -> &wire::SessionIdentity {
+   |            ^^^^^^^^
+...
+67 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: `dunlin-relay` (bin "dunlin-relay" test) generated 5 warnings
+    Finished `test` profile [unoptimized] target(s) in 54.33s
+     Running unittests src/main.rs (/scratch/target/debug/deps/dunlin_relay-902d08eb11e93041)
+
+running 1 test
+test worker_execution::runtime::tests::session_tests::production_browser_acceptance_runtime_worker_session ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 550 filtered out; finished in 1.73s
+
+Sandbox memory: {"memory.peak": "3388706816", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

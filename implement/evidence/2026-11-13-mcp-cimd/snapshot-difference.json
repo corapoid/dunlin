@@ -1,0 +1,12 @@
+{
+  "server_source_sha256": "c063c44a4de316a94aad42ef4d59379b10c5cef997bc44655cb78391737ab643",
+  "client_source_sha256": "cace9f56baef4ac02270ee67b46a9db0b8ed290e1338952323997a1f1412eed5",
+  "differences": [
+    "apps/server/src/mcp_oauth/config.rs: typed TOML test fixture serialization; CLI argument iteration as_chunks instead of chunks_exact after Clippy",
+    "apps/server/src/api/web/tests/mcp_oauth_flow.rs: assert the existing envelope context fields instead of nonexistent client_id"
+  ],
+  "mcp_client_and_OAuth_runtime_code_and_client_tests_identical": true,
+  "server_codegen_units": 64,
+  "server_memory_mib": 3584,
+  "server_scratch_mib": 1536
+}

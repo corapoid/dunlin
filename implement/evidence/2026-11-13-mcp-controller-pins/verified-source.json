@@ -1,0 +1,30 @@
+{
+  "source_sha256": "94bce480928fa3396b841ff746617b9b64b04c458fcbeef4c6992fc48aeff302",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-controller-pins-server-final.log",
+      "log_sha256": "3355493fdafbc413723872aa5dd0aa6b43ab246d82842fd926de0b89726c6562",
+      "source_sha256": "94bce480928fa3396b841ff746617b9b64b04c458fcbeef4c6992fc48aeff302",
+      "exit_code": 0,
+      "scope": "758 server-family tests, including five new private controller admission/storage tests."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-controller-pins-runtime-final.log",
+      "log_sha256": "0bcd0356e1b9c26cdbe815a5a4e76121221265ae082ba497c9e3f90b373fb968",
+      "source_sha256": "94bce480928fa3396b841ff746617b9b64b04c458fcbeef4c6992fc48aeff302",
+      "exit_code": 0,
+      "scope": "Five actual remote TLS/WSS/sandbox acceptance scenarios for profiles without MCP, including v3, v4/v5 persistent sessions and process restarts."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-controller-pins-clippy-final.log",
+      "log_sha256": "f89921952601b15d0a8d531ce89ff7090c86b2e94ee87b46abac3d0a635ef5b4",
+      "source_sha256": "94bce480928fa3396b841ff746617b9b64b04c458fcbeef4c6992fc48aeff302",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "scope": "Private controller SQL admission/pins and versioned OpenBrokerSession storage, with legacy dispatch closed for MCP. Public REST/Actor integration, scoped broker authority, v5 producer/runner proxy and full remote tools/call acceptance remain open. No UI/protocol crate changes."
+}

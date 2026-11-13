@@ -1,3 +1,6 @@
 # Preserve upstream whitespace in mirrored dependency sources; first-party files
 # retain normal diff whitespace checks. Reviewed changes are listed in provenance.
 vendor/** linguist-vendored=true whitespace=-blank-at-eof,-blank-at-eol,-space-before-tab
+# Preserve raw evidence exactly; manifests pin SHA-256, and patch context is significant.
+implement/evidence/**/*.log -whitespace
+implement/evidence/**/*.patch -whitespace

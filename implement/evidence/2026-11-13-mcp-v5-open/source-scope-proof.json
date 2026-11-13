@@ -1,0 +1,8 @@
+{
+  "final_source_sha256": "cb5c79b0d874c855e827752d00794d3a5902d475c999641b348080860684e22b",
+  "full_server_source_sha256": "74fe43a06c603d55645f2ef733375935471aa684af5e944da09833b6d24cb00f",
+  "domain_protocol_source_sha256": "f6a01e17fab8461e08073ba1f86d8826fefe2ced420747228d8e2a58016f8790",
+  "full_server_difference": "explicit-null-policy.patch",
+  "domain_protocol_difference": "Only worker_client broker module/declaration and the policy null rejection; crates/domain and crates/relay-protocol unchanged.",
+  "method": "Exact reverse in disposable source copy using the sandbox launcher input set and digest algorithm; original worktree never mutated."
+}

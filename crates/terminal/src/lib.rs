@@ -286,8 +286,15 @@ enum Backend {
     },
 }
 
+#[derive(Default)]
+struct RelayIo {
+    enabled: AtomicBool,
+    closing: AtomicBool,
+}
+
 pub struct Session {
     backend: Backend,
+    relay_io: Arc<RelayIo>,
     output: Receiver<Vec<u8>>,
     exit: Receiver<Exit>,
     pid: Option<u32>,
@@ -395,6 +402,8 @@ impl Session {
             .master
             .take_writer()
             .map_err(|error| format!("Could not write to the PTY: {error}"))?;
+        let relay_io = Arc::new(RelayIo::default());
+        let reader_io = relay_io.clone();
         let (output_tx, output_rx) = async_channel::bounded(128);
         let (exit_tx, exit_rx) = async_channel::bounded(1);
         let reader_thread = std::thread::Builder::new()
@@ -402,8 +411,20 @@ impl Session {
             .spawn(move || {
                 let mut buffer = vec![0u8; OUTPUT_CHUNK];
                 loop {
+                    if reader_io.closing.load(Ordering::Acquire) {
+                        break;
+                    }
                     match reader.read(&mut buffer) {
-                        Ok(0) | Err(_) => break,
+                        Ok(0) => break,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::WouldBlock
+                                && reader_io.enabled.load(Ordering::Acquire) =>
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            continue;
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
                         Ok(read) => {
                             if output_tx.send_blocking(buffer[..read].to_vec()).is_err() {
                                 break;
@@ -438,6 +459,7 @@ impl Session {
                 master: Mutex::new(pty.master),
                 killer: Mutex::new(killer),
             },
+            relay_io,
             output: output_rx,
             exit: exit_rx,
             pid,
@@ -457,6 +479,7 @@ impl Session {
     ) -> Self {
         Self {
             backend: Backend::Remote { input, control },
+            relay_io: Arc::new(RelayIo::default()),
             output,
             exit,
             pid: None,
@@ -479,6 +502,68 @@ impl Session {
 
     pub fn is_remote(&self) -> bool {
         matches!(self.backend, Backend::Remote { .. })
+    }
+
+    /// Explicit relay mode: Unix master clones share O_NONBLOCK, so the reader
+    /// retries WouldBlock too. Desktop sessions keep their blocking I/O mode.
+    pub fn enable_relay_mode(&self) -> Result<(), String> {
+        #[cfg(unix)]
+        if let Backend::Local { master, .. } = &self.backend {
+            let master = master
+                .lock()
+                .map_err(|_| "Terminal master is unavailable".to_owned())?;
+            let fd = master
+                .as_raw_fd()
+                .ok_or_else(|| "Relay PTY has no native file descriptor".to_owned())?;
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if flags < 0 {
+                return Err(format!(
+                    "Could not read PTY flags: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            self.relay_io.enabled.store(true, Ordering::Release);
+            if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+                self.relay_io.enabled.store(false, Ordering::Release);
+                return Err(format!(
+                    "Could not enable interruptible PTY writes: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            return Ok(());
+        }
+        Err("Interruptible relay PTY I/O is unavailable on this transport".into())
+    }
+
+    /// Relay-only partial writes are interruptible even when the slave never
+    /// reads. hard_terminate wakes the retry loop through the closing flag;
+    /// neither a live Arc nor a blocked kernel write can hold shutdown forever.
+    pub fn write_relay(&self, bytes: &[u8]) -> Result<(), String> {
+        if !self.relay_io.enabled.load(Ordering::Acquire) {
+            return Err("Relay PTY I/O is not enabled".into());
+        }
+        let Backend::Local { writer, .. } = &self.backend else {
+            return Err("Relay PTY I/O requires a local terminal".into());
+        };
+        let mut writer = writer
+            .lock()
+            .map_err(|_| "Terminal writer is unavailable".to_owned())?;
+        let mut remaining = bytes;
+        while !remaining.is_empty() {
+            if self.relay_io.closing.load(Ordering::Acquire) {
+                return Err("Terminal is closing".into());
+            }
+            match writer.write(remaining) {
+                Ok(0) => return Err("Terminal input closed".into()),
+                Ok(written) => remaining = &remaining[written..],
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(5))
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(format!("Terminal write failed: {error}")),
+            }
+        }
+        Ok(())
     }
 
     pub fn write(&self, bytes: &[u8]) -> Result<(), String> {
@@ -527,6 +612,55 @@ impl Session {
             Backend::Remote { control, .. } => control
                 .try_send(Control::Resize { rows, cols })
                 .map_err(|_| "The relay terminal control buffer is full".to_string()),
+        }
+    }
+
+    /// Relay revocation: forcibly terminate this PTY's shell and foreground job.
+    /// Desktop `kill`/Drop retain their existing graceful semantics. This does
+    /// not contain deliberately detached processes in other sessions/groups;
+    /// hostile workloads require an OS sandbox or a kernel isolation adapter.
+    pub fn hard_terminate(&self) {
+        self.relay_io.closing.store(true, Ordering::Release);
+        match &self.backend {
+            Backend::Local { master, .. } => {
+                #[cfg(unix)]
+                if let Some(pid) = self
+                    .pid
+                    .and_then(|pid| i32::try_from(pid).ok())
+                    .filter(|pid| *pid > 1)
+                    && let Ok(master) = master.lock()
+                    && let Some(fd) = master.as_raw_fd()
+                {
+                    // portable-pty establishes a new session led by the child.
+                    // The retained master must still belong to that session;
+                    // never signal a group inferred only from an old PID.
+                    let session = unsafe { libc::tcgetsid(fd) };
+                    if session == pid {
+                        let foreground = master.process_group_leader().filter(|group| {
+                            *group > 1 && unsafe { libc::getsid(*group) } == session
+                        });
+                        let shell = (unsafe { libc::getsid(pid) } == session
+                            && unsafe { libc::getpgid(pid) } == pid)
+                            .then_some(pid);
+                        if let Some(group) = foreground {
+                            unsafe {
+                                libc::kill(-group, libc::SIGKILL);
+                            }
+                        }
+                        if let Some(group) = shell.filter(|group| Some(*group) != foreground) {
+                            unsafe {
+                                libc::kill(-group, libc::SIGKILL);
+                            }
+                        }
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = master;
+                    self.kill();
+                }
+            }
+            Backend::Remote { .. } => self.kill(),
         }
     }
 

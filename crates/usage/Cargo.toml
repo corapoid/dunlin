@@ -13,3 +13,6 @@ serde.workspace = true
 serde_json.workspace = true
 dunlin-http.workspace = true
 rusqlite = { version = "0.41.1", features = ["bundled"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

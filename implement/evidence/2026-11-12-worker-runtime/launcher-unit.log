@@ -1,0 +1,8 @@
+Sandbox suite=probe container=dunlin-check-28ce462d960a4ce1aec93bce5e42c991 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+.Sandbox suite=probe container=dunlin-check-c8953cb5045349c38fe2b270bd5e0365 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+....Sandbox suite=macos-profile container=dunlin-check-9b3603d9bb5046e48466b37be5350b9d image=sha256:fixture platform=linux/arm64 memory=3328m scratch=1280m file_size=134217728 wall=1s source_sha256=fixture-hash
+.......
+----------------------------------------------------------------------
+Ran 12 tests in 0.026s
+
+OK

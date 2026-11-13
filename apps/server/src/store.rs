@@ -11,8 +11,42 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 use crate::auth;
+pub(crate) mod ahp;
+pub(crate) mod sharing;
+pub(crate) use ahp::AhpAccess;
+pub(crate) mod local_metadata;
+pub(crate) mod native_checkout;
+mod native_grants;
+pub use native_grants::NativeGrantStamp;
+#[cfg(test)]
+mod agent_migration_tests;
+pub(crate) mod agents;
+mod bindings;
+#[cfg(test)]
+mod mcp_input_migration_tests;
+pub(crate) use bindings::Binding;
+mod browser_sessions;
+#[cfg(test)]
+mod checkout_migration_tests;
+mod host_health;
+#[cfg(test)]
+mod host_migration_tests;
+pub(crate) use host_health::HostHealthObservation;
+pub(crate) mod hosts;
+mod invitations;
 pub(crate) mod jobs;
 mod linear;
+#[cfg(test)]
+mod local_metadata_migration_tests;
+pub(crate) mod mcp_oauth;
+mod oidc;
+pub(crate) mod remote_bindings;
+pub(crate) mod scoped_secrets;
+pub(crate) mod service_principals;
+pub(crate) mod team_projects;
+pub(crate) mod teams;
+pub(crate) mod worker_channels;
+pub(crate) mod workflows;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -20,13 +54,29 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Invalid stored team metadata")]
+    Encoding(#[from] serde_json::Error),
     #[error("{0}")]
     Limit(String),
+    #[error("{0}")]
+    Policy(#[from] dunlin_domain::collaboration::PolicyError),
+    #[error("{0}")]
+    Conflict(String),
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
+pub(crate) const SCHEMA_VERSION: i64 = 48;
+
 const MAX_SESSIONS_PER_USER: i64 = 1000;
+
+fn positive_revision(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
+    let value: i64 = row.get(index)?;
+    u64::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or(rusqlite::Error::InvalidQuery)
+}
 
 pub use dunlin_relay_protocol::{Project, User};
 
@@ -88,9 +138,29 @@ pub struct ArtifactShareRow {
 
 pub struct Store {
     connection: Connection,
+    oauth_revocation_owner: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    oauth_writer_owner: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    catalog_changes: tokio::sync::broadcast::Sender<()>,
+    interactive_changes: tokio::sync::broadcast::Sender<()>,
 }
 
 impl Store {
+    /// Payload-free invalidation; consumers must reread their own authorized scope.
+    pub fn subscribe_catalog(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.catalog_changes.subscribe()
+    }
+
+    pub(crate) fn subscribe_interactive(&self) -> tokio::sync::broadcast::Receiver<()> {
+        self.interactive_changes.subscribe()
+    }
+    fn interactive_changed(&self) {
+        let _ = self.interactive_changes.send(());
+    }
+    fn catalog_changed(&self) {
+        let _ = self.catalog_changes.send(());
+        self.interactive_changed();
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
@@ -101,7 +171,13 @@ impl Store {
         connection.pragma_update(None, "synchronous", "FULL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.busy_timeout(Duration::from_secs(5))?;
-        let store = Self { connection };
+        let store = Self {
+            connection,
+            oauth_revocation_owner: Default::default(),
+            oauth_writer_owner: Default::default(),
+            catalog_changes: tokio::sync::broadcast::channel(64).0,
+            interactive_changes: tokio::sync::broadcast::channel(64).0,
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -110,7 +186,13 @@ impl Store {
     pub fn open_in_memory() -> Result<Self> {
         let connection = Connection::open_in_memory()?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
-        let store = Self { connection };
+        let store = Self {
+            connection,
+            oauth_revocation_owner: Default::default(),
+            oauth_writer_owner: Default::default(),
+            catalog_changes: tokio::sync::broadcast::channel(64).0,
+            interactive_changes: tokio::sync::broadcast::channel(64).0,
+        };
         store.migrate()?;
         Ok(store)
     }
@@ -119,6 +201,11 @@ impl Store {
         let version: i64 = self
             .connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version > SCHEMA_VERSION {
+            return Err(StoreError::Limit(
+                "Relay database is newer than this server; refusing to modify it".into(),
+            ));
+        }
         if version < 1 {
             self.connection.execute_batch(
                 r#"
@@ -289,7 +376,287 @@ impl Store {
                 PRAGMA user_version=8;")?;
             transaction.commit()?;
         }
+        if version < 9 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(teams::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 10 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(team_projects::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 11 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(workflows::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 12 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(browser_sessions::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 13 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(invitations::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 14 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(oidc::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 15 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(service_principals::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 16 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(dunlin_session_runtime::SCHEMA)?;
+            transaction.execute_batch("PRAGMA user_version=16;")?;
+            transaction.commit()?;
+        }
+        if version < 17 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(bindings::MIGRATION)?;
+            transaction.commit()?;
+        }
+        if version < 18 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(dunlin_session_runtime::STREAM_SCHEMA)?;
+            transaction.execute_batch("PRAGMA user_version=18;")?;
+            transaction.commit()?;
+        }
+        if version < 19 {
+            let transaction = self.connection.unchecked_transaction()?;
+            transaction.execute_batch(dunlin_session_runtime::PROJECTION_SCHEMA)?;
+            self.interactive_journal()
+                .backfill_projection()
+                .map_err(|_| StoreError::Limit("AHP projection migration failed".into()))?;
+            transaction.execute_batch("PRAGMA user_version=19;")?;
+            transaction.commit()?;
+        }
+        if version < 20 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::CHANNEL_SCHEMA)?;
+            self.interactive_journal()
+                .backfill_channels()
+                .map_err(|_| StoreError::Limit("AHP channel migration failed".into()))?;
+            tx.execute_batch("PRAGMA user_version=20;")?;
+            tx.commit()?;
+        }
+        if version < 21 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::DISPATCH_SCHEMA)?;
+            self.interactive_journal()
+                .backfill_dispatch()
+                .map_err(|_| StoreError::Limit("AHP dispatch migration failed".into()))?;
+            tx.execute_batch("PRAGMA user_version=21;")?;
+            tx.commit()?;
+        }
+        if version < 22 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::CONTROL_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=22;")?;
+            tx.commit()?;
+        }
+        if version < 23 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::PERMISSION_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=23;")?;
+            tx.commit()?;
+        }
+        if version < 24 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::SHARING_SCHEMA)?;
+            tx.execute_batch("ALTER TABLE interactive_ahp_clients ADD COLUMN visibility TEXT NOT NULL DEFAULT '{}'; PRAGMA user_version=24;")?;
+            tx.commit()?;
+        }
+        if version < 25 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(native_grants::MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=25;")?;
+            tx.commit()?;
+        }
+        if version < 26 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(
+                "ALTER TABLE relay_jobs ADD COLUMN checkout_grant TEXT; PRAGMA user_version=26;",
+            )?;
+            tx.commit()?;
+        }
+        if version < 27 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch("ALTER TABLE interactive_ahp_clients ADD COLUMN views TEXT NOT NULL DEFAULT '{}'; PRAGMA user_version=27;")?;
+            tx.commit()?;
+        }
+        if version < 28 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::ADMISSION_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=28;")?;
+            tx.commit()?;
+        }
+        if version < 29 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch("ALTER TABLE team_audit ADD COLUMN resource_id TEXT;")?;
+            tx.execute_batch(agents::AGENT_SCHEMA)?;
+            tx.execute_batch(dunlin_session_runtime::ADMISSION_PROFILE_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=29;")?;
+            tx.commit()?;
+        }
+        if version < 30 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(hosts::HOST_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=30;")?;
+            tx.commit()?;
+        }
+        if version < 31 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(worker_channels::WORKER_CHANNEL_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=31;")?;
+            tx.commit()?;
+        }
+        if version < 32 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(remote_bindings::REMOTE_BINDING_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=32;")?;
+            tx.commit()?;
+        }
+        if version < 33 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(local_metadata::SCHEMA)?;
+            tx.execute_batch(bindings::REVOCATION_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=33;")?;
+            tx.commit()?;
+        }
+        if version < 34 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch("ALTER TABLE relay_jobs ADD COLUMN checkout_stamp TEXT; ALTER TABLE team_local_bindings ADD COLUMN metadata_approval_revision INTEGER CHECK(metadata_approval_revision IS NULL OR (metadata_approval_revision BETWEEN 1 AND 9007199254740991)); PRAGMA user_version=34;")?;
+            tx.commit()?;
+        }
+        if version < 35 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(remote_bindings::resolver::execution::REMOTE_EXECUTION_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=35;")?;
+            tx.commit()?;
+        }
+        if version < 36 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(remote_bindings::resolver::sessions::SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=36;")?;
+            tx.commit()?;
+        }
+        if version < 37 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(remote_bindings::resolver::sessions::LIFECYCLE_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=37;")?;
+            tx.commit()?;
+        }
+        if version < 38 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=38;")?;
+            tx.commit()?;
+        }
+        if version < 39 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::AUTHORIZATION_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=39;")?;
+            tx.commit()?;
+        }
+        if version < 40 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch("ALTER TABLE mcp_oauth_connections ADD COLUMN display_name TEXT CHECK(display_name IS NULL OR length(display_name) BETWEEN 1 AND 120); PRAGMA user_version=40;")?;
+            tx.commit()?;
+        }
+        if version < 41 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(dunlin_session_runtime::MCP_INPUT_SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=41;")?;
+            tx.commit()?;
+        }
+        if version < 42 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::WRITE_METADATA_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=42;")?;
+            tx.commit()?;
+        }
+        if version < 43 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::REVOCATION_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=43;")?;
+            tx.commit()?;
+        }
+        if version < 44 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::CLEANUP_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=44;")?;
+            tx.commit()?;
+        }
+        if version < 45 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch("ALTER TABLE mcp_oauth_secret_references ADD COLUMN writer_protected INTEGER NOT NULL DEFAULT 0 CHECK(writer_protected IN (0,1)); PRAGMA user_version=45;")?;
+            tx.commit()?;
+        }
+        if version < 46 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::WRITE_RECEIPT_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=46;")?;
+            tx.commit()?;
+        }
+        if version < 47 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(mcp_oauth::RETENTION_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=47;")?;
+            tx.commit()?;
+        }
+        if version < 48 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(scoped_secrets::SCHEMA)?;
+            tx.execute_batch("PRAGMA user_version=48;")?;
+            tx.commit()?;
+        }
         Ok(())
+    }
+
+    pub(crate) fn interactive_scope(&self, id: &str) -> Result<(String, String)> {
+        self.connection
+            .query_row(
+                "SELECT workspace,project FROM interactive_sessions WHERE id=?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| dunlin_domain::collaboration::PolicyError::PermissionDenied.into())
+    }
+
+    pub(crate) fn interactive_journal(&self) -> dunlin_session_runtime::Journal<'_> {
+        dunlin_session_runtime::Journal::new(&self.connection)
+            .notifying(|| self.interactive_changed())
+            .validating_shared_owner(|stamp| {
+                let owner = self
+                    .team_project_context(&stamp.workspace_id, &stamp.project_id, &stamp.user_id)
+                    .map_err(|_| {
+                        dunlin_session_runtime::Error::Policy(
+                            dunlin_domain::collaboration::PolicyError::PermissionDenied,
+                        )
+                    })?;
+                owner
+                    .revalidate(
+                        stamp,
+                        dunlin_domain::collaboration::Permission::ShareOwnSession,
+                    )
+                    .map(|_| ())
+                    .map_err(Into::into)
+            })
+    }
+
+    /// Called only by the server coordinator, after binding its listener.
+    pub fn recover_interactive_sessions(&self) -> Result<usize> {
+        dunlin_session_runtime::Journal::new(&self.connection)
+            .recover()
+            .map_err(|_| StoreError::Limit("Interactive session recovery failed".into()))
     }
 
     /// Bounded aggregate billing evidence. Raw provider logs and prompts are
@@ -419,6 +786,7 @@ impl Store {
             "INSERT INTO projects (id, name, path, created_at) VALUES (?1, ?2, ?3, ?4)",
             params![project.id, project.name, project.path, now_secs()],
         )?;
+        self.catalog_changed();
         Ok(project)
     }
 
@@ -473,14 +841,6 @@ impl Store {
         Ok(())
     }
 
-    pub fn grant(&self, project_id: &str, user_id: &str) -> Result<()> {
-        self.connection.execute(
-            "INSERT OR IGNORE INTO project_grants (project_id, user_id) VALUES (?1, ?2)",
-            params![project_id, user_id],
-        )?;
-        Ok(())
-    }
-
     pub fn project_for_user(&self, project_id: &str, user_id: &str) -> Result<Option<Project>> {
         Ok(self
             .connection
@@ -489,7 +849,7 @@ impl Store {
                 SELECT p.id, p.name, p.path
                 FROM projects p
                 JOIN project_grants g ON g.project_id = p.id
-                WHERE p.id = ?1 AND g.user_id = ?2
+                WHERE p.id = ?1 AND g.user_id = ?2 AND g.active=1
                 "#,
                 params![project_id, user_id],
                 |row| {
@@ -509,7 +869,7 @@ impl Store {
             SELECT p.id, p.name, p.path
             FROM projects p
             JOIN project_grants g ON g.project_id = p.id
-            WHERE g.user_id = ?1
+            WHERE g.user_id = ?1 AND g.active=1
             ORDER BY p.name
             "#,
         )?;
@@ -683,6 +1043,7 @@ impl Store {
             "UPDATE devices SET revoked_at = ?1 WHERE id = ?2",
             params![now_secs(), id],
         )?;
+        self.catalog_changed();
         Ok(())
     }
 
@@ -720,6 +1081,7 @@ impl Store {
             "#,
             params![id, user_id, project_id, title, now_secs(), device_id],
         )?;
+        self.catalog_changed();
         Ok(())
     }
 
@@ -763,6 +1125,7 @@ impl Store {
     pub fn delete_session(&self, id: &str) -> Result<()> {
         self.connection
             .execute("DELETE FROM sessions WHERE id = ?1", [id])?;
+        self.catalog_changed();
         Ok(())
     }
 
@@ -771,6 +1134,7 @@ impl Store {
             "UPDATE sessions SET updated_at = ?1, last_device_id = ?2 WHERE id = ?3",
             params![now_secs(), device_id, id],
         )?;
+        self.catalog_changed();
         Ok(())
     }
 
@@ -784,6 +1148,7 @@ impl Store {
             "UPDATE sessions SET title = ?1 WHERE id = ?2 AND (title = 'New session' OR title = '')",
             params![title, id],
         )?;
+        self.catalog_changed();
         Ok(())
     }
 
@@ -1125,6 +1490,63 @@ mod tests {
     }
 
     #[test]
+    fn v17_journals_migrate_to_stream_baseline_without_losing_prompts_or_reusing_order() {
+        use dunlin_session_runtime::{StreamReplay, Subscription};
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("relay.db");
+        let store = Store::open(&database).unwrap();
+        let owner = store.create_user("stream-owner", "admin").unwrap();
+        let workspace = store.create_workspace(&owner, "stream-team").unwrap();
+        let project = store
+            .create_team_project(&owner.id, &workspace.id, "project")
+            .unwrap();
+        let authority = store
+            .team_project_context(&workspace.id, &project.id, &owner.id)
+            .unwrap();
+        let session = store
+            .interactive_journal()
+            .create(&authority, &workspace.id, &project.id)
+            .unwrap();
+        store
+            .interactive_journal()
+            .enqueue(&authority, &session.id, "one", "v17 retained prompt")
+            .unwrap();
+        store.connection.execute_batch("DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; DROP TABLE interactive_session_share_audit; DROP TABLE interactive_session_readers; DROP TABLE interactive_session_sharing; DROP TABLE interactive_permission_challenges; DROP TABLE interactive_cancellation_intents; DROP TABLE interactive_client_dispatch; DROP TABLE interactive_message_ids; DROP TABLE interactive_ahp_clients; DROP TABLE interactive_ahp_sessions; DROP TABLE interactive_ahp_actions; DROP TABLE interactive_ahp_chats; DROP TABLE interactive_ahp_clock; DROP TRIGGER interactive_event_stream; DROP TABLE interactive_stream_events; DROP TABLE interactive_stream_clock; ALTER TABLE relay_jobs DROP COLUMN checkout_grant; ALTER TABLE project_grants DROP COLUMN active; ALTER TABLE project_grants DROP COLUMN revision; PRAGMA user_version=17;").unwrap();
+        drop(store);
+        let store = Store::open(&database).unwrap();
+        let authority = store
+            .team_project_context(&workspace.id, &project.id, &owner.id)
+            .unwrap();
+        let journal = store.interactive_journal();
+        let subscriptions = [Subscription {
+            context: &authority,
+            session: &session.id,
+        }];
+        let baseline = journal.snapshot_stream(&subscriptions).unwrap();
+        assert_eq!(baseline.cursor.sequence, 2);
+        assert_eq!(baseline.sessions[0].1[0].prompt, "v17 retained prompt");
+        journal
+            .enqueue(&authority, &session.id, "two", "new prompt")
+            .unwrap();
+        match journal
+            .replay_stream(&subscriptions, &baseline.cursor)
+            .unwrap()
+        {
+            StreamReplay::Events { cursor, events } => {
+                assert_eq!(cursor.sequence, 3);
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].event.kind, "turn_queued");
+            }
+            _ => panic!("Expected migration to preserve the stream baseline"),
+        }
+        let version: i64 = store
+            .connection
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, crate::store::SCHEMA_VERSION);
+    }
+
+    #[test]
     fn transcript_revision_migration_preserves_legacy_history() {
         let directory = tempfile::tempdir().unwrap();
         let database = directory.path().join("relay.db");
@@ -1140,7 +1562,14 @@ mod tests {
         assert!(store.save_transcript("session", "legacy history").unwrap());
         store
             .connection
-            .execute_batch("ALTER TABLE transcripts DROP COLUMN revision; PRAGMA user_version = 5;")
+            .execute_batch(
+                "DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE transcripts DROP COLUMN revision;
+                ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; DROP TABLE interactive_session_share_audit; DROP TABLE interactive_session_readers; DROP TABLE interactive_session_sharing; DROP TABLE interactive_permission_challenges; DROP TABLE interactive_cancellation_intents; DROP TABLE interactive_client_dispatch; DROP TABLE interactive_message_ids; DROP TABLE interactive_ahp_clients; DROP TABLE interactive_ahp_sessions; DROP TABLE interactive_ahp_actions; DROP TABLE interactive_ahp_chats; DROP TABLE interactive_ahp_clock; DROP TRIGGER interactive_event_stream; DROP TABLE interactive_stream_events; DROP TABLE interactive_stream_clock; DROP TABLE team_local_bindings; DROP TABLE interactive_events; DROP TABLE interactive_turns; DROP TABLE interactive_sessions; DROP TABLE team_service_principals; DROP TABLE web_oidc_sessions; DROP TABLE team_invitations; DROP TABLE web_browser_sessions;
+                DROP TABLE team_workflow_versions; DROP TABLE team_workflow_drafts;
+                DROP TABLE team_audit; DROP TABLE team_project_grants; DROP TABLE team_projects;
+                DROP TABLE team_memberships; DROP TABLE team_workspaces;
+                ALTER TABLE relay_jobs DROP COLUMN checkout_grant; ALTER TABLE project_grants DROP COLUMN active; ALTER TABLE project_grants DROP COLUMN revision; PRAGMA user_version = 5;",
+            )
             .unwrap();
         drop(store);
         let store = Store::open(&database).unwrap();

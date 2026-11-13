@@ -1,0 +1,31 @@
+{
+  "source_sha256": "2392372a1ab2231385a06bb666d8f91e0f1f10ac65623f5c0f98bf4b89d221e7",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "7fc1b1a2ab0450c1d0682a7983ff6e1abbde2e5d7dd846a6375a62c9725aad69",
+      "source_sha256": "2392372a1ab2231385a06bb666d8f91e0f1f10ac65623f5c0f98bf4b89d221e7",
+      "exit_code": 0,
+      "scope": "798 server-family tests (659 relay, 1 identity, 74 SDK, 27 terminal, 37 usage); 35 separate acceptance tests ignored. Includes four new pure dispatcher/Connected proof tests."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "9f7be9f1b0167f14bd9a5435eea10409cc625ce6d2f4dfd2ad42fe2776a75f39",
+      "source_sha256": "2392372a1ab2231385a06bb666d8f91e0f1f10ac65623f5c0f98bf4b89d221e7",
+      "exit_code": 0,
+      "scope": "Six production executable/TLS/WSS/reverse-proof/bwrap/LSM remote acceptance scenarios. Actual worker v5 socket handles interleaved controlled catalog responses and heartbeats; an RPC timeout closes that worker loop and stops an active native sandbox with native stopped/reservation0. Profiles have no MCP; no private MCP account, SDK tool consent or paid tools/call is exercised by these transport probes."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "2ad51905935d7ca8daedb76482b9045e5f36497f8cbe9787284093d1d75846f4",
+      "source_sha256": "2392372a1ab2231385a06bb666d8f91e0f1f10ac65623f5c0f98bf4b89d221e7",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Verified v5 source socket dispatcher plus an opaque live broker Client in runtime Connected, with current fence/owner attestation and independent expiry. Native MCP open receiver, local proxy with original native lease/FS checks, agent MCP setup, public admission/startup and full REST/AHP -> runner -> MCP acceptance remain incomplete. No UI/protocol crate changes or real accounts/services/tailnet."
+}

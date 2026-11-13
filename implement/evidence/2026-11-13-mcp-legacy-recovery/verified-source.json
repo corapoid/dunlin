@@ -1,0 +1,140 @@
+{
+  "source_sha256": "c706bd99d2e88059877d9e365b670920a091413f6c224bd8c466e976345c6b0f",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "be56e58fa7c5b78a30d2fcfce3211d8a353eca112011743f24f3f870bfa4185d",
+      "source_sha256": "c706bd99d2e88059877d9e365b670920a091413f6c224bd8c466e976345c6b0f",
+      "exit_code": 0,
+      "scope": "860 tests:715 relay,1 identity,80 SDK,27 terminal,37 usage;54 separate acceptance ignored. Seven new operator/Store/CLI cases:strict parsing and explicit shutdown acknowledgement,unknown/reference preservation,old intent fencing,provenance carry,authority ABA/stale journal,both modern leases,audit rollback/full capacity,inactive owner,file identity/no create/no migrate/unsafe inode.",
+      "memory": {
+        "memory.peak": "3596922880",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "e850047bb70dc20ee60c9281cf4a837a8378a3d0d8b0cba387d880c4b5172500",
+      "source_sha256": "c706bd99d2e88059877d9e365b670920a091413f6c224bd8c466e976345c6b0f",
+      "exit_code": 0,
+      "scope": "One selected production executable CLI acceptance,768 other tests filtered,0.10s after build. Empty environment,synthetic current-schema DB; writer lease blocks recover,release allows operator-attested recovery,reference rows unchanged and stale replay rejected. Not Chromium,AS I/O,real service shutdown or proof of legacy process completion.",
+      "memory": {
+        "memory.peak": "3563261952",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "ca1d32f37a70609aeff6f60273cf43db760fc5a761afdd0fb45fe16b3fb0b47c",
+      "source_sha256": "c706bd99d2e88059877d9e365b670920a091413f6c224bd8c466e976345c6b0f",
+      "exit_code": 0,
+      "scope": "153 tests:116 MCP,6 HTTP,31 vault;package all-targets Clippy,-D warnings.",
+      "memory": {
+        "memory.peak": "1284198400",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "5b177bae4381176d286570d655d65bcd655dc1eee5f6721c97fdd9bbdccbe09e",
+      "source_sha256": "c706bd99d2e88059877d9e365b670920a091413f6c224bd8c466e976345c6b0f",
+      "exit_code": 0,
+      "scope": "Final server and companion all-targets Clippy,-D warnings.",
+      "memory": {
+        "memory.peak": "2299285504",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-url-input/frontend-final.log",
+      "log_sha256": "d27c8d57549c0ad06ac60f1fb7e12ef5a337a8115efa48c6177037ffe7563b4b",
+      "source_sha256": "86f046de06716554f67e5c6ad83c2a7a31c9f7b0dea9982526feda74d4a6b35d",
+      "exit_code": 0,
+      "scope": "157 tests,including full URL/ASCII host/punycode/parser ambiguity and immutable URL action without answers. Absolute parsed href differs from original display address when needed; tests cover https: relative-special parsing.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-url-input/typecheck-final.log",
+      "log_sha256": "26d632c5bafc5059233b27168bdbab52f36ad66a0d024883226496303933d18a",
+      "source_sha256": "d800150d96d1f92150ddfbd103554a2223f87a768d5e67fb914ab23ce524f0b3",
+      "exit_code": 0,
+      "scope": "Final TypeScript noEmit check of current frontend and configuration.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "ci-contract",
+      "log": "../2026-11-13-mcp-url-input/ci-contract-final.log",
+      "log_sha256": "80a8da2e12329a24b64bdc54557a72dca687bd2962d3191735bf615f1d10a47c",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "14 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "launcher",
+      "log": "../2026-11-13-mcp-url-input/launcher-final.log",
+      "log_sha256": "d8a5e6f40e696cef2a23743dfc5c5264a374d87192bac5e9b25d15bf189656aa",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "18 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "6af3993fc3d04aeb70cb7d41131300f116a75ae049fd82645471d5fb6c258bab"
+  },
+  "milestone": {
+    "id": "E5.2",
+    "status": "complete",
+    "requirements": [
+      {
+        "requirement": "2026 transport and2025 compatibility adapter",
+        "proof": "Current MCP153 tests plus prior accepted browser/runtime integrations;modern-first JSON/SSE,per-request metadata,strict recognized-error handling,legacy initialize/session/DELETE semantics."
+      },
+      {
+        "requirement": "Discovery and metadata",
+        "proof": "Current MCP153 and server860;atomic paginated catalogs,header projection,pins and bounded private cache."
+      },
+      {
+        "requirement": "MRTR",
+        "proof": "Current MCP153 supports tools/call,prompts/get,resources/read with opaque one-use Pending and exact original operation; prior URL/form remote23 acceptance with unchanged current frontend."
+      },
+      {
+        "requirement": "Subscriptions",
+        "proof": "Current MCP153;POST/listen ACK,subset filters,subscription identity,URI isolation,bounds and invalidation without reconnect/replay."
+      },
+      {
+        "requirement": "OAuth",
+        "proof": "Current server860,MCP153 and production CLI1;previous accepted browser OAuth/revoke/retention/MRTR cases;exact immutable generation/claims/write receipts,rotation/revoke/cleanup,bounded history and explicit legacy recovery."
+      },
+      {
+        "requirement": "Schemas with limits",
+        "proof": "Current MCP153 and server860;bounded JSON Schema/local references/no fetch,graph/regex budgets,pinned arguments and outputs;previous accepted rendered form cases."
+      }
+    ],
+    "basis": "Exact README E5.2 checklist plus existing documented bounded client profile. Supported MRTR requests are only tools/call,prompts/get,resources/read;interactive discovery/list is forbidden,not a missing requirement. Modern/legacy fallback follows the official2026 Streamable HTTP era rules.",
+    "protocol_sources": [
+      "https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr#supported-requests",
+      "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#backward-compatibility"
+    ],
+    "boundaries": "General scoped secrets and remaining catalog/Builder/A2A work belong to open E5.3-E5.5;application resources/content UI remains E3.7. Real accounts/AS/keyring/tailnet/native platform acceptance remains E10. No universal optional-capability or provider certification claim.",
+    "formal_progress": "21/68=30.9%; full E0-E10 remains active."
+  },
+  "historical_integration_evidence": {
+    "manifest": "../2026-11-13-mcp-url-input/verified-source.json",
+    "manifest_sha256": "ed42beb9734ed152535c7634831f8846dc36ebd5af20a1e03cfc9ddba83a8e91",
+    "scope": "Prior23 remote acceptance with form/URL Chromium on c9cb28a5,not rerun in this increment. Current frontend/TypeScript/tooling snapshots match; current regression and CLI checks cover the new private operator journal path."
+  },
+  "diagnostics": {
+    "server-first.log": "Exit101:identity1,relay714 passed,1 failed,54 ignored. Fixture wrote attempted_revision2 when already2; replaced with a genuine old-worker confirmation. Final full server passes.",
+    "clippy-first.log": "Passed before two cosmetic/cfg-test annotation edits and the meaningful stale-review fixture correction; final root Clippy supersedes it."
+  },
+  "limits": "Only explicit operator-attested termination of pre-lease relays;modern kernel leases cannot prove legacy shutdown. Recovery adds no AS/write ACK,does no network or secret-store I/O,preserves unknowns and stays disabled. No real database/account/service was migrated.",
+  "open": "Full E0-E10 goal is not complete. E5.3-E5.5 and other unclosed roadmap items,real service approvals and E10 remain required."
+}

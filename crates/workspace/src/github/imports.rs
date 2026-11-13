@@ -302,6 +302,7 @@ pub fn clone_with(
             path.display()
         )
     })?;
+    crate::git::command::scrub(&mut command);
     command
         .current_dir(&destination)
         .env("GIT_TERMINAL_PROMPT", "0")

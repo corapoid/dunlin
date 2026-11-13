@@ -161,10 +161,12 @@ def anchors(text):
 
 def markdown_files(root):
     files = set(root.glob("*.md"))
-    for directory in ("docs", "todo", ".github"):
+    for directory in ("docs", "todo", "implement", ".github"):
         files.update((root / directory).rglob("*.md"))
     if (root / "web/README.md").is_file():
         files.add(root / "web/README.md")
+    if (root / "apps/web/README.md").is_file():
+        files.add(root / "apps/web/README.md")
     return sorted(path.resolve() for path in files if path.is_file())
 
 

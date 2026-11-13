@@ -1,0 +1,50 @@
+Sandbox suite=tooling container=dunlin-check-92fc5891475f47fd81b345dff3d7b44a image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=60s source_sha256=93ef677648bc44e33a7715779f058ec17a2259878f01d8f5fcdc07f130f0e7e3
+test_default_still_builds_a_standalone_release (test_ci_workflows.RelayBundleTests.test_default_still_builds_a_standalone_release) ... ok
+test_invalid_arguments_fail_before_building (test_ci_workflows.RelayBundleTests.test_invalid_arguments_fail_before_building) ... ok
+test_no_build_copies_existing_binary_without_invoking_cargo (test_ci_workflows.RelayBundleTests.test_no_build_copies_existing_binary_without_invoking_cargo) ... ok
+test_no_build_rejects_missing_or_non_executable_binary (test_ci_workflows.RelayBundleTests.test_no_build_rejects_missing_or_non_executable_binary) ... ok
+test_desktop_packages_are_not_generated_or_published (test_ci_workflows.WorkflowTests.test_desktop_packages_are_not_generated_or_published) ... ok
+test_headless_checks_are_required_and_publish_separate_cli_artifacts (test_ci_workflows.WorkflowTests.test_headless_checks_are_required_and_publish_separate_cli_artifacts) ... ok
+test_installation_docs_recommend_source_without_package_commands (test_ci_workflows.WorkflowTests.test_installation_docs_recommend_source_without_package_commands) ... ok
+test_macos_checks_and_build_are_independent_and_keep_full_checks (test_ci_workflows.WorkflowTests.test_macos_checks_and_build_are_independent_and_keep_full_checks) ... ok
+test_only_main_warmer_writes_shared_macos_caches_without_running_tests (test_ci_workflows.WorkflowTests.test_only_main_warmer_writes_shared_macos_caches_without_running_tests) ... ok
+test_platform_releases_wait_for_authorization_not_each_other (test_ci_workflows.WorkflowTests.test_platform_releases_wait_for_authorization_not_each_other) ... ok
+test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results (test_ci_workflows.WorkflowTests.test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results) ... ok
+test_runtime_requires_named_kernel_policy_and_offline_launcher (test_ci_workflows.WorkflowTests.test_runtime_requires_named_kernel_policy_and_offline_launcher) ... ok
+test_web_application_has_independent_required_checks (test_ci_workflows.WorkflowTests.test_web_application_has_independent_required_checks) ... ok
+test_website_does_not_link_to_withdrawn_desktop_packages (test_ci_workflows.WorkflowTests.test_website_does_not_link_to_withdrawn_desktop_packages) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 2.560s
+
+OK
+test_termination_unwinds_through_scoped_cleanup (test_web_sandbox_launcher.CleanupTests.test_termination_unwinds_through_scoped_cleanup) ... Sandbox suite=probe container=dunlin-check-c159d29471fa425d8065fc3ed11ce679 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+ok
+test_timeout_removes_only_this_invocations_container (test_web_sandbox_launcher.CleanupTests.test_timeout_removes_only_this_invocations_container) ... Sandbox suite=probe container=dunlin-check-280fdf1a35704df8860b75a99055d758 image=sha256:fixture platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=1s source_sha256=fixture-hash
+ok
+test_browser_and_server_share_the_bounded_large_test_binary_budget (test_web_sandbox_launcher.FileSizeTests.test_browser_and_server_share_the_bounded_large_test_binary_budget) ... ok
+test_large_rust_test_artifacts_and_sparse_cases_have_a_bounded_distinct_limit (test_web_sandbox_launcher.FileSizeTests.test_large_rust_test_artifacts_and_sparse_cases_have_a_bounded_distinct_limit) ... ok
+test_rust_filter_is_a_bounded_identifier_not_a_shell_command_or_cargo_option (test_web_sandbox_launcher.FilterTests.test_rust_filter_is_a_bounded_identifier_not_a_shell_command_or_cargo_option) ... ok
+test_fixture_flag_is_exclusive_required_canonical_and_symlink_free (test_web_sandbox_launcher.MacProfileTests.test_fixture_flag_is_exclusive_required_canonical_and_symlink_free) ... ok
+test_fixture_rejects_descriptor_scope_drift_and_oversized_regular_file (test_web_sandbox_launcher.MacProfileTests.test_fixture_rejects_descriptor_scope_drift_and_oversized_regular_file) ... ok
+test_generator_keeps_readonly_samepath_mount_and_separate_cargo_home_without_lsm (test_web_sandbox_launcher.MacProfileTests.test_generator_keeps_readonly_samepath_mount_and_separate_cargo_home_without_lsm) ... Sandbox suite=macos-profile container=dunlin-check-a8c6e349d38a459ebba4ce7f6201475c image=sha256:fixture platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=64
+ok
+test_profile_precheck_filter_is_validated_and_cannot_select_ignored_flags (test_web_sandbox_launcher.MacProfileTests.test_profile_precheck_filter_is_validated_and_cannot_select_ignored_flags) ... ok
+test_browser_opt_in_is_exclusive_and_cannot_hide_behind_another_filter (test_web_sandbox_launcher.RuntimeBrowserTests.test_browser_opt_in_is_exclusive_and_cannot_hide_behind_another_filter) ... ok
+test_browser_runtime_keeps_containment_and_uses_only_readonly_dependency_caches (test_web_sandbox_launcher.RuntimeBrowserTests.test_browser_runtime_keeps_containment_and_uses_only_readonly_dependency_caches) ... Sandbox suite=runtime container=dunlin-check-a994923249bf44639e79acd9d9d48906 image=sha256:fixture platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash scope=runtime-focused-acceptance-only filter=production_browser_acceptance_runtime_remote_session_journal chromium=remote-session-production-ui pids=256 codegen_units=256 strip=symbols
+ok
+test_focused_runtime_retains_actual_containment_and_binary_build_but_not_full_pretests (test_web_sandbox_launcher.RuntimeFilterTests.test_focused_runtime_retains_actual_containment_and_binary_build_but_not_full_pretests) ... ok
+test_only_bounded_runtime_acceptance_names_are_accepted (test_web_sandbox_launcher.RuntimeFilterTests.test_only_bounded_runtime_acceptance_names_are_accepted) ... ok
+test_runtime_policy_rejects_changed_bytes_or_symlinks_before_use (test_web_sandbox_launcher.RuntimePolicyTests.test_runtime_policy_rejects_changed_bytes_or_symlinks_before_use) ... ok
+test_oversized_file_is_rejected_before_copying (test_web_sandbox_launcher.SourceTests.test_oversized_file_is_rejected_before_copying) ... ok
+test_source_copy_excludes_secrets_and_build_caches_without_following_symlinks (test_web_sandbox_launcher.SourceTests.test_source_copy_excludes_secrets_and_build_caches_without_following_symlinks) ... ok
+test_workspace_accepts_only_the_same_bounded_rust_identifier (test_web_sandbox_launcher.WorkspaceTests.test_workspace_accepts_only_the_same_bounded_rust_identifier) ... ok
+test_workspace_mcp_and_server_packages_keep_default_containment (test_web_sandbox_launcher.WorkspaceTests.test_workspace_mcp_and_server_packages_keep_default_containment) ... Sandbox suite=workspace container=dunlin-check-5ecc482b71a8430dae7aa92388f0172f image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=8
+Sandbox suite=mcp container=dunlin-check-5d9b9b7c97c34dd38fe0a87a6d478d30 image=sha256:fixture platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=1s source_sha256=fixture-hash codegen_units=8
+Sandbox suite=server container=dunlin-check-7aa242e0c80f444b8c3afef77feafd74 image=sha256:fixture platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=1s source_sha256=fixture-hash codegen_units=256 strip=symbols
+ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.016s
+
+OK

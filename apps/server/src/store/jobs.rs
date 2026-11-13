@@ -12,10 +12,17 @@ pub(crate) struct Task {
     pub settings_digest: String,
     pub device: String,
     pub linear_revision: String,
+    #[serde(default)]
+    pub native_grant: Option<NativeGrantStamp>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_checkout_stamp: Option<super::native_checkout::NativeCheckoutStamp>,
 }
+#[derive(Clone)]
 pub(crate) struct Record {
     pub job: Job,
     pub task: Task,
+    pub checkout_grant: Option<NativeGrantStamp>,
+    pub checkout_stamp: Option<super::native_checkout::NativeCheckoutStamp>,
 }
 
 fn status(value: &str) -> rusqlite::Result<Status> {
@@ -47,13 +54,26 @@ fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Record> {
             sync_error: row.get(11)?,
         },
         task,
+        checkout_stamp: row
+            .get::<_, Option<String>>(13)?
+            .map(|raw| {
+                if raw.len() > 16 * 1024 {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                serde_json::from_str(&raw).map_err(|_| rusqlite::Error::InvalidQuery)
+            })
+            .transpose()?,
+        checkout_grant: row
+            .get::<_, Option<String>>(12)?
+            .map(|raw| serde_json::from_str(&raw).map_err(|_| rusqlite::Error::InvalidQuery))
+            .transpose()?,
     })
 }
-const SELECT: &str = "SELECT j.id,j.owner,u.name,j.project,j.task,j.status,j.cancel,j.report,j.checkout_project,j.branch,j.sync_state,j.sync_error FROM relay_jobs j JOIN users u ON u.id=j.owner";
+const SELECT: &str = "SELECT j.id,j.owner,u.name,j.project,j.task,j.status,j.cancel,j.report,j.checkout_project,j.branch,j.sync_state,j.sync_error,j.checkout_grant,j.checkout_stamp FROM relay_jobs j JOIN users u ON u.id=j.owner";
 
 impl Store {
     pub(crate) fn job_workload(&self, user: &str) -> Result<dunlin_domain::presence::Workload> {
-        let (queued,active,interrupted)=self.connection.query_row("SELECT coalesce(sum(j.status='queued'),0),coalesce(sum(j.status IN ('preparing','running')),0),coalesce(sum(j.status='unknown'),0) FROM relay_jobs j WHERE EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=j.project AND g.user_id=?1)",[user],|row|Ok((row.get::<_,u32>(0)? as usize,row.get::<_,u32>(1)? as usize,row.get::<_,u32>(2)? as usize)))?;
+        let (queued,active,interrupted)=self.connection.query_row("SELECT coalesce(sum(j.status='queued'),0),coalesce(sum(j.status IN ('preparing','running')),0),coalesce(sum(j.status='unknown'),0) FROM relay_jobs j WHERE EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=j.project AND g.user_id=?1 AND g.active=1)",[user],|row|Ok((row.get::<_,u32>(0)? as usize,row.get::<_,u32>(1)? as usize,row.get::<_,u32>(2)? as usize)))?;
         let paused = self.connection.query_row(
             "SELECT paused FROM relay_queue_state WHERE id=1",
             [],
@@ -91,14 +111,23 @@ impl Store {
             self_user_id: None,
         })
     }
+    #[cfg(test)]
     pub(crate) fn enqueue(&self, user: &str, task: &Task) -> Result<Job> {
+        self.native_checkout_transaction(|store| store.enqueue_in_transaction(user, task))
+    }
+    pub(crate) fn enqueue_in_transaction(&self, user: &str, task: &Task) -> Result<Job> {
         let payload =
             serde_json::to_string(task).map_err(|_| StoreError::Limit("Invalid task".into()))?;
         if payload.len() > 96 * 1024 {
             return Err(StoreError::Limit("Task snapshot is too large".into()));
         }
         let fingerprint = crate::auth::hash_token(&payload);
-        let transaction = self.connection.unchecked_transaction()?;
+        if self.connection.is_autocommit() {
+            return Err(StoreError::Conflict(
+                "Job approval transaction required".into(),
+            ));
+        }
+        let transaction = &self.connection;
         if let Some((id, previous)) = transaction
             .query_row(
                 "SELECT job,fingerprint FROM relay_job_approvals WHERE owner=?1 AND idem=?2",
@@ -112,7 +141,6 @@ impl Store {
                     "Idempotency key was already used for a different task approval".into(),
                 ));
             }
-            transaction.commit()?;
             return Ok(self
                 .job(&id)?
                 .ok_or_else(|| {
@@ -155,7 +183,6 @@ impl Store {
             params![user, task.request.idempotency_key, fingerprint, id],
         )?;
         transaction.execute("INSERT INTO relay_jobs(id,owner,project,issue,idem,fingerprint,task,position) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![id,user,task.request.project_id,task.issue.id,task.request.idempotency_key,fingerprint,payload,position])?;
-        transaction.commit()?;
         Ok(self.job(&id)?.unwrap().job)
     }
     pub(crate) fn claim_job(&self) -> Result<Option<Record>> {
@@ -180,14 +207,72 @@ impl Store {
         transaction.commit()?;
         id.map(|id| self.job(&id)).transpose().map(Option::flatten)
     }
+    #[cfg(test)]
     pub(crate) fn job_running(&self, id: &str, project: &str, branch: &str) -> Result<()> {
-        let changed=self.connection.execute("UPDATE relay_jobs SET status='running',checkout_project=?2,branch=?3 WHERE id=?1 AND status='preparing' AND cancel=0",params![id,project,branch])?;
+        let tx = self.connection.unchecked_transaction()?;
+        let record = self
+            .job(id)?
+            .ok_or_else(|| StoreError::Conflict("Job was removed".into()))?;
+        if record.job.status != Status::Preparing
+            || record.job.cancel_requested
+            || record.job.checkout_project.is_some()
+            || record.checkout_grant.is_some()
+        {
+            return Err(StoreError::Conflict(
+                "Job checkout reservation is no longer new".into(),
+            ));
+        }
+        let source = record
+            .task
+            .native_grant
+            .as_ref()
+            .ok_or_else(|| StoreError::Conflict("Legacy task lacks native authority".into()))?;
+        if source.project_id != record.job.project_id || source.user_id != record.job.owner {
+            return Err(StoreError::Conflict(
+                "Job source grant scope changed".into(),
+            ));
+        }
+        self.revalidate_native_grant(source)?;
+        let grant = self.capture_native_grant(project, &record.job.owner)?;
+        if project == record.job.project_id {
+            return Err(StoreError::Conflict(
+                "Job checkout must be independent".into(),
+            ));
+        }
+        let changed=self.connection.execute("UPDATE relay_jobs SET status='running',checkout_project=?2,branch=?3,checkout_grant=?4 WHERE id=?1 AND status='preparing' AND cancel=0 AND checkout_project IS NULL AND checkout_grant IS NULL",params![id,project,branch,serde_json::to_string(&grant)?])?;
         if changed != 1 {
-            return Err(StoreError::Limit(
+            return Err(StoreError::Conflict(
                 "Job reservation is no longer active".into(),
             ));
         }
+        tx.commit()?;
         Ok(())
+    }
+    /// Publish the independent clone, grant and execution stamp atomically.
+    /// All filesystem inspection has completed before this fresh SQL cut.
+    pub(crate) fn publish_job_checkout(
+        &self,
+        id: &str,
+        source: &super::native_checkout::NativeCheckoutAuthority,
+        prepared: super::native_checkout::PreparedOrdinaryCheckout,
+        branch: &str,
+        authorize: impl FnOnce(&Store, &Record) -> Result<()>,
+    ) -> Result<Record> {
+        let result=self.native_checkout_transaction(|store| {
+            let record=store.job(id)?.ok_or_else(||StoreError::Conflict("Job removed".into()))?;
+            if record.job.status!=Status::Preparing || record.job.cancel_requested || record.job.checkout_project.is_some() || record.checkout_grant.is_some() || record.checkout_stamp.is_some(){return Err(StoreError::Conflict("Job checkout reservation is no longer new".into()));}
+            if record.task.source_checkout_stamp.as_ref()!=Some(&source.stamp()) || source.stamp().native_grant.project_id!=record.job.project_id || source.stamp().native_grant.user_id!=record.job.owner {return Err(StoreError::Conflict("Job source checkout approval changed".into()));}
+            store.revalidate_native_checkout_in_transaction(source)?;authorize(store,&record)?;
+            let project=Project{id:format!("prj-{}",uuid::Uuid::now_v7()),name:format!("job-{id}"),path:prepared.root().into()};
+            store.connection.execute("INSERT INTO projects(id,name,path,created_at) VALUES(?1,?2,?3,?4)",params![project.id,project.name,project.path,super::now_secs()])?;
+            store.connection.execute("INSERT INTO project_grants(project_id,user_id,revision,active) VALUES(?1,?2,1,1)",params![project.id,record.job.owner])?;
+            let checkout=store.authorize_new_native_checkout_in_transaction(&project.id,&record.job.owner,super::local_metadata::MetadataPermission::Write,prepared)?;
+            let stamp=checkout.stamp();let grant=stamp.native_grant.clone();
+            let changed=store.connection.execute("UPDATE relay_jobs SET status='running',checkout_project=?2,branch=?3,checkout_grant=?4,checkout_stamp=?5 WHERE id=?1 AND status='preparing' AND cancel=0 AND checkout_project IS NULL AND checkout_grant IS NULL AND checkout_stamp IS NULL",params![id,project.id,branch,serde_json::to_string(&grant)?,serde_json::to_string(&stamp)?])?;
+            if changed!=1{return Err(StoreError::Conflict("Job reservation changed".into()));}store.job(id)?.ok_or_else(||StoreError::Conflict("Published job missing".into()))
+        })?;
+        self.catalog_changed();
+        Ok(result)
     }
     pub(crate) fn finish_job(&self, id: &str, state: Status, report: &str) -> Result<()> {
         let state = serde_json::to_value(state)

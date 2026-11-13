@@ -3,20 +3,37 @@
 //! The relay stores metadata (users, devices, grants and a session index) and,
 //! when `store_transcripts` is enabled (the default), transcript snapshots for
 //! recovery on another device. OpenCode remains the source of truth for live
-//! sessions. The harness runs on this machine, so a session keeps working when
-//! the laptop that started it is closed.
+//! sessions. The legacy ACP bridge still owns its harness per WebSocket; only
+//! the approved-job and opt-in interactive runtimes are independent of that
+//! client lifecycle. Persistent remote sessions use their own fenced runtime.
 
 mod acp;
 mod api;
 mod auth;
+mod checkout_identity;
 mod config;
 mod coordination;
+mod interactive;
 mod jobs;
 mod linear;
+mod local_metadata;
 mod management;
+mod mcp_oauth;
+mod oidc;
+mod remote_execution;
+mod remote_services;
+mod remote_sessions;
+mod scoped_secrets;
 mod store;
+mod tailscale;
 mod terminal;
 mod vault;
+mod worker_channel;
+mod worker_client;
+mod worker_execution;
+mod worker_exports;
+#[cfg(all(test, unix))]
+mod worker_fixture;
 
 use std::path::PathBuf;
 
@@ -26,6 +43,9 @@ use store::Store;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--mcp-tools") {
+        std::process::exit(interactive::mcp::run_stdio());
+    }
     if args.first().map(String::as_str) == Some("--mcp-vault") {
         std::process::exit(dunlin_vault::mcp::run_stdio());
     }
@@ -41,11 +61,26 @@ fn main() {
         "init" => cmd_init(&args[1..]),
         "user" => cmd_user(&args[1..]),
         "project" => cmd_project(&args[1..]),
-        "grant" => cmd_grant(&args[1..]),
+        "grant" => cmd_grant(&args[1..], true),
+        "ungrant" => cmd_grant(&args[1..], false),
         "pair" => cmd_pair(&args[1..]),
         "devices" => cmd_devices(&args[1..]),
         "revoke" => cmd_revoke(&args[1..]),
         "serve" => cmd_serve(&args[1..]),
+        "mcp-oauth-legacy" => mcp_oauth::maintenance::command(&args[1..]),
+        "mcp-client-metadata" => mcp_oauth::config::export_client_metadata(&args[1..])
+            .map(|document| println!("{document}")),
+        "host" => tailscale::command(&args[1..]),
+        "local-metadata" => local_metadata::command(&args[1..]),
+        // Private local guardian entry must run before any Tokio worker threads.
+        "worker" if args.get(1).is_some_and(|arg| arg == "execution-guard") => {
+            worker_execution::runtime::execution_guard(&args[2..])
+        }
+        "worker" => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "worker runtime unavailable".to_string())
+            .and_then(|runtime| runtime.block_on(worker_client::command(&args[1..]))),
         "vault" => cmd_vault(&args[1..]),
         "setup" => management::setup(&args[1..]),
         other => Err(format!("Unknown command: {other}")),
@@ -67,11 +102,18 @@ fn print_help() {
            dunlin-relay user list\n\
            dunlin-relay project add NAME PATH [--user USER]...\n\
            dunlin-relay project list\n\
-           dunlin-relay grant PROJECT USER\n\
+           dunlin-relay grant PROJECT USER [--expected-revision N]\n\
+           dunlin-relay ungrant PROJECT USER [--expected-revision N]\n\
            dunlin-relay pair USER [--ttl MINUTES]\n\
            dunlin-relay devices USER\n\
            dunlin-relay revoke DEVICE_ID\n\
-           dunlin-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD]\n\
+           dunlin-relay serve [--config PATH] [--db PATH] [--listen ADDR] [--harness CMD] [--web-root PATH]\n\
+           dunlin-relay worker run --config PATH --credential-stdin\n\
+           dunlin-relay mcp-oauth-legacy --help\n\
+           dunlin-relay mcp-client-metadata --config PATH --provider ID\n\
+           dunlin-relay local-metadata {{show|list|approve|rebind|revoke|grant|ungrant|check}} --db ABSOLUTE_EXISTING_DB --project-id ID [explicit flags]\n\
+           dunlin-relay local-metadata --help\n\
+           dunlin-relay host inspect-local --socket PATH --node-id ID --origin https://node.tail.ts.net --listen 127.0.0.1:8787\n\
            dunlin-relay setup [--name NAME] [--db PATH]\n\
          \n\
          Relay vault (HTTP keys; values stay in this host's Keychain):\n\
@@ -205,7 +247,7 @@ fn cmd_project(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn cmd_grant(args: &[String]) -> Result<(), String> {
+fn cmd_grant(args: &[String], active: bool) -> Result<(), String> {
     let db = open_store_for(args)?;
     let project = args
         .first()
@@ -221,9 +263,38 @@ fn cmd_grant(args: &[String]) -> Result<(), String> {
         .find_user_by_name(user)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Unknown user: {user}"))?;
-    db.grant(&project.id, &user.id)
+    if has_flag(args, "--expected-revision") && flag(args, "--expected-revision").is_none() {
+        return Err("Expected grant revision is required".into());
+    }
+    let revision = if let Some(value) = flag(args, "--expected-revision") {
+        let expected = value
+            .parse::<u64>()
+            .map_err(|_| "Invalid expected grant revision".to_string())?;
+        db.set_native_grant(
+            &project.id,
+            &user.id,
+            active,
+            if expected == 0 { None } else { Some(expected) },
+        )
+        .map_err(|error| error.to_string())?
+    } else {
+        if active {
+            db.grant(&project.id, &user.id)
+        } else {
+            db.revoke_grant(&project.id, &user.id)
+        }
         .map_err(|error| error.to_string())?;
-    println!("Granted {} to {}", project.name, user.name);
+        db.native_grant_revision(&project.id, &user.id)
+            .map_err(|error| error.to_string())?
+            .unwrap_or(0)
+    };
+    println!(
+        "{} {} for {} · revision {}",
+        if active { "Granted" } else { "Revoked" },
+        project.name,
+        user.name,
+        revision
+    );
     Ok(())
 }
 
@@ -581,7 +652,18 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
     if let Some(harness) = flag(args, "--harness") {
         config.harness = harness;
     }
+    if let Some(path) = flag(args, "--web-root") {
+        config.web_root = Some(PathBuf::from(path));
+    }
     config.apply_env();
+    if let Some(root) = &config.web_root {
+        let root = std::fs::canonicalize(root)
+            .map_err(|error| format!("Could not open web build directory: {error}"))?;
+        if !root.join("index.html").is_file() {
+            return Err("Web build directory must contain index.html; build apps/web first".into());
+        }
+        config.web_root = Some(root);
+    }
     let listen_address = config.listen_address()?;
     if !config.db.is_absolute() {
         config.db = std::env::current_dir()
@@ -628,8 +710,17 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         let listener = tokio::net::TcpListener::bind(listen_address)
             .await
             .map_err(|error| format!("Could not listen on {}: {error}", config.listen))?;
+        state
+            .store
+            .lock()
+            .map_err(|_| "Store lock poisoned".to_string())?
+            .recover_interactive_sessions()
+            .map_err(|error| error.to_string())?;
         linear::start_background(state.clone());
         jobs::start_background(state.clone())?;
+        let remote_services = remote_services::Services::start(&state).await?;
+        let interactive = state.interactive.clone();
+        let worker_channels = state.worker_channels.clone();
         let app = api::router(state);
         eprintln!(
             "[relay] listening on {} · db {} · harness {}",
@@ -649,13 +740,29 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
             }
         );
         axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
+            .with_graceful_shutdown(async move {
+                shutdown_signal().await;
+                interactive.shutdown().await;
+                remote_services.shutdown().await;
+                worker_channels.shutdown().await;
+            })
             .await
             .map_err(|error| error.to_string())
     })
 }
 
 async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = terminate.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
     let _ = tokio::signal::ctrl_c().await;
     eprintln!("[relay] shutting down");
 }
@@ -784,6 +891,50 @@ mod tests {
             ]))
             .is_err()
         );
+    }
+
+    #[test]
+    fn native_grant_cli_cas_revoke_and_regrant_preserve_stale_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("relay.db");
+        let db = Store::open(&path).unwrap();
+        let user = db.create_user("cli-member", "member").unwrap();
+        let project = db.create_project("cli-project", "/fixture/cli").unwrap();
+        let command = |revision: &str| {
+            vec![
+                "cli-project".to_string(),
+                "cli-member".to_string(),
+                "--expected-revision".to_string(),
+                revision.to_string(),
+                "--db".to_string(),
+                path.to_str().unwrap().to_string(),
+            ]
+        };
+        cmd_grant(&command("0"), true).unwrap();
+        let old = db.capture_native_grant(&project.id, &user.id).unwrap();
+        let compatible = vec![
+            "cli-project".into(),
+            "cli-member".into(),
+            "--db".into(),
+            path.to_str().unwrap().into(),
+        ];
+        cmd_grant(&compatible, true).unwrap();
+        assert_eq!(db.capture_native_grant(&project.id, &user.id).unwrap(), old);
+        assert!(cmd_grant(&command("0"), false).is_err());
+        db.revalidate_native_grant(&old).unwrap();
+        cmd_grant(&command("1"), false).unwrap();
+        assert!(
+            db.project_for_user(&project.id, &user.id)
+                .unwrap()
+                .is_none()
+        );
+        cmd_grant(&command("2"), true).unwrap();
+        assert!(
+            db.project_for_user(&project.id, &user.id)
+                .unwrap()
+                .is_some()
+        );
+        assert!(db.revalidate_native_grant(&old).is_err());
     }
 
     #[test]

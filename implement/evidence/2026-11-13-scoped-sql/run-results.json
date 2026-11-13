@@ -1,0 +1,18 @@
+[
+  {
+    "suite": "clippy",
+    "exit_code": 0
+  },
+  {
+    "suite": "server",
+    "exit_code": 0
+  },
+  {
+    "suite": "mcp",
+    "exit_code": 0
+  },
+  {
+    "suite": "runtime",
+    "exit_code": 0
+  }
+]

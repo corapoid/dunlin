@@ -21,6 +21,11 @@ impl ServiceKeychainStore {
             namespace: "dev.dunlin.relay",
         }
     }
+    pub(crate) const fn scoped_relay() -> Self {
+        Self {
+            namespace: "dev.dunlin.relay-scoped",
+        }
+    }
     fn operation(
         &self,
         action: &str,
@@ -139,6 +144,9 @@ mod tests {
         let desktop = ServiceKeychainStore::desktop();
         let relay = ServiceKeychainStore::relay();
         assert_ne!(desktop.namespace, relay.namespace);
+        let scoped = ServiceKeychainStore::scoped_relay();
+        assert_ne!(scoped.namespace, desktop.namespace);
+        assert_ne!(scoped.namespace, relay.namespace);
         assert!(relay.get("").is_err());
         assert!(relay.set("bad\nidentifier", "secret").is_err());
         assert!(relay.set("valid", &"x".repeat(65537)).is_err());

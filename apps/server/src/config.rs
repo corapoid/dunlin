@@ -16,6 +16,12 @@ pub struct Config {
     pub linger_secs: u64,
     pub sandbox: bool,
     pub store_transcripts: bool,
+    /// Optional trusted build directory. Never point this at a project or home.
+    pub web_root: Option<PathBuf>,
+    pub oidc: Option<crate::oidc::Config>,
+    pub mcp_oauth: Vec<crate::mcp_oauth::config::Provider>,
+    pub experimental_interactive_runtime: bool,
+    pub worker_controller: Option<crate::worker_channel::ControllerConfig>,
 }
 
 impl Default for Config {
@@ -31,6 +37,11 @@ impl Default for Config {
             linger_secs: 15 * 60,
             sandbox: cfg!(any(target_os = "macos", target_os = "linux")),
             store_transcripts: true,
+            web_root: None,
+            oidc: None,
+            mcp_oauth: Vec::new(),
+            experimental_interactive_runtime: false,
+            worker_controller: None,
         }
     }
 }
@@ -48,6 +59,11 @@ struct FileConfig {
     linger_secs: Option<u64>,
     sandbox: Option<bool>,
     store_transcripts: Option<bool>,
+    web_root: Option<PathBuf>,
+    oidc: Option<crate::oidc::Config>,
+    mcp_oauth: Vec<crate::mcp_oauth::config::Provider>,
+    experimental_interactive_runtime: bool,
+    worker_controller: Option<crate::worker_channel::ControllerConfig>,
 }
 
 impl Config {
@@ -96,10 +112,22 @@ impl Config {
         if let Some(value) = file.store_transcripts {
             config.store_transcripts = value;
         }
+        config.web_root = file.web_root;
+        if let Some(ref oidc) = file.oidc {
+            oidc.validate()?;
+        }
+        config.oidc = file.oidc;
+        crate::mcp_oauth::config::validate_registry(&file.mcp_oauth)?;
+        config.mcp_oauth = file.mcp_oauth;
+        config.experimental_interactive_runtime = file.experimental_interactive_runtime;
+        config.worker_controller = file.worker_controller;
         Ok(config)
     }
 
     pub fn apply_env(&mut self) {
+        if let Some(value) = std::env::var_os("DUNLIN_RELAY_WEB_ROOT") {
+            self.web_root = Some(PathBuf::from(value));
+        }
         if let Ok(value) = std::env::var("DUNLIN_RELAY_LISTEN") {
             self.listen = value;
         }

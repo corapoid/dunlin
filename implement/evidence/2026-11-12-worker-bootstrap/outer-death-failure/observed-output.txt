@@ -1,0 +1,6 @@
+{"version": "bubblewrap 0.8.0", "sha256": "ff5add553bea12a45c18ebe6c67d3ed637052b869a1ca2fc5d74a6a2e8c5cce6"}
+{"failed_case": "startup", "ticks_exist_after_supervisor_sigkill": false}
+Traceback (most recent call last):
+  File "/tmp/worker-bootstrap-probe.py", line 149, in <module>
+    raise AssertionError('namespace init survived supervisor SIGKILL')
+AssertionError: namespace init survived supervisor SIGKILL

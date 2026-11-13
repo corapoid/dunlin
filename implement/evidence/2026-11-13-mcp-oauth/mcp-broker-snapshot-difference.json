@@ -1,0 +1,9 @@
+{
+  "server_source_sha256": "11a1ea70bf7ddc2e91032adb81bd114765b5d3779f421851cf03fcbfe63353c8",
+  "final_source_sha256": "a28711f73ddc966fe435421ada233625751a0ec61d0f678dbb156d5ef9e29058",
+  "changed_files": [
+    "apps/web/src/components/McpConnections.tsx",
+    "apps/web/README.md"
+  ],
+  "verification": "Reversing only these two non-Rust changes reproduces the exact server snapshot SHA256."
+}

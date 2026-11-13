@@ -1,0 +1,878 @@
+Sandbox suite=clippy container=dunlin-check-02ff867eaeea44d69b94b316563a0336 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=2304m scratch=768m file_size=134217728 wall=900s source_sha256=8c61eef4421eb8a99c4f5c2dc1bca02c73799f02e69fe5c766497a142a66f096
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling unicode-ident v1.0.27
+   Compiling syn v3.0.10
+    Checking cfg-if v1.0.5
+    Checking subtle v2.6.1
+    Checking zeroize v1.9.1
+    Checking typenum v1.20.1
+   Compiling serde_core v1.0.229
+    Checking rand_core v0.10.1
+    Checking itoa v1.0.19
+   Compiling getrandom v0.4.3
+    Checking hybrid-array v0.4.15
+    Checking cmov v0.5.4
+    Checking ctutils v0.4.8
+    Checking const-oid v0.10.2
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+    Checking crypto-common v0.2.2
+    Checking block-buffer v0.12.1
+    Checking digest v0.11.3
+    Checking memchr v2.8.3
+    Checking bytes v1.12.1
+   Compiling zmij v1.0.23
+    Checking log v0.4.35
+   Compiling libm v0.2.16
+   Compiling serde_json v1.0.154
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling synstructure v0.14.0
+    Checking pin-project-lite v0.2.17
+    Checking smallvec v1.16.5
+    Checking http v1.5.0
+    Checking cpufeatures v0.3.1
+    Checking base64ct v1.8.3
+   Compiling zerofrom-derive v0.1.8
+    Checking getrandom v0.2.17
+    Checking once_cell v1.21.4
+    Checking zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+    Checking stable_deref_trait v1.2.1
+    Checking yoke v0.8.4
+   Compiling syn v2.0.119
+   Compiling version_check v0.9.5
+   Compiling httparse v1.10.1
+   Compiling generic-array v0.14.7
+    Checking sha2 v0.11.1
+   Compiling zerovec-derive v0.11.7
+    Checking const-oid v0.9.6
+    Checking zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling zerocopy v0.8.63
+    Checking bitflags v2.13.2
+    Checking pem-rfc7468 v1.0.0
+   Compiling ring v0.17.14
+    Checking errno v0.3.14
+    Checking percent-encoding v2.3.2
+    Checking signal-hook-registry v1.4.8
+    Checking der v0.8.3
+    Checking ppv-lite86 v0.2.21
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking tinystr v0.8.5
+   Compiling tokio-macros v2.7.2
+    Checking mio v1.2.4
+    Checking socket2 v0.6.5
+    Checking hex v0.4.3
+    Checking litemap v0.8.3
+    Checking utf_types v1.0.0
+    Checking writeable v0.6.4
+   Compiling thiserror v2.0.21
+    Checking icu_locale_core v2.4.0
+    Checking utf8_iter v1.1.0
+    Checking tokio v1.54.1
+    Checking digest v0.10.7
+    Checking zerotrie v0.2.5
+    Checking potential_utf v0.1.6
+    Checking rustls-pki-types v1.15.1
+   Compiling thiserror-impl v2.0.21
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+    Checking untrusted v0.9.0
+    Checking futures-core v0.3.34
+    Checking cpubits v0.1.1
+    Checking crypto-bigint v0.7.11
+    Checking icu_collections v2.4.0
+    Checking icu_provider v2.4.0
+    Checking spki v0.8.1
+    Checking ff v0.14.0
+   Compiling crc32fast v1.5.4
+   Compiling pkg-config v0.3.34
+    Checking base64 v0.23.1
+   Compiling rustls v0.23.46
+   Compiling vcpkg v0.2.15
+   Compiling libsqlite3-sys v0.39.1
+    Checking pkcs8 v0.11.0
+    Checking rustls-webpki v0.103.16
+    Checking dunlin-domain v0.2.0 (/repo/crates/domain)
+    Checking foldhash v0.2.0
+    Checking adler2 v2.0.1
+   Compiling thiserror v1.0.69
+    Checking simd-adler32 v0.3.10
+    Checking miniz_oxide v0.9.1
+    Checking hashbrown v0.17.1
+    Checking icu_normalizer v2.4.0
+    Checking icu_properties v2.4.0
+    Checking group v0.14.0
+    Checking form_urlencoded v1.2.2
+   Compiling thiserror-impl v1.0.69
+    Checking rand_core v0.6.4
+    Checking cpufeatures v0.2.17
+    Checking base16ct v1.0.0
+    Checking sec1 v0.8.1
+    Checking flate2 v1.1.11
+    Checking idna_adapter v1.2.2
+    Checking hashlink v0.12.2
+    Checking ureq-proto v0.7.1
+    Checking webpki-roots v1.0.11
+    Checking pem-rfc7468 v0.7.0
+    Checking hmac v0.13.0
+    Checking signature v3.0.0
+    Checking fallible-iterator v0.3.0
+   Compiling getrandom v0.3.4
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+    Checking fallible-streaming-iterator v0.1.9
+    Checking utf8-zero v0.8.1
+   Compiling semver v1.0.28
+    Checking iana-time-zone v0.1.65
+    Checking chrono v0.4.45
+   Compiling rustc_version v0.4.1
+    Checking ureq v3.5.1
+    Checking rusqlite v0.41.1
+   Compiling darling_core v0.24.1
+    Checking der v0.7.10
+    Checking idna v1.1.0
+    Checking elliptic-curve v0.14.3
+    Checking rand_chacha v0.3.1
+    Checking primefield v0.14.0
+   Compiling tracing-attributes v0.1.31
+    Checking tracing-core v0.1.36
+    Checking chacha20 v0.10.2
+    Checking rand v0.10.3
+    Checking tracing v0.1.44
+    Checking wnaf v0.14.1
+    Checking rand v0.8.8
+    Checking url v2.5.8
+    Checking spki v0.7.3
+   Compiling darling_macro v0.24.1
+    Checking dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling curve25519-dalek v5.0.0
+    Checking rfc6979 v0.6.0
+    Checking num-integer v0.1.47
+   Compiling crossbeam-utils v0.8.23
+    Checking spin v0.9.9
+   Compiling num-bigint-dig v0.8.6
+   Compiling cfg_aliases v0.1.1
+   Compiling nix v0.28.0
+    Checking lazy_static v1.5.1
+    Checking num-iter v0.1.46
+    Checking ecdsa v0.17.0
+   Compiling darling v0.24.1
+    Checking rand_core v0.9.5
+    Checking pkcs8 v0.10.2
+    Checking primeorder v0.14.0
+    Checking http-body v1.1.0
+    Checking uuid v1.29.2
+    Checking serde_path_to_error v0.1.20
+   Compiling futures-macro v0.3.34
+    Checking futures-task v0.3.34
+    Checking futures-sink v0.3.34
+    Checking parking v2.2.1
+    Checking base64 v0.22.1
+   Compiling anyhow v1.0.104
+    Checking slab v0.4.12
+    Checking data-encoding v2.11.1
+    Checking futures-util v0.3.34
+    Checking event-listener v5.4.2
+    Checking pkcs1 v0.7.5
+    Checking rand_chacha v0.9.0
+   Compiling serde_with_macros v3.24.0
+    Checking ed25519 v3.0.0
+    Checking sha2 v0.10.9
+    Checking signature v2.2.0
+    Checking ordered-float v2.10.1
+   Compiling serde_repr v0.1.21
+    Checking winnow v1.0.5
+    Checking either v1.19.0
+    Checking try-lock v0.2.5
+    Checking arrayvec v0.7.8
+    Checking jiff-core v0.1.4
+   Compiling rustix v1.1.6
+    Checking tower-service v0.3.3
+    Checking jiff v0.2.41
+    Checking vte v0.15.0
+    Checking want v0.3.2
+    Checking itertools v0.14.0
+    Checking toml_parser v1.1.5+spec-1.1.0
+    Checking ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+    Checking serde-value v0.7.0
+    Checking rsa v0.9.10
+    Checking oauth2 v5.0.0
+    Checking ed25519-dalek v3.0.0
+    Checking concurrent-queue v2.5.0
+    Checking serde_with v3.24.0
+    Checking rand v0.9.5
+    Checking event-listener-strategy v0.5.4
+    Checking p256 v0.14.0
+    Checking p384 v0.14.0
+    Checking filedescriptor v0.8.3
+    Checking sha1 v0.10.7
+    Checking hmac v0.12.1
+    Checking serde_plain v1.0.2
+    Checking serde_spanned v1.1.3
+    Checking toml_datetime v1.1.3+spec-1.1.0
+    Checking serial2 v0.2.39
+    Checking downcast-rs v1.2.1
+    Checking httpdate v1.0.3
+    Checking shell-words v1.1.1
+    Checking toml_writer v1.2.0+spec-1.1.0
+    Checking tower-layer v0.3.3
+    Checking dyn-clone v1.0.20
+    Checking linux-raw-sys v0.12.1
+    Checking unicode-width v0.2.3
+    Checking atomic-waker v1.1.2
+    Checking sync_wrapper v1.0.2
+    Checking hyper v1.12.0
+    Checking vt100 v0.18.1
+    Checking openidconnect v4.1.0
+    Checking toml v1.2.1+spec-1.1.0
+    Checking portable-pty v0.9.0
+    Checking tungstenite v0.29.0
+    Checking async-channel v2.5.0
+    Checking ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+    Checking http-body-util v0.1.5
+    Checking dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+    Checking dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+    Checking sha1 v0.11.0
+    Checking fastrand v2.5.0
+    Checking mime v0.3.18
+    Checking ryu v1.0.23
+    Checking serde_urlencoded v0.7.1
+    Checking axum-core v0.5.6
+    Checking tempfile v3.27.0
+    Checking tungstenite v0.30.0
+    Checking dunlin-storage v0.2.0 (/repo/crates/storage)
+    Checking tokio-tungstenite v0.29.0
+    Checking hyper-util v0.1.21
+    Checking tower v0.5.3
+    Checking matchit v0.8.4
+    Checking axum v0.8.9
+    Checking dunlin-vault v0.2.0 (/repo/crates/vault)
+    Checking tokio-tungstenite v0.30.0
+    Checking dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+    Checking dunlin-workspace v0.2.0 (/repo/crates/workspace)
+    Checking dunlin-terminal v0.2.0 (/repo/crates/terminal)
+    Checking dunlin-identity v0.2.0 (/repo/crates/identity)
+    Checking dunlin-coordination v0.2.0 (/repo/crates/coordination)
+    Checking dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+    Checking dunlin-usage v0.2.0 (/repo/crates/usage)
+    Checking tokio-rustls v0.26.6
+    Checking dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+    Checking dunlin-relay v0.2.0 (/repo/apps/server)
+error: this looks like an `else if` but the `else` is missing
+    --> apps/server/src/remote_execution.rs:1042:77
+     |
+1042 |                 _=actor.changed.notified()=>{if actor.terminal(){break true}if actor.stop.load(Ordering::Acquire){break false}},
+     |                                                                             ^
+     |
+     = note: to remove this lint, add the missing `else` or add a new line before the second `if`
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#possible_missing_else
+     = note: `-D clippy::possible-missing-else` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::possible_missing_else)]`
+
+error: this looks like an `else if` but the `else` is missing
+   --> apps/server/src/remote_sessions/actor.rs:240:102
+    |
+240 | ...   _=actor.changed.notified()=>{if actor.finished.load(Ordering::Acquire){break Ok(());}if actor.stop.load(Ordering::Acquire){br...
+    |                                                                                            ^
+    |
+    = note: to remove this lint, add the missing `else` or add a new line before the second `if`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#possible_missing_else
+
+error: digits grouped inconsistently by underscores
+   --> apps/server/src/worker_execution/runtime/guardian.rs:253:52
+    |
+253 |         || manifest.budget_ns > now.saturating_add(1800_000_000_000)
+    |                                                    ^^^^^^^^^^^^^^^^ help: consider: `1_800_000_000_000`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#inconsistent_digit_grouping
+    = note: `-D clippy::inconsistent-digit-grouping` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::inconsistent_digit_grouping)]`
+
+error: digits grouped inconsistently by underscores
+   --> apps/server/src/worker_execution/runtime/process.rs:785:47
+    |
+785 |             || budget_ns > now.saturating_add(1800_000_000_000)
+    |                                               ^^^^^^^^^^^^^^^^ help: consider: `1_800_000_000_000`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#inconsistent_digit_grouping
+
+error: methods `prepare`, `describe`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:284:14
+    |
+120 | impl Context {
+    | ------------ methods in this implementation
+...
+284 |     async fn prepare(
+    |              ^^^^^^^
+...
+312 |     async fn describe(
+    |              ^^^^^^^^
+...
+407 |     async fn reconcile(
+    |              ^^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: multiple fields are never read
+   --> apps/server/src/remote_execution.rs:453:5
+    |
+452 | struct Attempt {
+    |        ------- fields in this struct
+453 |     id: String,
+    |     ^^
+454 |     owner: String,
+    |     ^^^^^
+455 |     device: String,
+    |     ^^^^^^
+456 |     workspace: String,
+    |     ^^^^^^^^^
+457 |     project: String,
+    |     ^^^^^^^
+458 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+459 |     transport: ExecutionTransport,
+    |     ^^^^^^^^^
+
+error: methods `terminal` and `receipt` are never used
+   --> apps/server/src/remote_execution.rs:465:8
+    |
+464 | impl Attempt {
+    | ------------ methods in this implementation
+465 |     fn terminal(&self) -> bool {
+    |        ^^^^^^^^
+...
+478 |     fn receipt(&self) -> Option<dunlin_relay_protocol::worker::AttemptFence> {
+    |        ^^^^^^^
+
+error: field `capacity` is never read
+   --> apps/server/src/remote_execution.rs:490:5
+    |
+486 | pub(crate) struct Service {
+    |                   ------- field in this struct
+...
+490 |     capacity: Arc<Semaphore>,
+    |     ^^^^^^^^
+
+error: methods `submit`, `status`, `cancel`, and `reconcile` are never used
+   --> apps/server/src/remote_execution.rs:541:25
+    |
+493 | impl Service {
+    | ------------ methods in this implementation
+...
+541 |     pub(crate) async fn submit(
+    |                         ^^^^^^
+...
+588 |     pub(crate) async fn status(
+    |                         ^^^^^^
+...
+604 |     pub(crate) async fn cancel(
+    |                         ^^^^^^
+...
+642 |     pub(crate) async fn reconcile(
+    |                         ^^^^^^^^^
+
+error: function `admit_owned` is never used
+   --> apps/server/src/remote_execution.rs:722:10
+    |
+722 | async fn admit_owned(
+    |          ^^^^^^^^^^^
+
+error: function `fresh` is never used
+   --> apps/server/src/remote_execution.rs:805:10
+    |
+805 | async fn fresh(context: &Arc<Context>, actor: &Attempt) -> Result<PreparedRemoteExecution> {
+    |          ^^^^^
+
+error: function `monitor` is never used
+   --> apps/server/src/remote_execution.rs:817:10
+    |
+817 | async fn monitor(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+error: function `receive_record` is never used
+   --> apps/server/src/remote_execution.rs:856:10
+    |
+856 | async fn receive_record(context: &Arc<Context>, actor: &Attempt, reply: Reply) -> Result<()> {
+    |          ^^^^^^^^^^^^^^
+
+error: function `control` is never used
+   --> apps/server/src/remote_execution.rs:866:10
+    |
+866 | async fn control(context: Arc<Context>, actor: Arc<Attempt>) -> Result<()> {
+    |          ^^^^^^^
+
+error: function `cancel_cached` is never used
+    --> apps/server/src/remote_execution.rs:1004:10
+     |
+1004 | async fn cancel_cached(actor: &Attempt) {
+     |          ^^^^^^^^^^^^^
+
+error: function `run_attempt` is never used
+    --> apps/server/src/remote_execution.rs:1024:10
+     |
+1024 | async fn run_attempt(
+     |          ^^^^^^^^^^^
+
+error: struct `PreparedRemoteExecution` is never constructed
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:46:19
+   |
+46 | pub(crate) struct PreparedRemoteExecution {
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: methods `host_id`, `export_id`, `export_revision`, and `principal` are never used
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:58:12
+   |
+57 | impl PreparedRemoteExecution {
+   | ---------------------------- methods in this implementation
+58 |     pub fn host_id(&self) -> &str {
+   |            ^^^^^^^
+...
+61 |     pub fn export_id(&self) -> &str {
+   |            ^^^^^^^^^
+...
+64 |     pub fn export_revision(&self) -> u64 {
+   |            ^^^^^^^^^^^^^^^
+...
+67 |     pub fn principal(&self) -> ExportPrincipal {
+   |            ^^^^^^^^^
+
+error: struct `RemoteExecutionReservation` is never constructed
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:105:19
+    |
+105 | pub(crate) struct RemoteExecutionReservation {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: multiple fields are never read
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:119:5
+    |
+118 | struct StoredExecution {
+    |        --------------- fields in this struct
+119 |     owner: String,
+    |     ^^^^^
+120 |     device: String,
+    |     ^^^^^^
+121 |     workspace: String,
+122 |     project: String,
+    |     ^^^^^^^
+123 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+124 |     intent_digest: String,
+    |     ^^^^^^^^^^^^^
+125 |     binding: String,
+    |     ^^^^^^^
+126 |     authority: AuthorityStamp,
+    |     ^^^^^^^^^
+...
+130 |     created: i64,
+    |     ^^^^^^^
+131 |     renew_sequence: u64,
+    |     ^^^^^^^^^^^^^^
+132 |     renewal: Option<ExecutionControllerMessage>,
+    |     ^^^^^^^
+133 |     cancel_requested: bool,
+    |     ^^^^^^^^^^^^^^^^
+
+error: method `reservation` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:136:8
+    |
+135 | impl StoredExecution {
+    | -------------------- method in this implementation
+136 |     fn reservation(&self, replayed: bool) -> RemoteExecutionReservation {
+    |        ^^^^^^^^^^^
+
+error: function `execution_sql_integer` is never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:157:4
+    |
+157 | fn execution_sql_integer(value: u64) -> Result<i64> {
+    |    ^^^^^^^^^^^^^^^^^^^^^
+
+error: multiple methods are never used
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:169:8
+    |
+168 | impl Store {
+    | ---------- methods in this implementation
+169 |     fn remote_execution_caller(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+187 |     pub(crate) fn prepare_remote_execution_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+261 |     pub(crate) fn lookup_remote_execution_intent_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+362 |     fn validate_execution_observation<F>(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+438 |     pub(crate) fn admit_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+455 |     pub(crate) fn admit_remote_execution_in_transaction<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+536 |     fn current_remote_execution(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+564 |     pub(crate) fn dispatch_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+586 |     pub(crate) fn renew_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+715 |     pub(crate) fn remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^
+...
+735 |     fn cancel_remote_execution_in_transaction(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+769 |     pub(crate) fn cancel_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+...
+792 |     pub(crate) fn cancel_remote_execution_from_guard<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+809 |     pub(crate) fn reconcile_remote_execution<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+852 |     pub(crate) fn remote_execution_controller_authority_in_transaction(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+934 |     pub(crate) fn mark_remote_execution_uncertain<F>(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: fields `workspace` and `project` are never read
+   --> apps/server/src/store/remote_bindings/resolver/sessions.rs:113:9
+    |
+109 | pub(crate) struct RemoteSessionSnapshot {
+    |                   --------------------- fields in this struct
+...
+113 |     pub workspace: String,
+    |         ^^^^^^^^^
+114 |     pub project: String,
+    |         ^^^^^^^
+
+error: method `known_remote_session_turn_receipt` is never used
+   --> apps/server/src/store/remote_bindings/resolver/sessions/runtime.rs:289:19
+    |
+ 20 | impl Store {
+    | ---------- method in this implementation
+...
+289 |     pub(crate) fn known_remote_session_turn_receipt(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: method `describe_execution_export` is never used
+   --> apps/server/src/worker_channel/exports.rs:257:25
+    |
+110 | impl Service {
+    | ------------ method in this implementation
+...
+257 |     pub(crate) async fn describe_execution_export(
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:89:5
+   |
+86 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+89 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+error: method `observation` is never used
+    --> apps/server/src/worker_execution/runtime/process.rs:1354:19
+     |
+1226 | impl Platform {
+     | ------------- method in this implementation
+...
+1354 |     pub(super) fn observation(&self) -> (&str, &str) {
+     |                   ^^^^^^^^^^^
+
+error: fields `rpc_id`, `first_turn`, and `prompt` are never read
+  --> apps/server/src/worker_execution/session_acp.rs:57:9
+   |
+55 | pub(crate) struct PromptIntent {
+   |                   ------------ fields in this struct
+56 |     pub turn: TurnSpec,
+57 |     pub rpc_id: u64,
+   |         ^^^^^^
+58 |     pub first_turn: bool,
+   |         ^^^^^^^^^^
+59 |     /// Exact rendered ACP prompt, including immutable instructions on first turn.
+60 |     pub prompt: String,
+   |         ^^^^^^
+   |
+   = note: `PromptIntent` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+error: method `scope` is never used
+  --> apps/server/src/worker_exports/execution.rs:44:19
+   |
+27 | impl<'a> ExecutionChannel<'a> {
+   | ----------------------------- method in this implementation
+...
+44 |     pub(super) fn scope(&self) -> &ExportScope {
+   |                   ^^^^^
+
+error: method `validate_filesystem` is never used
+  --> apps/server/src/worker_exports/execution.rs:83:12
+   |
+63 | impl ExecutionLease {
+   | ------------------- method in this implementation
+...
+83 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+error: methods `identity` and `validate_filesystem` are never used
+  --> apps/server/src/worker_exports/session.rs:32:12
+   |
+28 | impl WorkerSessionLease {
+   | ----------------------- methods in this implementation
+...
+32 |     pub fn identity(&self) -> &wire::SessionIdentity {
+   |            ^^^^^^^^
+...
+67 |     pub fn validate_filesystem(&self) -> Result<()> {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+error: returning the result of a `let` binding from a block
+  --> apps/server/src/api/web/interactive.rs:71:9
+   |
+60 | /         let accepted = tokio::task::spawn_blocking(move || {
+61 | |             let _permit = permit;
+62 | |             let auth = authorized(&state, &token)?;
+63 | |             check_expected_identity(&auth, expected.as_ref())?;
+...  |
+69 | |         .await
+70 | |         .map_err(|_| super::unavailable())??;
+   | |_____________________________________________- unnecessary `let` binding
+71 |           accepted
+   |           ^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#let_and_return
+   = note: `-D clippy::let-and-return` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::let_and_return)]`
+help: return the expression directly
+   |
+60 ~         
+61 ~         tokio::task::spawn_blocking(move || {
+62 +             let _permit = permit;
+63 +             let auth = authorized(&state, &token)?;
+64 +             check_expected_identity(&auth, expected.as_ref())?;
+65 +             crate::interactive::Service::create_request_with_key(
+66 +                 state, auth, workspace, project, options, key,
+67 +             )
+68 +             .map_err(admission_error)
+69 +         })
+70 +         .await
+71 +         .map_err(|_| super::unavailable())??
+   |
+
+error: this `if` statement can be collapsed
+   --> apps/server/src/remote_execution.rs:471:9
+    |
+471 | /         if let Ok(mut current) = self.record.lock() {
+472 | |             if current.as_ref().is_none_or(|old| old.outcome.is_none()) {
+473 | |                 *current = Some(record);
+474 | |             }
+475 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+471 ~         if let Ok(mut current) = self.record.lock()
+472 ~             && current.as_ref().is_none_or(|old| old.outcome.is_none()) {
+473 |                 *current = Some(record);
+474 ~             }
+    |
+
+error: this `if` statement can be collapsed
+   --> apps/server/src/remote_sessions/actor.rs:151:17
+    |
+151 | /                 if let Some(turn) = activity.active_turn.clone() {
+152 | |                     if let Output::Request(message) =
+153 | |                         positive(&owner, &actor, Cut::RenewTurn(turn)).await?
+...   |
+157 | |                 }
+    | |_________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+151 ~                 if let Some(turn) = activity.active_turn.clone()
+152 ~                     && let Output::Request(message) =
+153 |                         positive(&owner, &actor, Cut::RenewTurn(turn)).await?
+154 |                     {
+155 |                         send(&owner, &actor, message).await?;
+156 ~                     }
+    |
+
+error: this `if` statement can be collapsed
+   --> apps/server/src/remote_sessions/actor.rs:170:9
+    |
+170 | /         if snapshot.phase == "active" && activity.active_turn.is_none() && activity.queued {
+171 | |             if let Output::Claim(Some(command)) = positive(&owner, &actor, Cut::Claim).await? {
+172 | |                 let context = owner.context.clone();
+173 | |                 context
+...   |
+191 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+170 ~         if snapshot.phase == "active" && activity.active_turn.is_none() && activity.queued
+171 ~             && let Output::Claim(Some(command)) = positive(&owner, &actor, Cut::Claim).await? {
+172 |                 let context = owner.context.clone();
+...
+189 |                 events::persist(&owner, actor.transport.clone(), reply).await?;
+190 ~             }
+    |
+
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> apps/server/src/store/remote_bindings/resolver/sessions.rs:416:126
+    |
+416 | ...k,dispatched):(String,String,i64,String,String,Option<String>,bool,i64,Option<String>,i64,Option<String>,i64,bool)=self.connecti...
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: large size difference between variants
+   --> apps/server/src/worker_client/execution.rs:128:1
+    |
+128 | /  pub(super) enum Completed {
+129 | |/     Reply {
+130 | ||         request: Request,
+131 | ||         result: Result<Option<Reply>, wire::ExecutionErrorCode>,
+132 | ||     },
+    | ||_____- the largest variant contains at least 712 bytes
+133 | |      Outbox(Result<Vec<wire::ExecutionRecord>, wire::ExecutionErrorCode>),
+    | |      -------------------------------------------------------------------- the second-largest variant contains at least 24 bytes
+134 | |  }
+    | |__^ the entire enum is at least 712 bytes
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#large_enum_variant
+    = note: `-D clippy::large-enum-variant` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+    |
+130 ~         request: Box<Request>,
+131 ~         result: Box<Result<Option<Reply>, wire::ExecutionErrorCode>>,
+    |
+
+error: large size difference between variants
+  --> apps/server/src/worker_client/sessions.rs:18:1
+   |
+18 | /  enum Completed {
+19 | |/     Reply {
+20 | ||         request: Request,
+21 | ||         result: Result<Option<Reply>, Code>,
+22 | ||     },
+   | ||_____- the largest variant contains at least 928 bytes
+23 | |      Outbox(Result<Vec<Reply>, Code>),
+   | |      -------------------------------- the second-largest variant contains at least 24 bytes
+24 | |  }
+   | |__^ the entire enum is at least 928 bytes
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#large_enum_variant
+help: consider boxing the large fields or introducing indirection in some other way to reduce the total size of the enum
+   |
+20 ~         request: Box<Request>,
+21 ~         result: Box<Result<Option<Reply>, Code>>,
+   |
+
+error: returning the result of a `let` binding from a block
+  --> apps/server/src/worker_execution/runtime/guard.rs:34:9
+   |
+12 | /         let result = tokio::time::timeout(Duration::from_secs(3), async move {
+13 | |             let permit = slots.acquire_owned().await.map_err(|_| Code::Unavailable)?;
+14 | |             tokio::task::spawn_blocking(move || {
+15 | |                 let _permit = permit;
+...  |
+32 | |         .await
+33 | |         .map_err(|_| Code::Unavailable)?;
+   | |_________________________________________- unnecessary `let` binding
+34 |           result
+   |           ^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#let_and_return
+help: return the expression directly
+   |
+12 ~         
+13 ~         tokio::time::timeout(Duration::from_secs(3), async move {
+14 +             let permit = slots.acquire_owned().await.map_err(|_| Code::Unavailable)?;
+15 +             tokio::task::spawn_blocking(move || {
+16 +                 let _permit = permit;
+17 +                 runtime.current(&active)?;
+18 +                 active.filesystem.validate().map_err(code)?;
+19 +                 runtime.current(&active)?;
+20 +                 let store = runtime.store()?;
+21 +                 let guard = || active.connection.authorize();
+22 +                 let context = active
+23 +                     .connection
+24 +                     .context(&runtime.config.scope, &guard)
+25 +                     .map_err(code)?;
+26 +                 let lease = active.lease.lock().map_err(|_| Code::Unavailable)?;
+27 +                 store.validate_execution(&context, &lease).map_err(code)?;
+28 +                 runtime.current(&active)
+29 +             })
+30 +             .await
+31 +             .map_err(|_| Code::Unavailable)?
+32 +         })
+33 +         .await
+34 +         .map_err(|_| Code::Unavailable)?
+   |
+
+error: this `if` statement can be collapsed
+   --> apps/server/src/worker_execution/runtime/sessions.rs:428:17
+    |
+428 | /                 if store
+429 | |                     .request_session_close(&context, &fence, turn.as_ref())
+430 | |                     .map_err(code)?
+...   |
+435 | |                 }
+    | |_________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+430 ~                     .map_err(code)?
+431 ~                     && let Ok(active) = runtime.session_slot(&fence) {
+432 |                         active.stop();
+433 ~                     }
+    |
+
+error: this `if` statement can be collapsed
+    --> apps/server/src/worker_exports/session.rs:1201:9
+     |
+1201 | /         if let Some(digest) = digest {
+1202 | |             if self.stream_digest(fence, after)? != digest {
+1203 | |                 return Err(Error::Conflict("Replay predecessor differs"));
+1204 | |             }
+1205 | |         }
+     | |_________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#collapsible_if
+help: collapse nested if block
+     |
+1201 ~         if let Some(digest) = digest
+1202 ~             && self.stream_digest(fence, after)? != digest {
+1203 |                 return Err(Error::Conflict("Replay predecessor differs"));
+1204 ~             }
+     |
+
+error: could not compile `dunlin-relay` (bin "dunlin-relay") due to 42 previous errors
+Sandbox memory: {"memory.peak": "1473650688", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

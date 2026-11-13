@@ -131,10 +131,26 @@ async fn tool_updates_and_agent_connections_are_mutually_exclusive() {
         StatusCode::CONFLICT
     );
     drop(permit);
+    let (user, device) = f
+        .state
+        .store
+        .lock()
+        .unwrap()
+        .authenticate(&f.token)
+        .unwrap()
+        .unwrap();
+    let owner = user.id.clone();
+    let authority = crate::management::authority::AdminAuthority::capture(
+        &f.state,
+        &crate::api::AuthUser { user, device },
+    )
+    .unwrap();
     f.state.management.lock().unwrap().jobs.insert(
         "fixture".into(),
         crate::management::Running {
-            owner: "fixture".into(),
+            owner,
+            authority,
+            require_admin_only_relay: false,
             created: std::time::Instant::now(),
             job: std::sync::Arc::new(std::sync::Mutex::new(dunlin_workspace::server::Job {
                 id: "fixture".into(),

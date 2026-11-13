@@ -1,0 +1,12 @@
+{
+  "current_source_sha256": "9ad77c5af9a1e20d730af40b58b1c2e4bbe9934f22991bb243be9096e9637d8c",
+  "backend_source_sha256": "72f507d109012b0ca3d82d5827f1d261a857b3c0e3bc397f942c95b98361a602",
+  "reconstructed_backend_source_sha256": "72f507d109012b0ca3d82d5827f1d261a857b3c0e3bc397f942c95b98361a602",
+  "archived_paths": {
+    "apps/server/src/worker_execution/runtime/mcp.rs": "pre-lint-mcp.rs",
+    "apps/server/src/worker_execution/runtime/fixtures/session_agent.py": "pre-delivery-session-agent.py",
+    "apps/server/src/worker_fixture/session_vertical.rs": "pre-delivery-session-vertical.rs",
+    "apps/server/src/worker_fixture/broker_client.rs": "pre-delivery-broker-client.rs"
+  },
+  "scope": "799 passing backend tests predate a map_err-to-inspect_err lint change, interruption on successful Unix response delivery failure, and the fourth ignored runtime scenario exercising that failure. This proof establishes the exact source delta; it does not certify the final changes. Production runtime acceptance and final Clippy must verify those separately."
+}

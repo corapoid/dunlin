@@ -1,0 +1,55 @@
+--- before/apps/server/src/api/web/tests/mcp_oauth_browser.rs
++++ after/apps/server/src/api/web/tests/mcp_oauth_browser.rs
+@@ -19,6 +19,28 @@
+ };
+ use zeroize::Zeroizing;
+ type WriterCheck = Box<dyn Fn() + Send + Sync>;
++fn observe_writer(store: &Mutex<Store>, busy: bool) {
++    let deadline = std::time::Instant::now() + Duration::from_secs(2);
++    loop {
++        let observed = match store.try_lock() {
++            Ok(store) => Some(store.mcp_oauth_writer_lease().is_err()),
++            Err(std::sync::TryLockError::WouldBlock) => None,
++            Err(_) => panic!("Store poisoned during writer observation"),
++        };
++        if observed == Some(busy) {
++            return;
++        }
++        assert!(
++            std::time::Instant::now() < deadline,
++            "writer lease availability did not reach the expected state"
++        );
++        // Other controller/WS threads may briefly use Store. Drop its guard
++        // before waiting; the actual caller cannot finish its own private/MCP
++        // I/O until this hook returns, so an incorrectly held/missing lease
++        // still fails within the bound.
++        std::thread::sleep(Duration::from_millis(2));
++    }
++}
+ #[derive(Clone)]
+ struct Provider {
+     origin: String,
+@@ -369,21 +391,11 @@
+     let private = Arc::new(PrivateStore::default());
+     let checking = state.store.clone();
+     *private.writer_check.lock().unwrap() = Some(Box::new(move || {
+-        let store = checking
+-            .try_lock()
+-            .expect("private I/O must not hold Store");
+-        assert!(
+-            store.mcp_oauth_writer_lease().is_err(),
+-            "secret publication must retain the writer lease"
+-        );
++        observe_writer(&checking, true);
+     }));
+     let checking = state.store.clone();
+     *provider.writer_check.lock().unwrap() = Some(Box::new(move || {
+-        let store = checking.try_lock().expect("MCP HTTP must not hold Store");
+-        assert!(
+-            store.mcp_oauth_writer_lease().is_ok(),
+-            "MCP catalog/tools must run after releasing the writer lease"
+-        );
++        observe_writer(&checking, false);
+     }));
+     private.late_write.store(true, Ordering::SeqCst);
+     state.mcp_oauth = Arc::new(crate::mcp_oauth::Service::testing(private.clone()));

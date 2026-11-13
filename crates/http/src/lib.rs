@@ -211,6 +211,18 @@ impl Response {
     pub fn header(&self, name: &str) -> Option<&str> {
         self.0.headers().get(name)?.to_str().ok()
     }
+    /// Preserve repeated challenge fields and report invalid header text instead
+    /// of silently dropping it while selecting an authorization mechanism.
+    pub fn header_values(
+        &self,
+        name: &str,
+    ) -> impl Iterator<Item = Result<&str, http::header::ToStrError>> {
+        self.0
+            .headers()
+            .get_all(name)
+            .iter()
+            .map(|value| value.to_str())
+    }
     pub fn into_reader(self) -> impl Read + Send + 'static {
         self.0.into_body().into_reader()
     }
@@ -375,6 +387,38 @@ mod tests {
         assert_eq!(response.into_string().unwrap(), "secret");
         received.recv().unwrap();
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn repeated_authentication_challenges_preserve_order_and_invalid_text_is_reported() {
+        for (fields, invalid) in [
+            (
+                "WWW-Authenticate: Basic realm=other\r\nWWW-Authenticate: Bearer scope=read\r\n",
+                false,
+            ),
+            ("WWW-Authenticate: Bearer realm=\"é\"\r\n", true),
+        ] {
+            let (url, request, worker) = server(format!(
+                "HTTP/1.1 401 Unauthorized\r\n{fields}Content-Length: 0\r\nConnection: close\r\n\r\n"
+            ));
+            let response = match agent().get(&url).call() {
+                Err(Error::Status(401, response)) => response,
+                _ => panic!("401 expected"),
+            };
+            let values = response
+                .header_values("WWW-Authenticate")
+                .collect::<Result<Vec<_>, _>>();
+            if invalid {
+                assert!(values.is_err());
+            } else {
+                assert_eq!(
+                    values.unwrap(),
+                    vec!["Basic realm=other", "Bearer scope=read"]
+                );
+            }
+            request.recv_timeout(Duration::from_secs(3)).unwrap();
+            worker.join().unwrap();
+        }
     }
 
     #[test]

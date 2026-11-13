@@ -1,0 +1,99 @@
+{
+  "source_sha256": "c9cb28a50021ab58b8867d6070c3817a17685c5d6622df9aaa1b3a3a39107907",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "a44a7febc1e943e8a09f81256a8cd317e9548e704af5dec4f86dce402ca37abc",
+      "source_sha256": "2583f2d04e93b239fdea07ab37c385e00966113fd64382f4ed9ef952ef82d5a4",
+      "exit_code": 0,
+      "scope": "853 tests:708 relay,1 identity,80 SDK,27 terminal,37 usage;53 separate acceptance ignored. New URL host mapping and journal cases cover URL/form separation,no answers or content for any URL action,one-use decisions,dedupe and recovery. All Rust and backend fixtures byte-identical to current source; only three frontend files differ as independently reconstructed by server-source-delta.json.",
+      "memory": {
+        "memory.peak": "3539693568",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "316483f33bb83f32b2ceb50aa4a96ac163b751cfd2308e6ac0f5c62b40fcefbd",
+      "source_sha256": "c9cb28a50021ab58b8867d6070c3817a17685c5d6622df9aaa1b3a3a39107907",
+      "exit_code": 0,
+      "scope": "23 selected remote acceptance passed,738 other tests filtered out,247.07s after build. Includes four new URL cases (two-round accept,decline,cancel,disconnect while pending),existing form cases,WSS/transport/restarts/native proxy/renewal and production Chromium. Controlled OAuth/MCP/ACP and intercepted external HTTPS review page; no real provider accounts or tailnet. Browser proves no prefetch before consent,no bearer/cookie/referer on target requests,no opener,opening does not accept,two manual rounds,decline/cancel without opening/effects. Revocation cancels pending input with zero continuation.",
+      "memory": {
+        "memory.peak": "3669221376",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "cfc72139f9fbeb0feebf849eee2739fcbb408ca9dac80f07e16d5b557d58c0b8",
+      "source_sha256": "c9cb28a50021ab58b8867d6070c3817a17685c5d6622df9aaa1b3a3a39107907",
+      "exit_code": 0,
+      "scope": "153 tests:116 MCP,6 HTTP,31 vault; package all-targets Clippy,-D warnings. Existing unsafe URL test expanded for raw whitespace,backslash and tab; no extra HTTP or navigation.",
+      "memory": {
+        "memory.peak": "1245175808",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "41fb733ae065509659c57e8fd1728740b97e2ba79a388b5dfc3f87fee03d92c2",
+      "source_sha256": "c9cb28a50021ab58b8867d6070c3817a17685c5d6622df9aaa1b3a3a39107907",
+      "exit_code": 0,
+      "scope": "Final server and companion all-targets Clippy,-D warnings.",
+      "memory": {
+        "memory.peak": "2289344512",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "d27c8d57549c0ad06ac60f1fb7e12ef5a337a8115efa48c6177037ffe7563b4b",
+      "source_sha256": "86f046de06716554f67e5c6ad83c2a7a31c9f7b0dea9982526feda74d4a6b35d",
+      "exit_code": 0,
+      "scope": "157 tests,including full URL/ASCII host/punycode/parser ambiguity and immutable URL action without answers. Absolute parsed href differs from original display address when needed; tests cover https: relative-special parsing."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "26d632c5bafc5059233b27168bdbab52f36ad66a0d024883226496303933d18a",
+      "source_sha256": "d800150d96d1f92150ddfbd103554a2223f87a768d5e67fb914ab23ce524f0b3",
+      "exit_code": 0,
+      "scope": "Final TypeScript noEmit check of current frontend and configuration."
+    },
+    {
+      "suite": "ci-contract",
+      "log": "ci-contract-final.log",
+      "log_sha256": "80a8da2e12329a24b64bdc54557a72dca687bd2962d3191735bf615f1d10a47c",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "14 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution."
+    },
+    {
+      "suite": "launcher",
+      "log": "launcher-final.log",
+      "log_sha256": "d8a5e6f40e696cef2a23743dfc5c5264a374d87192bac5e9b25d15bf189656aa",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "18 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution."
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "0c82d37e5c78d67b21317db8f15d81e6fa4be4ce511fc65af308318664f371b8",
+    "server-source-delta.json": "e056068caf59dd81a69680ac74c47f2aee9c4e84f6a9e3dafe41326087435641",
+    "url_remote_mcp_image_desktop.png": "0433cf3560c62df771517c75e958fa167364b3b189bce8af79f46483dba4f754",
+    "url_remote_mcp_image_mobile.png": "fe761a7953165d1a4db6674c85c249c8a90dfc18cbc1a082852aa65f39a7dca5",
+    "server-original-inputs/apps/web/src/components/McpInput.tsx": "045c56ee3f35e3647047fa10fdba1b948cca09d2e1de44664b6067ba44b7cff2",
+    "server-original-inputs/apps/web/src/lib/mcp-input.ts": "6b6c3439af31b6698e124450f605eecd88cb99ffbc940933035177b71fa2a47d",
+    "server-original-inputs/apps/web/tests/mcp-input.test.ts": "89e4e63bcd2de36d6203abbb9a1ee945df6c999ed7efda454e36f896b904cd89"
+  },
+  "backend_source_equivalence": "Current immutable snapshot reconstructed to server2583f2d0 by overlaying exactly three preserved pre-normalization frontend files; all Rust/backend fixtures are unchanged. Fresh frontend,TypeScript,runtime and Clippy cover current code.",
+  "visual_review": "Original desktop/mobile URL challenge PNGs inspected. Full address,ASCII target host,requesting server and three actions fit cards; mobile wraps controls,Chromium asserts no horizontal overflow. Not full E10 accessibility/cross-browser acceptance.",
+  "limits": "URL UI applies to approved tools/call. No automatic fetch/open/accept; no third-party data returned through URL decisions. Tests use controlled provider and intercepted external page; not real AS/keyring/tailnet/native macOS. E5 full conformance and interactive discovery/list/resources/prompts UI not proved.",
+  "open": "Full E0-E10 remains active and incomplete; formal20/68. Legacy unfinished/write outcome migration,general scoped secrets,A2A,later E6-E10 and separately authorized real services/platform acceptance remain open.",
+  "earlier_checks": "Clippy-first passed before extra URL-revoke fixture assertions; earlier frontend/typecheck passed before href normalization. Final checks supersede them."
+}

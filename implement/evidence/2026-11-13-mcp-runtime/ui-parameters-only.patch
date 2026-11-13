@@ -1,0 +1,61 @@
+--- a/apps/web/src/components/AhpSessions.tsx
++++ b/apps/web/src/components/AhpSessions.tsx
+@@ -17,7 +17,7 @@
+     {tool.status === 'pending-confirmation' && <div data-testid="ahp-permission" data-tool-call-id={tool.toolCallId}><p>Zgoda dotyczy tego wywołania i pokazanych parametrów. Wynik pojawi się po wykonaniu.</p>{approvals && Array.isArray(tool.options) && tool.options.filter((o: Json) => ['approve', 'deny'].includes(o.kind) && typeof o.id === 'string' && typeof o.label === 'string').map((o: Json) => <button key={o.id} data-testid={o.kind === 'approve' ? 'ahp-tool-approve' : 'ahp-tool-deny'} data-option-id={o.id} disabled={disabled} onClick={() => observer?.confirmTool(turnId, tool.toolCallId, o.id)}>{o.label}</button>)}</div>}
+     {tool.invocationMessage && <p>{printable(tool.invocationMessage)}</p>}
+     {tool.pastTenseMessage && <p>{printable(tool.pastTenseMessage)}</p>}
+-    {tool.toolInput !== undefined && <details open={tool.status==='pending-confirmation'&&typeof tool.toolCallId==='string'&&tool.toolCallId.startsWith('dunlin:mcp:')}><summary>Parametry narzędzia</summary><pre>{toolInputText(tool.toolInput)}</pre></details>}
++    {tool.toolInput !== undefined && <details open={tool.status==='pending-confirmation'&&typeof tool.toolCallId==='string'&&tool.toolCallId.startsWith('dunlin:mcp:')}><summary>Parametry narzędzia</summary><pre>{toolInputText(tool.toolInput,tool.toolCallId)}</pre></details>}
+     {tool.status === 'streaming' && tool.partialInput && <pre>{printable(tool.partialInput)}</pre>}
+     {tool.content && <pre>{printable(tool.content)}</pre>}
+     {tool.structuredContent && <details><summary>Dane wyniku</summary><pre>{printable(tool.structuredContent)}</pre></details>}
+--- a/apps/web/src/lib/ahp.ts
++++ b/apps/web/src/lib/ahp.ts
+@@ -21,7 +21,17 @@
+   return { ...value, interactivity: value.interactivity ?? 'full' } as Chat;
+ }
+ /** Content references are displayed as text only; this observer does not fetch URIs. */
+-export function toolInputText(value: unknown): string {
++export function toolInputText(value: unknown, toolCallId?: unknown): string {
++  // Presentation only: the complete immutable invocation remains in AHP.
++  if (typeof toolCallId === 'string' && toolCallId.startsWith('dunlin:mcp:')) {
++    let invocation = value;
++    if (typeof invocation === 'string' && invocation.length <= 64 * 1024) {
++      try { invocation = JSON.parse(invocation); } catch { return 'Parametry narzędzia niedostępne.'; }
++    }
++    return object(invocation) && object(invocation.arguments)
++      ? JSON.stringify(invocation.arguments, null, 2)
++      : 'Parametry narzędzia niedostępne.';
++  }
+   if (typeof value === 'string') return value;
+   if (object(value) && typeof value.uri === 'string') return `Odwołanie do parametrów: ${value.uri}${typeof value.contentType === 'string' ? ` (${value.contentType})` : ''}${typeof value.sizeHint === 'number' ? ` · ${value.sizeHint} B` : ''}`;
+   return '';
+--- a/apps/web/tests/ahp.test.ts
++++ b/apps/web/tests/ahp.test.ts
+@@ -105,6 +105,16 @@
+  assert.equal(f.client.state.chat?.resource,uri);f.client.stop();
+ });
+ 
++test('host MCP parameters show exact arguments without internal connection pins',()=>{
++ const input={provider_id:'work',connection_id:'private-account',connection_revision:3,definition_digest:'a'.repeat(64),tool_name:'lookup',arguments:{query:'Exact user-approved query',limit:2}};
++ const text=JSON.stringify(input);
++ for(const value of [input,text])assert.deepEqual(JSON.parse(toolInputText(value,'dunlin:mcp:host-call')),input.arguments);
++ assert.equal(toolInputText(text,'acp-call'),text);
++ assert.equal(toolInputText('{invalid','dunlin:mcp:host-call'),'Parametry narzędzia niedostępne.');
++ assert.equal(toolInputText({arguments:null},'dunlin:mcp:host-call'),'Parametry narzędzia niedostępne.');
++ assert.equal(JSON.stringify(input),text,'Formatting never edits the frozen approval payload.');
++});
++
+ test('live tool parameters match standard snapshots after ready and completion',()=>{
+  const input = JSON.stringify({path:'README.md'});
+  let live=reduceChat(state(),{type:'chat/turnStarted',turnId:'t',message:{text:'inspect'}});
+--- a/apps/web/e2e/mcp-oauth.mjs
++++ b/apps/web/e2e/mcp-oauth.mjs
+@@ -77,6 +77,7 @@
+   await page.getByTestId('ahp-permission').waitFor();
+   await page.getByTestId('ahp-tool').locator('summary').first().filter({hasText:'MCP fixture / lookup'}).waitFor();
+   await page.getByTestId('ahp-tool').locator('pre').filter({hasText:'approved fixture'}).waitFor({state:'visible'});
++  assert.deepEqual(JSON.parse(await page.getByTestId('ahp-tool').locator('pre').innerText()),{query:'approved fixture'});
+   await page.getByTestId('ahp-permission').getByText('Approve this MCP call once',{exact:true}).waitFor();
+   console.log('MCP_RUNTIME_IMAGE_DESKTOP '+(await page.screenshot({fullPage:true})).toString('base64'));
+   await page.setViewportSize({width:390,height:844});

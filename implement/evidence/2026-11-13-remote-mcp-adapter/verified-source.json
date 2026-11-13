@@ -1,0 +1,52 @@
+{
+  "source_sha256": "8a0f33b165b67dac5fe5a97d88a9f8c44de9a2ad81ab1b2c7072da25fd56b0f9",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "remote-mcp-adapter-server-final.log",
+      "log_sha256": "8bfe189562d16ec33e13ab5f9cb98c8edc26fbc3b8330bf1234943d1a57c348a",
+      "source_sha256": "8a0f33b165b67dac5fe5a97d88a9f8c44de9a2ad81ab1b2c7072da25fd56b0f9",
+      "exit_code": 0,
+      "scope": "774 server-family tests, including six Remote adapter fixture tests and final approver device/policy checks."
+    },
+    {
+      "suite": "runtime",
+      "log": "remote-mcp-adapter-runtime-final.log",
+      "log_sha256": "5902d6c2c5881474575e5b9cd634a54fa04b8dc07e18b9a71e25a836c5a3032b",
+      "source_sha256": "8a0f33b165b67dac5fe5a97d88a9f8c44de9a2ad81ab1b2c7072da25fd56b0f9",
+      "exit_code": 0,
+      "scope": "Focused actual production executable, bwrap/LSM and local MCP stdio acceptance. Approve/deny/disconnect/lost reply with 1/0/0/1 fixture tools/call and no retry. Not remote tools/call."
+    },
+    {
+      "suite": "clippy",
+      "log": "remote-mcp-adapter-clippy-final.log",
+      "log_sha256": "7d954295949f4963b0d8697e9b7d088c3fb5845144a339c8ec3a884db29e6321",
+      "source_sha256": "8a0f33b165b67dac5fe5a97d88a9f8c44de9a2ad81ab1b2c7072da25fd56b0f9",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "tooling_checks": [
+    {
+      "suite": "launcher",
+      "log": "remote-mcp-adapter-launcher-tests.log",
+      "log_sha256": "64fa5011ce5921cd4904247ad2fe3e97ad6b4d77d057da63de086658779465cc",
+      "tests": 18,
+      "exit_code": 0
+    },
+    {
+      "suite": "ci",
+      "log": "remote-mcp-adapter-ci-tests.log",
+      "log_sha256": "164587d2d9d6e5d0af44c08b302ce303a16b299a2361d42c8bbc7e2b8adde421",
+      "tests": 14,
+      "exit_code": 0
+    }
+  ],
+  "runtime_launcher": {
+    "path": "scripts/test_web_sandbox.py",
+    "sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+    "tests_sha256": "a0b1052db43864a725c86d365402636dee0d082f7929a91e5dc9341c28315298",
+    "scope": "Runtime compiles test binaries with --no-run before the production build; full mode executes all preparatory regressions after the executable exists; focused mode executes only its selected acceptance. Same containment and resource caps. No package clean or hardlink."
+  },
+  "scope": "Remote Authority adapter and SQL policy cut, including OAuth/approver guards and weak actor/service lifetime. Public admission/v5 producer, runner proxy and full remote MCP tools/call remain incomplete. The metadata/actor tests are controlled fixtures. No real accounts/services/tailnet."
+}

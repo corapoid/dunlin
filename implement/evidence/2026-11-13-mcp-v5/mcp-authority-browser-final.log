@@ -1,0 +1,332 @@
+Sandbox suite=browser container=dunlin-check-027929a9313c4f88b1dd7daac5f6a0b5 image=sha256:77b5375d59066f5a67d407814f1a66bad75771dce938b3ecafcfd44902c2d854 platform=linux/arm64 memory=3584m scratch=1536m file_size=2147483648 wall=600s source_sha256=86564920ad4da44990e9a58607240deab6537d52e1522efcf86c3725d96cced4
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 49 modules transformed.
+
+(!) outDir /scratch/dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../scratch/dist/index.html                   0.51 kB │ gzip:   0.31 kB
+../../../scratch/dist/REUI-LICENSE.txt             1.07 kB │ gzip:   0.64 kB
+../../../scratch/dist/assets/index-Cp6SFVZy.css   20.01 kB │ gzip:   5.04 kB
+../../../scratch/dist/assets/index-BQcu8ZKy.js   389.98 kB │ gzip: 113.55 kB
+
+✓ built in 839ms
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.229
+   Compiling rand_core v0.10.1
+   Compiling getrandom v0.4.3
+   Compiling itoa v1.0.19
+   Compiling hybrid-array v0.4.15
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling cmov v0.5.4
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling memchr v2.8.3
+   Compiling block-buffer v0.12.1
+   Compiling digest v0.11.3
+   Compiling bytes v1.12.1
+   Compiling version_check v0.9.5
+   Compiling smallvec v1.16.5
+   Compiling zmij v1.0.23
+   Compiling synstructure v0.14.0
+   Compiling serde_json v1.0.154
+   Compiling log v0.4.35
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerocopy v0.8.63
+   Compiling base64ct v1.8.3
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling http v1.5.0
+   Compiling pin-project-lite v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling once_cell v1.21.4
+   Compiling yoke v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling zerovec-derive v0.11.7
+   Compiling cpufeatures v0.3.1
+   Compiling zerovec v0.11.9
+   Compiling generic-array v0.14.7
+   Compiling displaydoc v0.2.7
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling syn v2.0.119
+   Compiling percent-encoding v2.3.2
+   Compiling tinystr v0.8.5
+   Compiling sha2 v0.11.1
+   Compiling pem-rfc7468 v1.0.0
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling getrandom v0.3.4
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling der v0.8.3
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling ppv-lite86 v0.2.21
+   Compiling ring v0.17.14
+   Compiling num-integer v0.1.47
+   Compiling errno v0.3.14
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling thiserror v2.0.21
+   Compiling foldhash v0.2.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling digest v0.10.7
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling bitflags v2.13.2
+   Compiling futures-core v0.3.34
+   Compiling cpubits v0.1.1
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling num-iter v0.1.46
+   Compiling spin v0.9.9
+   Compiling vcpkg v0.2.15
+   Compiling crc32fast v1.5.4
+   Compiling hex v0.4.3
+   Compiling pkg-config v0.3.34
+   Compiling rustls v0.23.46
+   Compiling libsqlite3-sys v0.39.1
+   Compiling lazy_static v1.5.1
+   Compiling idna_adapter v1.2.2
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling simd-adler32 v0.3.10
+   Compiling base16ct v1.0.0
+   Compiling base64 v0.23.1
+   Compiling adler2 v2.0.1
+   Compiling data-encoding v2.11.1
+   Compiling thiserror v1.0.69
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling idna v1.1.0
+   Compiling hashbrown v0.17.1
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling signature v3.0.0
+   Compiling hmac v0.13.0
+   Compiling chacha20 v0.10.2
+   Compiling ref-cast v1.0.27
+   Compiling semver v1.0.28
+   Compiling parking_lot_core v0.9.12
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling rustc_version v0.4.1
+   Compiling rand v0.10.3
+   Compiling der v0.7.10
+   Compiling hashlink v0.12.2
+   Compiling flate2 v1.1.11
+   Compiling elliptic-curve v0.14.3
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling num-bigint v0.4.8
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling ahash v0.8.12
+   Compiling aho-corasick v1.1.5
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling ref-cast-impl v1.0.27
+   Compiling iana-time-zone v0.1.65
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling regex-syntax v0.8.11
+   Compiling utf8-zero v0.8.1
+   Compiling scopeguard v1.2.0
+   Compiling fallible-iterator v0.3.0
+   Compiling rusqlite v0.41.1
+   Compiling lock_api v0.4.14
+   Compiling ureq v3.5.1
+   Compiling regex-automata v0.4.18
+   Compiling chrono v0.4.45
+   Compiling tracing v0.1.44
+   Compiling num-rational v0.4.2
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v5.0.0
+   Compiling darling_macro v0.24.1
+   Compiling rfc6979 v0.6.0
+   Compiling url v2.5.8
+   Compiling rand_core v0.9.5
+   Compiling http-body v1.1.0
+   Compiling num-complex v0.4.6
+   Compiling futures-macro v0.3.34
+   Compiling bit-vec v0.8.0
+   Compiling allocator-api2 v0.2.21
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-task v0.3.34
+   Compiling num-bigint-dig v0.8.6
+   Compiling cfg_aliases v0.1.1
+   Compiling futures-sink v0.3.34
+   Compiling borrow-or-share v0.2.4
+   Compiling unicode-general-category v1.1.0
+   Compiling equivalent v1.0.3
+   Compiling slab v0.4.12
+   Compiling futures-util v0.3.34
+   Compiling hashbrown v0.16.1
+   Compiling fluent-uri v0.4.1
+   Compiling nix v0.28.0
+   Compiling bit-set v0.8.0
+   Compiling num v0.4.3
+   Compiling rand_chacha v0.9.0
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling parking_lot v0.12.5
+   Compiling pkcs8 v0.10.2
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling tower-service v0.3.3
+   Compiling micromap v0.3.0
+   Compiling vsimd v0.8.0
+   Compiling base64 v0.22.1
+   Compiling outref v0.5.2
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling try-lock v0.2.5
+   Compiling want v0.3.2
+   Compiling event-listener v5.4.2
+   Compiling uuid-simd v0.8.0
+   Compiling referencing v0.46.10
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling rand v0.9.5
+   Compiling fraction v0.15.4
+   Compiling fancy-regex v0.17.0
+   Compiling regex v1.13.1
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling email_address v0.2.9
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling either v1.19.0
+   Compiling sync_wrapper v1.0.2
+   Compiling atomic-waker v1.1.2
+   Compiling bytecount v0.6.9
+   Compiling tower-layer v0.3.3
+   Compiling rustix v1.1.6
+   Compiling httpdate v1.0.3
+   Compiling num-cmp v0.1.0
+   Compiling winnow v1.0.5
+   Compiling arrayvec v0.7.8
+   Compiling jiff-core v0.1.4
+   Compiling jiff v0.2.41
+   Compiling vte v0.15.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling jsonschema v0.46.0
+   Compiling hyper v1.12.0
+   Compiling itertools v0.14.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling dyn-clone v1.0.20
+   Compiling ryu v1.0.23
+   Compiling shell-words v1.1.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling unicode-width v0.2.3
+   Compiling mime v0.3.18
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling axum-core v0.5.6
+   Compiling vt100 v0.18.1
+   Compiling portable-pty v0.9.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling openidconnect v4.1.0
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling tower v0.5.3
+   Compiling fastrand v2.5.0
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling tempfile v3.27.0
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+    Finished `test` profile [unoptimized] target(s) in 2m 58s
+     Running unittests src/main.rs (/scratch/target/debug/deps/dunlin_relay-f50d8b559b2d1178)
+
+running 1 test
+test api::web::tests::mcp_oauth_browser::production_browser_acceptance_mcp_oauth ... MCP_UI_IMAGE_DESKTOP [saved PNG]
+MCP_UI_IMAGE_MOBILE [saved PNG]
+MCP_RUNTIME_IMAGE_DESKTOP [saved PNG]
+MCP_RUNTIME_IMAGE_MOBILE [saved PNG]
+PASS Chromium MCP OAuth and local execution: production Builder, explicit private account selection, real broker tools/call after AHP one-time approval, replay dedupe, private tokens, desktop/mobile.
+
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 623 filtered out; finished in 7.17s
+
+Sandbox memory: {"memory.peak": "3720654848", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

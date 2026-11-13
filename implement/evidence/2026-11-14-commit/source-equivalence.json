@@ -1,0 +1,14 @@
+{
+  "tested_source_sha256": "6136603d2959c799cf9b258e727d75f79178f485057864dd70c0c7cd38ed6ab8",
+  "current_source_sha256": "a4e3c6c6fe59f1b7d3aa79f469507cf5e4fc37110e4ac09cdfa62effaef4bd48",
+  "only_rust_change": {
+    "path": "apps/server/src/store/local_metadata_migration_tests.rs",
+    "before_file_sha256": "86db6a515ad65d35f4c036adbd90dcefc25402cddf6bb263613997988fae9654",
+    "after_file_sha256": "24ebb1a07e8495caa570419260d960a862a0f9e21b79842bdec9eb6b029031d4",
+    "before": "DROP TABLE IF EXISTS scoped_credentials; <space>\\n",
+    "after": "DROP TABLE IF EXISTS scoped_credentials;\\n"
+  },
+  "basis": "Only one trailing space removed inside a cfg(test) SQL fixture literal. SQL ignores that space; no production code changes. Restoring this one byte reproduces the complete previously tested Rust source hash exactly. This is not a new test run.",
+  "accepted_manifest": "../2026-11-13-scoped-sql/verified-source.json",
+  "raw_evidence": "Logs and proof patches preserved byte-for-byte; .gitattributes disables whitespace diagnostics only for archived evidence .log/.patch files. Unified patch blank context lines must retain their leading space."
+}

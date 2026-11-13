@@ -1,0 +1,32 @@
+{
+  "control": {
+    "control": "unconfined",
+    "protected_files": 3
+  },
+  "profiles": [
+    {
+      "permission": "read",
+      "profile_sha256": "5a164c9a16c7c16580cb0a8a19ed374055416b6027e70c2757df1d63debb93d4",
+      "receipt": {
+        "kernel": "seatbelt",
+        "metadata": "read",
+        "protected_files": 3
+      }
+    },
+    {
+      "permission": "write",
+      "profile_sha256": "48f6bf9fdf3df3fd80adbe58176d39f9cf85de3831878de68db319218c0368ce",
+      "receipt": {
+        "kernel": "seatbelt",
+        "metadata": "write",
+        "protected_files": 3
+      }
+    }
+  ],
+  "protected_files_unchanged": true,
+  "scope": "production-generated-profile-on-macOS-kernel-only",
+  "source_sha256": "b8c1786c376603b97a0b81d8c25a0e5d169f42a1e68563eca399edf877d21bdc",
+  "bundle_sha256": "918f080611f361d18976acc68c613386168d76859fc3c76bcbf7764f82cd5431",
+  "full_macos_rust_test": "not_executed",
+  "host_rust_build": false
+}

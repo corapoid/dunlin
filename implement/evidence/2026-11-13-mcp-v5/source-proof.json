@@ -1,0 +1,10 @@
+{
+  "server_verified_source": "5a901524dd20bdd3cc46a0a91351a43a9b3c56128e1b2bdfac37b3d67574ffd2",
+  "protocol_current_source": "86564920ad4da44990e9a58607240deab6537d52e1522efcf86c3725d96cced4",
+  "changes_after_server_snapshot": [
+    "crates/relay-protocol/src/worker/session/broker.rs",
+    "crates/relay-protocol/src/worker/session/broker/tests.rs",
+    "crates/relay-protocol/src/worker/session.rs"
+  ],
+  "method": "Removing the two new unused v5 codec modules and their declaration from a private current snapshot exactly reproduces the entire verified server source. No server/broker/authority/SDK/frontend bytes differ."
+}

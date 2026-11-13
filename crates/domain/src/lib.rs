@@ -7,12 +7,17 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod agent;
+pub mod binding;
+pub mod collaboration;
+pub mod hosts;
 pub mod jobs;
 pub mod presence;
 mod project_settings;
 pub mod relay;
 pub mod task_budget;
 pub mod vault;
+pub mod workflow;
 pub use project_settings::{
     GroupSettings, ResolvedSettings, SettingSource, SettingValue, parse_project_environment,
     resolve_group_settings, resolve_project_settings, validate_project_environment,

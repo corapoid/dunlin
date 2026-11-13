@@ -1,0 +1,4 @@
+rustfmt --check --edition 2024 --config skip_children=true crates/vault/src/scoped.rs crates/vault/src/lib.rs crates/vault/src/store.rs crates/vault/src/linux_store.rs
+git diff --check
+python3 scripts/check_docs.py
+Documentation check passed: 122 Markdown files; local links, anchors and navigation.

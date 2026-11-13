@@ -1,0 +1,82 @@
+Sandbox suite=sessions container=dunlin-check-d7690a67827e403a80df2b92d97897d0 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=0a02be1f256a9997857acdb3ded5a7b9484ae6277d372b9ddf9a337eeb0dc611
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling syn v3.0.10
+   Compiling serde_core v1.0.229
+   Compiling libc v0.2.191
+   Compiling shlex v2.0.1
+   Compiling typenum v1.20.1
+   Compiling serde v1.0.229
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling hybrid-array v0.4.15
+   Compiling serde_derive v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling once_cell v1.21.4
+   Compiling vcpkg v0.2.15
+   Compiling cfg-if v1.0.5
+   Compiling getrandom v0.4.3
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling syn v2.0.119
+   Compiling bitflags v2.13.2
+   Compiling pin-project-lite v0.2.17
+   Compiling foldhash v0.2.0
+   Compiling itoa v1.0.19
+   Compiling thiserror v2.0.21
+   Compiling memchr v2.8.3
+   Compiling hashbrown v0.17.1
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling serde_repr v0.1.21
+   Compiling tokio-macros v2.7.2
+   Compiling thiserror-impl v2.0.21
+   Compiling const-oid v0.10.2
+   Compiling jiff-core v0.1.4
+   Compiling rustix v1.1.6
+   Compiling jiff v0.2.41
+   Compiling digest v0.11.3
+   Compiling tokio v1.54.1
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling tracing v0.1.44
+   Compiling hashlink v0.12.2
+   Compiling cpufeatures v0.3.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling smallvec v1.16.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling rusqlite v0.41.1
+   Compiling sha2 v0.11.1
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling uuid v1.29.2
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling hex v0.4.3
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> crates/session-runtime/src/permissions/mcp/tests.rs:290:21
+    |
+290 |                     params![s.id,t,l.epoch],
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `dunlin-session-runtime` (lib test) due to 1 previous error
+Sandbox memory: {"memory.peak": "935723008", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

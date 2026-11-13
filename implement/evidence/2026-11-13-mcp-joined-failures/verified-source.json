@@ -1,0 +1,27 @@
+{
+  "source_sha256": "a5e0899acc7953a585aef86c7445a2347808229029cafd3936f72d91f732cb67",
+  "checks": [
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "1f1e9d35f04d21e39a58ab2524176e0cd97fbd029b8caa30f4bd15bfdef2090d",
+      "source_sha256": "a5e0899acc7953a585aef86c7445a2347808229029cafd3936f72d91f732cb67",
+      "exit_code": 0,
+      "scope": "14 remote acceptance scenarios, both production Chromium branches. Joined denial permits two completed turns with zero provider calls/effects. Lost HTTP reply and owner-only account disconnect during HTTP each yield Unknown, exactly one provider call, source stop/ACK2 and reservation0, no checkout effects or later projected response; held-FD descendant stopped. Historical action/REST retry never repeats Submit or tools/call."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "e788e4d8d93145f6df3c480794f441f6688ad92e0f609db1bc8224d79aa3c928",
+      "source_sha256": "a5e0899acc7953a585aef86c7445a2347808229029cafd3936f72d91f732cb67",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "artifact_sha256": {
+    "desktop.png": "4e8e90c212080425b45514ead26acca29b0baefc1df1c0147bab4be28ec43a66",
+    "mobile.png": "2af0f68268571a0d4755b1d40fb9347dbf5ea7d0709d2891bdc44f99d1563564",
+    "source-current.json": "1d7b5d5ccb44f73b7527494d2d1c08bba36f1ee7c079fc305aa845d8fcf2a222"
+  },
+  "scope": "Controlled OAuth/MCP provider and ACP harness, actual REST/AHP/WSS/native proxy/production helper/Linux sandbox. No real account, provider, tailnet or physical multi-host acceptance. No new full backend/frontend runs: their prior 803/143 passes belong to source00887f71; see ../2026-11-13-remote-mcp-ui/verified-source.json. E5.2/E5.3 and full E0-E10 remain open, formal20/68."
+}

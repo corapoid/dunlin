@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crate::access::LiveAccess;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
@@ -43,12 +44,46 @@ pub struct RecipePlan {
 
 pub trait RecipeExecutor: Send + Sync {
     fn execute(&self, plan: &RecipePlan) -> Result<RecipeOutput, String>;
+
+    /// Executors must explicitly support cancellation before accepting guarded
+    /// requests. A third-party executor cannot silently bypass the kill switch.
+    fn execute_guarded(
+        &self,
+        plan: &RecipePlan,
+        access: Option<LiveAccess>,
+    ) -> Result<RecipeOutput, String> {
+        if access.is_some() {
+            return Err("The recipe executor does not support live authority".into());
+        }
+        self.execute(plan)
+    }
 }
 
 pub struct CommandExecutor;
 
 impl RecipeExecutor for CommandExecutor {
     fn execute(&self, plan: &RecipePlan) -> Result<RecipeOutput, String> {
+        self.execute_inner(plan, None)
+    }
+
+    fn execute_guarded(
+        &self,
+        plan: &RecipePlan,
+        access: Option<LiveAccess>,
+    ) -> Result<RecipeOutput, String> {
+        self.execute_inner(plan, access)
+    }
+}
+
+impl CommandExecutor {
+    fn execute_inner(
+        &self,
+        plan: &RecipePlan,
+        access: Option<LiveAccess>,
+    ) -> Result<RecipeOutput, String> {
+        if access.as_ref().is_some_and(|access| !access.allowed()) {
+            return Err("Credential authority is no longer valid".into());
+        }
         let program = std::fs::canonicalize(&plan.program)
             .map_err(|_| "The recipe program does not exist".to_string())?;
         let metadata = std::fs::metadata(&program)
@@ -104,6 +139,9 @@ impl RecipeExecutor for CommandExecutor {
             // visible and fail closed.
             let mut attempt = 0;
             loop {
+                if access.as_ref().is_some_and(|access| !access.allowed()) {
+                    return Err("Credential authority is no longer valid".into());
+                }
                 match command.spawn() {
                     Ok(child) => break child,
                     Err(error)
@@ -138,7 +176,13 @@ impl RecipeExecutor for CommandExecutor {
             std::thread::spawn(move || read_capped(stderr, crate::http::MAX_RESPONSE_BODY));
         let done = Arc::new(AtomicBool::new(false));
         let timed_out = Arc::new(AtomicBool::new(false));
-        let watchdog = spawn_watchdog(&mut child, plan.timeout, done.clone(), timed_out.clone());
+        let watchdog = spawn_watchdog(
+            &mut child,
+            plan.timeout,
+            done.clone(),
+            timed_out.clone(),
+            access.clone(),
+        );
         let status = child.wait();
         done.store(true, Ordering::Relaxed);
         let _ = watchdog.join();
@@ -146,6 +190,9 @@ impl RecipeExecutor for CommandExecutor {
             out_reader.join().unwrap_or_else(|_| (String::new(), true));
         let (stderr, stderr_truncated) =
             err_reader.join().unwrap_or_else(|_| (String::new(), true));
+        if access.as_ref().is_some_and(|access| !access.allowed()) {
+            return Err("Credential authority was revoked; recipe outcome unknown".into());
+        }
         let status = status.map_err(|error| format!("Could not wait for the recipe: {error}"))?;
         #[cfg(unix)]
         let signal = {
@@ -191,6 +238,7 @@ fn spawn_watchdog(
     timeout: Duration,
     done: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
+    access: Option<LiveAccess>,
 ) -> std::thread::JoinHandle<()> {
     let pid = child.id();
     std::thread::spawn(move || {
@@ -199,10 +247,13 @@ fn spawn_watchdog(
             if done.load(Ordering::Relaxed) {
                 return;
             }
+            if access.as_ref().is_some_and(|access| !access.allowed()) {
+                break;
+            }
             std::thread::sleep(Duration::from_millis(25));
         }
         if !done.load(Ordering::Relaxed) {
-            timed_out.store(true, Ordering::Relaxed);
+            timed_out.store(Instant::now() >= deadline, Ordering::Relaxed);
             #[cfg(unix)]
             unsafe {
                 // The child was spawned as its own process group.
@@ -279,6 +330,29 @@ mod tests {
         );
         std::fs::write(&script, "#!/bin/sh\necho changed\n").unwrap();
         assert!(CommandExecutor.execute(&plan).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_revocation_kills_running_recipe_before_timeout() {
+        // The child creates a marker only after starting, then waits. Revocation
+        // follows that marker so this exercises a running process, not preflight.
+        let cwd = tempfile::tempdir().unwrap();
+        let started = cwd.path().join("started");
+        let mut plan = plan("/bin/sh");
+        plan.cwd = cwd.path().to_path_buf();
+        plan.args = vec!["-c".into(), "touch started; sleep 20; touch escaped".into()];
+        plan.timeout = Duration::from_secs(30);
+        let marker = started.clone();
+        let access = LiveAccess::new(Instant::now() + Duration::from_secs(10), move || {
+            !marker.exists()
+        });
+        let start = Instant::now();
+        let result = CommandExecutor.execute_guarded(&plan, Some(access));
+        assert!(started.exists(), "child must have started");
+        assert!(result.unwrap_err().contains("unknown"));
+        assert!(start.elapsed() < Duration::from_secs(5));
+        assert!(!cwd.path().join("escaped").exists());
     }
 
     #[cfg(unix)]

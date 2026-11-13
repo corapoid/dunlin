@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "basis": "Checksum-verified crates.io archives from the application lockfile; no advisory exemptions",
+  "basis": "Checksum-verified crates.io archives and pinned upstream source archives; no advisory exemptions",
   "packages": [
     {
       "name": "block",
@@ -359,6 +359,38 @@
           "path": "generated/themes.bin",
           "upstream_sha256": "be28f0c1a167469c5bd1e5311d4d3503e6503b378791f2afb9e3e5f2f7f4642e",
           "patched_sha256": "0fde34c864121789488ddbd6367c8f998835dc3a24bac58d2e002190b9e6ec48"
+        }
+      ]
+    },
+    {
+      "name": "ahp",
+      "version": "1.0.0",
+      "upstream_repository": "https://github.com/microsoft/agent-host-protocol",
+      "upstream_tag": "v1.0.0",
+      "source_archive_sha256": "9805d962cbab1d56579e458a000aa7fa98c906eb16971dd484c9bb2a50aaf5d1",
+      "tree_sha256": "82a2bfd2b985ccd332f6684c0d626e37cc9ea401761306d9c99974c7c177e0ad",
+      "files": 18,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "b6363fcbfa8dd4a583214e50c0afe169bf8d5e1fff62f97897c14dce88a20b43",
+          "patched_sha256": "9c7267d94fcda1feab754570b82aa843f35608f1be45eba8443cda89f064d47a"
+        }
+      ]
+    },
+    {
+      "name": "ahp-types",
+      "version": "1.0.0",
+      "upstream_repository": "https://github.com/microsoft/agent-host-protocol",
+      "upstream_tag": "v1.0.0",
+      "source_archive_sha256": "9805d962cbab1d56579e458a000aa7fa98c906eb16971dd484c9bb2a50aaf5d1",
+      "tree_sha256": "1c21d8d21ce4b9b5be3a7e4a906c9f04a654d09498cf48af66c6063fe86f171a",
+      "files": 14,
+      "changes": [
+        {
+          "path": "Cargo.toml",
+          "upstream_sha256": "138c9d28540876ad0e80cfb604b0fa3db4ca22b132e63c62ee74bdbfac1fdf1d",
+          "patched_sha256": "0ce9448edfe606a43fe4e9e4584765262a5d3cc4d5c492cf9f98cbeb72a9b62e"
         }
       ]
     }

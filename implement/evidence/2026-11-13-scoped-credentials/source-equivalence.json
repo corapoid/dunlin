@@ -1,0 +1,14 @@
+{
+  "tested_source_sha256": "05fb6521cb773246431f99ce7cf9fcb1bc46a19b9ad28852b91c4912bf70fccc",
+  "current_source_sha256": "2ca93310b1a8a5fb214b1241aea7b2ee7ddccd9c7da06ae180852d0e130c3d2a",
+  "changed_files": [
+    "crates/vault/src/lib.rs"
+  ],
+  "tested_file_sha256": "5dc0e3c768d032fcf55b16b66fc6afae8974a9384034e85b39e48ebf07310c86",
+  "current_file_sha256": "2e33fb99881f3c9f9ccb917ea8794d072d7c01f59ee0021f85f58c9f398b903e",
+  "only_change": {
+    "before": "pub mod store;\npub mod scoped;",
+    "after": "pub mod scoped;\npub mod store;"
+  },
+  "basis": "rustfmt reorders two adjacent public module declarations. Neither has macro_use attributes; no implementation, test or other source file differs. Normalizing only these two declaration lines reproduces the full tested snapshot hash exactly. Tests are not claimed as a new run on the formatting-only snapshot."
+}

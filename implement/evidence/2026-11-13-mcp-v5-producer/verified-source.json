@@ -1,0 +1,31 @@
+{
+  "source_sha256": "dfca30e163fbe3da6d26e0913e252d70c952fe4ded0213bda650fcf432720092",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-v5-producer-server-final.log",
+      "log_sha256": "1c9c813259a8a9c717632a26cf175827de858079e4f912f584ca896382ca17e2",
+      "source_sha256": "dfca30e163fbe3da6d26e0913e252d70c952fe4ded0213bda650fcf432720092",
+      "exit_code": 0,
+      "scope": "781 server-family tests, including six producer unit tests and a new actual TLS/WSS controlled bound-callback/heartbeat test. No external MCP HTTP or native MCP authorization is asserted by that controlled responder."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-v5-producer-clippy-final.log",
+      "log_sha256": "339bf72d4abca13c5e6edd3fd8b897970062d6c871389bc71acd7e0e4d24d678",
+      "source_sha256": "dfca30e163fbe3da6d26e0913e252d70c952fe4ded0213bda650fcf432720092",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-v5-producer-runtime-final.log",
+      "log_sha256": "cab201f1bcbd400cffc8fd2f5ed6ebbd12c5f81f796b7bb0fcff27db1aa67691",
+      "source_sha256": "dfca30e163fbe3da6d26e0913e252d70c952fe4ded0213bda650fcf432720092",
+      "exit_code": 0,
+      "scope": "Five actual production TLS/WSS/sandbox remote acceptance scenarios for profiles without MCP, including v3, v4/v5 persistent sessions, journal and process restarts."
+    }
+  ],
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Session-owned v5 transport producer registry, bounded asynchronous dispatch and fragmented response queues. The host factory connecting Common Broker/Remote Authority/private accounts, typed v5 open/admission, runner dispatcher/proxy and full remote tools/call acceptance remain incomplete. No UI/protocol crate changes or real accounts/services/tailnet."
+}

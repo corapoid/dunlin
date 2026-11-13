@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use dunlin_domain::vault::{SecretAudit, SecretPolicy, now_secs};
 use dunlin_storage::Store;
+use dunlin_vault::access::LiveAccess;
 use dunlin_vault::broker::{Broker, DenyAll, SessionContext};
 use dunlin_vault::http::UreqExecutor;
 use dunlin_vault::protocol::{
@@ -32,6 +33,7 @@ struct Session {
     allowed: AtomicBool,
     revoked: AtomicBool,
     bound: AtomicBool,
+    authorize: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 #[derive(Clone)]
@@ -50,7 +52,42 @@ impl VaultSession {
         }
     }
 
+    fn live_access(&self, pinned: SessionContext) -> LiveAccess {
+        let session = self.clone();
+        LiveAccess::new(
+            std::time::Instant::now() + std::time::Duration::from_secs(600),
+            move || {
+                let current = session.context();
+                current.allowed
+                    && current.trusted
+                    && current.project_id == pinned.project_id
+                    && current.project_path == pinned.project_path
+                    && current.session_id == pinned.session_id
+                    && current.read_only == pinned.read_only
+            },
+        )
+    }
+
     fn context(&self) -> SessionContext {
+        // No session-map or session-id lock may be held while the callback
+        // reloads relay authority under Store's lock. A denial is terminal for
+        // this credential session even if the underlying grant is later renewed.
+        let mut allowed = self.record.allowed.load(Ordering::Acquire)
+            && !self.record.revoked.load(Ordering::Acquire);
+        if allowed
+            && self
+                .record
+                .authorize
+                .as_ref()
+                .is_some_and(|authorize| !authorize())
+        {
+            self.record.allowed.store(false, Ordering::Release);
+            self.record.revoked.store(true, Ordering::Release);
+            allowed = false;
+        }
+        allowed = allowed
+            && self.record.allowed.load(Ordering::Acquire)
+            && !self.record.revoked.load(Ordering::Acquire);
         SessionContext {
             project_id: self.record.project_id.clone(),
             project_path: self.record.project_path.clone(),
@@ -62,8 +99,7 @@ impl VaultSession {
                 .and_then(|session| session.clone()),
             trusted: true,
             read_only: self.record.read_only.load(Ordering::Relaxed),
-            allowed: self.record.allowed.load(Ordering::Relaxed)
-                && !self.record.revoked.load(Ordering::Relaxed),
+            allowed,
         }
     }
 }
@@ -173,21 +209,43 @@ impl RelayVault {
         &self.socket
     }
 
+    #[cfg(test)]
     pub fn new_session(
         &self,
         project_id: impl Into<String>,
         project_path: impl Into<PathBuf>,
         read_only: bool,
     ) -> VaultSession {
+        self.session(project_id.into(), project_path.into(), read_only, None)
+    }
+
+    pub fn new_guarded_session(
+        &self,
+        project_id: String,
+        project_path: String,
+        read_only: bool,
+        authorize: Arc<dyn Fn() -> bool + Send + Sync>,
+    ) -> VaultSession {
+        self.session(project_id, project_path.into(), read_only, Some(authorize))
+    }
+
+    fn session(
+        &self,
+        project_id: String,
+        project_path: PathBuf,
+        read_only: bool,
+        authorize: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    ) -> VaultSession {
         let token = new_token();
         let record = Arc::new(Session {
-            project_id: project_id.into(),
-            project_path: project_path.into(),
+            project_id,
+            project_path,
             session_id: Mutex::new(None),
             read_only: AtomicBool::new(read_only),
             allowed: AtomicBool::new(true),
             revoked: AtomicBool::new(false),
             bound: AtomicBool::new(false),
+            authorize,
         });
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.insert(token.clone(), record.clone());
@@ -203,6 +261,13 @@ impl RelayVault {
 impl Drop for RelayVault {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        if let Ok(mut sessions) = self.sessions.lock() {
+            for session in sessions.values() {
+                session.revoked.store(true, Ordering::Release);
+                session.allowed.store(false, Ordering::Release);
+            }
+            sessions.clear();
+        }
         if let Some(join) = self.join.take() {
             let _ = join.join();
         }
@@ -318,6 +383,7 @@ fn handle_connection(
                     }
                 };
                 let context = handle.context();
+                let access = handle.live_access(context.clone());
                 let broker = Broker {
                     store: &store,
                     secrets: secrets.as_ref(),
@@ -327,19 +393,19 @@ fn handle_connection(
                     session: &context,
                 };
                 match request {
-                    WireRequest::List => match broker.list() {
+                    WireRequest::List => match broker.list_guarded(&access) {
                         Ok(secrets) => WireResponse::List { secrets },
                         Err(error) => WireResponse::Error {
                             message: error.message().into(),
                         },
                     },
-                    WireRequest::Http(input) => match broker.http(input) {
+                    WireRequest::Http(input) => match broker.http_guarded(input, &access) {
                         Ok(output) => WireResponse::Http { output },
                         Err(error) => WireResponse::Error {
                             message: error.message().into(),
                         },
                     },
-                    WireRequest::Run(input) => match broker.run(input) {
+                    WireRequest::Run(input) => match broker.run_guarded(input, &access) {
                         Ok(output) => WireResponse::Run { output },
                         Err(error) => WireResponse::Error {
                             message: error.message().into(),
@@ -399,5 +465,122 @@ fn cleanup_expired(secrets: &Arc<dyn SecretStore>, database: &Path) {
             created_at: now,
         });
         let _ = store.delete_secret(&secret.id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    fn memory_vault() -> RelayVault {
+        RelayVault {
+            socket: PathBuf::new(),
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            join: None,
+        }
+    }
+
+    #[test]
+    fn request_access_pins_session_and_read_only_and_observes_shutdown() {
+        let vault = memory_vault();
+        let session = vault.new_session("project", "/tmp/project", false);
+        let access = session.live_access(session.context());
+        assert!(access.allowed());
+        session.record.read_only.store(true, Ordering::Release);
+        assert!(!access.allowed());
+        session.record.read_only.store(false, Ordering::Release);
+        assert!(!access.allowed());
+        let access = session.live_access(session.context());
+        *session.record.session_id.lock().unwrap() = Some("other-session".into());
+        assert!(!access.allowed());
+        let access = session.live_access(session.context());
+        assert!(access.allowed());
+        drop(vault);
+        assert!(!access.allowed());
+    }
+
+    #[test]
+    fn guarded_context_reloads_authority_and_denial_is_sticky() {
+        let vault = memory_vault();
+        let current = Arc::new(AtomicBool::new(true));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let authority = current.clone();
+        let observed = calls.clone();
+        let session = vault.new_guarded_session(
+            "project".into(),
+            "/tmp/project".into(),
+            false,
+            Arc::new(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+                authority.load(Ordering::SeqCst)
+            }),
+        );
+        assert!(session.context().allowed);
+        assert!(session.context().allowed);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        current.store(false, Ordering::SeqCst);
+        assert!(!session.context().allowed);
+        assert!(session.record.revoked.load(Ordering::Acquire));
+        current.store(true, Ordering::SeqCst);
+        assert!(!session.context().allowed);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn authorizer_runs_without_session_registry_or_session_id_lock() {
+        let vault = memory_vault();
+        let registry = vault.sessions.clone();
+        let record = Arc::new(Mutex::new(None::<std::sync::Weak<Session>>));
+        let weak_record = record.clone();
+        let session = vault.new_guarded_session(
+            "project".into(),
+            "/tmp/project".into(),
+            true,
+            Arc::new(move || {
+                assert!(registry.try_lock().is_ok());
+                let session = weak_record
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .upgrade()
+                    .unwrap();
+                assert!(session.session_id.try_lock().is_ok());
+                true
+            }),
+        );
+        *record.lock().unwrap() = Some(Arc::downgrade(&session.record));
+        let context = session.context();
+        assert!(context.allowed);
+        assert!(context.read_only);
+        assert_eq!(context.project_id, "project");
+        assert_eq!(context.project_path, PathBuf::from("/tmp/project"));
+    }
+
+    #[test]
+    fn legacy_session_and_explicit_revoke_keep_existing_policy() {
+        let vault = memory_vault();
+        let session = vault.new_session("project", "/tmp/project", true);
+        assert!(session.context().allowed);
+        assert!(session.context().read_only);
+        session.revoke();
+        assert!(!session.context().allowed);
+        assert!(!vault.sessions.lock().unwrap().contains_key(&session.token));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        let guarded = vault.new_guarded_session(
+            "project".into(),
+            "/tmp/project".into(),
+            false,
+            Arc::new(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+                true
+            }),
+        );
+        guarded.revoke();
+        assert!(!guarded.context().allowed);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 }

@@ -1,0 +1,34 @@
+{
+  "source_sha256": "9eb1f84f1798be9bd4ff816e35dc10854286617709fbb27d5fd15861cd570b2e",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-open-transport-server-final.log",
+      "log_sha256": "0896732586319c687bef8a2031e2d079af66ef0f32b14bd625557f63a55a7fb6",
+      "source_sha256": "9eb1f84f1798be9bd4ff816e35dc10854286617709fbb27d5fd15861cd570b2e",
+      "exit_code": 0,
+      "scope": "790 server-family tests. Two new typed-open control cases plus actual private TLS/WSS/reverse-proof controlled-peer open5 acceptance/rejection correlation; this peer does not execute native MCP."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-open-transport-runtime-final.log",
+      "log_sha256": "079e603d0129d38f2f63a9c39b3113c6a99f8e496bc8038c0af777385061bfdd",
+      "source_sha256": "9eb1f84f1798be9bd4ff816e35dc10854286617709fbb27d5fd15861cd570b2e",
+      "exit_code": 0,
+      "scope": "Five production executable/TLS/WSS/bwrap/LSM acceptance scenarios for profiles without MCP, including process restart and v3/v4/v5 sessions. Not full remote tools/call."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-open-transport-clippy-final.log",
+      "log_sha256": "10e1083418eccd89dda06d211cf0736bd07ce9fbc6e1f704f1112ced4f16ada8",
+      "source_sha256": "9eb1f84f1798be9bd4ff816e35dc10854286617709fbb27d5fd15861cd570b2e",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "runtime_launcher_sha256": "0104c525bbe00fe4838a6b3c535e00f3984cd85512e7a39aebf8dcf16dea08ff",
+  "scope": "Typed v5 open in controller transport queue, complete envelope validation and exact reply correlation. Public MCP actor/admission, scoped SQL positive cuts/import/negative cleanup, source runtime receiver/proxy and full remote MCP acceptance are still incomplete. No protocol crate/UI changes or real accounts/services/tailnet.",
+  "observations": [
+    "The process-restart runtime scenario logged a background BrokenPipe from a test-only LocalAPI HTTP responder writing to a closed socket; five acceptance cases and the launcher still terminated successfully."
+  ]
+}

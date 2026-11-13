@@ -1,0 +1,2599 @@
+// Generated from types/*.ts — do not edit.
+//
+// Regenerate with: npm run generate:rust
+
+#![allow(missing_docs)]
+
+#[allow(unused_imports)]
+use crate::common::{AnyValue, JsonObject, StringOrMarkdown, Uri};
+#[allow(unused_imports)]
+use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use serde_repr::{Deserialize_repr, Serialize_repr};
+
+#[allow(unused_imports)]
+use crate::state::{
+    AgentInfo, AgentSelection, Annotation, AnnotationEntry, AnnotationOrigin, AutomationDefinition,
+    AutomationDefinitionPatch, AutomationEntry, AutomationRunLifecycle, AutomationRunSummary,
+    BackgroundWork, CanvasReference, CanvasState, ChangesSummary, Changeset, ChangesetFile,
+    ChangesetOperation, ChangesetOperationStatus, ChangesetStatus, ChatInputAnswer,
+    ChatInputRequest, ChatInputResponseKind, ChatInteractivity, ChatOrigin, ChatSummary,
+    ConfirmationOption, ContentRef, Customization, CustomizationEnablement, ErrorInfo,
+    ErrorResponsePart, FileEditCollection, McpAuthRequirement, McpServerState, Message,
+    ModelSelection, PendingMessageKind, ResponsePart, SessionActiveClient, SessionInputRequest,
+    SideChatSelection, TerminalClaim, TerminalInfo, TextRange, ToolCallCancellationReason,
+    ToolCallConfirmationReason, ToolCallContributor, ToolCallResult, ToolCallRiskAssessment,
+    ToolDefinition, ToolInput, ToolResultContent, Turn, UsageInfo,
+};
+
+// ─── ActionType ──────────────────────────────────────────────────────
+
+/// Discriminant values for all state actions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ActionType {
+    RootAgentsChanged,
+    RootActiveSessionsChanged,
+    SessionReady,
+    SessionCreationFailed,
+    SessionChatAdded,
+    SessionChatRemoved,
+    SessionChatUpdated,
+    SessionChatsReordered,
+    SessionDefaultChatChanged,
+    ChatTurnStarted,
+    ChatDelta,
+    ChatResponsePart,
+    ChatToolCallStart,
+    ChatToolCallDelta,
+    ChatToolCallReady,
+    ChatToolCallConfirmed,
+    ChatToolCallComplete,
+    ChatToolCallResultConfirmed,
+    ChatToolCallContentChanged,
+    ChatToolCallAuthRequired,
+    ChatToolCallAuthResolved,
+    ChatTurnComplete,
+    ChatTurnCancelled,
+    ChatError,
+    ChatTurnResume,
+    ChatActivityChanged,
+    ChatBackgroundWorkSet,
+    ChatBackgroundWorkRemoved,
+    ChatMovableChanged,
+    ChatChangesetsChanged,
+    ChatCanvasesChanged,
+    CanvasStateChanged,
+    ChatWorkingDirectorySet,
+    ChatWorkingDirectoryRemoved,
+    SessionTitleChanged,
+    ChatUsage,
+    ChatReasoning,
+    SessionServerToolsChanged,
+    SessionActiveClientSet,
+    SessionActiveClientRemoved,
+    SessionWorkingDirectorySet,
+    SessionWorkingDirectoryRemoved,
+    SessionWorkingDirectoryReplaced,
+    SessionInputNeededSet,
+    SessionInputNeededRemoved,
+    ChatPendingMessageSet,
+    ChatPendingMessageRemoved,
+    ChatQueuedMessagesReordered,
+    ChatDraftChanged,
+    ChatIsReadChanged,
+    ChatIsArchivedChanged,
+    ChatInputRequested,
+    ChatInputAnswerChanged,
+    ChatInputCompleted,
+    SessionCustomizationsChanged,
+    SessionCustomizationToggled,
+    SessionCustomizationUpdated,
+    SessionCustomizationRemoved,
+    SessionMcpServerStateChanged,
+    SessionMcpServerStartRequested,
+    SessionMcpServerStopRequested,
+    SessionMcpServerBackgroundRequested,
+    ChatTruncated,
+    ChatTurnsLoaded,
+    SessionIsReadChanged,
+    SessionIsArchivedChanged,
+    SessionActivityChanged,
+    SessionChangesetsChanged,
+    SessionConfigChanged,
+    SessionMetaChanged,
+    ChangesetStatusChanged,
+    ChangesetFileSet,
+    ChangesetFileRemoved,
+    ChangesetFilesReviewChanged,
+    ChangesetContentChanged,
+    ChangesetOperationsChanged,
+    ChangesetOperationStatusChanged,
+    ChangesetCleared,
+    AnnotationsSet,
+    AnnotationsUpdated,
+    AnnotationsRemoved,
+    AnnotationsEntrySet,
+    AnnotationsEntryRemoved,
+    RootTerminalsChanged,
+    RootConfigChanged,
+    TerminalData,
+    TerminalInput,
+    TerminalResized,
+    TerminalClaimed,
+    TerminalTitleChanged,
+    TerminalCwdChanged,
+    TerminalExited,
+    TerminalCleared,
+    TerminalCommandDetectionAvailable,
+    TerminalCommandExecuted,
+    TerminalCommandFinished,
+    ResourceWatchChanged,
+    AutomationCreateRequested,
+    AutomationUpdateRequested,
+    AutomationSet,
+    AutomationRemoved,
+    AutomationRunLifecycleChanged,
+    AutomationRunSessionSet,
+    AutomationRunSessionRemoved,
+    AutomationRunPrimarySessionChanged,
+    AutomationRunCancelRequested,
+    /// Unknown raw value from a newer protocol version, preserved verbatim.
+    Unknown(String),
+}
+
+impl serde::Serialize for ActionType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::RootAgentsChanged => serializer.serialize_str("root/agentsChanged"),
+            Self::RootActiveSessionsChanged => {
+                serializer.serialize_str("root/activeSessionsChanged")
+            }
+            Self::SessionReady => serializer.serialize_str("session/ready"),
+            Self::SessionCreationFailed => serializer.serialize_str("session/creationFailed"),
+            Self::SessionChatAdded => serializer.serialize_str("session/chatAdded"),
+            Self::SessionChatRemoved => serializer.serialize_str("session/chatRemoved"),
+            Self::SessionChatUpdated => serializer.serialize_str("session/chatUpdated"),
+            Self::SessionChatsReordered => serializer.serialize_str("session/chatsReordered"),
+            Self::SessionDefaultChatChanged => {
+                serializer.serialize_str("session/defaultChatChanged")
+            }
+            Self::ChatTurnStarted => serializer.serialize_str("chat/turnStarted"),
+            Self::ChatDelta => serializer.serialize_str("chat/delta"),
+            Self::ChatResponsePart => serializer.serialize_str("chat/responsePart"),
+            Self::ChatToolCallStart => serializer.serialize_str("chat/toolCallStart"),
+            Self::ChatToolCallDelta => serializer.serialize_str("chat/toolCallDelta"),
+            Self::ChatToolCallReady => serializer.serialize_str("chat/toolCallReady"),
+            Self::ChatToolCallConfirmed => serializer.serialize_str("chat/toolCallConfirmed"),
+            Self::ChatToolCallComplete => serializer.serialize_str("chat/toolCallComplete"),
+            Self::ChatToolCallResultConfirmed => {
+                serializer.serialize_str("chat/toolCallResultConfirmed")
+            }
+            Self::ChatToolCallContentChanged => {
+                serializer.serialize_str("chat/toolCallContentChanged")
+            }
+            Self::ChatToolCallAuthRequired => serializer.serialize_str("chat/toolCallAuthRequired"),
+            Self::ChatToolCallAuthResolved => serializer.serialize_str("chat/toolCallAuthResolved"),
+            Self::ChatTurnComplete => serializer.serialize_str("chat/turnComplete"),
+            Self::ChatTurnCancelled => serializer.serialize_str("chat/turnCancelled"),
+            Self::ChatError => serializer.serialize_str("chat/error"),
+            Self::ChatTurnResume => serializer.serialize_str("chat/turnResume"),
+            Self::ChatActivityChanged => serializer.serialize_str("chat/activityChanged"),
+            Self::ChatBackgroundWorkSet => serializer.serialize_str("chat/backgroundWorkSet"),
+            Self::ChatBackgroundWorkRemoved => {
+                serializer.serialize_str("chat/backgroundWorkRemoved")
+            }
+            Self::ChatMovableChanged => serializer.serialize_str("chat/movableChanged"),
+            Self::ChatChangesetsChanged => serializer.serialize_str("chat/changesetsChanged"),
+            Self::ChatCanvasesChanged => serializer.serialize_str("chat/canvasesChanged"),
+            Self::CanvasStateChanged => serializer.serialize_str("canvas/stateChanged"),
+            Self::ChatWorkingDirectorySet => serializer.serialize_str("chat/workingDirectorySet"),
+            Self::ChatWorkingDirectoryRemoved => {
+                serializer.serialize_str("chat/workingDirectoryRemoved")
+            }
+            Self::SessionTitleChanged => serializer.serialize_str("session/titleChanged"),
+            Self::ChatUsage => serializer.serialize_str("chat/usage"),
+            Self::ChatReasoning => serializer.serialize_str("chat/reasoning"),
+            Self::SessionServerToolsChanged => {
+                serializer.serialize_str("session/serverToolsChanged")
+            }
+            Self::SessionActiveClientSet => serializer.serialize_str("session/activeClientSet"),
+            Self::SessionActiveClientRemoved => {
+                serializer.serialize_str("session/activeClientRemoved")
+            }
+            Self::SessionWorkingDirectorySet => {
+                serializer.serialize_str("session/workingDirectorySet")
+            }
+            Self::SessionWorkingDirectoryRemoved => {
+                serializer.serialize_str("session/workingDirectoryRemoved")
+            }
+            Self::SessionWorkingDirectoryReplaced => {
+                serializer.serialize_str("session/workingDirectoryReplaced")
+            }
+            Self::SessionInputNeededSet => serializer.serialize_str("session/inputNeededSet"),
+            Self::SessionInputNeededRemoved => {
+                serializer.serialize_str("session/inputNeededRemoved")
+            }
+            Self::ChatPendingMessageSet => serializer.serialize_str("chat/pendingMessageSet"),
+            Self::ChatPendingMessageRemoved => {
+                serializer.serialize_str("chat/pendingMessageRemoved")
+            }
+            Self::ChatQueuedMessagesReordered => {
+                serializer.serialize_str("chat/queuedMessagesReordered")
+            }
+            Self::ChatDraftChanged => serializer.serialize_str("chat/draftChanged"),
+            Self::ChatIsReadChanged => serializer.serialize_str("chat/isReadChanged"),
+            Self::ChatIsArchivedChanged => serializer.serialize_str("chat/isArchivedChanged"),
+            Self::ChatInputRequested => serializer.serialize_str("chat/inputRequested"),
+            Self::ChatInputAnswerChanged => serializer.serialize_str("chat/inputAnswerChanged"),
+            Self::ChatInputCompleted => serializer.serialize_str("chat/inputCompleted"),
+            Self::SessionCustomizationsChanged => {
+                serializer.serialize_str("session/customizationsChanged")
+            }
+            Self::SessionCustomizationToggled => {
+                serializer.serialize_str("session/customizationToggled")
+            }
+            Self::SessionCustomizationUpdated => {
+                serializer.serialize_str("session/customizationUpdated")
+            }
+            Self::SessionCustomizationRemoved => {
+                serializer.serialize_str("session/customizationRemoved")
+            }
+            Self::SessionMcpServerStateChanged => {
+                serializer.serialize_str("session/mcpServerStateChanged")
+            }
+            Self::SessionMcpServerStartRequested => {
+                serializer.serialize_str("session/mcpServerStartRequested")
+            }
+            Self::SessionMcpServerStopRequested => {
+                serializer.serialize_str("session/mcpServerStopRequested")
+            }
+            Self::SessionMcpServerBackgroundRequested => {
+                serializer.serialize_str("session/mcpServerBackgroundRequested")
+            }
+            Self::ChatTruncated => serializer.serialize_str("chat/truncated"),
+            Self::ChatTurnsLoaded => serializer.serialize_str("chat/turnsLoaded"),
+            Self::SessionIsReadChanged => serializer.serialize_str("session/isReadChanged"),
+            Self::SessionIsArchivedChanged => serializer.serialize_str("session/isArchivedChanged"),
+            Self::SessionActivityChanged => serializer.serialize_str("session/activityChanged"),
+            Self::SessionChangesetsChanged => serializer.serialize_str("session/changesetsChanged"),
+            Self::SessionConfigChanged => serializer.serialize_str("session/configChanged"),
+            Self::SessionMetaChanged => serializer.serialize_str("session/metaChanged"),
+            Self::ChangesetStatusChanged => serializer.serialize_str("changeset/statusChanged"),
+            Self::ChangesetFileSet => serializer.serialize_str("changeset/fileSet"),
+            Self::ChangesetFileRemoved => serializer.serialize_str("changeset/fileRemoved"),
+            Self::ChangesetFilesReviewChanged => {
+                serializer.serialize_str("changeset/filesReviewChanged")
+            }
+            Self::ChangesetContentChanged => serializer.serialize_str("changeset/contentChanged"),
+            Self::ChangesetOperationsChanged => {
+                serializer.serialize_str("changeset/operationsChanged")
+            }
+            Self::ChangesetOperationStatusChanged => {
+                serializer.serialize_str("changeset/operationStatusChanged")
+            }
+            Self::ChangesetCleared => serializer.serialize_str("changeset/cleared"),
+            Self::AnnotationsSet => serializer.serialize_str("annotations/set"),
+            Self::AnnotationsUpdated => serializer.serialize_str("annotations/updated"),
+            Self::AnnotationsRemoved => serializer.serialize_str("annotations/removed"),
+            Self::AnnotationsEntrySet => serializer.serialize_str("annotations/entrySet"),
+            Self::AnnotationsEntryRemoved => serializer.serialize_str("annotations/entryRemoved"),
+            Self::RootTerminalsChanged => serializer.serialize_str("root/terminalsChanged"),
+            Self::RootConfigChanged => serializer.serialize_str("root/configChanged"),
+            Self::TerminalData => serializer.serialize_str("terminal/data"),
+            Self::TerminalInput => serializer.serialize_str("terminal/input"),
+            Self::TerminalResized => serializer.serialize_str("terminal/resized"),
+            Self::TerminalClaimed => serializer.serialize_str("terminal/claimed"),
+            Self::TerminalTitleChanged => serializer.serialize_str("terminal/titleChanged"),
+            Self::TerminalCwdChanged => serializer.serialize_str("terminal/cwdChanged"),
+            Self::TerminalExited => serializer.serialize_str("terminal/exited"),
+            Self::TerminalCleared => serializer.serialize_str("terminal/cleared"),
+            Self::TerminalCommandDetectionAvailable => {
+                serializer.serialize_str("terminal/commandDetectionAvailable")
+            }
+            Self::TerminalCommandExecuted => serializer.serialize_str("terminal/commandExecuted"),
+            Self::TerminalCommandFinished => serializer.serialize_str("terminal/commandFinished"),
+            Self::ResourceWatchChanged => serializer.serialize_str("resourceWatch/changed"),
+            Self::AutomationCreateRequested => {
+                serializer.serialize_str("automation/createRequested")
+            }
+            Self::AutomationUpdateRequested => {
+                serializer.serialize_str("automation/updateRequested")
+            }
+            Self::AutomationSet => serializer.serialize_str("automation/set"),
+            Self::AutomationRemoved => serializer.serialize_str("automation/removed"),
+            Self::AutomationRunLifecycleChanged => {
+                serializer.serialize_str("automationRun/lifecycleChanged")
+            }
+            Self::AutomationRunSessionSet => serializer.serialize_str("automationRun/sessionSet"),
+            Self::AutomationRunSessionRemoved => {
+                serializer.serialize_str("automationRun/sessionRemoved")
+            }
+            Self::AutomationRunPrimarySessionChanged => {
+                serializer.serialize_str("automationRun/primarySessionChanged")
+            }
+            Self::AutomationRunCancelRequested => {
+                serializer.serialize_str("automationRun/cancelRequested")
+            }
+            Self::Unknown(value) => serializer.serialize_str(value),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ActionType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "root/agentsChanged" => Self::RootAgentsChanged,
+            "root/activeSessionsChanged" => Self::RootActiveSessionsChanged,
+            "session/ready" => Self::SessionReady,
+            "session/creationFailed" => Self::SessionCreationFailed,
+            "session/chatAdded" => Self::SessionChatAdded,
+            "session/chatRemoved" => Self::SessionChatRemoved,
+            "session/chatUpdated" => Self::SessionChatUpdated,
+            "session/chatsReordered" => Self::SessionChatsReordered,
+            "session/defaultChatChanged" => Self::SessionDefaultChatChanged,
+            "chat/turnStarted" => Self::ChatTurnStarted,
+            "chat/delta" => Self::ChatDelta,
+            "chat/responsePart" => Self::ChatResponsePart,
+            "chat/toolCallStart" => Self::ChatToolCallStart,
+            "chat/toolCallDelta" => Self::ChatToolCallDelta,
+            "chat/toolCallReady" => Self::ChatToolCallReady,
+            "chat/toolCallConfirmed" => Self::ChatToolCallConfirmed,
+            "chat/toolCallComplete" => Self::ChatToolCallComplete,
+            "chat/toolCallResultConfirmed" => Self::ChatToolCallResultConfirmed,
+            "chat/toolCallContentChanged" => Self::ChatToolCallContentChanged,
+            "chat/toolCallAuthRequired" => Self::ChatToolCallAuthRequired,
+            "chat/toolCallAuthResolved" => Self::ChatToolCallAuthResolved,
+            "chat/turnComplete" => Self::ChatTurnComplete,
+            "chat/turnCancelled" => Self::ChatTurnCancelled,
+            "chat/error" => Self::ChatError,
+            "chat/turnResume" => Self::ChatTurnResume,
+            "chat/activityChanged" => Self::ChatActivityChanged,
+            "chat/backgroundWorkSet" => Self::ChatBackgroundWorkSet,
+            "chat/backgroundWorkRemoved" => Self::ChatBackgroundWorkRemoved,
+            "chat/movableChanged" => Self::ChatMovableChanged,
+            "chat/changesetsChanged" => Self::ChatChangesetsChanged,
+            "chat/canvasesChanged" => Self::ChatCanvasesChanged,
+            "canvas/stateChanged" => Self::CanvasStateChanged,
+            "chat/workingDirectorySet" => Self::ChatWorkingDirectorySet,
+            "chat/workingDirectoryRemoved" => Self::ChatWorkingDirectoryRemoved,
+            "session/titleChanged" => Self::SessionTitleChanged,
+            "chat/usage" => Self::ChatUsage,
+            "chat/reasoning" => Self::ChatReasoning,
+            "session/serverToolsChanged" => Self::SessionServerToolsChanged,
+            "session/activeClientSet" => Self::SessionActiveClientSet,
+            "session/activeClientRemoved" => Self::SessionActiveClientRemoved,
+            "session/workingDirectorySet" => Self::SessionWorkingDirectorySet,
+            "session/workingDirectoryRemoved" => Self::SessionWorkingDirectoryRemoved,
+            "session/workingDirectoryReplaced" => Self::SessionWorkingDirectoryReplaced,
+            "session/inputNeededSet" => Self::SessionInputNeededSet,
+            "session/inputNeededRemoved" => Self::SessionInputNeededRemoved,
+            "chat/pendingMessageSet" => Self::ChatPendingMessageSet,
+            "chat/pendingMessageRemoved" => Self::ChatPendingMessageRemoved,
+            "chat/queuedMessagesReordered" => Self::ChatQueuedMessagesReordered,
+            "chat/draftChanged" => Self::ChatDraftChanged,
+            "chat/isReadChanged" => Self::ChatIsReadChanged,
+            "chat/isArchivedChanged" => Self::ChatIsArchivedChanged,
+            "chat/inputRequested" => Self::ChatInputRequested,
+            "chat/inputAnswerChanged" => Self::ChatInputAnswerChanged,
+            "chat/inputCompleted" => Self::ChatInputCompleted,
+            "session/customizationsChanged" => Self::SessionCustomizationsChanged,
+            "session/customizationToggled" => Self::SessionCustomizationToggled,
+            "session/customizationUpdated" => Self::SessionCustomizationUpdated,
+            "session/customizationRemoved" => Self::SessionCustomizationRemoved,
+            "session/mcpServerStateChanged" => Self::SessionMcpServerStateChanged,
+            "session/mcpServerStartRequested" => Self::SessionMcpServerStartRequested,
+            "session/mcpServerStopRequested" => Self::SessionMcpServerStopRequested,
+            "session/mcpServerBackgroundRequested" => Self::SessionMcpServerBackgroundRequested,
+            "chat/truncated" => Self::ChatTruncated,
+            "chat/turnsLoaded" => Self::ChatTurnsLoaded,
+            "session/isReadChanged" => Self::SessionIsReadChanged,
+            "session/isArchivedChanged" => Self::SessionIsArchivedChanged,
+            "session/activityChanged" => Self::SessionActivityChanged,
+            "session/changesetsChanged" => Self::SessionChangesetsChanged,
+            "session/configChanged" => Self::SessionConfigChanged,
+            "session/metaChanged" => Self::SessionMetaChanged,
+            "changeset/statusChanged" => Self::ChangesetStatusChanged,
+            "changeset/fileSet" => Self::ChangesetFileSet,
+            "changeset/fileRemoved" => Self::ChangesetFileRemoved,
+            "changeset/filesReviewChanged" => Self::ChangesetFilesReviewChanged,
+            "changeset/contentChanged" => Self::ChangesetContentChanged,
+            "changeset/operationsChanged" => Self::ChangesetOperationsChanged,
+            "changeset/operationStatusChanged" => Self::ChangesetOperationStatusChanged,
+            "changeset/cleared" => Self::ChangesetCleared,
+            "annotations/set" => Self::AnnotationsSet,
+            "annotations/updated" => Self::AnnotationsUpdated,
+            "annotations/removed" => Self::AnnotationsRemoved,
+            "annotations/entrySet" => Self::AnnotationsEntrySet,
+            "annotations/entryRemoved" => Self::AnnotationsEntryRemoved,
+            "root/terminalsChanged" => Self::RootTerminalsChanged,
+            "root/configChanged" => Self::RootConfigChanged,
+            "terminal/data" => Self::TerminalData,
+            "terminal/input" => Self::TerminalInput,
+            "terminal/resized" => Self::TerminalResized,
+            "terminal/claimed" => Self::TerminalClaimed,
+            "terminal/titleChanged" => Self::TerminalTitleChanged,
+            "terminal/cwdChanged" => Self::TerminalCwdChanged,
+            "terminal/exited" => Self::TerminalExited,
+            "terminal/cleared" => Self::TerminalCleared,
+            "terminal/commandDetectionAvailable" => Self::TerminalCommandDetectionAvailable,
+            "terminal/commandExecuted" => Self::TerminalCommandExecuted,
+            "terminal/commandFinished" => Self::TerminalCommandFinished,
+            "resourceWatch/changed" => Self::ResourceWatchChanged,
+            "automation/createRequested" => Self::AutomationCreateRequested,
+            "automation/updateRequested" => Self::AutomationUpdateRequested,
+            "automation/set" => Self::AutomationSet,
+            "automation/removed" => Self::AutomationRemoved,
+            "automationRun/lifecycleChanged" => Self::AutomationRunLifecycleChanged,
+            "automationRun/sessionSet" => Self::AutomationRunSessionSet,
+            "automationRun/sessionRemoved" => Self::AutomationRunSessionRemoved,
+            "automationRun/primarySessionChanged" => Self::AutomationRunPrimarySessionChanged,
+            "automationRun/cancelRequested" => Self::AutomationRunCancelRequested,
+            _ => Self::Unknown(raw),
+        })
+    }
+}
+
+// ─── Action Envelope ─────────────────────────────────────────────────
+
+/// Identifies the client that originally dispatched an action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionOrigin {
+    pub client_id: String,
+    pub client_seq: i64,
+}
+
+/// Every action is wrapped in an `ActionEnvelope`.
+///
+/// The envelope identifies the channel the action belongs to (e.g.
+/// `ahp-root://` for root actions, the session URI for session actions, the
+/// terminal URI for terminal actions). Individual action payloads carry only
+/// fields that are intrinsic to the action; the channel comes from the
+/// envelope so that any subscribable resource can route its actions uniformly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionEnvelope {
+    /// Channel URI this action belongs to.
+    pub channel: Uri,
+    pub action: StateAction,
+    pub server_seq: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ActionOrigin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejection_reason: Option<String>,
+}
+
+// ─── Action Payloads ─────────────────────────────────────────────────
+
+/// Fired when available agent backends or their models change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootAgentsChangedAction {
+    /// Updated agent list
+    pub agents: Vec<AgentInfo>,
+}
+
+/// Fired when the number of active sessions changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootActiveSessionsChangedAction {
+    /// Current count of active sessions
+    pub active_sessions: i64,
+}
+
+/// Fired when agent-host configuration values change.
+///
+/// By default, the reducer merges the new values into `state.config.values`.
+/// Set `replace` to `true` to replace all values instead of merging.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootConfigChangedAction {
+    /// Updated config values
+    pub config: JsonObject,
+    /// When `true`, replaces all config values instead of merging
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace: Option<bool>,
+}
+
+/// Session backend initialized successfully.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionReadyAction {}
+
+/// Session backend failed to initialize.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCreationFailedAction {
+    /// Error details
+    pub error: ErrorInfo,
+}
+
+/// A chat was added to this session's catalog. Upsert semantics: if a chat
+/// with the same `summary.resource` already exists, the existing entry is
+/// replaced.
+///
+/// Mirrors the root-channel `root/sessionAdded` notification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatAddedAction {
+    /// The full summary of the newly added (or upserted) chat.
+    pub summary: ChatSummary,
+}
+
+/// A chat was removed from this session's catalog. No-op when no entry matches.
+///
+/// Mirrors the root-channel `root/sessionRemoved` notification.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatRemovedAction {
+    /// The URI of the chat to remove.
+    pub chat: Uri,
+}
+
+/// One existing chat's summary fields changed.
+///
+/// Partial-update semantics: only fields present in `changes` are written;
+/// omitted fields are preserved. Identity fields (`resource`) MUST NOT be
+/// carried in `changes`. No-op when no entry with `chat` exists — clients
+/// SHOULD then wait for a {@link SessionChatAddedAction | `session/chatAdded`}.
+///
+/// Mirrors the root-channel `root/sessionSummaryChanged` notification.
+/// When `changes.status` changes, the host MUST project that exact value into
+/// the matching `SessionChatSummary.status` field and publish
+/// the updated compact chat catalog through `root/sessionSummaryChanged`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatUpdatedAction {
+    /// The URI of the chat whose summary changed.
+    pub chat: Uri,
+    /// Mutable summary fields that changed; omitted fields are unchanged.
+    ///
+    /// Identity fields (`resource`) never change and MUST be omitted by
+    /// senders; receivers SHOULD ignore them if present.
+    pub changes: PartialChatSummary,
+}
+
+/// The owning session's authoritative chat catalog order changed.
+///
+/// Host-emitted convergence signal; it never originates from a client
+/// dispatch. `chats` is the complete resulting order and MUST contain every
+/// chat currently in the session exactly once. Reducers replace the catalog
+/// order while preserving each matching summary. Invalid or incomplete orders
+/// are ignored.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChatsReorderedAction {
+    /// Every chat URI in authoritative catalog order.
+    pub chats: Vec<Uri>,
+}
+
+/// The default chat input-routing hint for this session changed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDefaultChatChangedAction {
+    /// New default chat URI, or `undefined` to clear the hint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_chat: Option<Uri>,
+}
+
+/// A new message has been sent to the agent, and a new turn starts.
+///
+/// A client is only allowed to send {@link MessageKind.User} messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTurnStartedAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// ISO 8601 timestamp when this turn started.
+    pub started_at: String,
+    /// The new message
+    pub message: Message,
+    /// If this turn was auto-started from a queued message, the ID of that message
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_message_id: Option<String>,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Streaming text chunk from the assistant, appended to a specific response part.
+///
+/// The server MUST first emit a `chat/responsePart` to create the target
+/// markdown part, then use this action to append text to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatDeltaAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Identifier of the response part to append to
+    pub part_id: String,
+    /// Text chunk
+    pub content: String,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Structured content appended to the response.
+///
+/// An {@link ErrorResponsePart} MUST be appended with {@link ChatErrorAction}
+/// instead so adding the part and ending the turn are one atomic transition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatResponsePartAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Response part to append; error parts are ignored.
+    pub part: ResponsePart,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// A tool call begins — parameters are streaming from the LM.
+///
+/// The server sets {@link ToolCallContributor | `contributor`} to identify
+/// the origin of the tool. For client-provided tools, the named client is
+/// responsible for executing the tool once it reaches the `running` state
+/// and dispatching `chat/toolCallComplete`. For MCP-served tools, the
+/// server executes the call against the named `McpServerCustomization`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallStartAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called. Absent for
+    /// server-side tools that are not contributed by a client or MCP server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+}
+
+/// Streaming partial parameters for a tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallDeltaAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Partial parameter content to append, if provided by the host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// Updated progress message
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation_message: Option<StringOrMarkdown>,
+}
+
+/// Tool call parameters are complete, or a running tool requires re-confirmation.
+///
+/// When dispatched for a `streaming` tool call, transitions to `pending-confirmation`
+/// or directly to `running` if `confirmed` is set.
+///
+/// When dispatched for a `running` tool call (e.g. mid-execution permission needed),
+/// transitions back to `pending-confirmation`. The `invocationMessage` and `_meta`
+/// SHOULD be updated to describe the specific confirmation needed. Clients use the
+/// standard `chat/toolCallConfirmed` flow to approve or deny.
+///
+/// For client-provided tools, the server typically sets `confirmed` to
+/// `'not-needed'` so the tool transitions directly to `running`, where the
+/// owning client can begin execution immediately.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallReadyAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Final contributor metadata. MUST NOT change execution ownership established
+    /// at `chat/toolCallStart`; a client contributor must keep the same `clientId`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Final human-readable description of what the tool invocation intends to do.
+    /// When present, replaces the provisional intention from `chat/toolCallStart`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Message describing what the tool will do or what confirmation is needed
+    pub invocation_message: StringOrMarkdown,
+    /// Final tool input
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<ToolInput>,
+    /// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmation_title: Option<StringOrMarkdown>,
+    /// Risk assessment that informed the confirmation requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_assessment: Option<ToolCallRiskAssessment>,
+    /// File edits that this tool call will perform, for preview before confirmation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edits: Option<FileEditCollection>,
+    /// Whether the agent host allows the client to edit the tool's input parameters before confirming
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable: Option<bool>,
+    /// If set, the tool was auto-confirmed and transitions directly to `running`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmed: Option<ToolCallConfirmationReason>,
+    /// Options the server offers for this confirmation. When present, the client
+    /// SHOULD render these instead of a plain approve/deny UI. Each option
+    /// belongs to a {@link ConfirmationOptionGroup} so the client can still
+    /// categorise the choices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<ConfirmationOption>>,
+}
+
+/// Client approves or denies a pending tool call (merged approved + denied variants).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallConfirmedAction {
+    pub turn_id: String,
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether the tool call was approved.
+    pub approved: bool,
+    /// How the tool was confirmed (present when approved).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirmed: Option<ToolCallConfirmationReason>,
+    /// Why the tool was cancelled (present when denied).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<ToolCallCancellationReason>,
+    /// Edited tool input parameters, if the client modified them before confirming.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_tool_input: Option<String>,
+    /// What the user suggested doing instead (present when denied).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_suggestion: Option<Message>,
+    /// Explanation for the denial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_message: Option<StringOrMarkdown>,
+    /// ID of the selected confirmation option, if the server provided options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option_id: Option<String>,
+}
+
+/// Tool execution finished. Transitions to `completed` or `pending-result-confirmation`
+/// if `requiresResultConfirmation` is `true`.
+///
+/// For client-provided tools (whose tool call state carries a client
+/// `ToolCallContributor` with a `clientId`), the owning client dispatches this
+/// action with the execution result. The server SHOULD reject this action if the
+/// dispatching client does not match the contributor's `clientId`.
+///
+/// Servers waiting on a client tool call MAY time out after a reasonable duration
+/// if the implementing client disconnects or becomes unresponsive, and dispatch
+/// this action with `result.success = false` and an appropriate error.
+///
+/// A client MAY also dispatch this action with a **failed** result (
+/// `result.success: false`) for a tool call currently in `auth-required`
+/// status, to cancel that invocation without completing the pending MCP
+/// authentication challenge. This always transitions the tool call straight
+/// to `completed`, preserving the fields it had before pausing for auth;
+/// `requiresResultConfirmation` is ignored for this transition; the
+/// cancellation can never enter `pending-result-confirmation`, since there is
+/// no real result to review.
+///
+/// A **successful** result (`result.success: true`) is invalid for a tool
+/// call in `auth-required` status — execution never resumed after the
+/// challenge, so there's nothing that could have produced it. The reducer
+/// MUST reject/ignore it as a no-op, leaving the tool call in
+/// `auth-required`. The client must resolve the auth challenge
+/// (`chat/toolCallAuthResolved`) before completing successfully.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallCompleteAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Execution result
+    pub result: ToolCallResult,
+    /// If true, the result requires client approval before finalizing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_result_confirmation: Option<bool>,
+}
+
+/// Client approves or denies a tool's result.
+///
+/// If `approved` is `false`, the tool transitions to `cancelled` with reason `result-denied`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallResultConfirmedAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Whether the result was approved
+    pub approved: bool,
+}
+
+/// Partial content produced while a tool is still executing.
+///
+/// Replaces the `content` array on the running tool call state. Clients can
+/// use this to display live feedback (e.g. a terminal reference) before the
+/// tool completes.
+///
+/// For client-provided tools (whose tool call state carries a client
+/// `ToolCallContributor` with a `clientId`), the owning client dispatches this
+/// action to stream intermediate content while executing. The server SHOULD
+/// reject this action if the dispatching client does not match the contributor's
+/// `clientId`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallContentChangedAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// The current partial content for the running tool call
+    pub content: Vec<ToolResultContent>,
+}
+
+/// A running tool call is paused pending MCP authentication. Transitions the
+/// tool call from `running` to `auth-required`.
+///
+/// The server dispatches this when the MCP server backing the call responds
+/// with a 401/403 challenge mid-execution (see
+/// {@link McpAuthRequirement.reason | `insufficientScope`}). The host SHOULD
+/// pair this with `session/inputNeededSet` (kind `toolAuthentication`) so the
+/// block is visible at the session-summary level, mirroring
+/// {@link McpServerAuthRequiredState}'s own `InputNeeded` guidance.
+///
+/// Only valid for tool calls contributed by an MCP server — the reducer is a
+/// no-op if the tool call's `contributor` is not
+/// {@link ToolCallContributorKind.MCP | MCP-kind}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallAuthRequiredAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// The authentication challenge blocking this invocation.
+    pub auth: McpAuthRequirement,
+}
+
+/// The authentication challenge blocking a tool call has been resolved (the
+/// client pushed a token via `authenticate` and the host validated it).
+/// Transitions the tool call from `auth-required` back to `running`,
+/// preserving the fields it had before pausing.
+///
+/// The host SHOULD remove the corresponding `session/inputNeededSet` entry
+/// (kind `toolAuthentication`) once this is dispatched.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallAuthResolvedAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Turn finished — the assistant is idle.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTurnCompleteAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Elapsed turn duration in milliseconds, measured by the producer's own
+    /// clock. Clients MUST NOT derive this by subtracting timestamps — cross-
+    /// client clocks may differ — and MUST treat it as opaque, producer-supplied
+    /// data.
+    pub duration: i64,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Turn was aborted; server stops processing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTurnCancelledAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Elapsed turn duration in milliseconds, measured by the producer's own
+    /// clock. Clients MUST NOT derive this by subtracting timestamps — cross-
+    /// client clocks may differ — and MUST treat it as opaque, producer-supplied
+    /// data.
+    pub duration: i64,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Error during turn processing.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatErrorAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Elapsed turn duration in milliseconds, measured by the producer's own
+    /// clock. Clients MUST NOT derive this by subtracting timestamps — cross-
+    /// client clocks may differ — and MUST treat it as opaque, producer-supplied
+    /// data.
+    pub duration: i64,
+    /// Error part to append to the response stream before finalizing the turn.
+    /// Its optional `resumable` flag indicates whether the turn can be resumed.
+    pub part: ErrorResponsePart,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatErrorActionPart<'a> {
+    kind: &'static str,
+    error: &'a ErrorInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resumable: Option<bool>,
+}
+
+impl Serialize for ChatErrorAction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut state = serializer
+            .serialize_struct("ChatErrorAction", if self.meta.is_some() { 4 } else { 3 })?;
+        state.serialize_field("turnId", &self.turn_id)?;
+        state.serialize_field("duration", &self.duration)?;
+        state.serialize_field(
+            "part",
+            &ChatErrorActionPart {
+                kind: "error",
+                error: &self.part.error,
+                resumable: self.part.resumable,
+            },
+        )?;
+        if let Some(meta) = &self.meta {
+            state.serialize_field("_meta", meta)?;
+        }
+        state.end()
+    }
+}
+
+/// Resumes the latest errored turn without adding another message.
+///
+/// The turn MUST be the latest turn, its state MUST be `error`, and its final
+/// response part MUST be a resumable error. The reducer reopens the same turn
+/// with its existing message, response parts, and usage intact. The host then
+/// resumes the provider's execution for that turn.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTurnResumeAction {
+    /// Identifier of the errored turn.
+    pub turn_id: String,
+}
+
+/// The activity description of this chat changed.
+///
+/// Dispatched by the server to indicate what the chat is currently doing
+/// (e.g. running a tool, thinking). Clear activity by omitting it or setting it
+/// to `undefined`.
+/// Producers SHOULD also update the parent session's chat catalog with
+/// `session/chatUpdated` so `ChatSummary.activity` stays in sync.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatActivityChangedAction {
+    /// Human-readable description of current activity; omit or set `undefined` to clear
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+}
+
+/// Adds or replaces a {@link BackgroundWork} entry by `id`, independently of turn
+/// state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatBackgroundWorkSetAction {
+    /// The complete entry.
+    pub work: BackgroundWork,
+}
+
+/// Removes finished or no-longer-tracked background work; unknown IDs are a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatBackgroundWorkRemovedAction {
+    /// The {@link BackgroundWorkBase.id | id} of the entry to remove.
+    pub id: String,
+}
+
+/// Whether this chat is structurally eligible to be the source of `moveChat`
+/// changed.
+///
+/// The host is authoritative and MUST also update the owning session's chat
+/// catalog with `session/chatUpdated` so `ChatSummary.movable` stays in sync.
+/// A chat referenced by its owning session's `defaultChat` MUST always carry
+/// `movable: false`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMovableChangedAction {
+    /// Whether this chat is structurally eligible to be moved.
+    pub movable: bool,
+}
+
+/// The {@link Changeset | catalogue of changesets} the agent host advertises
+/// for this chat changed. Replaces
+/// {@link ChatState.changesets | `state.changesets`} entirely
+/// (full-replacement semantics) — set to `undefined` to clear the catalogue.
+///
+/// Entries SHOULD describe Branch, Uncommitted Changes, or other views scoped
+/// to the chat's effective {@link ChatState.workingDirectories | working
+/// directories}. Clients subscribe to each advertised changeset URI for
+/// file-level updates through the existing `changeset/*` action stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatChangesetsChangedAction {
+    /// New catalogue, or `undefined` to clear it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changesets: Option<Vec<Changeset>>,
+}
+
+/// The live canvas channels exposed by this chat changed.
+///
+/// Replaces {@link ChatState.canvases | `state.canvases`} entirely. Set to
+/// `undefined` to clear the collection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatCanvasesChangedAction {
+    /// New canvas channel references, or `undefined` to clear the collection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canvases: Option<Vec<CanvasReference>>,
+}
+
+/// The presentation state for this canvas changed.
+///
+/// Replaces the subscribed canvas channel state entirely. Full-replacement
+/// semantics intentionally keep this early-development channel free to evolve
+/// without expanding the stable chat action surface.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasStateChangedAction {
+    /// New authoritative canvas state.
+    pub canvas: CanvasState,
+}
+
+/// Session title updated. Fired by the server when the title is auto-generated
+/// from conversation, or dispatched by a client to rename a session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTitleChangedAction {
+    /// New title
+    pub title: String,
+}
+
+/// Token usage report for a turn.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatUsageAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Token usage data
+    pub usage: UsageInfo,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// Reasoning/thinking text from the model, appended to a specific reasoning response part.
+///
+/// The server MUST first emit a `chat/responsePart` to create the target
+/// reasoning part, then use this action to append text to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatReasoningAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Identifier of the reasoning response part to append to
+    pub part_id: String,
+    /// Reasoning text chunk
+    pub content: String,
+    /// Additional provider-specific metadata for this action.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI, and
+    /// agent hosts MAY use it to carry per-event context that does not fit any
+    /// other field — for example, attributing the event to a specific agent
+    /// (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+    /// convention.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// The read state of the session changed.
+///
+/// Dispatched by a client to mark a session as read (e.g. after viewing it)
+/// or unread (e.g. after new activity since the client last looked at it).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionIsReadChangedAction {
+    /// Whether the session has been read
+    pub is_read: bool,
+}
+
+/// The archived state of the session changed.
+///
+/// Dispatched by a client to archive a session (e.g. the task is
+/// complete) or to unarchive it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionIsArchivedChangedAction {
+    /// Whether the session is archived
+    pub is_archived: bool,
+}
+
+/// The activity description of the session changed.
+///
+/// Dispatched by the server to indicate what the session is currently doing
+/// (e.g. running a tool, thinking). Clear activity by setting it to `undefined`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActivityChangedAction {
+    /// Human-readable description of current activity, or `undefined` to clear
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+}
+
+/// The {@link Changeset | catalogue of changesets} the agent host
+/// advertises for this session changed. Replaces
+/// {@link SessionState.changesets | `state.changesets`} entirely
+/// (full-replacement semantics) — set to `undefined` to clear the
+/// catalogue.
+///
+/// Producers dispatch this whenever entries are added or removed. The
+/// fan-out happens through this action so observers see catalogue
+/// mutations in the same {@link ChangesetAction | per-changeset} action
+/// stream they already follow for file-level updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionChangesetsChangedAction {
+    /// New catalogue, or `undefined` to clear it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changesets: Option<Vec<Changeset>>,
+}
+
+/// Server tools for this session have changed.
+///
+/// Full-replacement semantics: the `tools` array replaces the previous `serverTools` entirely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionServerToolsChangedAction {
+    /// Updated server tools list (full replacement)
+    pub tools: Vec<ToolDefinition>,
+}
+
+/// An active client for this session was added or updated.
+///
+/// Upsert semantics keyed by {@link SessionActiveClient.clientId | `clientId`}:
+/// a client dispatches this action with its own `SessionActiveClient` to join
+/// the session's active clients or refresh its entry, replacing any existing
+/// entry that has the same `clientId`. Multiple clients may be active at once.
+/// This is also how a client updates its published tools or customizations —
+/// re-dispatch with the full, updated entry. Use
+/// {@link SessionActiveClientRemovedAction | `session/activeClientRemoved`} to
+/// leave. The server SHOULD automatically dispatch that removal when an active
+/// client disconnects.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActiveClientSetAction {
+    /// The active client to add or update, matched by `clientId`.
+    pub active_client: SessionActiveClient,
+}
+
+/// An active client was removed from this session.
+///
+/// Removes the entry for the client identified by `clientId` from
+/// {@link SessionState.activeClients}; a no-op when no entry matches.
+///
+/// The host SHOULD dispatch this automatically when a client stops participating
+/// in the session — for example when it unsubscribes from the session channel,
+/// when it disconnects and does not reconnect within a host-defined grace
+/// period, or when a `reconnect` command's `subscriptions` omit a session the
+/// client was still active in. When removing a client, the host SHOULD also
+/// cancel that client's in-flight tool calls — those whose tool call state
+/// carries a client `ToolCallContributor` with the matching `clientId` — by
+/// dispatching `chat/toolCallComplete` with `result.success = false`. (There is
+/// no per-tool-call server cancel; a failed completion is the cancellation
+/// mechanism, and the call ends in `completed` status with a failed result.)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionActiveClientRemovedAction {
+    /// The `clientId` of the active client to remove.
+    pub client_id: String,
+}
+
+/// A working directory was added to the session's
+/// {@link SessionState.workingDirectories} set.
+///
+/// Membership semantics keyed by the directory URI: the reducer appends
+/// `directory` when the set does not already contain it (creating the set if
+/// absent) and is a no-op when it is already present. Only valid when the agent
+/// advertises {@link AgentCapabilities.multipleWorkingDirectories}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorkingDirectorySetAction {
+    /// The working directory to grant the session's agent tool access to.
+    pub directory: Uri,
+}
+
+/// A working directory was removed from the session's
+/// {@link SessionState.workingDirectories} set.
+///
+/// Removes `directory` from the set; a no-op when it is not present. There is no
+/// atomic backend "remove one" primitive — a host reconfigures its agent to the
+/// reduced set — so this action is safe to model as idempotent. A host MAY
+/// decline to apply the removal (e.g. an immutable primary directory, see
+/// {@link MultipleWorkingDirectoriesCapability.immutablePrimary}); it then leaves
+/// the set unchanged. When the agent advertises
+/// {@link MultipleWorkingDirectoriesCapability.primaryReplacement}, clients MUST
+/// NOT use this generic membership action to remove index `0`; the host MUST
+/// reject such a removal, leaving the protected slot intact.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorkingDirectoryRemovedAction {
+    /// The working directory to revoke the session's agent tool access to.
+    pub directory: Uri,
+}
+
+/// Atomically replaces one of the session's working directories.
+///
+/// This is a targeted compare-and-swap: the reducer is a no-op when
+/// {@link SessionState.workingDirectories} does not contain `directory`.
+/// Otherwise it replaces that entry with `replacement` and deduplicates the
+/// result, preserving every other directory's relative order. When
+/// `replacement` occurs after the target, it moves to the target's position;
+/// for example, `[A, B, C]` with `B → C` becomes `[A, C]`. When it occurs
+/// before the target, it retains its earlier position and the target is removed;
+/// `[A, B, C]` with `C → A` becomes `[A, B]`.
+///
+/// Only valid when the agent advertises
+/// {@link AgentCapabilities.multipleWorkingDirectories}. Replacing index `0`
+/// additionally requires
+/// {@link MultipleWorkingDirectoriesCapability.primaryReplacement}; clients
+/// MUST NOT target an immutable primary. The host MUST validate and apply its
+/// backend side effect before broadcasting an accepted action, or reject it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorkingDirectoryReplacedAction {
+    /// URI of the existing entry to replace.
+    pub directory: Uri,
+    /// URI to place in the replaced entry's position.
+    pub replacement: Uri,
+}
+
+/// A working directory was added to this chat's
+/// {@link ChatState.workingDirectories} subset.
+///
+/// Membership semantics keyed by the directory URI: the reducer appends
+/// `directory` when the chat's subset does not already contain it (creating the
+/// subset if absent) and is a no-op when it is already present. `directory` MUST
+/// be one of the owning session's {@link SessionState.workingDirectories}; a host
+/// MUST reject a directory that is not. Only valid when the agent advertises
+/// {@link AgentCapabilities.multipleWorkingDirectories}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWorkingDirectorySetAction {
+    /// The working directory to add to this chat's subset.
+    pub directory: Uri,
+}
+
+/// A working directory was removed from this chat's
+/// {@link ChatState.workingDirectories} subset.
+///
+/// Removes `directory` from the chat's subset; a no-op when it is not present.
+/// Idempotent, mirroring `session/workingDirectoryRemoved`. Only affects the
+/// chat's subset — the directory remains in the session's set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWorkingDirectoryRemovedAction {
+    /// The working directory to remove from this chat's subset.
+    pub directory: Uri,
+}
+
+/// A session-level input request was added or updated.
+///
+/// Upsert semantics keyed by {@link SessionInputRequest.id | `request.id`}: the
+/// host dispatches this with the full {@link SessionInputRequest} to append a new
+/// entry to {@link SessionState.inputNeeded} or replace the existing entry with
+/// the same `id`.
+///
+/// Server-originated: the host mirrors chat-level requests (elicitations, tool
+/// confirmations, client-tool executions) into the session aggregate so clients
+/// subscribed only to the session channel can discover them. Clients respond by
+/// dispatching the ordinary `chat/*` action to the entry's `chat` channel — see
+/// {@link SessionInputRequest}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInputNeededSetAction {
+    /// The input request to add or update, matched by `id`.
+    pub request: SessionInputRequest,
+}
+
+/// A session-level input request was removed.
+///
+/// Removes the entry identified by `id` from
+/// {@link SessionState.inputNeeded}; a no-op when no entry matches.
+///
+/// Server-originated: the host dispatches this once the underlying request
+/// resolves (the user answers, the tool call is confirmed, or the client
+/// reports its result).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInputNeededRemovedAction {
+    /// The `id` of the input request to remove.
+    pub id: String,
+}
+
+/// A pending message was set (upsert semantics: creates or replaces).
+///
+/// For steering messages, this always replaces the single steering message.
+/// For queued messages, if a message with the given `id` already exists it is
+/// updated in place; otherwise it is appended to the queue. If the chat is
+/// idle when a queued message is set, the server SHOULD immediately consume it
+/// and start a new turn.
+///
+/// A client is only allowed to send {@link MessageKind.User} messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatPendingMessageSetAction {
+    /// Whether this is a steering or queued message
+    pub kind: PendingMessageKind,
+    /// Unique identifier for this pending message
+    pub id: String,
+    /// The message content
+    pub message: Message,
+}
+
+/// A pending message was removed (steering or queued).
+///
+/// Dispatched by clients to cancel a pending message, or by the server when
+/// it consumes a message (e.g. starting a turn from a queued message or
+/// injecting a steering message into the current turn).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatPendingMessageRemovedAction {
+    /// Whether this is a steering or queued message
+    pub kind: PendingMessageKind,
+    /// Identifier of the pending message to remove
+    pub id: String,
+}
+
+/// Reorder the queued messages.
+///
+/// The `order` array contains the IDs of queued messages in their new
+/// desired order. IDs not present in the current queue are ignored.
+/// Queued messages whose IDs are absent from `order` are appended at
+/// the end in their original relative order (so a client with a stale
+/// view of the queue never silently drops messages).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatQueuedMessagesReorderedAction {
+    /// Queued message IDs in the desired order
+    pub order: Vec<String>,
+}
+
+/// The chat's draft input changed.
+///
+/// Clients MAY periodically sync their local input state — the message the user
+/// is composing, including its {@link Message.model | model} /
+/// {@link Message.agent | agent} selection and attachments — into the chat's
+/// {@link ChatState.draft | `draft`} so it survives reloads and is visible to
+/// other clients viewing the same chat. Eager syncing is **not** required;
+/// clients SHOULD debounce and MAY sync only at convenient points. Set `draft`
+/// to `undefined` to clear it (e.g. once the message is sent).
+///
+/// A client is only allowed to draft {@link MessageKind.User} messages.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatDraftChangedAction {
+    /// New draft message, or `undefined` to clear it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<Message>,
+}
+
+/// The read state of the chat changed.
+///
+/// Dispatched by a client to mark any known chat, including the owning
+/// session's default chat, as read (e.g. after viewing it) or unread. This
+/// changes only the addressed chat; it does not change the read state of its
+/// owning session or sibling chats. Use `session/isReadChanged` only to change
+/// the owning session's independent read state. After accepting this action,
+/// the host also synchronizes the addressed chat's `ChatSummary.status` and
+/// `SessionChatSummary.status` projections.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatIsReadChangedAction {
+    /// Whether the chat has been read
+    pub is_read: bool,
+}
+
+/// The archived state of the chat changed.
+///
+/// Dispatched by a client to archive a chat independently of its owning
+/// session or to restore it. Archiving the session's default chat is equivalent
+/// to archiving the session and SHOULD use `session/isArchivedChanged` instead.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatIsArchivedChangedAction {
+    /// Whether the chat is archived
+    pub is_archived: bool,
+}
+
+/// A session requested input from the user.
+///
+/// Creates an unresolved {@link InputRequestResponsePart} in the active turn,
+/// or replaces the unresolved part with the same request `id`. Answer drafts
+/// are preserved unless `request.answers` is provided.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputRequestedAction {
+    /// Input request to create or replace
+    pub request: ChatInputRequest,
+}
+
+/// A client updated, submitted, skipped, or removed a single in-progress answer.
+///
+/// Dispatching with `answer: undefined` removes that question's answer draft.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputAnswerChangedAction {
+    /// Input request identifier
+    pub request_id: String,
+    /// Question identifier within the input request
+    pub question_id: String,
+    /// Updated answer, or `undefined` to clear an answer draft
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<ChatInputAnswer>,
+}
+
+/// A client submitted an accept, decline, or cancel response to an input request.
+///
+/// If accepted, the server uses `answers` (when provided) plus the request's
+/// synced answer state to resume the blocked operation. The reducer records the
+/// response and final answers on the existing {@link InputRequestResponsePart}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInputCompletedAction {
+    /// Input request identifier
+    pub request_id: String,
+    /// Completion outcome
+    pub response: ChatInputResponseKind,
+    /// Optional final answer replacement, keyed by question ID
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answers: Option<std::collections::HashMap<String, ChatInputAnswer>>,
+}
+
+/// The session's customizations have changed.
+///
+/// Full-replacement semantics: the `customizations` array replaces the
+/// previous `customizations` entirely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCustomizationsChangedAction {
+    /// Updated customization list (full replacement).
+    pub customizations: Vec<Customization>,
+}
+
+/// A client updated a customization's enablement decisions.
+///
+/// Matches `id` against every top-level customization first — a plugin or
+/// directory container, or a bare top-level MCP server — then against the
+/// children inside each container (a skill, agent, or other entry). Plugins
+/// and MCP servers retain the matched entry's explicit decisions; other
+/// entries update their `enabled` flag. Disabling a plugin still disables all
+/// of its children — the effective state of a plugin child is the plugin's
+/// derived enabled value and `(child.enabled ?? true)` — so toggling a child
+/// only matters while its plugin is enabled. Is a no-op when no
+/// customization has the given `id`.
+///
+/// The `enablement` array completely replaces all explicit decisions. A caller
+/// changing one scope must include every decision it intends to preserve.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCustomizationToggledAction {
+    /// The id of the container or child to update.
+    pub id: String,
+    /// Explicit enablement decisions, replacing the previous list entirely.
+    pub enablement: Vec<CustomizationEnablement>,
+}
+
+/// Upserts a top-level customization (plugin or directory).
+///
+/// The reducer locates the existing entry by `customization.id`:
+///
+/// - If found, the entry is replaced entirely with `customization`,
+///   including its `children` array. To preserve existing children, the
+///   host must include them on the payload.
+/// - If not found, the entry is appended.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCustomizationUpdatedAction {
+    /// The customization to upsert (matched by `customization.id`).
+    pub customization: Customization,
+}
+
+/// Removes a customization by id.
+///
+/// Searches every container and its children for the entry. If the entry
+/// is a container, its children are removed with it. Is a no-op when no
+/// matching id is found.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCustomizationRemovedAction {
+    /// The id of the customization to remove.
+    pub id: String,
+}
+
+/// Updates the runtime fields of an existing
+/// {@link McpServerCustomization} — narrow alternative to
+/// {@link SessionCustomizationUpdatedAction} for the high-frequency
+/// `starting` ↔ `ready` ↔ `authRequired` transitions.
+///
+/// Locates the target entry by `id`, searching both the top-level
+/// customization list and the `children` array of every container.
+/// Replaces the entry's {@link McpServerCustomization.state | `state`}
+/// and {@link McpServerCustomization.channel | `channel`}
+/// (full-replacement semantics: omit `channel` to clear an existing
+/// channel URI). Other fields of the customization are preserved.
+///
+/// Is a no-op when no matching `McpServerCustomization` is found. To
+/// update any other field (name, icons, `mcpApp` capabilities, etc.) use
+/// {@link SessionCustomizationUpdatedAction} instead.
+///
+/// When the transition is to {@link McpServerStatus.AuthRequired}
+/// because of a request issued mid-turn, the host SHOULD also raise
+/// {@link SessionStatus.InputNeeded} on the session — see
+/// {@link McpServerAuthRequiredState} for the rationale.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpServerStateChangedAction {
+    /// The id of the {@link McpServerCustomization} to update.
+    pub id: String,
+    /// The new lifecycle state.
+    pub state: McpServerState,
+    /// Updated `mcp://` side-channel URI. Full-replacement: omit to clear
+    /// an existing channel (typical when leaving
+    /// {@link McpServerStatus.Ready | `Ready`}).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<Uri>,
+}
+
+/// Requests that the host start or restart an existing
+/// {@link McpServerCustomization}.
+///
+/// Locates the target entry by `id`, searching both the top-level
+/// customization list and the `children` array of every container. The
+/// reducer optimistically moves the server to
+/// {@link McpServerStatus.Starting | `starting`} and clears any previous
+/// {@link McpServerCustomization.channel | `channel`}; the host remains
+/// authoritative and SHOULD follow with
+/// {@link SessionMcpServerStateChangedAction | `session/mcpServerStateChanged`}
+/// once the server becomes ready, needs authentication, fails, or is
+/// rejected. Is a no-op when no matching `McpServerCustomization` is found.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpServerStartRequestedAction {
+    /// The id of the {@link McpServerCustomization} to start.
+    pub id: String,
+}
+
+/// Requests that the host stop an existing {@link McpServerCustomization}.
+///
+/// Locates the target entry by `id`, searching both the top-level
+/// customization list and the `children` array of every container. The
+/// reducer optimistically moves the server to
+/// {@link McpServerStatus.Stopped | `stopped`} and clears any previous
+/// {@link McpServerCustomization.channel | `channel`}. Replacing an
+/// {@link McpServerStatus.AuthRequired | `authRequired`} lifecycle state with
+/// `stopped` unblocks the server from waiting on authentication. If the host
+/// also raised session-level input-needed state solely for that MCP server, it
+/// SHOULD remove that input-needed entry when accepting the stop.
+///
+/// The host remains authoritative and MAY reject the action or follow with
+/// {@link SessionMcpServerStateChangedAction | `session/mcpServerStateChanged`}
+/// if the final lifecycle state differs. Is a no-op when no matching
+/// `McpServerCustomization` is found.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpServerStopRequestedAction {
+    /// The id of the {@link McpServerCustomization} to stop.
+    pub id: String,
+}
+
+/// Requests that the host background the startup of an existing
+/// {@link McpServerCustomization} that is currently blocking message
+/// processing (see {@link McpServerStartingState.blocking}), so that new
+/// messages can be processed without waiting for the server to finish
+/// starting.
+///
+/// The server keeps starting in the background; backgrounding only stops the
+/// host from holding message processing on it.
+///
+/// Locates the target entry by `id`, searching both the top-level
+/// customization list and the `children` array of every container. When the
+/// server is {@link McpServerStatus.Starting | `starting`} with
+/// `blocking: true`, the reducer optimistically sets `blocking` to `false`,
+/// preserving the rest of the entry. Is a no-op otherwise (no matching
+/// `McpServerCustomization`, a different lifecycle state, or not blocking).
+/// The host remains authoritative and MAY reject the request by following with
+/// {@link SessionMcpServerStateChangedAction | `session/mcpServerStateChanged`}
+/// restoring `blocking: true`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMcpServerBackgroundRequestedAction {
+    /// The id of the {@link McpServerCustomization} to background.
+    pub id: String,
+}
+
+/// Truncates a session's history. If `turnId` is provided, all turns after that
+/// turn are removed and the specified turn is kept. If `turnId` is omitted, all
+/// turns are removed.
+///
+/// If there is an active turn it is silently dropped and the chat status
+/// returns to `idle`.
+///
+/// Common use-case: truncate old data then dispatch a new
+/// `chat/turnStarted` with an edited message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTruncatedAction {
+    /// Keep turns up to and including this turn. Omit to clear all turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+/// Loads older completed turns into this chat's state.
+///
+/// Hosts dispatch this before responding to `fetchTurns`, and before applying
+/// any operation that references a turn older than the currently loaded window.
+/// `turns` is ordered oldest-first and is prepended to the current `turns`
+/// window. `turnsNextCursor` replaces the state's cursor; omit it when all
+/// retained turns are now loaded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatTurnsLoadedAction {
+    /// Older completed turns loaded into the state, ordered oldest-first.
+    pub turns: Vec<Turn>,
+    /// Opaque cursor for loading the next older page, if one remains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turns_next_cursor: Option<String>,
+}
+
+/// Client changed a mutable config value mid-session.
+///
+/// Only properties with `sessionMutable: true` in the config schema may be
+/// changed. The server validates and broadcasts the action; the reducer merges
+/// the new values into `state.config.values`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigChangedAction {
+    /// Updated config values
+    pub config: JsonObject,
+    /// When `true`, replaces all config values instead of merging
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace: Option<bool>,
+}
+
+/// The session's `_meta` side-channel changed. Replaces `state._meta`
+/// entirely (full-replacement semantics). Producers SHOULD merge any
+/// keys they wish to preserve into the new value before dispatching.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMetaChangedAction {
+    /// New `_meta` payload, or `undefined` to clear it
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+}
+
+/// The {@link ChangesetState.status} for this changeset transitioned (e.g.
+/// `computing → ready` or `recomputing → ready`). The error payload is set
+/// together with `status` whenever it transitions to
+/// {@link ChangesetStatus.Error | Error}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetStatusChangedAction {
+    /// New computation lifecycle status.
+    pub status: ChangesetStatus,
+    /// Cause when `status === ChangesetStatus.Error`; otherwise omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorInfo>,
+}
+
+/// Upsert a {@link ChangesetFile} in the changeset — adds a new entry, or
+/// replaces an existing one identified by {@link ChangesetFile.id}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetFileSetAction {
+    /// The new or replacement file entry.
+    pub file: ChangesetFile,
+}
+
+/// Remove a {@link ChangesetFile} from the changeset by its id.
+///
+/// Typically dispatched when a file is reverted, staged out, or otherwise
+/// no longer in scope (e.g. a renamed file is replaced by a new entry).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetFileRemovedAction {
+    /// The {@link ChangesetFile.id} of the file to remove.
+    pub file_id: String,
+}
+
+/// Set the {@link ChangesetFile.reviewed} flag for one or more files — the
+/// GitHub-style "Viewed" toggle, applied in a single batch.
+///
+/// Targets files by their {@link ChangesetFile.id}. Ids in {@link files} that
+/// do not match a file currently present in the changeset are ignored; if none
+/// match, the action is a no-op. Only the {@link ChangesetFile.reviewed} field
+/// of each matched file is affected; the files' {@link ChangesetFile.edit | edit}
+/// and {@link ChangesetFile._meta | _meta} are left untouched.
+///
+/// Only meaningful on a changeset that advertises
+/// {@link ChangesetCapabilities.review}. Unlike every other `changeset/*` action
+/// this one is **client-dispatchable**: a reviewer toggles review state directly,
+/// applying it optimistically through the write-ahead reducer and letting the
+/// server echo it back on the normal `action` envelope stream. The server MAY
+/// also originate it (e.g. an agent marking its own output reviewed).
+///
+/// There is no protocol-level content version, so review is not reset
+/// automatically when a file's contents change under a stable id. The server,
+/// which is the authority on what changed, resets review explicitly — either by
+/// re-emitting the file without `reviewed: true`, or by dispatching this action
+/// with `reviewed: false`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetFilesReviewChangedAction {
+    /// The {@link ChangesetFile.id | ids} of the files whose review state changed.
+    pub files: Vec<String>,
+    /// New review state applied to every listed file: `true` once reviewed, `false` to clear it.
+    pub reviewed: bool,
+}
+
+/// The changeset's full content changed. Full replacement semantics: `files`
+/// replaces the previous file list, and `operations`, when present, replaces
+/// the previous operation list.
+///
+/// Producers SHOULD use this action for initial snapshots and bulk refreshes;
+/// use {@link ChangesetFileSetAction}, {@link ChangesetFileRemovedAction}, and
+/// {@link ChangesetOperationsChangedAction} for incremental updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetContentChangedAction {
+    /// Full replacement file list.
+    pub files: Vec<ChangesetFile>,
+    /// Full replacement operation list. Omit when operations are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operations: Option<Vec<ChangesetOperation>>,
+}
+
+/// The set of operations available on this changeset changed. Full
+/// replacement semantics: `operations` replaces the previous list (or
+/// removes it entirely when `operations` is `undefined`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetOperationsChangedAction {
+    /// Updated operation list. Pass `undefined` to clear all operations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operations: Option<Vec<ChangesetOperation>>,
+}
+
+/// The {@link ChangesetOperation.status} for a single operation transitioned
+/// (e.g. `idle → running → idle`, or `running → error`). The error payload
+/// is set together with `status` whenever it transitions to
+/// {@link ChangesetOperationStatus.Error | Error}, and cleared on any other
+/// transition.
+///
+/// Targets one operation by its {@link ChangesetOperation.id}. If no
+/// operation with that id is currently present in the changeset, the action
+/// is a no-op. Use {@link ChangesetOperationsChangedAction} to add, remove,
+/// or otherwise replace the operation list itself.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetOperationStatusChangedAction {
+    /// The {@link ChangesetOperation.id} whose status changed.
+    pub operation_id: String,
+    /// New execution status.
+    pub status: ChangesetOperationStatus,
+    /// Cause when `status === ChangesetOperationStatus.Error`; otherwise omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorInfo>,
+}
+
+/// Drop every file from the changeset.
+///
+/// Two cases use this:
+/// 1. The underlying source moved (branch switched, fork point invalidated,
+///    …) and the server is recomputing from scratch — subsequent
+///    {@link ChangesetFileSetAction} entries will repopulate it.
+/// 2. The owning session has ended and the URI is becoming
+///    un-subscribable — the server will unsubscribe all clients shortly
+///    after dispatching this action.
+///
+/// Clients SHOULD release any references on receipt and SHOULD NOT
+/// distinguish the two cases from the action alone — instead, react to
+/// the corresponding session-level lifecycle signal (e.g.
+/// `root/sessionRemoved`) for the "going away" case.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesetClearedAction {}
+
+/// Upsert an {@link Annotation} in the annotations channel — adds a new
+/// annotation, or replaces an existing one identified by
+/// {@link Annotation.id}.
+///
+/// Dispatched by a client to create an annotation (together with its
+/// mandatory first entry) or to re-anchor / resolve an existing one; the
+/// dispatching client assigns the {@link Annotation.id} and the id of any
+/// new entry. When replacing, the full annotation payload (including its
+/// {@link Annotation.entries | entries} list) is substituted; producers
+/// SHOULD prefer {@link AnnotationsEntrySetAction} for per-entry edits, and
+/// {@link AnnotationsUpdatedAction} to resolve / re-anchor an existing
+/// annotation, to keep wire updates small.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsSetAction {
+    /// The new or replacement annotation. MUST contain at least one entry.
+    pub annotation: Annotation,
+}
+
+/// Partially update an existing {@link Annotation}'s own properties — a narrow
+/// alternative to {@link AnnotationsSetAction} for the common case of resolving
+/// / re-opening or re-anchoring an annotation without resending its
+/// {@link Annotation.entries | entries}.
+///
+/// Targets one annotation by its {@link annotationId}. Only the fields present
+/// on the action are written; omitted fields leave the corresponding
+/// {@link Annotation} property unchanged. The annotation's
+/// {@link Annotation.entries | entries}, {@link Annotation.id | id}, and
+/// {@link Annotation._meta | _meta} are never touched — dispatch
+/// {@link AnnotationsSetAction} to replace those, to clear {@link range}
+/// (re-anchor to the whole file), or {@link AnnotationsEntrySetAction} /
+/// {@link AnnotationsEntryRemovedAction} to edit individual entries.
+///
+/// If {@link annotationId} does not match any current annotation the action is
+/// a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsUpdatedAction {
+    /// The {@link Annotation.id} of the annotation to update.
+    pub annotation_id: String,
+    /// Replaces the annotation's provenance. Omit to leave it unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<AnnotationOrigin>,
+    /// Re-anchors the annotation to this file. Omit to leave the current
+    /// {@link Annotation.resource} unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<Uri>,
+    /// Narrows the annotation to this range within {@link resource}. Omit to
+    /// leave the current {@link Annotation.range} unchanged; this action cannot
+    /// clear an existing range — dispatch {@link AnnotationsSetAction} to
+    /// re-anchor to the whole file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Marks the annotation resolved (`true`) or re-opens it (`false`). Omit to
+    /// leave the current {@link Annotation.resolved} state unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<bool>,
+}
+
+/// Remove an {@link Annotation} from the channel by its id.
+///
+/// Dispatched to delete an entire annotation and every entry it contains.
+/// Because the protocol forbids empty annotations, a client that wants to
+/// remove the last remaining entry dispatches this action — collapsing the
+/// annotation — rather than {@link AnnotationsEntryRemovedAction}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsRemovedAction {
+    /// The {@link Annotation.id} of the annotation to remove.
+    pub annotation_id: String,
+}
+
+/// Upsert an {@link AnnotationEntry} within an existing annotation — adds a
+/// new entry, or replaces one identified by {@link AnnotationEntry.id}. The
+/// dispatching client assigns the {@link AnnotationEntry.id} of a new entry.
+/// If {@link annotationId} does not match any current annotation the action
+/// is a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsEntrySetAction {
+    /// The {@link Annotation.id} the entry belongs to.
+    pub annotation_id: String,
+    /// The new or replacement entry.
+    pub entry: AnnotationEntry,
+}
+
+/// Remove a single {@link AnnotationEntry} from an annotation without
+/// collapsing the annotation itself. Used when more than one entry remains —
+/// to remove the last entry a client dispatches {@link AnnotationsRemovedAction}
+/// instead, since the protocol forbids empty annotations.
+///
+/// If either {@link annotationId} or {@link entryId} does not match the
+/// current state the action is a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationsEntryRemovedAction {
+    /// The {@link Annotation.id} the entry belongs to.
+    pub annotation_id: String,
+    /// The {@link AnnotationEntry.id} to remove.
+    pub entry_id: String,
+}
+
+/// Fired when the list of known terminals changes.
+///
+/// Full-replacement semantics: the `terminals` array replaces the previous
+/// `terminals` entirely.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootTerminalsChangedAction {
+    /// Updated terminal list (full replacement)
+    pub terminals: Vec<TerminalInfo>,
+}
+
+/// Terminal output data (pty → client direction).
+///
+/// Appends `data` to the terminal's `content` in the reducer.
+///
+/// `terminal/data` and `terminal/input` are intentionally separate actions
+/// because standard write-ahead reconciliation is not safe for terminal I/O.
+/// A pty is a stateful, mutable process — optimistically applying input or
+/// predicting output would produce incorrect state. Instead, `terminal/input`
+/// is a side-effect-only action (client → server → pty), and `terminal/data`
+/// is server-authoritative output (pty → server → client).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalDataAction {
+    /// Output data (may contain ANSI escape sequences)
+    pub data: String,
+}
+
+/// Keyboard input sent to the terminal process (client → pty direction).
+///
+/// This is a side-effect-only action: the server forwards the data to the
+/// terminal's pty. The reducer treats this as a no-op since `terminal/data`
+/// actions will reflect any resulting output.
+///
+/// See `terminal/data` for why these two actions are kept separate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalInputAction {
+    /// Input data to send to the pty
+    pub data: String,
+}
+
+/// Terminal dimensions changed.
+///
+/// Dispatchable by clients to request a resize, or by the server to inform
+/// clients of the actual terminal dimensions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalResizedAction {
+    /// Terminal width in columns
+    pub cols: i64,
+    /// Terminal height in rows
+    pub rows: i64,
+}
+
+/// Terminal claim changed. A client or session transfers ownership of the terminal.
+///
+/// The server SHOULD reject if the dispatching client does not currently hold
+/// the claim.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalClaimedAction {
+    /// The new claim
+    pub claim: TerminalClaim,
+}
+
+/// Terminal title changed.
+///
+/// Fired by the server when the terminal process updates its title (e.g. via
+/// escape sequences), or dispatched by a client to rename a terminal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalTitleChangedAction {
+    /// New terminal title
+    pub title: String,
+}
+
+/// Terminal working directory changed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCwdChangedAction {
+    /// New working directory
+    pub cwd: Uri,
+}
+
+/// Terminal process exited.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalExitedAction {
+    /// Process exit code. `undefined` if the process was killed without an exit code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+}
+
+/// Terminal scrollback buffer cleared.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalClearedAction {}
+
+/// Shell integration has loaded and the terminal now supports command
+/// detection. The server dispatches this when shell integration becomes
+/// available (which may happen asynchronously after the terminal is created).
+///
+/// Clients MUST NOT assume command detection is available until this action
+/// (or `terminal/commandExecuted`) has been received.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandDetectionAvailableAction {}
+
+/// A command has been submitted to the shell and is now executing.
+/// All subsequent `terminal/data` actions (until the matching
+/// `terminal/commandFinished`) constitute this command's output.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandExecutedAction {
+    /// Stable identifier for this command, scoped to the terminal URI.
+    /// Allows correlating `commandExecuted` → `commandFinished` pairs.
+    pub command_id: String,
+    /// The command line text that was submitted
+    pub command_line: String,
+    /// Unix timestamp (ms) of when the command started executing, as measured
+    /// on the server.
+    pub timestamp: i64,
+}
+
+/// A command has finished executing.
+///
+/// The sequence of `terminal/data` actions between the preceding
+/// `terminal/commandExecuted` (same `commandId`) and this action constitutes
+/// the complete output of the command.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandFinishedAction {
+    /// Matches the `commandId` from the corresponding `commandExecuted`
+    pub command_id: String,
+    /// Shell exit code. `undefined` if the shell did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Wall-clock duration of the command in milliseconds, as measured by the
+    /// shell integration script on the server side.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+}
+
+/// A batch of resource changes observed by the watcher.
+///
+/// Watch events are coalesced into batches by the server to keep the
+/// action stream tractable; an empty `changes.items` list MUST NOT be
+/// dispatched. The reducer does not retain change history — these
+/// actions exist purely to deliver events to subscribers, who consume
+/// them directly off the action stream and apply their own logic.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceWatchChangedAction {
+    /// The set of changes in this batch, wrapped for forward compatibility.
+    pub changes: AnyValue,
+}
+
+/// Ask the host to create a durable automation at a client-chosen resource.
+///
+/// Clients may dispatch this action only when the host advertises its `create`
+/// automation capability. {@link AutomationCreateRequestedAction.resource |
+/// `resource`} MUST use the `ahp-automation:` scheme and MUST NOT already
+/// identify an unrelated automation.
+///
+/// This side-effect request leaves optimistic catalogue state unchanged. The
+/// host validates trigger ids and configuration, normalizes event-trigger
+/// titles and descriptions, captures any
+/// {@link AutomationSessionTemplate.customizations | session customizations}
+/// from the dispatching client, persists the definition, then publishes the
+/// authoritative result with {@link AutomationSetAction | `automation/set`}.
+/// Rejections leave the catalogue unchanged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationCreateRequestedAction {
+    /// Client-chosen `ahp-automation:` URI that becomes {@link AutomationEntry.resource}.
+    pub resource: Uri,
+    /// Complete initial {@link AutomationEntry.definition}.
+    pub definition: AutomationDefinition,
+}
+
+/// Ask the host to update editable fields of an existing automation.
+///
+/// Clients may dispatch this action only while the target advertises
+/// {@link AutomationOperation.Update}. The host revalidates that operation and
+/// the client's authorization.
+///
+/// This side-effect request leaves optimistic catalogue state unchanged. The
+/// host applies accepted patches to its current authoritative definition in
+/// action order, revalidates and normalizes affected event triggers, then
+/// publishes the result with
+/// {@link AutomationSetAction | `automation/set`}. Omitted fields remain
+/// unchanged; when accepted actions replace the same field, the later action in
+/// server order wins.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationUpdateRequestedAction {
+    /// Target {@link AutomationEntry.resource}.
+    pub resource: Uri,
+    /// Editable {@link AutomationDefinition} fields to replace.
+    pub changes: AutomationDefinitionPatch,
+}
+
+/// Add or replace one full automation state in
+/// {@link AutomationState.entries}.
+///
+/// Existing entries are matched by {@link AutomationEntry.resource} and
+/// replaced in place. A previously unseen resource is appended.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationSetAction {
+    /// Full new or replacement automation state.
+    pub automation: AutomationEntry,
+}
+
+/// Remove one automation from {@link AutomationState.entries}.
+///
+/// Clients may dispatch this action only while the target advertises
+/// {@link AutomationOperation.Remove}. The host revalidates that operation
+/// before permanently deleting the automation. A rejected action leaves the
+/// authoritative catalogue and durable definition unchanged.
+///
+/// Removing an unknown resource is a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRemovedAction {
+    /// {@link AutomationEntry.resource} to remove.
+    pub resource: Uri,
+}
+
+/// Replace the run lifecycle.
+///
+/// The host dispatches this action for every lifecycle transition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunLifecycleChangedAction {
+    /// Complete replacement {@link AutomationRunState.lifecycle}.
+    pub lifecycle: AutomationRunLifecycle,
+}
+
+/// Add a session to {@link AutomationRunState.sessions}.
+///
+/// Session URIs are unique. Setting an existing URI is a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunSessionSetAction {
+    /// Session URI to append to {@link AutomationRunState.sessions} when not already linked.
+    pub session: Uri,
+}
+
+/// Remove a linked session from the run.
+///
+/// Removing the current primary session also clears
+/// {@link AutomationRunState.primarySession}. An unknown URI is a no-op.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunSessionRemovedAction {
+    /// Entry in {@link AutomationRunState.sessions} to remove.
+    pub session: Uri,
+}
+
+/// Select or clear the session clients should open first for this run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunPrimarySessionChangedAction {
+    /// New {@link AutomationRunState.primarySession}, or omitted to clear the selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_session: Option<Uri>,
+}
+
+/// Ask the host to cancel this run.
+///
+/// This is the only client-dispatchable automation-run action. It is a
+/// side-effect request and deliberately leaves optimistic state unchanged. The
+/// client may dispatch it only when the host advertises its `runCancellation`
+/// capability and the current lifecycle is `pending` or `running`. The host
+/// revalidates that the run is non-terminal. The authoritative outcome arrives
+/// later through
+/// {@link AutomationRunLifecycleChangedAction}: cancellation may transition to
+/// `cancelled`, or the run may complete or fail before cancellation takes
+/// effect.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunCancelRequestedAction {}
+
+// ─── Partial Summaries ────────────────────────────────────────────────
+
+/// Partial equivalent of ChatSummary — every field is optional for delta updates.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialChatSummary {
+    /// Chat URI
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<Uri>,
+    /// Chat title
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Current chat status (reuses SessionStatus shape)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u32>,
+    /// Human-readable description of what the chat is currently doing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
+    /// Last modification timestamp (ISO 8601, e.g. `"2025-03-10T18:42:03.123Z"`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
+    /// Aggregate summary of file changes associated with this chat. Servers may
+    /// populate this to give clients a quick at-a-glance view of the chat's
+    /// footprint without requiring the client to subscribe to a changeset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<ChangesSummary>,
+    /// How this chat came into existence
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ChatOrigin>,
+    /// Whether this chat is structurally eligible to be the source of
+    /// `moveChat`. Absence means `false`.
+    ///
+    /// See {@link ChatState.movable} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub movable: Option<bool>,
+    /// How the user can interact with this chat. See {@link ChatInteractivity}.
+    ///
+    /// Supports agent-team patterns where worker chats are read-only or hidden.
+    /// Absence defaults to {@link ChatInteractivity.Full} for backward
+    /// compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactivity: Option<ChatInteractivity>,
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
+}
+
+// ─── StateAction Union ───────────────────────────────────────────────
+
+/// Discriminated union of every state action.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum StateAction {
+    #[serde(rename = "root/agentsChanged")]
+    RootAgentsChanged(RootAgentsChangedAction),
+    #[serde(rename = "root/activeSessionsChanged")]
+    RootActiveSessionsChanged(RootActiveSessionsChangedAction),
+    #[serde(rename = "root/configChanged")]
+    RootConfigChanged(RootConfigChangedAction),
+    #[serde(rename = "session/ready")]
+    SessionReady(SessionReadyAction),
+    #[serde(rename = "session/creationFailed")]
+    SessionCreationFailed(SessionCreationFailedAction),
+    #[serde(rename = "session/chatAdded")]
+    SessionChatAdded(SessionChatAddedAction),
+    #[serde(rename = "session/chatRemoved")]
+    SessionChatRemoved(SessionChatRemovedAction),
+    #[serde(rename = "session/chatUpdated")]
+    SessionChatUpdated(SessionChatUpdatedAction),
+    #[serde(rename = "session/chatsReordered")]
+    SessionChatsReordered(SessionChatsReorderedAction),
+    #[serde(rename = "session/defaultChatChanged")]
+    SessionDefaultChatChanged(SessionDefaultChatChangedAction),
+    #[serde(rename = "chat/turnStarted")]
+    ChatTurnStarted(ChatTurnStartedAction),
+    #[serde(rename = "chat/delta")]
+    ChatDelta(ChatDeltaAction),
+    #[serde(rename = "chat/responsePart")]
+    ChatResponsePart(ChatResponsePartAction),
+    #[serde(rename = "chat/toolCallStart")]
+    ChatToolCallStart(ChatToolCallStartAction),
+    #[serde(rename = "chat/toolCallDelta")]
+    ChatToolCallDelta(ChatToolCallDeltaAction),
+    #[serde(rename = "chat/toolCallReady")]
+    ChatToolCallReady(ChatToolCallReadyAction),
+    #[serde(rename = "chat/toolCallConfirmed")]
+    ChatToolCallConfirmed(ChatToolCallConfirmedAction),
+    #[serde(rename = "chat/toolCallComplete")]
+    ChatToolCallComplete(ChatToolCallCompleteAction),
+    #[serde(rename = "chat/toolCallResultConfirmed")]
+    ChatToolCallResultConfirmed(ChatToolCallResultConfirmedAction),
+    #[serde(rename = "chat/toolCallContentChanged")]
+    ChatToolCallContentChanged(ChatToolCallContentChangedAction),
+    #[serde(rename = "chat/toolCallAuthRequired")]
+    ChatToolCallAuthRequired(ChatToolCallAuthRequiredAction),
+    #[serde(rename = "chat/toolCallAuthResolved")]
+    ChatToolCallAuthResolved(ChatToolCallAuthResolvedAction),
+    #[serde(rename = "chat/turnComplete")]
+    ChatTurnComplete(ChatTurnCompleteAction),
+    #[serde(rename = "chat/turnCancelled")]
+    ChatTurnCancelled(ChatTurnCancelledAction),
+    #[serde(rename = "chat/error")]
+    ChatError(ChatErrorAction),
+    #[serde(rename = "chat/turnResume")]
+    ChatTurnResume(ChatTurnResumeAction),
+    #[serde(rename = "chat/activityChanged")]
+    ChatActivityChanged(ChatActivityChangedAction),
+    #[serde(rename = "chat/backgroundWorkSet")]
+    ChatBackgroundWorkSet(ChatBackgroundWorkSetAction),
+    #[serde(rename = "chat/backgroundWorkRemoved")]
+    ChatBackgroundWorkRemoved(ChatBackgroundWorkRemovedAction),
+    #[serde(rename = "chat/movableChanged")]
+    ChatMovableChanged(ChatMovableChangedAction),
+    #[serde(rename = "chat/changesetsChanged")]
+    ChatChangesetsChanged(ChatChangesetsChangedAction),
+    #[serde(rename = "chat/canvasesChanged")]
+    ChatCanvasesChanged(ChatCanvasesChangedAction),
+    #[serde(rename = "canvas/stateChanged")]
+    CanvasStateChanged(CanvasStateChangedAction),
+    #[serde(rename = "session/titleChanged")]
+    SessionTitleChanged(SessionTitleChangedAction),
+    #[serde(rename = "chat/usage")]
+    ChatUsage(ChatUsageAction),
+    #[serde(rename = "chat/reasoning")]
+    ChatReasoning(ChatReasoningAction),
+    #[serde(rename = "session/isReadChanged")]
+    SessionIsReadChanged(SessionIsReadChangedAction),
+    #[serde(rename = "session/isArchivedChanged")]
+    SessionIsArchivedChanged(SessionIsArchivedChangedAction),
+    #[serde(rename = "session/activityChanged")]
+    SessionActivityChanged(SessionActivityChangedAction),
+    #[serde(rename = "session/changesetsChanged")]
+    SessionChangesetsChanged(SessionChangesetsChangedAction),
+    #[serde(rename = "session/serverToolsChanged")]
+    SessionServerToolsChanged(SessionServerToolsChangedAction),
+    #[serde(rename = "session/activeClientSet")]
+    SessionActiveClientSet(SessionActiveClientSetAction),
+    #[serde(rename = "session/activeClientRemoved")]
+    SessionActiveClientRemoved(SessionActiveClientRemovedAction),
+    #[serde(rename = "session/workingDirectorySet")]
+    SessionWorkingDirectorySet(SessionWorkingDirectorySetAction),
+    #[serde(rename = "session/workingDirectoryRemoved")]
+    SessionWorkingDirectoryRemoved(SessionWorkingDirectoryRemovedAction),
+    #[serde(rename = "session/workingDirectoryReplaced")]
+    SessionWorkingDirectoryReplaced(SessionWorkingDirectoryReplacedAction),
+    #[serde(rename = "chat/workingDirectorySet")]
+    ChatWorkingDirectorySet(ChatWorkingDirectorySetAction),
+    #[serde(rename = "chat/workingDirectoryRemoved")]
+    ChatWorkingDirectoryRemoved(ChatWorkingDirectoryRemovedAction),
+    #[serde(rename = "session/inputNeededSet")]
+    SessionInputNeededSet(Box<SessionInputNeededSetAction>),
+    #[serde(rename = "session/inputNeededRemoved")]
+    SessionInputNeededRemoved(SessionInputNeededRemovedAction),
+    #[serde(rename = "chat/pendingMessageSet")]
+    ChatPendingMessageSet(ChatPendingMessageSetAction),
+    #[serde(rename = "chat/pendingMessageRemoved")]
+    ChatPendingMessageRemoved(ChatPendingMessageRemovedAction),
+    #[serde(rename = "chat/queuedMessagesReordered")]
+    ChatQueuedMessagesReordered(ChatQueuedMessagesReorderedAction),
+    #[serde(rename = "chat/draftChanged")]
+    ChatDraftChanged(ChatDraftChangedAction),
+    #[serde(rename = "chat/isReadChanged")]
+    ChatIsReadChanged(ChatIsReadChangedAction),
+    #[serde(rename = "chat/isArchivedChanged")]
+    ChatIsArchivedChanged(ChatIsArchivedChangedAction),
+    #[serde(rename = "chat/inputRequested")]
+    ChatInputRequested(ChatInputRequestedAction),
+    #[serde(rename = "chat/inputAnswerChanged")]
+    ChatInputAnswerChanged(ChatInputAnswerChangedAction),
+    #[serde(rename = "chat/inputCompleted")]
+    ChatInputCompleted(ChatInputCompletedAction),
+    #[serde(rename = "session/customizationsChanged")]
+    SessionCustomizationsChanged(SessionCustomizationsChangedAction),
+    #[serde(rename = "session/customizationToggled")]
+    SessionCustomizationToggled(SessionCustomizationToggledAction),
+    #[serde(rename = "session/customizationUpdated")]
+    SessionCustomizationUpdated(Box<SessionCustomizationUpdatedAction>),
+    #[serde(rename = "session/customizationRemoved")]
+    SessionCustomizationRemoved(SessionCustomizationRemovedAction),
+    #[serde(rename = "session/mcpServerStateChanged")]
+    SessionMcpServerStateChanged(Box<SessionMcpServerStateChangedAction>),
+    #[serde(rename = "session/mcpServerStartRequested")]
+    SessionMcpServerStartRequested(SessionMcpServerStartRequestedAction),
+    #[serde(rename = "session/mcpServerStopRequested")]
+    SessionMcpServerStopRequested(SessionMcpServerStopRequestedAction),
+    #[serde(rename = "session/mcpServerBackgroundRequested")]
+    SessionMcpServerBackgroundRequested(SessionMcpServerBackgroundRequestedAction),
+    #[serde(rename = "chat/truncated")]
+    ChatTruncated(ChatTruncatedAction),
+    #[serde(rename = "chat/turnsLoaded")]
+    ChatTurnsLoaded(ChatTurnsLoadedAction),
+    #[serde(rename = "session/configChanged")]
+    SessionConfigChanged(SessionConfigChangedAction),
+    #[serde(rename = "session/metaChanged")]
+    SessionMetaChanged(SessionMetaChangedAction),
+    #[serde(rename = "changeset/statusChanged")]
+    ChangesetStatusChanged(ChangesetStatusChangedAction),
+    #[serde(rename = "changeset/fileSet")]
+    ChangesetFileSet(ChangesetFileSetAction),
+    #[serde(rename = "changeset/fileRemoved")]
+    ChangesetFileRemoved(ChangesetFileRemovedAction),
+    #[serde(rename = "changeset/filesReviewChanged")]
+    ChangesetFilesReviewChanged(ChangesetFilesReviewChangedAction),
+    #[serde(rename = "changeset/contentChanged")]
+    ChangesetContentChanged(Box<ChangesetContentChangedAction>),
+    #[serde(rename = "changeset/operationsChanged")]
+    ChangesetOperationsChanged(ChangesetOperationsChangedAction),
+    #[serde(rename = "changeset/operationStatusChanged")]
+    ChangesetOperationStatusChanged(ChangesetOperationStatusChangedAction),
+    #[serde(rename = "changeset/cleared")]
+    ChangesetCleared(ChangesetClearedAction),
+    #[serde(rename = "annotations/set")]
+    AnnotationsSet(AnnotationsSetAction),
+    #[serde(rename = "annotations/updated")]
+    AnnotationsUpdated(AnnotationsUpdatedAction),
+    #[serde(rename = "annotations/removed")]
+    AnnotationsRemoved(AnnotationsRemovedAction),
+    #[serde(rename = "annotations/entrySet")]
+    AnnotationsEntrySet(AnnotationsEntrySetAction),
+    #[serde(rename = "annotations/entryRemoved")]
+    AnnotationsEntryRemoved(AnnotationsEntryRemovedAction),
+    #[serde(rename = "root/terminalsChanged")]
+    RootTerminalsChanged(RootTerminalsChangedAction),
+    #[serde(rename = "terminal/data")]
+    TerminalData(TerminalDataAction),
+    #[serde(rename = "terminal/input")]
+    TerminalInput(TerminalInputAction),
+    #[serde(rename = "terminal/resized")]
+    TerminalResized(TerminalResizedAction),
+    #[serde(rename = "terminal/claimed")]
+    TerminalClaimed(TerminalClaimedAction),
+    #[serde(rename = "terminal/titleChanged")]
+    TerminalTitleChanged(TerminalTitleChangedAction),
+    #[serde(rename = "terminal/cwdChanged")]
+    TerminalCwdChanged(TerminalCwdChangedAction),
+    #[serde(rename = "terminal/exited")]
+    TerminalExited(TerminalExitedAction),
+    #[serde(rename = "terminal/cleared")]
+    TerminalCleared(TerminalClearedAction),
+    #[serde(rename = "terminal/commandDetectionAvailable")]
+    TerminalCommandDetectionAvailable(TerminalCommandDetectionAvailableAction),
+    #[serde(rename = "terminal/commandExecuted")]
+    TerminalCommandExecuted(TerminalCommandExecutedAction),
+    #[serde(rename = "terminal/commandFinished")]
+    TerminalCommandFinished(TerminalCommandFinishedAction),
+    #[serde(rename = "resourceWatch/changed")]
+    ResourceWatchChanged(ResourceWatchChangedAction),
+    #[serde(rename = "automation/createRequested")]
+    AutomationCreateRequested(Box<AutomationCreateRequestedAction>),
+    #[serde(rename = "automation/updateRequested")]
+    AutomationUpdateRequested(Box<AutomationUpdateRequestedAction>),
+    #[serde(rename = "automation/set")]
+    AutomationSet(Box<AutomationSetAction>),
+    #[serde(rename = "automation/removed")]
+    AutomationRemoved(AutomationRemovedAction),
+    #[serde(rename = "automationRun/lifecycleChanged")]
+    AutomationRunLifecycleChanged(Box<AutomationRunLifecycleChangedAction>),
+    #[serde(rename = "automationRun/sessionSet")]
+    AutomationRunSessionSet(AutomationRunSessionSetAction),
+    #[serde(rename = "automationRun/sessionRemoved")]
+    AutomationRunSessionRemoved(AutomationRunSessionRemovedAction),
+    #[serde(rename = "automationRun/primarySessionChanged")]
+    AutomationRunPrimarySessionChanged(AutomationRunPrimarySessionChangedAction),
+    #[serde(rename = "automationRun/cancelRequested")]
+    AutomationRunCancelRequested(AutomationRunCancelRequestedAction),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}

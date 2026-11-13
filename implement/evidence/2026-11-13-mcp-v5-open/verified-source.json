@@ -1,0 +1,39 @@
+{
+  "final_source_sha256": "cb5c79b0d874c855e827752d00794d3a5902d475c999641b348080860684e22b",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-v5-open-dispatch-server-final.log",
+      "log_sha256": "317e6c49d20321530c59e27c69786211cdb6cd86d6ce638cb54bad57cf5bebb9",
+      "source_sha256": "74fe43a06c603d55645f2ef733375935471aa684af5e944da09833b6d24cb00f",
+      "exit_code": 0,
+      "scope": "Full server family, including nine dispatcher tests; before null parser patch."
+    },
+    {
+      "suite": "domain",
+      "log": "mcp-v5-open-domain-final.log",
+      "log_sha256": "7befe4f1c867c0ff1fd6c185f4786c49062fe2e8211ced6fb984881c56867c46",
+      "source_sha256": "f6a01e17fab8461e08073ba1f86d8826fefe2ced420747228d8e2a58016f8790",
+      "exit_code": 0,
+      "scope": "Domain and protocol; these crates are unchanged in the final snapshot."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-v5-open-dispatch-clippy-final.log",
+      "log_sha256": "f7bcb3e26932d18d3b77397147e02deca7a3ae0d4d6a397231899972d007dc8f",
+      "source_sha256": "cb5c79b0d874c855e827752d00794d3a5902d475c999641b348080860684e22b",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied, final source."
+    },
+    {
+      "suite": "worker_exports",
+      "log": "mcp-v5-open-exports-final.log",
+      "log_sha256": "9490768f05c99248a6c7f3e90f77bb5e497e1674d12abd503cb2daf3163dc7d8",
+      "source_sha256": "cb5c79b0d874c855e827752d00794d3a5902d475c999641b348080860684e22b",
+      "exit_code": 0,
+      "scope": "All worker_exports tests, including final null parser assertions."
+    }
+  ],
+  "source_scope_proof": "source-scope-proof.json",
+  "scope": "Inactive v5 hello/open codecs, passive native admission, bounded runner dispatcher. Active WSS negotiation, private remote binding/Authority, runner proxy and full remote acceptance remain open."
+}

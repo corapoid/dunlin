@@ -1,0 +1,28 @@
+[package]
+name = "ahp-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wire protocol types for the Agent Host Protocol (AHP)."
+readme = "README.md"
+homepage = "https://microsoft.github.io/agent-host-protocol/"
+documentation = "https://docs.rs/ahp-types"
+keywords = ["ahp", "agent", "protocol", "json-rpc", "serde"]
+categories = ["api-bindings", "encoding", "data-structures"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_repr = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

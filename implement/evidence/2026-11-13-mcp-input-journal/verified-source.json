@@ -1,0 +1,43 @@
+{
+  "source_sha256": "cde81b78a7699f98918597c1f22bfc4a1a2fb922d0fd85400bfd772473e0c6c6",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "56e48c8c50b6ef2026aa6417e00ddbac055f84cbafd93a98dc57628c75ab8d83",
+      "source_sha256": "cde81b78a7699f98918597c1f22bfc4a1a2fb922d0fd85400bfd772473e0c6c6",
+      "exit_code": 0,
+      "scope": "808 backend-family tests: 665 relay, 1 identity, 78 SDK, 27 terminal, 37 usage; 44 acceptance tests ignored. Includes new durable one-use AHP/MCP input journal, pure schema-validator gate, first-wins/reopen/recovery/invalid-input tests, schema41 migration preserving sessions and collision rollback."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "9dd4b811a9dbc9ca5e1350ff646d1bf649d05b51766f0ab3bd812ecb50a4ca36",
+      "source_sha256": "cde81b78a7699f98918597c1f22bfc4a1a2fb922d0fd85400bfd772473e0c6c6",
+      "exit_code": 0,
+      "scope": "15 remote scenarios and both actual production Chromium branches. New deterministic terminal-vs-renew race releases real held MCP HTTP only after RenewTurn is prepared, waits for an actual source terminal and then sends that original RPC. StaleAttempt is reconciled against the authenticated stream and a fresh authority/terminal SQL cut, without renewing an ended turn, resending Submit/tools/call or extending the budget. Same ACP process completes two turns; ACK5/reservation0 and stopped held-FD child. Existing positive MCP UI, denial/lost-HTTP-reply/disconnect, legacy UI, restart/timeout/quota/revocation pass. This is NOT MRTR form UI/HTTP acceptance."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "d432d66ac773d0c90d7768905d33b6c33702b853326984aeb43881b6a451cd7d",
+      "source_sha256": "cde81b78a7699f98918597c1f22bfc4a1a2fb922d0fd85400bfd772473e0c6c6",
+      "exit_code": 0,
+      "scope": "All targets, warnings denied."
+    }
+  ],
+  "expected_failure": {
+    "log": "runtime-renew-race-before-fix.log",
+    "exit_code": 101,
+    "source_sha256": "f4fa4f69246e9d38f5c9c9190bea2e0f3cb11e539db65ff3710c60431e6a28f0",
+    "scope": "Deterministic source terminal before actual RenewTurn; StaleAttempt incorrectly stopped the controller before this fix."
+  },
+  "artifact_sha256": {
+    "desktop.png": "da11a927f6b99ab4b842fa8defb77170ea5cb9b4fef196dbfe90cada3a5a8fc0",
+    "mobile.png": "bc73c73142c7ecafae0c6764e68a94c6d7bf0162f42b21c26051715e6366bc5b",
+    "source-current.json": "0804b6aa18aba894ec0f13b741e3423cdcee26db784f27e09b5441e1f7bed59c",
+    "checks-final.log": "8d5acce4ba72bed7976ff9d43f7b304d96c8256b2cb6e0a8495a49a2b1ee55db",
+    "runtime-renew-race-before-fix.log": "0a954d1adbb1c485404fb1b5c40156e6d57a4e656d0ddd31f47493f0ff64cf88"
+  },
+  "scope": "Controlled OAuth/MCP provider and ACP harness; real HTTP/REST/AHP/WSS/native proxy/production helper/Linux sandbox. No real accounts/services/tailnet or physical multi-host acceptance. MCP forms have a journal foundation only: public input dispatch, exact server FormSchema validator, UI question mapping/edit/accept/decline/cancel and live-client MRTR continuation remain unconnected. Frontend143/typecheck were not rerun; no frontend changes. E5.2/E5.3 and full E0-E10 stay open; formal20/68."
+}

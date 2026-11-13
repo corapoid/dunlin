@@ -4,6 +4,11 @@ Dunlin is a Rust workspace with a GPUI desktop app, reusable service crates and 
 self-hosted relay. The marketing site is separate; no browser runtime renders the
 desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml).
 
+A separate browser-client preview is being built in `apps/web`, not in the Astro
+marketing site. Its [implementation plan](../../implement/README.md) tracks the
+Tailscale-only live web application. The current read-only catalog bootstrap is
+not AHP or a completed workflow runtime; see [preview scope](../../apps/web/README.md).
+
 ## Repository map
 
 | Path | Responsibility |
@@ -15,6 +20,7 @@ desktop UI. The workspace/toolchain contract is in [Cargo.toml](../../Cargo.toml
 | [crates/workspace](../../crates/workspace) | Filesystem, search, Git, review/check/impact and repository operations. |
 | [crates/storage](../../crates/storage) | Desktop SQLite persistence, migrations and evidence/index APIs. |
 | [apps/cli](../../apps/cli) | Headless local/remote client; catalog reads and fresh one-shot ACP sessions. |
+| [apps/web](../../apps/web) | Browser preview: same-origin pairing and read-only WebSocket catalog. Separate React/Vite toolchain; not the marketing site. |
 | [apps/server](../../apps/server) | Relay server CLI, pairing/auth/grants, HTTP/WebSocket APIs, remote processes and vault integration. |
 | [crates/runtime](../../crates/runtime) | UI-independent transcripts, pending prompts, durable budget dispatch policy and one-shot session execution. |
 | [crates/relay-protocol](../../crates/relay-protocol) | Shared v1 pairing, project and session wire contracts. |

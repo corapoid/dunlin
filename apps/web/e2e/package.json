@@ -1,0 +1,7 @@
+{
+  "name": "@dunlin/web-browser-checks",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "dependencies": { "playwright-core": "1.65.0" }
+}

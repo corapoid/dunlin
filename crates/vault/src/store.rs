@@ -85,6 +85,12 @@ impl ServiceKeychainStore {
             policy_service: "dev.dunlin.relay-secret-policies",
         }
     }
+    pub(crate) const fn scoped_relay() -> Self {
+        Self {
+            value_service: "dev.dunlin.relay-scoped-secrets",
+            policy_service: "dev.dunlin.relay-scoped-secret-policies",
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -143,6 +149,9 @@ impl ServiceKeychainStore {
         Self
     }
     pub const fn relay() -> Self {
+        Self
+    }
+    pub(crate) const fn scoped_relay() -> Self {
         Self
     }
 }

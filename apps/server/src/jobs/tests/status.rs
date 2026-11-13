@@ -8,7 +8,15 @@ use std::{
     thread,
 };
 
-fn mock(mut replies: Vec<(String, Value, u16)>) -> (String, thread::JoinHandle<Vec<Value>>) {
+fn mock(replies: Vec<(String, Value, u16)>) -> (String, thread::JoinHandle<Vec<Value>>) {
+    mock_with_hook(replies, |_| {}, false)
+}
+
+fn mock_with_hook(
+    mut replies: Vec<(String, Value, u16)>,
+    mut before_reply: impl FnMut(&str) + Send + 'static,
+    watch_unexpected: bool,
+) -> (String, thread::JoinHandle<Vec<Value>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}/mcp", listener.local_addr().unwrap());
@@ -55,6 +63,7 @@ fn mock(mut replies: Vec<(String, Value, u16)>) -> (String, thread::JoinHandle<V
                     .or(request["method"].as_str()),
                 Some(expected.as_str())
             );
+            before_reply(&expected);
             let body = if status == 202 {
                 String::new()
             } else {
@@ -63,9 +72,209 @@ fn mock(mut replies: Vec<(String, Value, u16)>) -> (String, thread::JoinHandle<V
             write!(socket,"HTTP/1.1 {status} Mock\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
             requests.push(request);
         }
+        if watch_unexpected {
+            // Keep the endpoint available after get_issue. A buggy implementation
+            // must be caught sending update_issue, not merely hit a closed socket.
+            let deadline = std::time::Instant::now() + Duration::from_millis(200);
+            while std::time::Instant::now() < deadline {
+                let mut socket = match listener.accept() {
+                    Ok((socket, _)) => socket,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(5));
+                        continue;
+                    }
+                    Err(error) => panic!("Unexpected MCP listener error: {error}"),
+                };
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut reader = BufReader::new(&mut socket);
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some((name, value)) = line.split_once(':')
+                        && name.eq_ignore_ascii_case("content-length")
+                    {
+                        length = value.trim().parse::<usize>().unwrap();
+                    }
+                }
+                let mut bytes = vec![0; length];
+                reader.read_exact(&mut bytes).unwrap();
+                let request: Value = serde_json::from_slice(&bytes).unwrap();
+                let body = json!({"jsonrpc":"2.0","id":request["id"],"result":{"structuredContent":{"success":true}}}).to_string();
+                write!(socket,"HTTP/1.1 200 Mock\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+                requests.push(request);
+            }
+        }
         requests
     });
     (url, worker)
+}
+
+fn status_replies(
+    record: &crate::store::jobs::Record,
+    mutation: bool,
+) -> Vec<(String, Value, u16)> {
+    let mut replies = vec![
+        (
+            "initialize".into(),
+            json!({"protocolVersion":"2025-06-18","capabilities":{"tools":{}}}),
+            200,
+        ),
+        ("notifications/initialized".into(), Value::Null, 202),
+        (
+            "tools/list".into(),
+            json!({"tools":[{"name":"get_issue","inputSchema":{"properties":{"id":{}}}},{"name":"update_issue","inputSchema":{"properties":{"id":{},"state":{}}}}]}),
+            200,
+        ),
+        (
+            "get_issue".into(),
+            json!({"structuredContent":record.task.issue}),
+            200,
+        ),
+    ];
+    if mutation {
+        replies.push((
+            "update_issue".into(),
+            json!({"structuredContent":{"success":true}}),
+            200,
+        ));
+    }
+    replies
+}
+
+fn attach_endpoint(f: &mut Fixture, endpoint: String) {
+    let secrets = Arc::new(MemoryStore::new());
+    secrets
+        .set("fixture-credential", "fixture-only-linear-key")
+        .unwrap();
+    f.state.linear = Arc::new(crate::linear::Service::testing(secrets, endpoint));
+}
+
+#[test]
+fn native_grant_revoke_regrant_during_status_read_sends_no_mutation_and_never_retries() {
+    let mut f = Fixture::new("ok");
+    let record = f.claim();
+    let store = f.state.store.clone();
+    let user = f.user.clone();
+    let project = record.job.project_id.clone();
+    let (endpoint, worker) = mock_with_hook(
+        status_replies(&record, false),
+        move |method| {
+            if method == "get_issue" {
+                let store = store.lock().unwrap();
+                store.revoke_grant(&project, &user).unwrap();
+                store.grant(&project, &user).unwrap();
+            }
+        },
+        true,
+    );
+    attach_endpoint(&mut f, endpoint);
+    let error = crate::linear::job_status(&f.state, &record).unwrap_err();
+    assert!(
+        !error.retry,
+        "An obsolete approved epoch requires manual review"
+    );
+    let requests = worker.join().unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r["params"]["name"] == "get_issue")
+            .count(),
+        1
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r["params"]["name"] == "update_issue")
+    );
+    let persisted = crate::store::Store::open(f.dir.path().join("relay.db"))
+        .unwrap()
+        .job(&record.job.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(persisted.task.native_grant, record.task.native_grant);
+    let current = f
+        .state
+        .store
+        .lock()
+        .unwrap()
+        .capture_native_grant(&record.job.project_id, &f.user)
+        .unwrap();
+    assert_ne!(persisted.task.native_grant.as_ref().unwrap(), &current);
+    assert!(
+        !crate::linear::job_status(&f.state, &persisted)
+            .unwrap_err()
+            .retry,
+        "Reloading an old persisted task cannot silently renew its consent"
+    );
+}
+
+#[test]
+fn persisted_job_from_previous_native_epoch_is_denied_before_any_mcp_request() {
+    let mut f = Fixture::new("ok");
+    let record = f.claim();
+    {
+        let store = f.state.store.lock().unwrap();
+        store.revoke_grant(&record.job.project_id, &f.user).unwrap();
+        store.grant(&record.job.project_id, &f.user).unwrap();
+    }
+    let persisted = crate::store::Store::open(f.dir.path().join("relay.db"))
+        .unwrap()
+        .job(&record.job.id)
+        .unwrap()
+        .unwrap();
+    let (endpoint, worker) = mock_with_hook(Vec::new(), |_| {}, true);
+    attach_endpoint(&mut f, endpoint);
+    let error = crate::linear::job_status(&f.state, &persisted).unwrap_err();
+    assert!(!error.retry);
+    assert!(
+        worker.join().unwrap().is_empty(),
+        "A stale native epoch cannot even initialize external delivery"
+    );
+}
+
+#[test]
+fn status_mutation_completed_during_native_regrant_requires_manual_review_without_retry() {
+    let mut f = Fixture::new("ok");
+    let record = f.claim();
+    let store = f.state.store.clone();
+    let user = f.user.clone();
+    let project = record.job.project_id.clone();
+    let (endpoint, worker) = mock_with_hook(
+        status_replies(&record, true),
+        move |method| {
+            if method == "update_issue" {
+                let store = store.lock().unwrap();
+                store.revoke_grant(&project, &user).unwrap();
+                store.grant(&project, &user).unwrap();
+            }
+        },
+        true,
+    );
+    attach_endpoint(&mut f, endpoint);
+    let error = crate::linear::job_status(&f.state, &record).unwrap_err();
+    assert!(
+        !error.retry,
+        "A response arriving after an epoch change is ambiguous, never automatically retried"
+    );
+    let requests = worker.join().unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r["params"]["name"] == "update_issue")
+            .count(),
+        1
+    );
+    assert!(
+        !crate::linear::job_status(&f.state, &record)
+            .unwrap_err()
+            .retry
+    );
 }
 
 #[test]

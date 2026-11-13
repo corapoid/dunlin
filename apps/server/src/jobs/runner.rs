@@ -1,10 +1,14 @@
 //! A single bounded ACP turn in an isolated Git checkout. Reuses relay sandbox
 //! construction and never receives Linear credentials or a desktop connection.
 use super::*;
+use crate::store::{
+    local_metadata::MetadataPermission,
+    native_checkout::{NativeCheckoutAuthority, PreparedOrdinaryCheckout},
+};
 use serde_json::{Value, json};
 use std::{path::Path, process::Stdio};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
     time::Instant,
 };
@@ -21,60 +25,337 @@ fn check(state: &AppState, record: &Record, deadline: Instant) -> Result<(), Fai
     if Instant::now() >= deadline {
         return Err(failed("Job wall-clock budget expired"));
     }
-    super::authorized(state, record).map_err(blocked)?;
-    let current = state
+    let store = state
         .store
         .lock()
-        .map_err(|_| blocked("Store lock poisoned"))?
-        .job(&record.job.id)
-        .map_err(|_| blocked("Job state unavailable"))?
-        .ok_or_else(|| blocked("Job was removed"))?;
-    if current.job.cancel_requested {
-        return Err((
-            Status::Cancelled,
-            "Job cancelled by an authorized user".into(),
-        ));
-    }
-    if !current.job.status.active() {
-        return Err(blocked("Job no longer owns the active reservation"));
-    }
-    Ok(())
+        .map_err(|_| blocked("Store unavailable"))?;
+    store
+        .native_checkout_transaction(|store| {
+            super::authorized_in_store(state, store, record)
+                .map_err(crate::store::StoreError::Conflict)?;
+            let current = store
+                .job(&record.job.id)?
+                .ok_or_else(|| crate::store::StoreError::Conflict("Job removed".into()))?;
+            if current.job.cancel_requested {
+                return Err(crate::store::StoreError::Conflict("Job cancelled".into()));
+            }
+            if !current.job.status.active() {
+                return Err(crate::store::StoreError::Conflict(
+                    "Job no longer owns reservation".into(),
+                ));
+            }
+            if let Some(project) = &current.job.checkout_project {
+                let stamp = current.checkout_stamp.as_ref().ok_or_else(|| {
+                    crate::store::StoreError::Conflict(
+                        "Legacy checkout lacks pinned checkout authority".into(),
+                    )
+                })?;
+                if stamp.native_grant.project_id != *project
+                    || stamp.native_grant.user_id != record.job.owner
+                    || stamp.permission != MetadataPermission::Write
+                    || current.checkout_grant.as_ref() != Some(&stamp.native_grant)
+                {
+                    return Err(crate::store::StoreError::Conflict(
+                        "Derived checkout scope changed".into(),
+                    ));
+                }
+                store.validate_native_checkout_stamp_in_transaction(stamp)?;
+                let native = store
+                    .project_for_user(project, &record.job.owner)?
+                    .ok_or_else(|| {
+                        crate::store::StoreError::Conflict("Derived checkout unavailable".into())
+                    })?;
+                if Path::new(&native.path)
+                    != crate::management::root(&state.config)
+                        .join("jobs")
+                        .join(&record.job.id)
+                        .join("worktree")
+                {
+                    return Err(crate::store::StoreError::Conflict(
+                        "Derived checkout path changed".into(),
+                    ));
+                }
+            } else if current.checkout_stamp.is_some() || current.checkout_grant.is_some() {
+                return Err(crate::store::StoreError::Conflict(
+                    "Unexpected derived authority".into(),
+                ));
+            }
+            Ok::<_, crate::store::StoreError>(())
+        })
+        .map_err(|e| {
+            if e.to_string().contains("Job cancelled") {
+                (
+                    Status::Cancelled,
+                    "Job cancelled by an authorized user".into(),
+                )
+            } else {
+                blocked(e.to_string())
+            }
+        })
 }
-async fn stop(child: &mut Child) {
-    #[cfg(unix)]
-    if let Some(id) = child.id() {
-        unsafe {
-            libc::kill(-(id as i32), libc::SIGKILL);
+#[derive(Clone)]
+struct Proofs {
+    source: NativeCheckoutAuthority,
+    derived: Option<NativeCheckoutAuthority>,
+    preparing: Option<PreparedOrdinaryCheckout>,
+}
+impl Proofs {
+    async fn validate(
+        &self,
+        state: &AppState,
+        record: &Record,
+        deadline: Instant,
+    ) -> Result<(), Failure> {
+        check(state, record, deadline)?;
+        let proofs = self.clone();
+        let permit = state
+            .fs_permit()
+            .map_err(|_| blocked("Checkout validation capacity unavailable"))?;
+        let job = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            proofs.source.validate_filesystem()?;
+            if let Some(a) = proofs.derived {
+                a.validate_filesystem()?;
+            }
+            if let Some(a) = proofs.preparing {
+                a.validate_filesystem()?;
+            }
+            Ok::<_, crate::store::StoreError>(())
+        });
+        tokio::time::timeout_at(deadline.min(Instant::now() + Duration::from_secs(5)), job)
+            .await
+            .map_err(|_| blocked("Checkout filesystem validation timed out"))?
+            .map_err(|_| blocked("Checkout filesystem validation interrupted"))?
+            .map_err(|_| blocked("Checkout identity changed"))?;
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| blocked("Store unavailable"))?;
+        store
+            .native_checkout_transaction(|store| {
+                super::authorized_in_store(state, store, record)
+                    .map_err(crate::store::StoreError::Conflict)?;
+                store.revalidate_native_checkout_in_transaction(&self.source)?;
+                if let Some(a) = &self.derived {
+                    store.revalidate_native_checkout_in_transaction(a)?;
+                }
+                Ok::<_, crate::store::StoreError>(())
+            })
+            .map_err(|e| blocked(e.to_string()))?;
+        drop(store);
+        check(state, record, deadline)
+    }
+}
+struct Guardian {
+    task: tokio::task::JoinHandle<()>,
+    failed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+impl Drop for Guardian {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+impl Guardian {
+    fn start(
+        state: &AppState,
+        record: &Record,
+        proofs: &Proofs,
+        deadline: Instant,
+        group: ProcessGroup,
+    ) -> Self {
+        let state = state.clone();
+        let record = record.clone();
+        let proofs = proofs.clone();
+        let failed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = failed.clone();
+        let task = tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_millis(200));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                let verification = proofs.validate(&state, &record, deadline);
+                tokio::pin!(verification);
+                loop {
+                    tokio::select! {
+                        result=&mut verification=>{
+                            if result.is_err(){flag.store(true,std::sync::atomic::Ordering::Release);group.terminate();return;}
+                            break;
+                        }
+                        _=tick.tick()=>{
+                            let allowed=check(&state,&record,deadline).is_ok() && state.store.lock().is_ok_and(|store|store.native_checkout_transaction(|store|{
+                                store.revalidate_native_checkout_in_transaction(&proofs.source)?;
+                                if let Some(a)=&proofs.derived{store.revalidate_native_checkout_in_transaction(a)?;}
+                                Ok::<_,crate::store::StoreError>(())
+                            }).is_ok());
+                            if !allowed{flag.store(true,std::sync::atomic::Ordering::Release);group.terminate();return;}
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        });
+        Self { task, failed }
+    }
+    fn check(&self) -> Result<(), Failure> {
+        if self.failed.load(std::sync::atomic::Ordering::Acquire) {
+            Err(blocked(
+                "Checkout authority revoked while process was active",
+            ))
+        } else {
+            Ok(())
         }
     }
+}
+async fn stop(child: &mut Child, group: &ProcessGroup) {
+    group.terminate();
     let _ = child.kill().await;
     let _ = child.wait().await;
 }
-// kill_on_drop only kills the direct child. Keep the process group guarded even
-// when the runner future is aborted during I/O or server shutdown.
-struct ProcessGroup(u32);
+#[derive(Clone)]
+struct ProcessGroup(std::sync::Arc<std::sync::atomic::AtomicU32>);
 impl ProcessGroup {
     fn new(child: &Child) -> Self {
-        Self(child.id().expect("spawned child"))
+        Self(std::sync::Arc::new(std::sync::atomic::AtomicU32::new(
+            child.id().expect("spawned child"),
+        )))
+    }
+    fn terminate(&self) {
+        let pid = self.0.swap(0, std::sync::atomic::Ordering::AcqRel);
+        #[cfg(unix)]
+        if pid > 0 {
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = pid;
     }
 }
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(-(self.0 as i32), libc::SIGKILL);
-        }
+        self.terminate();
     }
+}
+/// Observe exit without reaping the process-group leader. Ownership remains
+/// provable until the group is killed/disarmed, then Tokio may reap it safely.
+async fn owned_exit(
+    child: &mut Child,
+    group: &ProcessGroup,
+) -> std::io::Result<std::process::ExitStatus> {
+    #[cfg(unix)]
+    loop {
+        let Some(pid) = child.id() else {
+            return Err(std::io::Error::other("Process ownership lost"));
+        };
+        let exited = {
+            let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+            let rc = unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pid,
+                    &mut info,
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                )
+            };
+            if rc < 0 {
+                let error = std::io::Error::last_os_error();
+                if error.kind() != std::io::ErrorKind::Interrupted {
+                    return Err(error);
+                }
+                false
+            } else {
+                unsafe { info.si_pid() != 0 }
+            }
+        };
+        if exited {
+            group.terminate();
+            return child.wait().await;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    #[cfg(not(unix))]
+    {
+        group.terminate();
+        child.wait().await
+    }
+}
+pub(super) async fn approved_head(root: &str) -> Result<String, String> {
+    let mut command = Command::new("git");
+    dunlin_workspace::git::scrub_repository_environment(command.as_std_mut());
+    command
+        .args([
+            "--work-tree",
+            root,
+            "-c",
+            &format!("core.worktree={root}"),
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            root,
+            "rev-parse",
+            "--verify",
+            "HEAD",
+        ])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(|_| "Git is unavailable")?;
+    let group = ProcessGroup::new(&child);
+    let mut output = child
+        .stdout
+        .take()
+        .ok_or("Git HEAD output missing")?
+        .take(257);
+    let mut bytes = Vec::new();
+    let outcome = tokio::time::timeout(Duration::from_secs(10), async {
+        output.read_to_end(&mut bytes).await?;
+        owned_exit(&mut child, &group).await
+    })
+    .await;
+    group.terminate();
+    let _ = child.wait().await;
+    let status = outcome
+        .map_err(|_| "Git HEAD lookup timed out")?
+        .map_err(|_| "Git HEAD lookup interrupted")?;
+    let head = String::from_utf8(bytes)
+        .map_err(|_| "Invalid Git HEAD")?
+        .trim()
+        .to_owned();
+    if !status.success()
+        || !matches!(head.len(), 40 | 64)
+        || !head.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err("Jobs require an existing Git commit".into());
+    }
+    Ok(head)
 }
 async fn git(
     state: &AppState,
     record: &Record,
     args: &[&str],
     deadline: Instant,
+    proofs: &Proofs,
 ) -> Result<(), Failure> {
+    proofs.validate(state, record, deadline).await?;
     let mut command = Command::new("git");
+    dunlin_workspace::git::scrub_repository_environment(command.as_std_mut());
+    if args.first() == Some(&"-C")
+        && let Some(root) = args.get(1)
+    {
+        command.args(["--work-tree", root, "-c", &format!("core.worktree={root}")]);
+    }
     command
-        .args(["-c", "core.hooksPath=/dev/null"])
+        .args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+        ])
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
@@ -83,17 +364,23 @@ async fn git(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    check(state, record, deadline)?;
     let mut child = command
         .spawn()
         .map_err(|_| blocked("Could not start Git preparation"))?;
-    let _group = ProcessGroup::new(&child);
+    let group = ProcessGroup::new(&child);
+    let guardian = Guardian::start(state, record, proofs, deadline, group.clone());
     loop {
         if let Err(error) = check(state, record, deadline) {
-            stop(&mut child).await;
+            stop(&mut child, &group).await;
             return Err(error);
         }
+        guardian.check()?;
         tokio::select! {
-            status=child.wait()=>return if status.is_ok_and(|status|status.success()){Ok(())}else{Err(blocked("Git preparation failed; the approved commit may no longer be available"))},
+            status=owned_exit(&mut child,&group)=>{
+                check(state,record,deadline)?;guardian.check()?;
+                return if status.is_ok_and(|status|status.success()){Ok(())}else{Err(blocked("Git preparation failed; the approved commit may no longer be available"))};
+            },
             _=tokio::time::sleep(Duration::from_millis(200))=>{}
         }
     }
@@ -109,6 +396,23 @@ pub(super) async fn execute_until(
     deadline: Instant,
 ) -> Result<String, Failure> {
     check(state, record, deadline)?;
+    let stamp = record
+        .task
+        .source_checkout_stamp
+        .as_ref()
+        .ok_or_else(|| blocked("Legacy task lacks checkout authority"))?;
+    let source = super::restore_job_checkout(state, stamp, deadline)
+        .await
+        .map_err(blocked)?;
+    if source.root() != record.task.root {
+        return Err(blocked("Approved source root changed"));
+    }
+    let mut proofs = Proofs {
+        source,
+        derived: None,
+        preparing: None,
+    };
+    proofs.validate(state, record, deadline).await?;
     let testing = {
         #[cfg(test)]
         {
@@ -159,8 +463,28 @@ pub(super) async fn execute_until(
             checkout_str,
         ],
         deadline,
+        &proofs,
     )
     .await?;
+    let prepared = {
+        let permit = state
+            .fs_permit()
+            .map_err(|_| blocked("Checkout validation capacity unavailable"))?;
+        let path = checkout.clone();
+        let job = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            PreparedOrdinaryCheckout::capture(&path, &crate::auth::hash_token("{}"))
+        });
+        tokio::time::timeout_at(deadline.min(Instant::now() + Duration::from_secs(5)), job)
+            .await
+            .map_err(|_| blocked("Derived capture timed out"))?
+            .map_err(|_| blocked("Derived capture interrupted"))?
+            .map_err(|_| blocked("Derived clone is not an independent ordinary checkout"))?
+    };
+    if prepared.root() != checkout_str {
+        return Err(blocked("Derived checkout path changed"));
+    }
+    proofs.preparing = Some(prepared.clone());
     let branch = format!("dunlin/job-{}", record.job.id);
     git(
         state,
@@ -175,6 +499,7 @@ pub(super) async fn execute_until(
             &record.task.head,
         ],
         deadline,
+        &proofs,
     )
     .await?;
     git(
@@ -182,24 +507,43 @@ pub(super) async fn execute_until(
         record,
         &["-C", checkout_str, "remote", "remove", "origin"],
         deadline,
+        &proofs,
     )
     .await?;
-    check(state, record, deadline)?;
-    {
+    proofs.validate(state, record, deadline).await?;
+    let verify = prepared.clone();
+    let permit = state
+        .fs_permit()
+        .map_err(|_| blocked("Checkout validation capacity unavailable"))?;
+    let job = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        verify.validate_filesystem()
+    });
+    tokio::time::timeout_at(deadline.min(Instant::now() + Duration::from_secs(5)), job)
+        .await
+        .map_err(|_| blocked("Derived validation timed out"))?
+        .map_err(|_| blocked("Derived validation interrupted"))?
+        .map_err(|_| blocked("Derived identity changed before publication"))?;
+    let published = {
         let store = state
             .store
             .lock()
-            .map_err(|_| blocked("Store lock poisoned"))?;
-        let project = store
-            .create_project(&format!("job-{}", record.job.id), checkout_str)
-            .map_err(|_| blocked("Could not register the review checkout"))?;
-        store
-            .grant(&project.id, &record.job.owner)
-            .map_err(|_| blocked("Could not grant the review checkout"))?;
-        store
-            .job_running(&record.job.id, &project.id, &branch)
-            .map_err(|_| blocked("Could not reserve job execution"))?;
+            .map_err(|_| blocked("Store unavailable"))?;
+        store.publish_job_checkout(&record.job.id,&proofs.source,prepared,&branch,|store,current|super::authorized_in_store(state,store,current).map_err(crate::store::StoreError::Conflict)).map_err(|e|blocked(format!("Checkout publication refused: {e}; inspect prepared files before any new approval")))?
+    };
+    let derived_stamp = published
+        .checkout_stamp
+        .as_ref()
+        .ok_or_else(|| blocked("Published checkout stamp missing"))?;
+    let derived = super::restore_job_checkout(state, derived_stamp, deadline)
+        .await
+        .map_err(blocked)?;
+    if derived.root() != checkout_str || !derived.metadata_roots().is_empty() {
+        return Err(blocked("Derived clone unexpectedly routes metadata"));
     }
+    proofs.derived = Some(derived);
+    proofs.preparing = None;
+    proofs.validate(state, record, deadline).await?;
     let entry = dunlin_workspace::server::HARNESSES
         .iter()
         .find(|entry| entry.0 == record.job.profile.harness)
@@ -248,10 +592,12 @@ pub(super) async fn execute_until(
     }
     #[cfg(unix)]
     command.process_group(0);
+    check(state, record, deadline)?;
     let mut child = command
         .spawn()
         .map_err(|_| blocked("Could not start the sandboxed harness"))?;
-    let _group = ProcessGroup::new(&child);
+    let group = ProcessGroup::new(&child);
+    let guardian = Guardian::start(state, record, &proofs, deadline, group.clone());
     let result=async {
         let context = RequestContext { state, record, deadline, root: checkout_str };
         let mut acp=Acp {input:child.stdin.take().ok_or_else(||failed("Missing agent input"))?,output:BufReader::new(child.stdout.take().ok_or_else(||failed("Missing agent output"))?),partial:Vec::new(),session:String::new(),summary:String::new(),tools:0,bytes:0};
@@ -288,7 +634,10 @@ pub(super) async fn execute_until(
         check(state,record,deadline)?;
         Ok(if acp.summary.trim().is_empty(){"Agent turn finished normally. Review the checkout; task success was not independently verified.".into()}else{acp.summary})
     }.await;
-    stop(&mut child).await;
+    stop(&mut child, &group).await;
+    check(state, record, deadline)?;
+    guardian.check()?;
+    proofs.validate(state, record, deadline).await?;
     result
 }
 
@@ -342,19 +691,25 @@ async fn frame(
     }
 }
 impl Acp {
-    async fn send(&mut self, message: Value, deadline: Instant) -> Result<(), Failure> {
+    async fn send(&mut self, message: Value, context: &RequestContext<'_>) -> Result<(), Failure> {
+        let deadline = context.deadline;
+        check(context.state, context.record, deadline)?;
         let mut bytes = serde_json::to_vec(&message).map_err(|_| failed("Invalid ACP response"))?;
         if bytes.len() > 4 * 1024 * 1024 {
             return Err(failed("ACP response exceeds 4 MiB"));
         }
         bytes.push(b'\n');
-        tokio::time::timeout_at(deadline, async {
+        let write = tokio::time::timeout_at(deadline, async {
             self.input.write_all(&bytes).await?;
             self.input.flush().await
-        })
-        .await
-        .map_err(|_| failed("Agent input budget expired"))?
-        .map_err(|_| failed("Agent input unavailable"))
+        });
+        tokio::pin!(write);
+        loop {
+            tokio::select! {
+                result=&mut write=>return result.map_err(|_|failed("Agent input budget expired"))?.map_err(|_|failed("Agent input unavailable")),
+                _=tokio::time::sleep(Duration::from_millis(200))=>check(context.state,context.record,deadline)?,
+            }
+        }
     }
     async fn request(
         &mut self,
@@ -371,7 +726,7 @@ impl Acp {
         } = *context;
         self.send(
             json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}),
-            deadline,
+            context,
         )
         .await?;
         loop {
@@ -451,9 +806,9 @@ impl Acp {
                         })
                         .and_then(|option| option["optionId"].as_str());
                     if record.job.profile.allow_tools && selected.is_some() {
-                        self.send(json!({"jsonrpc":"2.0","id":request_id,"result":{"outcome":{"outcome":"selected","optionId":selected}}}),deadline).await?;
+                        self.send(json!({"jsonrpc":"2.0","id":request_id,"result":{"outcome":{"outcome":"selected","optionId":selected}}}),context).await?;
                     } else {
-                        self.send(json!({"jsonrpc":"2.0","id":request_id,"result":{"outcome":{"outcome":"cancelled"}}}),deadline).await?;
+                        self.send(json!({"jsonrpc":"2.0","id":request_id,"result":{"outcome":{"outcome":"cancelled"}}}),context).await?;
                         return Err(blocked(
                             "Agent requested permission not covered by the approved profile",
                         ));
@@ -504,7 +859,11 @@ impl Acp {
                     };
                     let root = root.to_string();
                     let relative = relative.to_string();
+                    let file_state = state.clone();
+                    let file_record = (*record).clone();
                     let result = tokio::task::spawn_blocking(move || {
+                        check(&file_state, &file_record, deadline)
+                            .map_err(|_| "Job authority changed before file access".to_string())?;
                         if writing {
                             (move || {
                                 if dunlin_workspace::fs::stat_file(&root, &relative).is_err() {
@@ -547,9 +906,9 @@ impl Acp {
                             json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32000,"message":"File unavailable or outside the approved checkout"}})
                         }
                     };
-                    self.send(reply, deadline).await?;
+                    self.send(reply, context).await?;
                 } else {
-                    self.send(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32601,"message":"Unattended runner does not provide this capability"}}),deadline).await?;
+                    self.send(json!({"jsonrpc":"2.0","id":request_id,"error":{"code":-32601,"message":"Unattended runner does not provide this capability"}}),context).await?;
                     return Err(blocked("Harness requires an unsupported client capability"));
                 }
             } else {

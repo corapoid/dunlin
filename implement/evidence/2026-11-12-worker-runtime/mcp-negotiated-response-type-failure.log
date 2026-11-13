@@ -1,0 +1,99 @@
+Sandbox suite=mcp container=dunlin-check-53f6d2b2829c4f0db1e78fc2deabbbb5 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=300s source_sha256=a838cff4306c9700370a0b19b470bd023b4f0ce629a46347de7a7b45e9bd1d4d
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling syn v3.0.10
+   Compiling synstructure v0.14.0
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling zerovec-derive v0.11.7
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling libc v0.2.191
+   Compiling shlex v2.0.1
+   Compiling cfg-if v1.0.5
+   Compiling find-msvc-tools v0.1.15
+   Compiling cc v1.11.1
+   Compiling ring v0.17.14
+   Compiling tinystr v0.8.5
+   Compiling utf_types v1.0.0
+   Compiling litemap v0.8.3
+   Compiling writeable v0.6.4
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling icu_normalizer_data v2.4.0
+   Compiling icu_properties_data v2.4.0
+   Compiling zeroize v1.9.1
+   Compiling serde_core v1.0.229
+   Compiling rustls-pki-types v1.15.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling getrandom v0.2.17
+   Compiling typenum v1.20.1
+   Compiling crc32fast v1.5.4
+   Compiling httparse v1.10.1
+   Compiling zmij v1.0.23
+   Compiling itoa v1.0.19
+   Compiling untrusted v0.9.0
+   Compiling hybrid-array v0.4.15
+   Compiling serde v1.0.229
+   Compiling percent-encoding v2.3.2
+   Compiling log v0.4.35
+   Compiling simd-adler32 v0.3.10
+   Compiling rustls v0.23.46
+   Compiling serde_json v1.0.154
+   Compiling smallvec v1.16.5
+   Compiling bytes v1.12.1
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.9.1
+   Compiling http v1.5.0
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling serde_derive v1.0.229
+   Compiling once_cell v1.21.4
+   Compiling memchr v2.8.3
+   Compiling base64 v0.23.1
+   Compiling subtle v2.6.1
+   Compiling ureq-proto v0.7.1
+   Compiling flate2 v1.1.11
+   Compiling idna_adapter v1.2.2
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling webpki-roots v1.0.11
+   Compiling thiserror v2.0.21
+   Compiling const-oid v0.10.2
+   Compiling utf8-zero v0.8.1
+   Compiling ureq v3.5.1
+   Compiling digest v0.11.3
+   Compiling idna v1.1.0
+   Compiling form_urlencoded v1.2.2
+   Compiling cpufeatures v0.3.1
+   Compiling thiserror-impl v2.0.21
+   Compiling sha2 v0.11.1
+   Compiling url v2.5.8
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling hex v0.4.3
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+error[E0308]: mismatched types
+   --> crates/mcp-client/src/negotiated.rs:150:62
+    |
+149 |         match request.send_bytes(&bytes) {
+    |               -------------------------- this expression has type `Result<dunlin_http::Response, dunlin_http::Error>`
+150 |             Ok(response) | Err(dunlin_http::Error::Status(_, response)) => Ok(response),
+    |                --------                                      ^^^^^^^^ expected `Response`, found `Box<Response>`
+    |                |
+    |                first introduced with type `dunlin_http::Response` here
+    |
+    = note: expected struct `Response`
+               found struct `Box<Response>`
+    = note: in the same arm, a binding must have the same type in all alternatives
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `dunlin-mcp-client` (lib) due to 1 previous error
+Sandbox memory: {"memory.peak": "655265792", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

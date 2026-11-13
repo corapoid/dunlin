@@ -1,0 +1,124 @@
+{
+  "direct_dependency": {
+    "name": "jsonschema",
+    "version": "0.46.0",
+    "default_features": false
+  },
+  "provisioning": "anonymous crates.io downloads in bounded credential-free Docker; offline workspace resolver; no dependency builds on host",
+  "resolver": "Rust 1.92 compatible metadata; actual checks use cached Rust 1.99",
+  "existing_package_versions_and_checksums_unchanged": true,
+  "added_packages": [
+    {
+      "name": "bit-set",
+      "version": "0.8.0",
+      "sha256": "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": null
+    },
+    {
+      "name": "bit-vec",
+      "version": "0.8.0",
+      "sha256": "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7",
+      "license": "Apache-2.0 OR MIT",
+      "rust_version": null
+    },
+    {
+      "name": "borrow-or-share",
+      "version": "0.2.4",
+      "sha256": "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c",
+      "license": "MIT-0",
+      "rust_version": "1.65"
+    },
+    {
+      "name": "bytecount",
+      "version": "0.6.9",
+      "sha256": "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e",
+      "license": "Apache-2.0/MIT",
+      "rust_version": null
+    },
+    {
+      "name": "email_address",
+      "version": "0.2.9",
+      "sha256": "e079f19b08ca6239f47f8ba8509c11cf3ea30095831f7fed61441475edd8c449",
+      "license": "MIT",
+      "rust_version": null
+    },
+    {
+      "name": "fancy-regex",
+      "version": "0.17.0",
+      "sha256": "72cf461f865c862bb7dc573f643dd6a2b6842f7c30b07882b56bd148cc2761b8",
+      "license": "MIT",
+      "rust_version": "1.66"
+    },
+    {
+      "name": "fluent-uri",
+      "version": "0.4.1",
+      "sha256": "bc74ac4d8359ae70623506d512209619e5cf8f347124910440dbc221714b328e",
+      "license": "MIT",
+      "rust_version": "1.68"
+    },
+    {
+      "name": "fraction",
+      "version": "0.15.4",
+      "sha256": "e076045bb43dac435333ed5f04caf35c7463631d0dae2deb2638d94dd0a5b872",
+      "license": "MIT OR Apache-2.0",
+      "rust_version": null
+    },
+    {
+      "name": "jsonschema",
+      "version": "0.46.0",
+      "sha256": "84695c6689b01384700a3d93acecbd07231ee6fff1bf22ae980b4c307e6ddfd5",
+      "license": "MIT",
+      "rust_version": "1.83.0"
+    },
+    {
+      "name": "micromap",
+      "version": "0.3.0",
+      "sha256": "c2a86d3146ed3995b5913c414f6664344b9617457320782e64f0bb44afd49d74",
+      "license": "MIT",
+      "rust_version": "1.79"
+    },
+    {
+      "name": "num-cmp",
+      "version": "0.1.0",
+      "sha256": "63335b2e2c34fae2fb0aa2cecfd9f0832a1e24b3b32ecec612c3426d46dc8aaa",
+      "license": "MIT/Apache-2.0",
+      "rust_version": null
+    },
+    {
+      "name": "outref",
+      "version": "0.5.2",
+      "sha256": "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e",
+      "license": "MIT",
+      "rust_version": "1.63.0"
+    },
+    {
+      "name": "referencing",
+      "version": "0.46.10",
+      "sha256": "0fbf332a2f81899f6836f22c03da73dae8a664c32e3016b84692c23cddadc95d",
+      "license": "MIT",
+      "rust_version": "1.83.0"
+    },
+    {
+      "name": "unicode-general-category",
+      "version": "1.1.0",
+      "sha256": "0b993bddc193ae5bd0d623b49ec06ac3e9312875fdae725a975c51db1cc1677f",
+      "license": "Apache-2.0",
+      "rust_version": null
+    },
+    {
+      "name": "uuid-simd",
+      "version": "0.8.0",
+      "sha256": "23b082222b4f6619906941c17eb2297fff4c2fb96cb60164170522942a200bd8",
+      "license": "MIT",
+      "rust_version": "1.63"
+    },
+    {
+      "name": "vsimd",
+      "version": "0.8.0",
+      "sha256": "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64",
+      "license": "MIT",
+      "rust_version": "1.63"
+    }
+  ]
+}

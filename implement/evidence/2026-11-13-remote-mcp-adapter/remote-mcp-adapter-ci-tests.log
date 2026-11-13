@@ -1,0 +1,19 @@
+test_default_still_builds_a_standalone_release (test_ci_workflows.RelayBundleTests.test_default_still_builds_a_standalone_release) ... ok
+test_invalid_arguments_fail_before_building (test_ci_workflows.RelayBundleTests.test_invalid_arguments_fail_before_building) ... ok
+test_no_build_copies_existing_binary_without_invoking_cargo (test_ci_workflows.RelayBundleTests.test_no_build_copies_existing_binary_without_invoking_cargo) ... ok
+test_no_build_rejects_missing_or_non_executable_binary (test_ci_workflows.RelayBundleTests.test_no_build_rejects_missing_or_non_executable_binary) ... ok
+test_desktop_packages_are_not_generated_or_published (test_ci_workflows.WorkflowTests.test_desktop_packages_are_not_generated_or_published) ... ok
+test_headless_checks_are_required_and_publish_separate_cli_artifacts (test_ci_workflows.WorkflowTests.test_headless_checks_are_required_and_publish_separate_cli_artifacts) ... ok
+test_installation_docs_recommend_source_without_package_commands (test_ci_workflows.WorkflowTests.test_installation_docs_recommend_source_without_package_commands) ... ok
+test_macos_checks_and_build_are_independent_and_keep_full_checks (test_ci_workflows.WorkflowTests.test_macos_checks_and_build_are_independent_and_keep_full_checks) ... ok
+test_only_main_warmer_writes_shared_macos_caches_without_running_tests (test_ci_workflows.WorkflowTests.test_only_main_warmer_writes_shared_macos_caches_without_running_tests) ... ok
+test_platform_releases_wait_for_authorization_not_each_other (test_ci_workflows.WorkflowTests.test_platform_releases_wait_for_authorization_not_each_other) ... ok
+test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results (test_ci_workflows.WorkflowTests.test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results) ... ok
+test_runtime_requires_named_kernel_policy_and_offline_launcher (test_ci_workflows.WorkflowTests.test_runtime_requires_named_kernel_policy_and_offline_launcher) ... ok
+test_web_application_has_independent_required_checks (test_ci_workflows.WorkflowTests.test_web_application_has_independent_required_checks) ... ok
+test_website_does_not_link_to_withdrawn_desktop_packages (test_ci_workflows.WorkflowTests.test_website_does_not_link_to_withdrawn_desktop_packages) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 17.773s
+
+OK

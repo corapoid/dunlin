@@ -1,0 +1,2808 @@
+{
+  "sdk": "ahp-1.0.0",
+  "traces": [
+    {
+      "name": "queued-text-reasoning-flags-timestamps",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "NoOp",
+        "Applied",
+        "NoOp"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "one"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "one"
+              }
+            },
+            {
+              "id": "q2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "two"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "edited one"
+              }
+            },
+            {
+              "id": "q2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "two"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "two"
+              }
+            },
+            {
+              "id": "q1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "edited one"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "two"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "",
+                "id": "text",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "hello",
+                "id": "text",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "hello",
+                "id": "text",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "hello",
+                "id": "text",
+                "kind": "markdown"
+              },
+              {
+                "content": "",
+                "id": "thought",
+                "kind": "reasoning"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "hello",
+                "id": "text",
+                "kind": "markdown"
+              },
+              {
+                "content": "reason",
+                "id": "thought",
+                "kind": "reasoning"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "content": "hello",
+                "id": "text",
+                "kind": "markdown"
+              },
+              {
+                "content": "reason",
+                "id": "thought",
+                "kind": "reasoning"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.223Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "content": "hello",
+                  "id": "text",
+                  "kind": "markdown"
+                },
+                {
+                  "content": "reason",
+                  "id": "thought",
+                  "kind": "reasoning"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "complete"
+            }
+          ]
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.223Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "content": "hello",
+                  "id": "text",
+                  "kind": "markdown"
+                },
+                {
+                  "content": "reason",
+                  "id": "thought",
+                  "kind": "reasoning"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "complete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tool-raw-input-progress-metadata-running-gates",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "tool",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    },
+                    "dunlin.rawInput": {
+                      "file": "README.md"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "tool",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "stream"
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": {
+                    "markdown": "Preparing"
+                  },
+                  "partialInput": "{\"file\":",
+                  "status": "streaming",
+                  "toolCallId": "tool",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "agent-report-only"
+                  },
+                  "confirmed": "not-needed",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "status": "running",
+                  "toolCallId": "tool",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "agent-report-only"
+                  },
+                  "confirmed": "not-needed",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "status": "running",
+                  "toolCallId": "tool",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "progress"
+                  },
+                  "confirmed": "not-needed",
+                  "content": [
+                    {
+                      "text": "partial",
+                      "type": "text"
+                    }
+                  ],
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "status": "running",
+                  "toolCallId": "tool",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "completed"
+                  },
+                  "confirmed": "not-needed",
+                  "content": [
+                    {
+                      "text": "done",
+                      "type": "text"
+                    }
+                  ],
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "pastTenseMessage": "Read",
+                  "status": "completed",
+                  "success": true,
+                  "toolCallId": "tool",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "completed"
+                  },
+                  "confirmed": "not-needed",
+                  "content": [
+                    {
+                      "text": "done",
+                      "type": "text"
+                    }
+                  ],
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "pastTenseMessage": "Read",
+                  "status": "completed",
+                  "success": true,
+                  "toolCallId": "tool",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 0,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "source": "completed"
+                    },
+                    "confirmed": "not-needed",
+                    "content": [
+                      {
+                        "text": "done",
+                        "type": "text"
+                      }
+                    ],
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "Read file",
+                    "pastTenseMessage": "Read",
+                    "status": "completed",
+                    "success": true,
+                    "toolCallId": "tool",
+                    "toolInput": "{\"file\":\"README.md\"}",
+                    "toolName": "read"
+                  }
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "complete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "multiple-host-permissions-decision-revoke-metadata",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "a",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionNonce": "a"
+                  },
+                  "confirmationTitle": "Approve tool A",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "options": [
+                    {
+                      "id": "nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    {
+                      "id": "nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    }
+                  ],
+                  "status": "pending-confirmation",
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionNonce": "a"
+                  },
+                  "confirmationTitle": "Approve tool A",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "options": [
+                    {
+                      "id": "nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    {
+                      "id": "nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    }
+                  ],
+                  "status": "pending-confirmation",
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "b",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionNonce": "a"
+                  },
+                  "confirmationTitle": "Approve tool A",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "options": [
+                    {
+                      "id": "nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    {
+                      "id": "nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    }
+                  ],
+                  "status": "pending-confirmation",
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionNonce": "b"
+                  },
+                  "confirmationTitle": "Approve tool B",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "options": [
+                    {
+                      "id": "b-nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    {
+                      "id": "b-nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    }
+                  ],
+                  "status": "pending-confirmation",
+                  "toolCallId": "b",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "human-one-use"
+                  },
+                  "confirmed": "user-action",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "selectedOption": {
+                    "id": "nonce:approve",
+                    "kind": "approve",
+                    "label": "Allow once"
+                  },
+                  "status": "running",
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionNonce": "b"
+                  },
+                  "confirmationTitle": "Approve tool B",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "options": [
+                    {
+                      "id": "b-nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    {
+                      "id": "b-nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    }
+                  ],
+                  "status": "pending-confirmation",
+                  "toolCallId": "b",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "human-one-use"
+                  },
+                  "confirmed": "user-action",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "selectedOption": {
+                    "id": "nonce:approve",
+                    "kind": "approve",
+                    "label": "Allow once"
+                  },
+                  "status": "running",
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "human-one-use",
+                    "dunlin.humanApproved": false
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "reason": "denied",
+                  "selectedOption": {
+                    "id": "b-nonce:deny",
+                    "kind": "deny",
+                    "label": "Deny once"
+                  },
+                  "status": "cancelled",
+                  "toolCallId": "b",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionRevoked": true,
+                    "dunlin.permissionUnconfirmed": true
+                  },
+                  "confirmed": "user-action",
+                  "displayName": "Read",
+                  "error": {
+                    "message": "Unknown"
+                  },
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "pastTenseMessage": "Delivery stopped",
+                  "selectedOption": {
+                    "id": "nonce:approve",
+                    "kind": "approve",
+                    "label": "Allow once"
+                  },
+                  "status": "completed",
+                  "success": false,
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "human-one-use",
+                    "dunlin.humanApproved": false
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "reason": "denied",
+                  "selectedOption": {
+                    "id": "b-nonce:deny",
+                    "kind": "deny",
+                    "label": "Deny once"
+                  },
+                  "status": "cancelled",
+                  "toolCallId": "b",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.permissionRevoked": true,
+                    "dunlin.permissionUnconfirmed": true
+                  },
+                  "confirmed": "user-action",
+                  "displayName": "Read",
+                  "error": {
+                    "message": "Unknown"
+                  },
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "pastTenseMessage": "Delivery stopped",
+                  "selectedOption": {
+                    "id": "nonce:approve",
+                    "kind": "approve",
+                    "label": "Allow once"
+                  },
+                  "status": "completed",
+                  "success": false,
+                  "toolCallId": "a",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.confirmationEvidence": "human-one-use",
+                    "dunlin.humanApproved": false
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "reason": "denied",
+                  "selectedOption": {
+                    "id": "b-nonce:deny",
+                    "kind": "deny",
+                    "label": "Deny once"
+                  },
+                  "status": "cancelled",
+                  "toolCallId": "b",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.248Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 66,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 125,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "dunlin.permissionRevoked": true,
+                      "dunlin.permissionUnconfirmed": true
+                    },
+                    "confirmed": "user-action",
+                    "displayName": "Read",
+                    "error": {
+                      "message": "Unknown"
+                    },
+                    "intention": "Inspect",
+                    "invocationMessage": "Read file",
+                    "pastTenseMessage": "Delivery stopped",
+                    "selectedOption": {
+                      "id": "nonce:approve",
+                      "kind": "approve",
+                      "label": "Allow once"
+                    },
+                    "status": "completed",
+                    "success": false,
+                    "toolCallId": "a",
+                    "toolInput": "{\"file\":\"README.md\"}",
+                    "toolName": "read"
+                  }
+                },
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "dunlin.confirmationEvidence": "human-one-use",
+                      "dunlin.humanApproved": false
+                    },
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "Read file",
+                    "reason": "denied",
+                    "selectedOption": {
+                      "id": "b-nonce:deny",
+                      "kind": "deny",
+                      "label": "Deny once"
+                    },
+                    "status": "cancelled",
+                    "toolCallId": "b",
+                    "toolInput": "{\"file\":\"README.md\"}",
+                    "toolName": "read"
+                  }
+                },
+                {
+                  "error": {
+                    "errorType": "unknown_outcome",
+                    "message": "Unknown outcome"
+                  },
+                  "kind": "error",
+                  "resumable": false
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "error"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "terminal-cancel-finalizes-streaming-and-running-tools",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "NoOp"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "stream",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "stream"
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "partialInput": "partial",
+                  "status": "streaming",
+                  "toolCallId": "stream",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "stream"
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "partialInput": "partial",
+                  "status": "streaming",
+                  "toolCallId": "stream",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "dunlin.acpReport": {
+                      "status": "pending"
+                    }
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "status": "streaming",
+                  "toolCallId": "run",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "stream"
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "partialInput": "partial",
+                  "status": "streaming",
+                  "toolCallId": "stream",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "ready"
+                  },
+                  "confirmed": "not-needed",
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "status": "running",
+                  "toolCallId": "run",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "t",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "request"
+            },
+            "responseParts": [
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "stream"
+                  },
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "partialInput": "partial",
+                  "status": "streaming",
+                  "toolCallId": "stream",
+                  "toolName": "read"
+                }
+              },
+              {
+                "kind": "toolCall",
+                "toolCall": {
+                  "_meta": {
+                    "source": "progress"
+                  },
+                  "confirmed": "not-needed",
+                  "content": [
+                    {
+                      "text": "partial",
+                      "type": "text"
+                    }
+                  ],
+                  "displayName": "Read",
+                  "intention": "Inspect",
+                  "invocationMessage": "Read file",
+                  "status": "running",
+                  "toolCallId": "run",
+                  "toolInput": "{\"file\":\"README.md\"}",
+                  "toolName": "read"
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.123Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.123Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:01.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 877,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "source": "stream"
+                    },
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "",
+                    "reason": "skipped",
+                    "status": "cancelled",
+                    "toolCallId": "stream",
+                    "toolName": "read"
+                  }
+                },
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "source": "progress"
+                    },
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "Read file",
+                    "reason": "skipped",
+                    "status": "cancelled",
+                    "toolCallId": "run",
+                    "toolInput": "{\"file\":\"README.md\"}",
+                    "toolName": "read"
+                  }
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "cancelled"
+            }
+          ]
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:01.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 877,
+              "id": "t",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "request"
+              },
+              "responseParts": [
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "source": "stream"
+                    },
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "",
+                    "reason": "skipped",
+                    "status": "cancelled",
+                    "toolCallId": "stream",
+                    "toolName": "read"
+                  }
+                },
+                {
+                  "kind": "toolCall",
+                  "toolCall": {
+                    "_meta": {
+                      "source": "progress"
+                    },
+                    "displayName": "Read",
+                    "intention": "Inspect",
+                    "invocationMessage": "Read file",
+                    "reason": "skipped",
+                    "status": "cancelled",
+                    "toolCallId": "run",
+                    "toolInput": "{\"file\":\"README.md\"}",
+                    "toolName": "read"
+                  }
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.123Z",
+              "state": "cancelled"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "known-sdk-partial-reorder-original-order-divergence",
+      "outcomes": [
+        "Applied"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "z",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "z"
+              }
+            },
+            {
+              "id": "a",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "a"
+              }
+            },
+            {
+              "id": "m",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "m"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 1,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "m",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "m"
+              }
+            },
+            {
+              "id": "a",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "a"
+              }
+            },
+            {
+              "id": "z",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "z"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 1,
+          "title": "Oracle",
+          "turns": []
+        }
+      ]
+    },
+    {
+      "name": "history-prepend-overlap-cursor-and-live-turns",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied"
+      ],
+      "states": [
+        {
+          "activeTurn": {
+            "id": "t3",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "prompt3"
+            },
+            "responseParts": [
+              {
+                "content": "partial",
+                "id": "p3",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:03:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:03:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q4",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt4"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            }
+          ],
+          "turnsNextCursor": "page-one"
+        },
+        {
+          "activeTurn": {
+            "id": "t3",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "prompt3"
+            },
+            "responseParts": [
+              {
+                "content": "partial",
+                "id": "p3",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:03:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:03:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q4",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt4"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt1"
+              },
+              "responseParts": [
+                {
+                  "content": "reply1",
+                  "id": "p1",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            }
+          ],
+          "turnsNextCursor": "page-zero"
+        },
+        {
+          "activeTurn": {
+            "id": "t3",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "prompt3"
+            },
+            "responseParts": [
+              {
+                "content": "partial live",
+                "id": "p3",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:03:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:03:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q4",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt4"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt1"
+              },
+              "responseParts": [
+                {
+                  "content": "reply1",
+                  "id": "p1",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            }
+          ],
+          "turnsNextCursor": "page-zero"
+        },
+        {
+          "activeTurn": {
+            "id": "t3",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "prompt3"
+            },
+            "responseParts": [
+              {
+                "content": "partial live",
+                "id": "p3",
+                "kind": "markdown"
+              }
+            ],
+            "startedAt": "2026-11-11T10:03:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:03:00.000Z",
+          "queuedMessages": [
+            {
+              "id": "q4",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt4"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t0",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt0"
+              },
+              "responseParts": [
+                {
+                  "content": "reply0",
+                  "id": "p0",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:00:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt1"
+              },
+              "responseParts": [
+                {
+                  "content": "reply1",
+                  "id": "p1",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            }
+          ]
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:03:00.050Z",
+          "queuedMessages": [
+            {
+              "id": "q4",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt4"
+              }
+            }
+          ],
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t0",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt0"
+              },
+              "responseParts": [
+                {
+                  "content": "reply0",
+                  "id": "p0",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:00:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt1"
+              },
+              "responseParts": [
+                {
+                  "content": "reply1",
+                  "id": "p1",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 50,
+              "id": "t3",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt3"
+              },
+              "responseParts": [
+                {
+                  "content": "partial live",
+                  "id": "p3",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:03:00.000Z",
+              "state": "complete"
+            }
+          ]
+        },
+        {
+          "activeTurn": {
+            "id": "t4",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "prompt4"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:04:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:04:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle history",
+          "turns": [
+            {
+              "duration": 100,
+              "id": "t0",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt0"
+              },
+              "responseParts": [
+                {
+                  "content": "reply0",
+                  "id": "p0",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:00:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t1",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt1"
+              },
+              "responseParts": [
+                {
+                  "content": "reply1",
+                  "id": "p1",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 100,
+              "id": "t2",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt2"
+              },
+              "responseParts": [
+                {
+                  "content": "reply2",
+                  "id": "p2",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:02:00.000Z",
+              "state": "complete"
+            },
+            {
+              "duration": 50,
+              "id": "t3",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "prompt3"
+              },
+              "responseParts": [
+                {
+                  "content": "partial live",
+                  "id": "p3",
+                  "kind": "markdown"
+                }
+              ],
+              "startedAt": "2026-11-11T10:03:00.000Z",
+              "state": "complete"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mcp-form-input-rounds-and-drafts",
+      "outcomes": [
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "Applied",
+        "NoOp",
+        "Applied",
+        "Applied",
+        "Applied"
+      ],
+      "states": [
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:00:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 97,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "id": "dunlin:mcp-input:first",
+                  "message": "MCP work / lookup",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "draft",
+                      "value": {
+                        "kind": "text",
+                        "value": "Draft"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "MCP work / lookup",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "draft",
+                      "value": {
+                        "kind": "text",
+                        "value": "Draft"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "Updated display",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "submitted",
+                      "value": {
+                        "kind": "text",
+                        "value": "Alice"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "Updated display",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                },
+                "response": "accept"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "submitted",
+                      "value": {
+                        "kind": "text",
+                        "value": "Alice"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "Updated display",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                },
+                "response": "accept"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "submitted",
+                      "value": {
+                        "kind": "text",
+                        "value": "Alice"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "Updated display",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                },
+                "response": "accept"
+              },
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "id": "dunlin:mcp-input:second",
+                  "message": "Second round",
+                  "questions": []
+                }
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 88,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "activeTurn": {
+            "id": "turn",
+            "message": {
+              "origin": {
+                "kind": "user"
+              },
+              "text": "Use MCP"
+            },
+            "responseParts": [
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "answers": {
+                    "name": {
+                      "state": "submitted",
+                      "value": {
+                        "kind": "text",
+                        "value": "Alice"
+                      }
+                    }
+                  },
+                  "id": "dunlin:mcp-input:first",
+                  "message": "Updated display",
+                  "questions": [
+                    {
+                      "id": "name",
+                      "kind": "text",
+                      "message": "Name",
+                      "required": true
+                    }
+                  ]
+                },
+                "response": "accept"
+              },
+              {
+                "kind": "inputRequest",
+                "request": {
+                  "id": "dunlin:mcp-input:second",
+                  "message": "Second round",
+                  "questions": []
+                },
+                "response": "cancel"
+              }
+            ],
+            "startedAt": "2026-11-11T10:01:00.000Z"
+          },
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.000Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 72,
+          "title": "Oracle",
+          "turns": []
+        },
+        {
+          "interactivity": "full",
+          "modifiedAt": "2026-11-11T10:01:00.042Z",
+          "resource": "ahp-chat:/oracle",
+          "status": 65,
+          "title": "Oracle",
+          "turns": [
+            {
+              "duration": 42,
+              "id": "turn",
+              "message": {
+                "origin": {
+                  "kind": "user"
+                },
+                "text": "Use MCP"
+              },
+              "responseParts": [
+                {
+                  "kind": "inputRequest",
+                  "request": {
+                    "answers": {
+                      "name": {
+                        "state": "submitted",
+                        "value": {
+                          "kind": "text",
+                          "value": "Alice"
+                        }
+                      }
+                    },
+                    "id": "dunlin:mcp-input:first",
+                    "message": "Updated display",
+                    "questions": [
+                      {
+                        "id": "name",
+                        "kind": "text",
+                        "message": "Name",
+                        "required": true
+                      }
+                    ]
+                  },
+                  "response": "accept"
+                },
+                {
+                  "kind": "inputRequest",
+                  "request": {
+                    "id": "dunlin:mcp-input:second",
+                    "message": "Second round",
+                    "questions": []
+                  },
+                  "response": "cancel"
+                }
+              ],
+              "startedAt": "2026-11-11T10:01:00.000Z",
+              "state": "complete"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

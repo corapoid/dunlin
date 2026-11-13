@@ -1,0 +1,6 @@
+{
+  "final_source_sha256": "31b604859705d3f2117365c8bb36466b88460e61855238e0538c366071905b65",
+  "server_source_sha256": "d84033db2eed6890d8adb173c1acf8d12613e604cf4ac51168207e53644bd927",
+  "scope": "Only rustfmt line wrapping of one authorize call differs. Reverse substitution in disposable source copy reproduces the server snapshot hash.",
+  "patch": "final-format.patch"
+}

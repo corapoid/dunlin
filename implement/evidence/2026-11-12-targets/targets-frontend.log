@@ -1,0 +1,705 @@
+Sandbox suite=frontend container=dunlin-check-522a170f4fce4516929574ddeaccafea image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m wall=60s source_sha256=67fe8e4db9b0879742ad91dec19b14de2f90e7f2f4b687efba073667b5d1c5b9
+TAP version 13
+# Subtest: agent codec preserves literal versioned instructions and schema defaults without resolving resources
+ok 1 - agent codec preserves literal versioned instructions and schema defaults without resolving resources
+  ---
+  duration_ms: 3.026846
+  type: 'test'
+  ...
+# Subtest: agent codec enforces UTF8, combined instruction and skill bounds, unknown fields and immutable version provenance
+ok 2 - agent codec enforces UTF8, combined instruction and skill bounds, unknown fields and immutable version provenance
+  ---
+  duration_ms: 6.1782
+  type: 'test'
+  ...
+# Subtest: draft save and publish use explicit CAS, do not replay conflict, and do not publish unsaved data
+ok 3 - draft save and publish use explicit CAS, do not replay conflict, and do not publish unsaved data
+  ---
+  duration_ms: 43.682597
+  type: 'test'
+  ...
+# Subtest: publication response must refer to exactly the submitted draft revision
+ok 4 - publication response must refer to exactly the submitted draft revision
+  ---
+  duration_ms: 3.395822
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: queued-text-reasoning-flags-timestamps
+ok 5 - pinned SDK parity: queued-text-reasoning-flags-timestamps
+  ---
+  duration_ms: 15.845166
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: tool-raw-input-progress-metadata-running-gates
+ok 6 - pinned SDK parity: tool-raw-input-progress-metadata-running-gates
+  ---
+  duration_ms: 1.802838
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: multiple-host-permissions-decision-revoke-metadata
+ok 7 - pinned SDK parity: multiple-host-permissions-decision-revoke-metadata
+  ---
+  duration_ms: 1.34217
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: terminal-cancel-finalizes-streaming-and-running-tools
+ok 8 - pinned SDK parity: terminal-cancel-finalizes-streaming-and-running-tools
+  ---
+  duration_ms: 0.386722
+  type: 'test'
+  ...
+# Subtest: known SDK divergence: known-sdk-partial-reorder-original-order-divergence
+ok 9 - known SDK divergence: known-sdk-partial-reorder-original-order-divergence
+  ---
+  duration_ms: 0.328309
+  type: 'test'
+  ...
+# Subtest: pinned SDK parity: history-prepend-overlap-cursor-and-live-turns
+ok 10 - pinned SDK parity: history-prepend-overlap-cursor-and-live-turns
+  ---
+  duration_ms: 0.671148
+  type: 'test'
+  ...
+# (node:28) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: same-origin observer endpoint rejects arbitrary discovery paths
+ok 11 - same-origin observer endpoint rejects arbitrary discovery paths
+  ---
+  duration_ms: 3.592432
+  type: 'test'
+  ...
+# Subtest: read-only projection preserves reasoning, tools, completion and errors
+ok 12 - read-only projection preserves reasoning, tools, completion and errors
+  ---
+  duration_ms: 1.295738
+  type: 'test'
+  ...
+# Subtest: selection is snapshot based and duplicates do not duplicate streamed text
+ok 13 - selection is snapshot based and duplicates do not duplicate streamed text
+  ---
+  duration_ms: 7.840852
+  type: 'test'
+  ...
+# Subtest: late subscription snapshot cannot replace a newly selected conversation
+ok 14 - late subscription snapshot cannot replace a newly selected conversation
+  ---
+  duration_ms: 5.806421
+  type: 'test'
+  ...
+# Subtest: reconnect replays actions and refreshes root listing without write methods
+ok 15 - reconnect replays actions and refreshes root listing without write methods
+  ---
+  duration_ms: 2.107281
+  type: 'test'
+  ...
+# Subtest: revocation removes protected data and stale socket messages are ignored
+ok 16 - revocation removes protected data and stale socket messages are ignored
+  ---
+  duration_ms: 1.323376
+  type: 'test'
+  ...
+# Subtest: root summary notifications update parent status independently of chat actions
+ok 17 - root summary notifications update parent status independently of chat actions
+  ---
+  duration_ms: 0.49409
+  type: 'test'
+  ...
+# Subtest: unknown reconnect identity reinitializes and requests a fresh selected snapshot
+ok 18 - unknown reconnect identity reinitializes and requests a fresh selected snapshot
+  ---
+  duration_ms: 0.988514
+  type: 'test'
+  ...
+# Subtest: malformed and oversized wire frames fail closed
+ok 19 - malformed and oversized wire frames fail closed
+  ---
+  duration_ms: 4.09437
+  type: 'test'
+  ...
+# Subtest: initial pagination accumulates pages before publishing and rejects repeated cursors
+ok 20 - initial pagination accumulates pages before publishing and rejects repeated cursors
+  ---
+  duration_ms: 1.685499
+  type: 'test'
+  ...
+# Subtest: reconnect before initial chat snapshot reacquires its missing baseline
+ok 21 - reconnect before initial chat snapshot reacquires its missing baseline
+  ---
+  duration_ms: 2.502136
+  type: 'test'
+  ...
+# Subtest: live tool parameters match standard snapshots after ready and completion
+ok 22 - live tool parameters match standard snapshots after ready and completion
+  ---
+  duration_ms: 0.586437
+  type: 'test'
+  ...
+# Subtest: only a full chat with explicit queue capability can dispatch user text
+ok 23 - only a full chat with explicit queue capability can dispatch user text
+  ---
+  duration_ms: 2.646543
+  type: 'test'
+  ...
+# Subtest: rejected optimistic commands restore draft without applying the action
+ok 24 - rejected optimistic commands restore draft without applying the action
+  ---
+  duration_ms: 0.885771
+  type: 'test'
+  ...
+# Subtest: snapshot reconnect retries exact immutable identity and old echo acknowledges without replaying a consumed prompt
+ok 25 - snapshot reconnect retries exact immutable identity and old echo acknowledges without replaying a consumed prompt
+  ---
+  duration_ms: 4.102344
+  type: 'test'
+  ...
+# Subtest: reconnect replay confirms a pending command and does not resend acknowledged text
+ok 26 - reconnect replay confirms a pending command and does not resend acknowledged text
+  ---
+  duration_ms: 3.900408
+  type: 'test'
+  ...
+# Subtest: unknown reconnect identity with an uncertain outbox never initializes or auto redispatches
+ok 27 - unknown reconnect identity with an uncertain outbox never initializes or auto redispatches
+  ---
+  duration_ms: 1.26902
+  type: 'test'
+  ...
+# Subtest: UTF-8 and JSON frame preflight retain oversized drafts without dispatch or sequence consumption
+ok 28 - UTF-8 and JSON frame preflight retain oversized drafts without dispatch or sequence consumption
+  ---
+  duration_ms: 1.457304
+  type: 'test'
+  ...
+# Subtest: queued upsert keeps position and reorder preserves omitted messages without duplicates
+ok 29 - queued upsert keeps position and reorder preserves omitted messages without duplicates
+  ---
+  duration_ms: 1.483021
+  type: 'test'
+  ...
+# Subtest: control rejections restore confirmed queue and active turn without requiring text payload
+ok 30 - control rejections restore confirmed queue and active turn without requiring text payload
+  ---
+  duration_ms: 0.827783
+  type: 'test'
+  ...
+# Subtest: canonical cancellation replaces prediction with server duration and has no duplicate terminal turn
+ok 31 - canonical cancellation replaces prediction with server duration and has no duplicate terminal turn
+  ---
+  duration_ms: 0.226776
+  type: 'test'
+  ...
+# Subtest: control outbox reconnect retries exact removal and old acknowledgement cannot modify newer snapshot
+ok 32 - control outbox reconnect retries exact removal and old acknowledgement cannot modify newer snapshot
+  ---
+  duration_ms: 0.440945
+  type: 'test'
+  ...
+# Subtest: controls require explicit permission and current server targets; pending controls block selection
+ok 33 - controls require explicit permission and current server targets; pending controls block selection
+  ---
+  duration_ms: 0.311817
+  type: 'test'
+  ...
+# Subtest: terminal turn finalizes unfinished tools exactly like a pinned SDK snapshot
+ok 34 - terminal turn finalizes unfinished tools exactly like a pinned SDK snapshot
+  ---
+  duration_ms: 0.551577
+  type: 'test'
+  ...
+# Subtest: late old cancel acknowledgement drops prediction without cancelling a newer snapshot tool
+ok 35 - late old cancel acknowledgement drops prediction without cancelling a newer snapshot tool
+  ---
+  duration_ms: 0.384041
+  type: 'test'
+  ...
+# Subtest: ready without confirmed matches a standard pending-confirmation snapshot
+ok 36 - ready without confirmed matches a standard pending-confirmation snapshot
+  ---
+  duration_ms: 0.797724
+  type: 'test'
+  ...
+# Subtest: approve and deny use exact host option identity and preserve input without claiming local human evidence
+ok 37 - approve and deny use exact host option identity and preserve input without claiming local human evidence
+  ---
+  duration_ms: 0.927561
+  type: 'test'
+  ...
+# Subtest: permission rejection restores challenge, never text draft or an invented approval receipt
+ok 38 - permission rejection restores challenge, never text draft or an invented approval receipt
+  ---
+  duration_ms: 0.307767
+  type: 'test'
+  ...
+# Subtest: another tab first decision supersedes a local conflicting prediction
+ok 39 - another tab first decision supersedes a local conflicting prediction
+  ---
+  duration_ms: 0.878633
+  type: 'test'
+  ...
+# Subtest: permission reconnect exact retry and old receipt cannot approve a newer nonce challenge
+ok 40 - permission reconnect exact retry and old receipt cannot approve a newer nonce challenge
+  ---
+  duration_ms: 0.820227
+  type: 'test'
+  ...
+# Subtest: approval requires explicit capability, active pending tool and advertised option; read-only cannot vote
+ok 41 - approval requires explicit capability, active pending tool and advertised option; read-only cannot vote
+  ---
+  duration_ms: 0.723913
+  type: 'test'
+  ...
+# Subtest: revoked consumed permission completion replaces proof metadata and matches SDK snapshot
+ok 42 - revoked consumed permission completion replaces proof metadata and matches SDK snapshot
+  ---
+  duration_ms: 0.616412
+  type: 'test'
+  ...
+# Subtest: late producer completion cannot convert denied tool into successful execution
+ok 43 - late producer completion cannot convert denied tool into successful execution
+  ---
+  duration_ms: 0.464991
+  type: 'test'
+  ...
+# Subtest: one decision keeps InputNeeded while another tool still awaits permission
+ok 44 - one decision keeps InputNeeded while another tool still awaits permission
+  ---
+  duration_ms: 0.608105
+  type: 'test'
+  ...
+# Subtest: valid snapshots with absent interactivity use the pinned default full while writes remain separately gated
+ok 45 - valid snapshots with absent interactivity use the pinned default full while writes remain separately gated
+  ---
+  duration_ms: 0.321712
+  type: 'test'
+  ...
+# Subtest: history fetch is explicit and one page notification precedes RPC acknowledgement without replacing live state
+ok 46 - history fetch is explicit and one page notification precedes RPC acknowledgement without replacing live state
+  ---
+  duration_ms: 0.898463
+  type: 'test'
+  ...
+# Subtest: expired one-use cursor preserves transcript and requires explicit fresh-view reload without automatic retry
+ok 47 - expired one-use cursor preserves transcript and requires explicit fresh-view reload without automatic retry
+  ---
+  duration_ms: 0.466327
+  type: 'test'
+  ...
+# Subtest: history forbidden error clears protected pages and never retries with revoked authority
+ok 48 - history forbidden error clears protected pages and never retries with revoked authority
+  ---
+  duration_ms: 0.236838
+  type: 'test'
+  ...
+# Subtest: history selection generation prevents old page/error and A-to-B-to-A subscription snapshots from leaking
+ok 49 - history selection generation prevents old page/error and A-to-B-to-A subscription snapshots from leaking
+  ---
+  duration_ms: 0.361122
+  type: 'test'
+  ...
+# Subtest: late initial snapshot for an earlier visit to the same chat cannot replace its new history cursor
+ok 50 - late initial snapshot for an earlier visit to the same chat cannot replace its new history cursor
+  ---
+  duration_ms: 0.43055
+  type: 'test'
+  ...
+# Subtest: paged reconnect uses a fresh bounded snapshot and cursor while retaining exact optimistic outbox identity
+ok 51 - paged reconnect uses a fresh bounded snapshot and cursor while retaining exact optimistic outbox identity
+  ---
+  duration_ms: 2.337648
+  type: 'test'
+  ...
+# Subtest: missing page notification or timeout leaves an explicit recoverable history error with no polling
+ok 52 - missing page notification or timeout leaves an explicit recoverable history error with no polling
+  ---
+  duration_ms: 0.653651
+  type: 'test'
+  ...
+# Subtest: snapshot and resync wire contract
+ok 53 - snapshot and resync wire contract
+  ---
+  duration_ms: 1.614528
+  type: 'test'
+  ...
+# Subtest: the shared Rust/browser fixture matches the browser decoder
+ok 54 - the shared Rust/browser fixture matches the browser decoder
+  ---
+  duration_ms: 1.135092
+  type: 'test'
+  ...
+# Subtest: reject invalid versions, unsafe sequences and unrelated scope
+ok 55 - reject invalid versions, unsafe sequences and unrelated scope
+  ---
+  duration_ms: 2.239498
+  type: 'test'
+  ...
+# Subtest: reconnect accepts authoritative new stream; old sequence never overwrites newer state
+ok 56 - reconnect accepts authoritative new stream; old sequence never overwrites newer state
+  ---
+  duration_ms: 0.378406
+  type: 'test'
+  ...
+# Subtest: channel diagnostic preserves raw expired active phase and reports boot mismatch without claiming health
+ok 57 - channel diagnostic preserves raw expired active phase and reports boot mismatch without claiming health
+  ---
+  duration_ms: 1.608349
+  type: 'test'
+  ...
+# Subtest: channel codec refuses cross-scope, unsafe clocks, fabricated authority and unexpected secret fields
+ok 58 - channel codec refuses cross-scope, unsafe clocks, fabricated authority and unexpected secret fields
+  ---
+  duration_ms: 0.485656
+  type: 'test'
+  ...
+# Subtest: reader makes explicit same-origin GET only and keeps no record after failed refresh
+ok 59 - reader makes explicit same-origin GET only and keeps no record after failed refresh
+  ---
+  duration_ms: 30.249108
+  type: 'test'
+  ...
+# Subtest: later explicit read wins when an aborted old GET still completes
+ok 60 - later explicit read wins when an aborted old GET still completes
+  ---
+  duration_ms: 1.357818
+  type: 'test'
+  ...
+# Subtest: permission loss removes diagnostic and notifies registry, while late denied reads cannot revoke a newer scope
+ok 61 - permission loss removes diagnostic and notifies registry, while late denied reads cannot revoke a newer scope
+  ---
+  duration_ms: 2.523845
+  type: 'test'
+  ...
+# Subtest: catalog invalidation clears metadata and fences late replies without automatically fetching
+ok 62 - catalog invalidation clears metadata and fences late replies without automatically fetching
+  ---
+  duration_ms: 1.110752
+  type: 'test'
+  ...
+# Subtest: malformed secret-bearing response never enters rendered state or propagates raw server text
+ok 63 - malformed secret-bearing response never enters rendered state or propagates raw server text
+  ---
+  duration_ms: 1.047003
+  type: 'test'
+  ...
+# Subtest: host registry keeps untrusted above-policy reports distinct from execution authority
+ok 64 - host registry keeps untrusted above-policy reports distinct from execution authority
+  ---
+  duration_ms: 2.584964
+  type: 'test'
+  ...
+# Subtest: host codec rejects arbitrary executable policies, unstable node IDs and unsafe Serve origins
+ok 65 - host codec rejects arbitrary executable policies, unstable node IDs and unsafe Serve origins
+  ---
+  duration_ms: 0.680621
+  type: 'test'
+  ...
+# Subtest: ticket exists only in explicit enrollment response and malformed scope/expiry is rejected
+ok 66 - ticket exists only in explicit enrollment response and malformed scope/expiry is rejected
+  ---
+  duration_ms: 0.308561
+  type: 'test'
+  ...
+# Subtest: host mutations send one explicit CAS request and never retry conflict or network uncertainty
+ok 67 - host mutations send one explicit CAS request and never retry conflict or network uncertainty
+  ---
+  duration_ms: 28.863403
+  type: 'test'
+  ...
+# Subtest: host response identities cannot redirect a mutation to another registered node
+ok 68 - host response identities cannot redirect a mutation to another registered node
+  ---
+  duration_ms: 2.833866
+  type: 'test'
+  ...
+# Subtest: registry inputs do not accept browser-supplied verification, credentials or executable paths
+ok 69 - registry inputs do not accept browser-supplied verification, credentials or executable paths
+  ---
+  duration_ms: 1.154839
+  type: 'test'
+  ...
+# Subtest: registry read fence rejects pre-mutation snapshots and preserves authority loss during pending mutation
+ok 70 - registry read fence rejects pre-mutation snapshots and preserves authority loss during pending mutation
+  ---
+  duration_ms: 0.587021
+  type: 'test'
+  ...
+# Subtest: fresh authorized registry preserves only an already-held unspent matching enrollment epoch
+ok 71 - fresh authorized registry preserves only an already-held unspent matching enrollment epoch
+  ---
+  duration_ms: 0.477265
+  type: 'test'
+  ...
+# (node:58) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: socket opening alone is not live; the first scoped snapshot is authoritative
+ok 72 - socket opening alone is not live; the first scoped snapshot is authoritative
+  ---
+  duration_ms: 1.600722
+  type: 'test'
+  ...
+# Subtest: a late snapshot for the previous project cannot replace current project state
+ok 73 - a late snapshot for the previous project cannot replace current project state
+  ---
+  duration_ms: 0.261521
+  type: 'test'
+  ...
+# Subtest: revocation closes the stream and does not reconnect with revoked authority
+ok 74 - revocation closes the stream and does not reconnect with revoked authority
+  ---
+  duration_ms: 0.195733
+  type: 'test'
+  ...
+# Subtest: restart ignores callbacks from an old socket
+ok 75 - restart ignores callbacks from an old socket
+  ---
+  duration_ms: 0.138712
+  type: 'test'
+  ...
+# Subtest: reconnect resubscribes but never replays a mutation
+ok 76 - reconnect resubscribes but never replays a mutation
+  ---
+  duration_ms: 0.615252
+  type: 'test'
+  ...
+# Subtest: resolver codec observes caller-specific Read independently of saved administrator principal and grant
+ok 77 - resolver codec observes caller-specific Read independently of saved administrator principal and grant
+  ---
+  duration_ms: 2.530968
+  type: 'test'
+  ...
+# Subtest: resolver codec refuses stale ref, target drift, wrong caller, fabricated execution and secret fields
+ok 78 - resolver codec refuses stale ref, target drift, wrong caller, fabricated execution and secret fields
+  ---
+  duration_ms: 2.39213
+  type: 'test'
+  ...
+# Subtest: only an explicit check sends the exact immutable BindingRef and never session/grant metadata
+ok 79 - only an explicit check sends the exact immutable BindingRef and never session/grant metadata
+  ---
+  duration_ms: 36.007382
+  type: 'test'
+  ...
+# Subtest: connected worker Read revocation removes earlier observation, does not reuse stored admin grant or retry
+ok 80 - connected worker Read revocation removes earlier observation, does not reuse stored admin grant or retry
+  ---
+  duration_ms: 0.876354
+  type: 'test'
+  ...
+# Subtest: selection change and newer check fence delayed replies even when transport ignores cancellation
+ok 81 - selection change and newer check fence delayed replies even when transport ignores cancellation
+  ---
+  duration_ms: 0.850599
+  type: 'test'
+  ...
+# Subtest: authority invalidation or unmount clears state and ignores late successful RPC without automatic replacement
+ok 82 - authority invalidation or unmount clears state and ignores late successful RPC without automatic replacement
+  ---
+  duration_ms: 1.33436
+  type: 'test'
+  ...
+# Subtest: stale references are denied once and malformed/inactive scope cannot start a resolver request
+ok 83 - stale references are denied once and malformed/inactive scope cannot start a resolver request
+  ---
+  duration_ms: 0.621471
+  type: 'test'
+  ...
+# Subtest: remote binding codec preserves observed descriptor, tombstone and service principal without manufacturing execution authority
+ok 84 - remote binding codec preserves observed descriptor, tombstone and service principal without manufacturing execution authority
+  ---
+  duration_ms: 2.440426
+  type: 'test'
+  ...
+# Subtest: remote binding codec rejects scope drift, unsafe revisions, duplicates, caller paths and fabricated readiness
+ok 85 - remote binding codec rejects scope drift, unsafe revisions, duplicates, caller paths and fabricated readiness
+  ---
+  duration_ms: 0.890005
+  type: 'test'
+  ...
+# Subtest: create/rebind/revoke send explicit target and captured CAS exactly once without local fallback
+ok 86 - create/rebind/revoke send explicit target and captured CAS exactly once without local fallback
+  ---
+  duration_ms: 63.565922
+  type: 'test'
+  ...
+# Subtest: unknown mutation outcome requires explicit read; catalog refresh never retries or clears reconciliation requirement
+ok 87 - unknown mutation outcome requires explicit read; catalog refresh never retries or clears reconciliation requirement
+  ---
+  duration_ms: 5.401723
+  type: 'test'
+  ...
+# Subtest: newer observed binding revision cannot silently upgrade the CAS attached to an older user selection
+ok 88 - newer observed binding revision cannot silently upgrade the CAS attached to an older user selection
+  ---
+  duration_ms: 2.170933
+  type: 'test'
+  ...
+# Subtest: permission loss while save is pending clears observed metadata and fences the late accepted response
+ok 89 - permission loss while save is pending clears observed metadata and fences the late accepted response
+  ---
+  duration_ms: 7.815768
+  type: 'test'
+  ...
+# Subtest: scope disposal ignores late metadata; a newer read wins despite a fetch implementation ignoring abort
+ok 90 - scope disposal ignores late metadata; a newer read wins despite a fetch implementation ignoring abort
+  ---
+  duration_ms: 1.17703
+  type: 'test'
+  ...
+# Subtest: explicit intent freezes UUID, profile, scope and exact bytes across lost acceptance then manual retry
+ok 91 - explicit intent freezes UUID, profile, scope and exact bytes across lost acceptance then manual retry
+  ---
+  duration_ms: 64.496834
+  type: 'test'
+  ...
+# Subtest: concurrent submit calls share one in-flight attempt
+ok 92 - concurrent submit calls share one in-flight attempt
+  ---
+  duration_ms: 0.785438
+  type: 'test'
+  ...
+# Subtest: capacity and server failures never auto retry or replace the intent key
+ok 93 - capacity and server failures never auto retry or replace the intent key
+  ---
+  duration_ms: 10.714533
+  type: 'test'
+  ...
+# Subtest: conflict and authority rejection block automatic retry and another create identity
+ok 94 - conflict and authority rejection block automatic retry and another create identity
+  ---
+  duration_ms: 7.764466
+  type: 'test'
+  ...
+# Subtest: identity or device change cannot carry an uncertain create into a new browser principal
+ok 95 - identity or device change cannot carry an uncertain create into a new browser principal
+  ---
+  duration_ms: 2.431326
+  type: 'test'
+  ...
+# Subtest: cookie identity switch after preflight sends immutable expected authority and blocks rejected intent
+ok 96 - cookie identity switch after preflight sends immutable expected authority and blocks rejected intent
+  ---
+  duration_ms: 3.645049
+  type: 'test'
+  ...
+# Subtest: malformed or mismatched accepted snapshots retain uncertainty and exact identity
+ok 97 - malformed or mismatched accepted snapshots retain uncertainty and exact identity
+  ---
+  duration_ms: 18.817243
+  type: 'test'
+  ...
+# Subtest: a historical interrupted acceptance never claims the actor is currently usable
+ok 98 - a historical interrupted acceptance never claims the actor is currently usable
+  ---
+  duration_ms: 1.675317
+  type: 'test'
+  ...
+# Subtest: invalid or unsafe scope/profile never starts networking or consumes a workflow intent
+ok 99 - invalid or unsafe scope/profile never starts networking or consumes a workflow intent
+  ---
+  duration_ms: 1.610532
+  type: 'test'
+  ...
+# Subtest: published profile intent pins version and digest across uncertain retry with no raw model overrides
+ok 100 - published profile intent pins version and digest across uncertain retry with no raw model overrides
+  ---
+  duration_ms: 1.632071
+  type: 'test'
+  ...
+# Subtest: sharing decoder binds session and owner while retaining inactive reader and bounded audit
+ok 101 - sharing decoder binds session and owner while retaining inactive reader and bounded audit
+  ---
+  duration_ms: 4.393792
+  type: 'test'
+  ...
+# Subtest: sharing endpoints reject unsafe paths and external redirects before fetch
+ok 102 - sharing endpoints reject unsafe paths and external redirects before fetch
+  ---
+  duration_ms: 1.863866
+  type: 'test'
+  ...
+# Subtest: explicit sharing update uses one same-origin CAS request and validated authoritative response
+ok 103 - explicit sharing update uses one same-origin CAS request and validated authoritative response
+  ---
+  duration_ms: 55.415878
+  type: 'test'
+  ...
+# Subtest: CAS conflict refetches authoritative state once without replaying changes
+ok 104 - CAS conflict refetches authoritative state once without replaying changes
+  ---
+  duration_ms: 1.459213
+  type: 'test'
+  ...
+# Subtest: invalid CAS input and duplicate recipients never send mutations
+ok 105 - invalid CAS input and duplicate recipients never send mutations
+  ---
+  duration_ms: 0.46701
+  type: 'test'
+  ...
+# Subtest: authorization failure does not retry or fetch owner audit and cross-user responses are rejected
+ok 106 - authorization failure does not retry or fetch owner audit and cross-user responses are rejected
+  ---
+  duration_ms: 0.650575
+  type: 'test'
+  ...
+# Subtest: initial sharing selection preserves active grants and never silently refreshes inactive entries
+ok 107 - initial sharing selection preserves active grants and never silently refreshes inactive entries
+  ---
+  duration_ms: 0.181478
+  type: 'test'
+  ...
+# Subtest: truncated eligible catalog keeps existing grants available for explicit revocation
+ok 108 - truncated eligible catalog keeps existing grants available for explicit revocation
+  ---
+  duration_ms: 3.64772
+  type: 'test'
+  ...
+# Subtest: team decoders retain explicit roles and revisions
+ok 109 - team decoders retain explicit roles and revisions
+  ---
+  duration_ms: 1.225437
+  type: 'test'
+  ...
+# Subtest: workspace catalog rejects other users, inactive memberships and duplicate ids
+ok 110 - workspace catalog rejects other users, inactive memberships and duplicate ids
+  ---
+  duration_ms: 0.358198
+  type: 'test'
+  ...
+# Subtest: roster rejects mismatched scopes, unknown roles and invalid revisions
+ok 111 - roster rejects mismatched scopes, unknown roles and invalid revisions
+  ---
+  duration_ms: 0.742358
+  type: 'test'
+  ...
+# Subtest: team requests cannot be redirected to external hosts
+ok 112 - team requests cannot be redirected to external hosts
+  ---
+  duration_ms: 0.486167
+  type: 'test'
+  ...
+# Subtest: logical project decoders bind authority to this user, workspace and project
+ok 113 - logical project decoders bind authority to this user, workspace and project
+  ---
+  duration_ms: 0.26725
+  type: 'test'
+  ...
+# Subtest: remote transport is Tailscale-only and local HTTP/WS is allowed
+ok 114 - remote transport is Tailscale-only and local HTTP/WS is allowed
+  ---
+  duration_ms: 3.13651
+  type: 'test'
+  ...
+# Subtest: live URL has no credentials or token and preserves secure transport
+ok 115 - live URL has no credentials or token and preserves secure transport
+  ---
+  duration_ms: 0.22451
+  type: 'test'
+  ...
+1..115
+# tests 115
+# suites 0
+# pass 115
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3576.975704

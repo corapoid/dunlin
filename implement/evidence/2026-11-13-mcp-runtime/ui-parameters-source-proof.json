@@ -1,0 +1,11 @@
+{
+  "verified_runtime_clippy_server_source": "ab7b914cb9abe00071aacff86eca45e5bd4e9bf03ba011465d7eb02d64f25d42",
+  "current_source": "fb00a745d8b2ef9fb43ddf62152f67694b911b42c3072b084c6baa25847ba6bc",
+  "changed_files": [
+    "apps/web/src/components/AhpSessions.tsx",
+    "apps/web/src/lib/ahp.ts",
+    "apps/web/tests/ahp.test.ts",
+    "apps/web/e2e/mcp-oauth.mjs"
+  ],
+  "method": "Reverting exactly these four frontend files in a private current source snapshot reproduces the complete previously verified hash; Rust, manifests, fixtures and all other source bytes are identical."
+}

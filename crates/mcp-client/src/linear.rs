@@ -312,6 +312,7 @@ mod tests {
         changed.description.push_str(" changed");
         assert_ne!(issue_digest(&original), issue_digest(&changed));
         let tool = Tool {
+            output_schema: None,
             name: "get_issue".into(),
             input_schema: json!({"properties":{"id":{}}}),
         };
@@ -319,14 +320,16 @@ mod tests {
             let mock = Mock::new(vec![
                 Reply::initialize(),
                 Reply::notification(),
+                Reply::result("tools/list", json!({"tools":[tool.clone()]})),
                 Reply::result("tools/call", json!({"structuredContent":{"issue":row(id)}})),
             ]);
             let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
+            client.tools().unwrap();
             let result = get_issue(&mut client, std::slice::from_ref(&tool), "issue-id");
             assert_eq!(result.is_ok(), id == "issue-id");
             let requests = mock.finish();
             assert_eq!(
-                requests[2].body["params"]["arguments"],
+                requests[3].body["params"]["arguments"],
                 json!({"id":"issue-id"})
             );
         }
@@ -337,6 +340,7 @@ mod tests {
     }
     fn tool() -> Tool {
         Tool {
+            output_schema: None,
             name: "list_issues".into(),
             input_schema: json!({"properties":{"label":{},"limit":{},"cursor":{},"team":{}}}),
         }
@@ -347,6 +351,7 @@ mod tests {
         let mock = Mock::new(vec![
             Reply::initialize(),
             Reply::notification(),
+            Reply::result("tools/list", json!({"tools":[tool()]})),
             Reply::result(
                 "tools/call",
                 json!({"structuredContent":{"issues":[row("a")],"hasNextPage":true,"cursor":"next"}}),
@@ -357,6 +362,7 @@ mod tests {
             ),
         ]);
         let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
+        client.tools().unwrap();
         let result = issues(
             &mut client,
             &[tool()],
@@ -368,8 +374,8 @@ mod tests {
         .unwrap();
         assert_eq!(result.len(), 2);
         let requests = mock.finish();
-        assert_eq!(requests[2].body["params"]["arguments"]["label"], "dunlin");
-        assert_eq!(requests[3].body["params"]["arguments"]["cursor"], "next");
+        assert_eq!(requests[3].body["params"]["arguments"]["label"], "dunlin");
+        assert_eq!(requests[4].body["params"]["arguments"]["cursor"], "next");
     }
 
     #[test]
@@ -379,12 +385,14 @@ mod tests {
         let mock = Mock::new(vec![
             Reply::initialize(),
             Reply::notification(),
+            Reply::result("tools/list", json!({"tools":[tool()]})),
             Reply::result(
                 "tools/call",
                 json!({"structuredContent":{"issues":[wrong],"hasNextPage":false}}),
             ),
         ]);
         let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
+        client.tools().unwrap();
         assert_eq!(
             issues(
                 &mut client,
@@ -408,6 +416,7 @@ mod tests {
         let mock = Mock::new(vec![Reply::initialize(), Reply::notification()]);
         let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
         let tool = Tool {
+            output_schema: None,
             name: "list_issues".into(),
             input_schema: json!({"properties":{"limit":{}}}),
         };
@@ -431,17 +440,23 @@ mod tests {
         let mock = Mock::new(vec![
             Reply::initialize(),
             Reply::notification(),
+            Reply::result(
+                "tools/list",
+                json!({"tools":[{"name":"save_issue","inputSchema":{"properties":{"id":{},"state":{}}}}]}),
+            ),
             Reply::result("tools/call", json!({"content":[]})),
         ]);
         let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
         let tool = Tool {
+            output_schema: None,
             name: "save_issue".into(),
             input_schema: json!({"properties":{"id":{},"state":{}}}),
         };
+        client.tools().unwrap();
         set_status(&mut client, &[tool], "issue-id", "In Review").unwrap();
         let requests = mock.finish();
         assert_eq!(
-            requests[2].body["params"]["arguments"],
+            requests[3].body["params"]["arguments"],
             json!({"id":"issue-id","state":"In Review"})
         );
     }
@@ -473,12 +488,14 @@ mod tests {
         let mock = Mock::new(vec![
             Reply::initialize(),
             Reply::notification(),
+            Reply::result("tools/list", json!({"tools":[tool()]})),
             Reply::result(
                 "tools/call",
                 json!({"structuredContent":{"issues":[row("a")]}}),
             ),
         ]);
         let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
+        client.tools().unwrap();
         assert_eq!(
             issues(
                 &mut client,

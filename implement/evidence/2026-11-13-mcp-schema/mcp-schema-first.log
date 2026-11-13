@@ -1,0 +1,15 @@
+Sandbox suite=mcp container=dunlin-check-14dada486f654683add498f876f4efc4 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=b47fb77010a0aa610723725f9bc4de29799559a6de71204b71c19ef0f9687d57
+error: failed to download `borrow-or-share v0.2.4`
+
+Caused by:
+  unable to get packages from source
+
+Caused by:
+  failed to unpack package `borrow-or-share v0.2.4`
+
+Caused by:
+  failed to create directory `/scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/borrow-or-share-0.2.4`
+
+Caused by:
+  Read-only file system (os error 30)
+Sandbox memory: {"memory.peak": "134672384", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

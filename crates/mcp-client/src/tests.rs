@@ -12,6 +12,9 @@ pub(crate) struct Reply {
     status: u16,
     sse: bool,
     session: bool,
+    error: Option<Value>,
+    raw: Option<String>,
+    before_reply: Option<Box<dyn FnOnce() + Send>>,
 }
 impl Reply {
     pub fn initialize() -> Self {
@@ -33,7 +36,34 @@ impl Reply {
             status: 200,
             sse: false,
             session: false,
+            error: None,
+            raw: None,
+            before_reply: None,
         }
+    }
+    pub fn status(mut self, status: u16) -> Self {
+        self.status = status;
+        self
+    }
+    pub fn error(mut self, code: i64) -> Self {
+        self.error = Some(json!({"code":code,"message":"fixture rejection"}));
+        self
+    }
+    pub fn raw(mut self, body: &str) -> Self {
+        self.raw = Some(body.into());
+        self
+    }
+    pub fn sse(mut self) -> Self {
+        self.sse = true;
+        self
+    }
+    pub fn session(mut self) -> Self {
+        self.session = true;
+        self
+    }
+    pub fn before_reply(mut self, hook: impl FnOnce() + Send + 'static) -> Self {
+        self.before_reply = Some(Box::new(hook));
+        self
     }
 }
 pub(crate) struct Request {
@@ -101,9 +131,15 @@ impl Mock {
                 } else {
                     assert_eq!(body["method"], reply.method);
                 }
-                let message = json!({"jsonrpc":"2.0", "id":body["id"], "result":reply.result});
+                let message = if let Some(error) = reply.error {
+                    json!({"jsonrpc":"2.0", "id":body["id"], "error":error})
+                } else {
+                    json!({"jsonrpc":"2.0", "id":body["id"], "result":reply.result})
+                };
                 let response_body = if reply.status == 202 || reply.status == 204 {
                     String::new()
+                } else if let Some(raw) = reply.raw {
+                    raw
                 } else if reply.sse {
                     format!(
                         "data: {{\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{{}}}}\r\n\r\ndata: {message}\r\n\r\n"
@@ -122,6 +158,9 @@ impl Mock {
                     ""
                 };
                 captured.lock().unwrap().push(Request { body, headers });
+                if let Some(hook) = reply.before_reply {
+                    hook();
+                }
                 write!(socket, "HTTP/1.1 {} Mock\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n{session}\r\n{response_body}", reply.status, response_body.len()).unwrap();
             }
         });
@@ -215,6 +254,10 @@ fn failed_tool_calls_and_expired_sessions_are_never_retried() {
                 ..Reply::initialize()
             },
             Reply::notification(),
+            Reply::result(
+                "tools/list",
+                json!({"tools":[{"name":"mutate","inputSchema":{}}]}),
+            ),
             Reply {
                 status,
                 ..Reply::result("tools/call", Value::Null)
@@ -222,12 +265,14 @@ fn failed_tool_calls_and_expired_sessions_are_never_retried() {
         ]);
         let mut client = Client::connect(&mock.url, "do-not-echo-this-key").unwrap();
         let tool = Tool {
+            output_schema: None,
             name: "mutate".into(),
             input_schema: json!({}),
         };
+        client.tools().unwrap();
         let error = client.call(&tool, json!({})).unwrap_err();
         assert!(!error.to_string().contains("do-not-echo"));
-        assert_eq!(mock.finish().len(), 3);
+        assert_eq!(mock.finish().len(), 4);
     }
 }
 
@@ -249,15 +294,21 @@ fn rpc_identity_errors_and_tool_failures_are_not_success() {
         Reply::initialize(),
         Reply::notification(),
         Reply::result(
+            "tools/list",
+            json!({"tools":[{"name":"x","inputSchema":{}}]}),
+        ),
+        Reply::result(
             "tools/call",
             json!({"isError":true,"content":[{"type":"text","text":"secret"}]}),
         ),
     ]);
     let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
+    client.tools().unwrap();
     assert_eq!(
         client
             .call(
                 &Tool {
+                    output_schema: None,
                     name: "x".into(),
                     input_schema: json!({})
                 },
@@ -285,6 +336,61 @@ fn endpoints_and_credentials_fail_before_network_access() {
         Client::connect("http://127.0.0.1:1/mcp", "secret\r\nx:y"),
         Err(Error::Credential)
     ));
+}
+
+#[test]
+fn legacy_calls_require_the_advertised_definition_and_validate_input_and_output() {
+    let tool = Tool {
+        name: "typed".into(),
+        input_schema: json!({"type":"object","properties":{"n":{"type":"integer"}},"required":["n"]}),
+        output_schema: Some(
+            json!({"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}),
+        ),
+    };
+    let mock = Mock::new(vec![
+        Reply::initialize(),
+        Reply::notification(),
+        Reply::result("tools/list", json!({"tools":[tool.clone()]})),
+        Reply::result(
+            "tools/call",
+            json!({"structuredContent":{"ok":"private-content"}}),
+        ),
+        Reply::result("tools/list", Value::Null).status(500),
+    ]);
+    let mut client = Client::connect(&mock.url, "token").unwrap();
+    assert_eq!(client.call(&tool, json!({"n":1})), Err(Error::Unsupported));
+    client.tools().unwrap();
+    assert_eq!(client.call(&tool, json!({"n":"1"})), Err(Error::Arguments));
+    let mut forged = tool.clone();
+    forged.output_schema = None;
+    assert_eq!(
+        client.call(&forged, json!({"n":1})),
+        Err(Error::Unsupported)
+    );
+    assert_eq!(client.call(&tool, json!({"n":1})), Err(Error::Protocol));
+    assert!(client.tools().is_err());
+    assert_eq!(client.call(&tool, json!({"n":1})), Err(Error::Unsupported));
+    assert_eq!(mock.finish().len(), 5);
+}
+
+#[test]
+fn legacy_tools_do_not_misreport_modern_input_requests_as_completion() {
+    let mock = Mock::new(vec![
+        Reply::initialize(),
+        Reply::notification(),
+        Reply::result(
+            "tools/list",
+            json!({"tools":[{"name":"lookup","inputSchema":{}}]}),
+        ),
+        Reply::result(
+            "tools/call",
+            json!({"resultType":"input_required","requestState":"opaque","inputRequests":{}}),
+        ),
+    ]);
+    let mut client = Client::connect(&mock.url, "token").unwrap();
+    let tools = client.tools().unwrap();
+    assert_eq!(client.call(&tools[0], json!({})), Err(Error::Unsupported));
+    assert_eq!(mock.finish().len(), 4);
 }
 
 #[test]
@@ -318,4 +424,33 @@ fn redirects_duplicate_tools_and_repeated_cursors_fail_closed() {
     let mut client = Client::connect(&mock.url, "fixture-key").unwrap();
     assert!(matches!(client.tools(), Err(Error::Protocol)));
     mock.finish();
+}
+#[test]
+fn tool_definition_pins_are_canonical_versioned_and_cover_both_schemas() {
+    let mut tool = crate::Tool {
+        name: "lookup".into(),
+        input_schema: serde_json::json!({"type":"object"}),
+        output_schema: None,
+    };
+    assert_eq!(
+        tool.definition_digest().unwrap(),
+        "11f2036a698b4a784c54872e1e1f1d19de3fd7a1fbcba2612ffb6eb8f9044587"
+    );
+    let before = tool.definition_digest().unwrap();
+    tool.output_schema = Some(serde_json::json!({"type":"object"}));
+    assert_ne!(tool.definition_digest().unwrap(), before);
+    tool.input_schema = serde_json::from_str(
+        r#"{"type":"object","properties":{"z":{"type":"string"},"a":{"type":"number"}}}"#,
+    )
+    .unwrap();
+    let before = tool.definition_digest().unwrap();
+    tool.input_schema = serde_json::from_str(
+        r#"{"properties":{"a":{"type":"number"},"z":{"type":"string"}},"type":"object"}"#,
+    )
+    .unwrap();
+    assert_eq!(tool.definition_digest().unwrap(), before);
+    tool.name = "other".into();
+    assert_ne!(tool.definition_digest().unwrap(), before);
+    tool.input_schema = serde_json::json!({"$ref":"https://external.invalid/schema"});
+    assert!(tool.definition_digest().is_err());
 }

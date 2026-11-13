@@ -1,0 +1,47 @@
+Sandbox suite=build container=dunlin-check-a97563486d0b471daec4dc692dadfa9e image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m wall=60s source_sha256=65ad9b6d1891e59096547fe59340407909ef245d754032a4c9678d39c0c1a7ea
+file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:599
+			const error = /* @__PURE__ */ new Error("Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.");
+			                              ^
+
+Error: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+    at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:599:34
+    at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs:9:49
+    ... 2 lines matching cause stack trace ...
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26) {
+  cause: Error: Cannot find module '@rolldown/binding-wasm32-wasi'
+  Require stack:
+  - /repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs
+      at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:487:18
+      ... 6 lines matching cause stack trace ...
+      at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26) {
+    cause: Error: Cannot find module './rolldown-binding.wasi.cjs'
+    Require stack:
+    - /repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs
+        at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:487:18
+        ... 6 lines matching cause stack trace ...
+        at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26) {
+      cause: Error: Cannot find module '@rolldown/binding-linux-arm64-gnu'
+      Require stack:
+      - /repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs
+          at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:487:18
+          ... 6 lines matching cause stack trace ...
+          at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26) {
+        cause: Error: Cannot find module './rolldown-binding.linux-arm64-gnu.node'
+        Require stack:
+        - /repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs
+            at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:487:18
+            at Array.reduce (<anonymous>)
+            at createLoadErrorChain (file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:480:17)
+            at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/binding-BXYS21Tf.mjs:600:18
+            at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/rolldown-runtime-DYf_mQCB.mjs:9:49
+            at file:///repo/apps/web/node_modules/vite/node_modules/rolldown/dist/shared/parse-Bgfg7ZwM.mjs:4:46
+            at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+            at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26) {
+          cause: null
+        }
+      }
+    }
+  }
+}
+
+Node.js v22.23.4

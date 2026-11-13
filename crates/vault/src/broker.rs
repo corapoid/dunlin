@@ -10,6 +10,7 @@ use dunlin_storage::Store;
 use thiserror::Error;
 use zeroize::Zeroizing;
 
+use crate::access::LiveAccess;
 use crate::http::{self, HttpExecutor, HttpInput, HttpOutput};
 use crate::recipe::{RecipeExecutor, RecipeInput, RecipeOutput, RecipePlan};
 use crate::store::SecretStore;
@@ -61,12 +62,17 @@ pub enum BrokerError {
     Denied(String),
     #[error("{0}")]
     Failed(String),
+    /// Dispatch may have happened; callers must not automatically retry.
+    #[error("{0}")]
+    OutcomeUnknown(String),
 }
 
 impl BrokerError {
     pub fn message(&self) -> &str {
         match self {
-            Self::Denied(message) | Self::Failed(message) => message,
+            Self::Denied(message) | Self::Failed(message) | Self::OutcomeUnknown(message) => {
+                message
+            }
         }
     }
 }
@@ -109,7 +115,31 @@ impl<'a> Broker<'a> {
         Ok(summaries)
     }
 
+    pub fn list_guarded(&self, access: &LiveAccess) -> Result<Vec<SecretSummary>, BrokerError> {
+        check_live(Some(access), false)?;
+        let result = self.list();
+        check_live(Some(access), false)?;
+        result
+    }
+
     pub fn http(&self, input: HttpInput) -> Result<HttpOutput, BrokerError> {
+        self.http_inner(input, None)
+    }
+
+    pub fn http_guarded(
+        &self,
+        input: HttpInput,
+        access: &LiveAccess,
+    ) -> Result<HttpOutput, BrokerError> {
+        self.http_inner(input, Some(access))
+    }
+
+    fn http_inner(
+        &self,
+        input: HttpInput,
+        access: Option<&LiveAccess>,
+    ) -> Result<HttpOutput, BrokerError> {
+        check_live(access, false)?;
         let now = now_secs();
         let detail = http_detail(&input);
         let (secret, policy) = self.lookup(&input.secret)?;
@@ -133,6 +163,7 @@ impl<'a> Broker<'a> {
             ));
         }
         self.require_approval(&secret, &policy, "http", &detail)?;
+        self.check_use(access, &secret, &policy, false)?;
         let value = match self.secrets.get(&secret.id) {
             Ok(value) => value,
             Err(error) => {
@@ -140,18 +171,26 @@ impl<'a> Broker<'a> {
                 return Err(BrokerError::Failed(error));
             }
         };
+        self.check_use(access, &secret, &policy, false)?;
+        let mut dispatched = false;
         let injection_value: Zeroizing<String> = match &policy.injection {
             dunlin_domain::vault::Injection::OAuth2 {
                 token_url,
                 client_id,
-            } => match http::refresh_oauth(self.http, token_url, client_id, value.as_str()) {
-                Ok(token) => token,
-                Err(error) => {
-                    let error = http::redact(&error, value.as_str(), None);
-                    self.record(&secret, "http", &detail, "error", None, Some(error.clone()));
-                    return Err(BrokerError::Failed(error));
+            } => {
+                self.check_use(access, &secret, &policy, false)?;
+                dispatched = true;
+                let result = http::refresh_oauth(self.http, token_url, client_id, value.as_str());
+                self.check_use(access, &secret, &policy, true)?;
+                match result {
+                    Ok(token) => token,
+                    Err(error) => {
+                        let error = http::redact(&error, value.as_str(), None);
+                        self.record(&secret, "http", &detail, "error", None, Some(error.clone()));
+                        return Err(BrokerError::Failed(error));
+                    }
                 }
-            },
+            }
             _ => Zeroizing::new(value.as_str().to_string()),
         };
         let mut plan = http::apply_injection(&policy, validated, injection_value.as_str());
@@ -175,7 +214,10 @@ impl<'a> Broker<'a> {
             dunlin_domain::vault::Injection::OAuth2 { .. }
         )
         .then_some(injection_value.as_str());
-        let mut output = match self.http.execute(&plan) {
+        self.check_use(access, &secret, &policy, dispatched)?;
+        let result = self.http.execute(&plan);
+        self.check_use(access, &secret, &policy, true)?;
+        let mut output = match result {
             Ok(output) => output,
             Err(error) => {
                 let error = http::redact(&error, value.as_str(), basic_pair.as_deref());
@@ -202,10 +244,28 @@ impl<'a> Broker<'a> {
             None,
         );
         let _ = self.store.touch_secret(&secret.id, now);
+        self.check_use(access, &secret, &policy, true)?;
         Ok(output)
     }
 
     pub fn run(&self, input: RecipeInput) -> Result<RecipeOutput, BrokerError> {
+        self.run_inner(input, None)
+    }
+
+    pub fn run_guarded(
+        &self,
+        input: RecipeInput,
+        access: &LiveAccess,
+    ) -> Result<RecipeOutput, BrokerError> {
+        self.run_inner(input, Some(access))
+    }
+
+    fn run_inner(
+        &self,
+        input: RecipeInput,
+        access: Option<&LiveAccess>,
+    ) -> Result<RecipeOutput, BrokerError> {
+        check_live(access, false)?;
         let now = now_secs();
         let (secret, policy) = self.lookup(&input.secret)?;
         let Some(recipe) = policy
@@ -240,6 +300,7 @@ impl<'a> Broker<'a> {
             Err(error) => return Err(self.deny(&secret, "recipe", &detail, &error)),
         };
         self.require_approval(&secret, &policy, "recipe", &detail)?;
+        self.check_use(access, &secret, &policy, false)?;
         let value = match self.secrets.get(&secret.id) {
             Ok(value) => value,
             Err(error) => {
@@ -254,6 +315,7 @@ impl<'a> Broker<'a> {
                 return Err(BrokerError::Failed(error));
             }
         };
+        self.check_use(access, &secret, &policy, false)?;
         let plan = RecipePlan {
             program: recipe.program.clone(),
             args,
@@ -263,7 +325,10 @@ impl<'a> Broker<'a> {
             timeout: Duration::from_secs(recipe.timeout_secs),
             program_hash: recipe.program_hash.clone(),
         };
-        let mut output = match self.recipes.execute(&plan) {
+        self.check_use(access, &secret, &policy, false)?;
+        let result = self.recipes.execute_guarded(&plan, access.cloned());
+        self.check_use(access, &secret, &policy, true)?;
+        let mut output = match result {
             Ok(output) => output,
             Err(error) => {
                 let error = http::redact(&error, value.as_str(), None);
@@ -302,7 +367,46 @@ impl<'a> Broker<'a> {
                 .then(|| "The recipe ended without an exit code".to_string()),
         );
         let _ = self.store.touch_secret(&secret.id, now);
+        self.check_use(access, &secret, &policy, true)?;
         Ok(output)
+    }
+
+    /// Re-read protected policy after blocking boundaries. The SQL cache cannot
+    /// widen it; a changed or missing credential invalidates this request.
+    fn check_use(
+        &self,
+        access: Option<&LiveAccess>,
+        secret: &Secret,
+        policy: &SecretPolicy,
+        dispatched: bool,
+    ) -> Result<(), BrokerError> {
+        let result = (|| {
+            check_live(access, dispatched)?;
+            let Some(access) = access else {
+                return Ok(());
+            };
+            let current = self.store.secret_by_alias(&secret.alias).ok().flatten();
+            let current_policy = self.policy(&secret.id).ok();
+            let valid = current.is_some_and(|current| {
+                current.id == secret.id && current.updated_at == secret.updated_at
+            }) && current_policy.as_ref() == Some(policy)
+                && policy.expires_at.is_none_or(|expiry| expiry > now_secs());
+            if !valid {
+                access.revoke();
+            }
+            check_live(Some(access), dispatched)
+        })();
+        if let Err(error) = &result {
+            self.record(
+                secret,
+                "authority",
+                "credential-use",
+                if dispatched { "unknown" } else { "denied" },
+                None,
+                Some(error.message().into()),
+            );
+        }
+        result
     }
 
     fn lookup(&self, alias: &str) -> Result<(Secret, SecretPolicy), BrokerError> {
@@ -437,6 +541,19 @@ pub fn needs_approval(policy: &SecretPolicy) -> bool {
     !policy.managed || !policy.auto_approve
 }
 
+fn check_live(access: Option<&LiveAccess>, dispatched: bool) -> Result<(), BrokerError> {
+    if access.is_none_or(LiveAccess::allowed) {
+        return Ok(());
+    }
+    if dispatched {
+        Err(BrokerError::OutcomeUnknown("Credential authority was revoked after dispatch; outcome unknown, do not retry automatically".into()))
+    } else {
+        Err(BrokerError::Denied(
+            "Credential authority is no longer valid".into(),
+        ))
+    }
+}
+
 fn http_detail(input: &HttpInput) -> String {
     if let Some(operation) = &input.operation {
         return format!("operation {operation}");
@@ -465,8 +582,10 @@ fn recipe_detail(recipe: &Recipe) -> String {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-    use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
 
     use dunlin_domain::vault::{Injection, RecipeParameter, now_secs};
     use dunlin_storage::Store;
@@ -478,6 +597,7 @@ mod tests {
     struct CountingStore {
         inner: MemoryStore,
         value_reads: AtomicUsize,
+        revoke_on_get: Option<Arc<AtomicBool>>,
     }
 
     impl CountingStore {
@@ -485,6 +605,7 @@ mod tests {
             Self {
                 inner: MemoryStore::new(),
                 value_reads: AtomicUsize::new(0),
+                revoke_on_get: None,
             }
         }
         fn reads(&self) -> usize {
@@ -500,6 +621,9 @@ mod tests {
     impl SecretStore for CountingStore {
         fn get(&self, id: &str) -> Result<Zeroizing<String>, String> {
             self.value_reads.fetch_add(1, Ordering::Relaxed);
+            if let Some(granted) = &self.revoke_on_get {
+                granted.store(false, Ordering::Release);
+            }
             self.inner.get(id)
         }
         fn set(&self, id: &str, value: &str) -> Result<(), String> {
@@ -640,6 +764,297 @@ mod tests {
             program_hash: None,
             created_at: 0,
         }
+    }
+
+    struct FnApprover<F>(F);
+    impl<F: Fn(&ApprovalRequest) -> bool + Send + Sync> Approver for FnApprover<F> {
+        fn approve(&self, request: &ApprovalRequest) -> bool {
+            (self.0)(request)
+        }
+    }
+
+    fn live(granted: &Arc<AtomicBool>) -> LiveAccess {
+        let granted = granted.clone();
+        LiveAccess::new(Instant::now() + Duration::from_secs(30), move || {
+            granted.load(Ordering::Acquire)
+        })
+    }
+
+    #[test]
+    fn guarded_http_rechecks_after_approval_before_reading_value() {
+        let (store, secret, mut policy) = prepared();
+        policy.auto_approve = false;
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        let granted = Arc::new(AtomicBool::new(true));
+        let access = live(&granted);
+        let approver = FnApprover(|_: &ApprovalRequest| {
+            granted.store(false, Ordering::Release);
+            true
+        });
+        let http = FakeHttp::new("must not run");
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &approver,
+            session: &context,
+        };
+        assert!(matches!(
+            broker.http_guarded(http_input(), &access),
+            Err(BrokerError::Denied(_))
+        ));
+        assert_eq!(secrets.reads(), 0);
+        assert!(http.plan.lock().unwrap().is_none());
+        granted.store(true, Ordering::Release);
+        assert!(broker.list_guarded(&access).is_err());
+    }
+
+    #[test]
+    fn guarded_http_rejects_policy_change_during_approval() {
+        let (store, secret, mut policy) = prepared();
+        policy.auto_approve = false;
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        let mut changed = policy.clone();
+        changed.allowed_methods = vec![HttpMethod::Get];
+        let approver = FnApprover(|_: &ApprovalRequest| {
+            secrets
+                .set_policy(&secret.id, &serde_json::to_string(&changed).unwrap())
+                .unwrap();
+            true
+        });
+        let http = FakeHttp::new("");
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &approver,
+            session: &context,
+        };
+        let access = live(&Arc::new(AtomicBool::new(true)));
+        assert!(matches!(
+            broker.http_guarded(http_input(), &access),
+            Err(BrokerError::Denied(_))
+        ));
+        assert_eq!(secrets.reads(), 0);
+        assert!(http.plan.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn guarded_http_rechecks_after_secret_store_before_dispatch() {
+        let (store, secret, policy) = prepared();
+        let granted = Arc::new(AtomicBool::new(true));
+        let mut secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        secrets.revoke_on_get = Some(granted.clone());
+        let http = FakeHttp::new("");
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &AutoApprove,
+            session: &context,
+        };
+        assert!(matches!(
+            broker.http_guarded(http_input(), &live(&granted)),
+            Err(BrokerError::Denied(_))
+        ));
+        assert_eq!(secrets.reads(), 1);
+        assert!(http.plan.lock().unwrap().is_none());
+    }
+
+    struct RevokeHttp {
+        granted: Arc<AtomicBool>,
+        calls: AtomicUsize,
+        fail: bool,
+    }
+    impl HttpExecutor for RevokeHttp {
+        fn execute(&self, _: &HttpPlan) -> Result<HttpOutput, String> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            self.granted.store(false, Ordering::Release);
+            if self.fail {
+                return Err("private-token failure".into());
+            }
+            Ok(HttpOutput {
+                status: 200,
+                content_type: None,
+                body: "private-token response".into(),
+                truncated: false,
+            })
+        }
+    }
+
+    #[test]
+    fn guarded_http_discards_success_and_error_after_revocation_without_retry() {
+        for fail in [false, true] {
+            let (store, secret, policy) = prepared();
+            let secrets = CountingStore::new();
+            secrets.install(&secret, &policy, "private-token");
+            let granted = Arc::new(AtomicBool::new(true));
+            let http = RevokeHttp {
+                granted: granted.clone(),
+                calls: AtomicUsize::new(0),
+                fail,
+            };
+            let context = context();
+            let broker = Broker {
+                store: &store,
+                secrets: &secrets,
+                http: &http,
+                recipes: &FakeRecipe,
+                approver: &AutoApprove,
+                session: &context,
+            };
+            let error = broker
+                .http_guarded(http_input(), &live(&granted))
+                .unwrap_err();
+            assert!(matches!(error, BrokerError::OutcomeUnknown(_)));
+            assert!(!error.message().contains("private-token"));
+            assert_eq!(http.calls.load(Ordering::Relaxed), 1);
+            let audit = store.secret_audit(Some(&secret.id), 10).unwrap();
+            assert_eq!(audit.len(), 1);
+            assert_eq!(audit[0].decision, "unknown");
+            assert!(
+                !serde_json::to_string(&audit)
+                    .unwrap()
+                    .contains("private-token")
+            );
+        }
+    }
+
+    #[test]
+    fn guarded_oauth_stops_after_refresh_if_authority_is_revoked() {
+        let (store, secret, mut policy) = prepared();
+        policy.injection = Injection::OAuth2 {
+            token_url: "https://api.github.com/token".into(),
+            client_id: "fixture".into(),
+        };
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-refresh-token");
+        let granted = Arc::new(AtomicBool::new(true));
+        let http = RevokeHttp {
+            granted: granted.clone(),
+            calls: AtomicUsize::new(0),
+            fail: true,
+        };
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &AutoApprove,
+            session: &context,
+        };
+        assert!(matches!(
+            broker.http_guarded(http_input(), &live(&granted)),
+            Err(BrokerError::OutcomeUnknown(_))
+        ));
+        assert_eq!(http.calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn guarded_recipe_rechecks_approval_before_reading_secret() {
+        let (store, secret, mut policy) = prepared();
+        policy.recipes = vec![recipe()];
+        policy.auto_approve = false;
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        let granted = Arc::new(AtomicBool::new(true));
+        let approver = FnApprover(|_: &ApprovalRequest| {
+            granted.store(false, Ordering::Release);
+            true
+        });
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &AlwaysFailHttp,
+            recipes: &FakeRecipe,
+            approver: &approver,
+            session: &context,
+        };
+        let input = RecipeInput {
+            secret: secret.alias,
+            recipe: "gh".into(),
+            params: BTreeMap::from([("path".into(), "user".into())]),
+        };
+        assert!(matches!(
+            broker.run_guarded(input, &live(&granted)),
+            Err(BrokerError::Denied(_))
+        ));
+        assert_eq!(secrets.reads(), 0);
+    }
+
+    struct PolicyChangingHttp<'a>(&'a CountingStore, &'a Secret, &'a SecretPolicy);
+    impl HttpExecutor for PolicyChangingHttp<'_> {
+        fn execute(&self, _: &HttpPlan) -> Result<HttpOutput, String> {
+            let mut policy = self.2.clone();
+            policy.project_ids.clear();
+            self.0
+                .set_policy(&self.1.id, &serde_json::to_string(&policy).unwrap())
+                .unwrap();
+            Ok(HttpOutput {
+                status: 200,
+                content_type: None,
+                body: "must not be returned".into(),
+                truncated: false,
+            })
+        }
+    }
+
+    #[test]
+    fn guarded_http_discards_response_when_protected_policy_is_revoked() {
+        let (store, secret, policy) = prepared();
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        let http = PolicyChangingHttp(&secrets, &secret, &policy);
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &AutoApprove,
+            session: &context,
+        };
+        assert!(matches!(
+            broker.http_guarded(http_input(), &live(&Arc::new(AtomicBool::new(true)))),
+            Err(BrokerError::OutcomeUnknown(_))
+        ));
+        assert_eq!(
+            store.secret_audit(Some(&secret.id), 10).unwrap()[0].decision,
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn guarded_http_success_still_redacts_credentials() {
+        let (store, secret, policy) = prepared();
+        let secrets = CountingStore::new();
+        secrets.install(&secret, &policy, "private-token");
+        let http = FakeHttp::new("private-token response");
+        let context = context();
+        let broker = Broker {
+            store: &store,
+            secrets: &secrets,
+            http: &http,
+            recipes: &FakeRecipe,
+            approver: &AutoApprove,
+            session: &context,
+        };
+        let output = broker
+            .http_guarded(http_input(), &live(&Arc::new(AtomicBool::new(true))))
+            .unwrap();
+        assert!(!output.body.contains("private-token"));
+        assert!(http.plan.lock().unwrap().is_some());
     }
 
     #[test]

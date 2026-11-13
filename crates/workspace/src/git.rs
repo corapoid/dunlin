@@ -5,11 +5,11 @@
 //! it keeps the binary small. All calls run off the UI thread.
 
 use std::path::Path;
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 pub(crate) mod activity;
 pub mod blame;
+pub(crate) mod command;
 pub mod history;
 pub mod hosting;
 pub mod operations;
@@ -122,7 +122,17 @@ pub fn load(path: &str) -> GitStatus {
 }
 
 pub fn initialize(path: &str) -> Result<(), String> {
-    git(path, &["init"]).map(|_| ())
+    let root = std::fs::canonicalize(path).map_err(|_| "Folder is not available")?;
+    let root = root.to_str().ok_or("Repository path is not UTF-8")?;
+    let output = command::directory(root)
+        .args(["init", "--", root])
+        .output()
+        .map_err(|error| format!("Could not run git: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
 }
 
 pub fn stage_all(path: &str) -> Result<(), String> {
@@ -174,8 +184,8 @@ pub fn head_file(path: &str, file: &str) -> Result<Option<String>, String> {
         return Ok(Some(String::new()));
     }
     let spec = format!("HEAD:./{file}");
-    let mut child = Command::new("git")
-        .args(["-C", path, "show", "--no-ext-diff", "--no-textconv", &spec])
+    let mut child = command::worktree(path)
+        .args(["show", "--no-ext-diff", "--no-textconv", &spec])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -582,7 +592,14 @@ pub fn discard_file(path: &str, file: &str) -> Result<(), String> {
 }
 
 fn git(path: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    // init deliberately creates a repository and cannot have a synthetic
+    // --work-tree without GIT_DIR. Other commands retain the rooted worktree.
+    let mut command = if args.first() == Some(&"init") {
+        command::directory(path)
+    } else {
+        command::worktree(path)
+    };
+    let output = command
         // Every caller passes argv directly (never a shell) and separates path
         // operands with `--`. Disable Git pathspec magic as well: a filename
         // such as `:(glob)*` must refer to that one file, not the whole tree.
@@ -593,8 +610,6 @@ fn git(path: &str, args: &[&str]) -> Result<String, String> {
         // monitor or an external diff program during ordinary reads.
         .arg("-c")
         .arg("core.fsmonitor=false")
-        .arg("-C")
-        .arg(path)
         .args(args)
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_NO_LAZY_FETCH", "1")
@@ -711,9 +726,16 @@ fn untracked_lines(root: &str, relative: &str) -> u32 {
     }
 }
 
+/// Remove inherited repository selectors from one explicitly scoped child.
+/// Account credentials/author settings remain intact; callers still pin argv roots.
+pub fn scrub_repository_environment(command: &mut std::process::Command) {
+    command::scrub(command);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     #[test]
     fn diff_paths_are_literal_operands_never_options_shell_or_pathspec_programs() {

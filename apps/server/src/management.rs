@@ -17,7 +17,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub(crate) mod authority;
 pub mod copy;
+#[cfg(test)]
+mod tests;
 
 #[derive(Default)]
 pub struct Management {
@@ -26,6 +29,8 @@ pub struct Management {
 }
 pub struct Running {
     pub owner: String,
+    pub(crate) authority: authority::AdminAuthority,
+    pub(crate) require_admin_only_relay: bool,
     pub created: Instant,
     pub job: Arc<Mutex<Job>>,
     pub cancel: Arc<std::sync::atomic::AtomicBool>,
@@ -153,10 +158,15 @@ pub fn host_accounts(config: &Config) -> bool {
     }
 }
 pub async fn info(auth: AuthUser, State(state): State<AppState>) -> Result<Json<Server>, ApiError> {
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    let user = authority::current_user_locked(&state, &store, &auth.user.id, &auth.device.id)?;
     let settings = settings(&state.config);
     Ok(Json(Server {
         isolated_agents: isolated_agents(&state.config),
-        role: auth.user.role,
+        role: user.role,
         name: if settings.name.is_empty() { state.config.name.clone() } else { settings.name },
         version: env!("CARGO_PKG_VERSION").into(), os: std::env::consts::OS.into(), arch: std::env::consts::ARCH.into(),
         harnesses: HARNESSES.iter().map(|(id, name, command)| Harness {
@@ -178,7 +188,7 @@ pub async fn update(
     State(state): State<AppState>,
     Json(update): Json<Update>,
 ) -> Result<StatusCode, ApiError> {
-    admin(&auth)?;
+    let authority = authority::AdminAuthority::capture(&state, &auth)?;
     let _lock = state
         .management
         .lock()
@@ -196,6 +206,11 @@ pub async fn update(
         }
         value.default_harness = id;
     }
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    authority.validate_locked(&state, &store)?;
     write_settings(&state.config, &value).map_err(ApiError::internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -212,7 +227,8 @@ pub async fn start(
     State(state): State<AppState>,
     Json(action): Json<Action>,
 ) -> Result<Json<Job>, ApiError> {
-    admin(&auth)?;
+    let authority = authority::AdminAuthority::capture(&state, &auth)?;
+    let require_admin_only_relay = action.action == "login";
     let mut management = state
         .management
         .lock()
@@ -259,7 +275,7 @@ pub async fn start(
                     "Remote host-account authorization requires an administrator-only relay. Use a separate relay OS account/service for untrusted users.",
                 ));
             }
-            drop(store);
+            authority.validate_locked(&state, &store)?;
             let github = action.target == "github";
             let program = if github { "gh" } else { "glab" };
             let program = executable(config, program).ok_or_else(|| {
@@ -356,13 +372,22 @@ pub async fn start(
         id,
         Running {
             owner: auth.user.id,
+            authority: authority.clone(),
+            require_admin_only_relay,
             created: Instant::now(),
             job: shared.clone(),
             cancel: cancel.clone(),
         },
     );
     drop(management);
-    tokio::spawn(run(command, shared, cancel));
+    tokio::spawn(run(
+        state,
+        authority,
+        require_admin_only_relay,
+        command,
+        shared,
+        cancel,
+    ));
     Ok(Json(job))
 }
 
@@ -380,7 +405,118 @@ fn ensure_keyring(config: &Config) -> Result<(), ApiError> {
     Ok(())
 }
 
+fn validate_operation_locked(
+    state: &AppState,
+    store: &crate::store::Store,
+    authority: &authority::AdminAuthority,
+    require_admin_only_relay: bool,
+) -> Result<(), ApiError> {
+    authority.validate_locked(state, store)?;
+    if require_admin_only_relay && store.list_users()?.iter().any(|user| user.role != "admin") {
+        return Err(ApiError::conflict(
+            "Remote host-account authorization requires an administrator-only relay. Use a separate relay OS account/service for untrusted users.",
+        ));
+    }
+    Ok(())
+}
+// A process group belongs to this server-owned operation. Its guard never owns
+// AppState and is not stored in Management, avoiding an Arc registry cycle.
+struct OperationGroup {
+    pid: u32,
+    terminated: Mutex<bool>,
+}
+#[cfg(unix)]
+fn operation_exit_pending(pid: u32) -> Result<bool, String> {
+    loop {
+        let mut status = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                status.as_mut_ptr(),
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            // WNOWAIT leaves the child, including an exited leader, owned and
+            // unreaped. Its identity therefore cannot be reused before cleanup.
+            return Ok(unsafe { status.assume_init().si_pid() } != 0);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error.to_string());
+        }
+    }
+}
+impl OperationGroup {
+    fn terminate(&self) {
+        let mut terminated = self
+            .terminated
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *terminated {
+            return;
+        }
+        *terminated = true;
+        #[cfg(unix)]
+        if let Ok(pid) = i32::try_from(self.pid) && pid > 1
+            // Do not signal a raw ID if another waiter already reaped it.
+            && operation_exit_pending(self.pid).is_ok()
+        {
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+// This owner always terminates the still-owned process group BEFORE Child can
+// reap or its kill_on_drop runs, including cancellation of the run future.
+struct OperationChild {
+    child: tokio::process::Child,
+    group: Arc<OperationGroup>,
+}
+impl Drop for OperationChild {
+    fn drop(&mut self) {
+        self.group.terminate();
+    }
+}
+impl OperationChild {
+    async fn completion(&mut self) -> Result<Option<std::process::ExitStatus>, String> {
+        #[cfg(unix)]
+        loop {
+            if operation_exit_pending(self.group.pid)? {
+                return Ok(None);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        #[cfg(not(unix))]
+        self.child
+            .wait()
+            .await
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
+    async fn finish(&mut self) -> Result<std::process::ExitStatus, String> {
+        self.group.terminate();
+        tokio::time::timeout(Duration::from_secs(2), self.child.wait())
+            .await
+            .map_err(|_| "Operation child did not settle after termination".to_owned())?
+            .map_err(|error| error.to_string())
+    }
+}
+struct OperationGuardian(tokio::task::JoinHandle<()>);
+impl Drop for OperationGuardian {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+const OPERATION_UNKNOWN: &str =
+    "Outcome unknown; inspect server state before a new operation; do not automatically retry";
+
 async fn run(
+    state: AppState,
+    authority: authority::AdminAuthority,
+    require_admin_only_relay: bool,
     mut command: tokio::process::Command,
     job: Arc<Mutex<Job>>,
     cancel: Arc<std::sync::atomic::AtomicBool>,
@@ -393,41 +529,99 @@ async fn run(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(unix)]
-    {
-        command.process_group(0);
-    }
+    command.process_group(0);
     let result = async {
-        let mut child = command.spawn().map_err(|e| format!("Could not start server operation: {e}"))?;
-        let pid = child.id();
+        let (child, mut changes) = {
+            let store = state.store.lock().map_err(|_| "Store unavailable".to_owned())?;
+            validate_operation_locked(&state, &store, &authority, require_admin_only_relay).map_err(|error| error.message)?;
+            let changes = store.subscribe_catalog();
+            // No async gap between fresh authorization and process creation.
+            let child = command.spawn().map_err(|error| format!("Could not start server operation: {error}"))?;
+            (child, changes)
+        };
+        let group = Arc::new(OperationGroup {
+            pid: child.id().ok_or("No operation process identity")?,
+            terminated: Mutex::new(false),
+        });
+        let mut process = OperationChild { child, group: group.clone() };
+        let guarded_group = group.clone();
+        let guarded_state = state.clone();
+        let guarded_authority = authority.clone();
+        let (revoked, mut revoked_rx) = tokio::sync::watch::channel(false);
+        let _guardian = OperationGuardian(tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_millis(100));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! { _ = changes.recv() => {}, _ = tick.tick() => {} }
+                let allowed = guarded_state.store.lock().is_ok_and(|store| {
+                    validate_operation_locked(&guarded_state, &store, &guarded_authority, require_admin_only_relay).is_ok()
+                });
+                if !allowed {
+                    guarded_group.terminate();
+                    let _ = revoked.send(true);
+                    break;
+                }
+            }
+        }));
         async fn collect(mut pipe: impl tokio::io::AsyncRead + Unpin, job: Arc<Mutex<Job>>) {
             let mut buf = [0u8; 2048];
             while let Ok(n) = pipe.read(&mut buf).await {
                 if n == 0 { break; }
-                if let Ok(mut job) = job.lock()
-                    && job.output.len() < 32768 {
-                        job.output.extend(String::from_utf8_lossy(&buf[..n]).chars().filter(|c| !c.is_control() || matches!(c, '\n' | '\t')));
+                if let Ok(mut job) = job.lock() {
+                    for c in String::from_utf8_lossy(&buf[..n]).chars()
+                        .filter(|c| !c.is_control() || matches!(c, '\n' | '\t')) {
+                        if job.output.len() + c.len_utf8() > 32768 { break; }
+                        job.output.push(c);
+                    }
                 }
             }
         }
-        let out = tokio::spawn(collect(child.stdout.take().ok_or("No operation output")?, job.clone()));
-        let err = tokio::spawn(collect(child.stderr.take().ok_or("No operation output")?, job.clone()));
+        let mut out = tokio::spawn(collect(process.child.stdout.take().ok_or("No operation output")?, job.clone()));
+        let mut err = tokio::spawn(collect(process.child.stderr.take().ok_or("No operation output")?, job.clone()));
         let status = tokio::select! {
-            status = child.wait() => status.map_err(|e| e.to_string()),
-            _ = async { loop { if cancel.load(std::sync::atomic::Ordering::Relaxed) { break; } tokio::time::sleep(Duration::from_millis(100)).await; } } => Err("Operation cancelled; inspect server state before retrying".into()),
+            status = process.completion() => status,
+            _ = revoked_rx.changed() => Err("Operation authorization changed".into()),
+            _ = async { loop { if cancel.load(std::sync::atomic::Ordering::Relaxed) { break; } tokio::time::sleep(Duration::from_millis(100)).await; } } => Err("Operation cancelled".into()),
             _ = tokio::time::sleep(Duration::from_secs(900)) => Err("Operation expired after 15 minutes".into()),
         };
-        #[cfg(unix)] if let Some(pid) = pid { unsafe { libc::kill(-(pid as i32), libc::SIGKILL); } }
-        let _ = child.kill().await;
-        let _ = tokio::time::timeout(Duration::from_secs(2), async { let _ = out.await; let _ = err.await; }).await;
-        status.map(|s| s.success())
+        // Terminate before reaping so neither guardian nor Drop can signal a
+        // recycled process group identity during output drain.
+        let reaped = process.finish().await;
+        if tokio::time::timeout(Duration::from_secs(2), async { let _ = (&mut out).await; let _ = (&mut err).await; }).await.is_err() {
+            out.abort(); err.abort();
+        }
+        match status {
+            Ok(Some(status)) => Ok(status.success()),
+            Ok(None) => reaped.map(|status| status.success()),
+            Err(error) => Err(error),
+        }
     }.await;
+    // Final outcome publication shares the fresh Store cut too. A completed
+    // child racing revocation/cancellation cannot publish an optimistic success.
+    let store = state.store.lock();
+    let result = match &store {
+        Ok(store) => validate_operation_locked(&state, store, &authority, require_admin_only_relay)
+            .map_err(|error| error.message)
+            .and(result),
+        Err(_) => Err("Store unavailable during operation completion".to_owned()),
+    };
+    let result = if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        Err("Operation cancelled".to_owned())
+    } else {
+        result
+    };
     if let Ok(mut job) = job.lock() {
         job.finished = true;
         match result {
-            Ok(success) => job.success = success,
+            Ok(true) => job.success = true,
+            Ok(false) => {
+                job.output.push_str(&format!(
+                    "\nOperation exited unsuccessfully. {OPERATION_UNKNOWN}"
+                ));
+            }
             Err(error) => {
-                job.output.push('\n');
-                job.output.push_str(&error);
+                job.output
+                    .push_str(&format!("\n{error}. {OPERATION_UNKNOWN}"));
             }
         }
     }
@@ -438,7 +632,7 @@ pub async fn job(
     State(state): State<AppState>,
     RoutePath(id): RoutePath<String>,
 ) -> Result<Json<Job>, ApiError> {
-    admin(&auth)?;
+    let authority = authority::AdminAuthority::capture(&state, &auth)?;
     let management = state
         .management
         .lock()
@@ -446,8 +640,17 @@ pub async fn job(
     let running = management
         .jobs
         .get(&id)
-        .filter(|r| r.owner == auth.user.id && r.created.elapsed() < Duration::from_secs(1800))
+        .filter(|r| {
+            r.owner == auth.user.id
+                && r.authority == authority
+                && r.created.elapsed() < Duration::from_secs(1800)
+        })
         .ok_or_else(ApiError::not_found)?;
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    validate_operation_locked(&state, &store, &authority, running.require_admin_only_relay)?;
     let job = running
         .job
         .lock()
@@ -460,7 +663,7 @@ pub async fn cancel(
     State(state): State<AppState>,
     RoutePath(id): RoutePath<String>,
 ) -> Result<StatusCode, ApiError> {
-    admin(&auth)?;
+    let authority = authority::AdminAuthority::capture(&state, &auth)?;
     let management = state
         .management
         .lock()
@@ -468,8 +671,13 @@ pub async fn cancel(
     let running = management
         .jobs
         .get(&id)
-        .filter(|r| r.owner == auth.user.id)
+        .filter(|r| r.owner == auth.user.id && r.authority == authority)
         .ok_or_else(ApiError::not_found)?;
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    validate_operation_locked(&state, &store, &authority, running.require_admin_only_relay)?;
     running
         .cancel
         .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -506,7 +714,7 @@ pub async fn clone_project(
     State(state): State<AppState>,
     Json(request): Json<CloneProject>,
 ) -> Result<Json<crate::store::Project>, ApiError> {
-    admin(&auth)?;
+    let authority = authority::AdminAuthority::capture(&state, &auth)?;
     if !matches!(request.provider.as_str(), "github" | "gitlab")
         || request.repository.len() > 500
         || request.repository.split('/').count() < 2
@@ -520,13 +728,11 @@ pub async fn clone_project(
         ));
     }
     let permit = state.terminal_permit()?;
-    let destination = root(&state.config).join("projects");
-    private_dir(&destination).map_err(ApiError::internal)?;
-    let project = crate::api::run_blocking(move || {
+    let project = authority::worker(move || {
         let _permit = permit;
         let github = request.provider == "github";
         let program = executable(&state.config, if github { "gh" } else { "glab" })
-            .ok_or("Install the hosting CLI on the server first")?;
+            .ok_or_else(|| ApiError::conflict("Install the hosting CLI on the server first"))?;
         let mut command = std::process::Command::new(program);
         command
             .env("PATH", path(&state.config))
@@ -545,30 +751,94 @@ pub async fn clone_project(
         ] {
             command.env_remove(key);
         }
-        let path = dunlin_workspace::github::imports::clone_with(
-            command,
-            if github { "github.com" } else { "gitlab.com" },
-            &request.repository,
-            &destination,
-        )?;
-        let name = request.repository.replace('/', "-");
-        let store = state
-            .store
-            .lock()
-            .map_err(|_| "Store lock poisoned".to_string())?;
-        let project = store
-            .create_project(&name, path.to_str().ok_or("Invalid cloned project path")?)
-            .map_err(|e| {
-                format!(
-                    "Clone completed at {}; registration failed: {e}",
-                    path.display()
-                )
-            })?;
-        store
-            .grant(&project.id, &auth.user.id)
-            .map_err(|e| e.to_string())?;
-        Ok(project)
+        let repository = request.repository;
+        clone_in_stage(&state, &authority, &repository, |stage| {
+            dunlin_workspace::github::imports::clone_with(
+                command,
+                if github { "github.com" } else { "gitlab.com" },
+                &repository,
+                stage,
+            )
+        })
     })
     .await?;
     Ok(Json(project))
+}
+
+// Preserve the legacy owner/group/repository path, checking each namespace
+// component before publishing. Caller holds a freshly authorized Store cut.
+fn clone_destination(root: &Path, repository: &str) -> Result<PathBuf, String> {
+    let (namespace, name) = repository
+        .rsplit_once('/')
+        .ok_or("Invalid repository path")?;
+    let mut parent = root.to_path_buf();
+    for part in namespace.split('/') {
+        parent.push(part);
+        match std::fs::create_dir(&parent) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.to_string()),
+        }
+        if !std::fs::symlink_metadata(&parent)
+            .is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
+        {
+            return Err("Clone namespace must be a real directory".into());
+        }
+    }
+    Ok(parent.join(name))
+}
+
+fn clone_in_stage(
+    state: &AppState,
+    authority: &authority::AdminAuthority,
+    repository: &str,
+    prepare: impl FnOnce(&Path) -> Result<PathBuf, String>,
+) -> Result<crate::store::Project, ApiError> {
+    let destination = root(&state.config).join("projects");
+    let stage = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store unavailable"))?;
+        authority.validate_locked(state, &store)?;
+        private_dir(&destination).map_err(ApiError::internal)?;
+        let path = destination.join(format!(".clone-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir(&path).map_err(|e| ApiError::internal(e.to_string()))?;
+        let stage = authority::PrivateStage(path);
+        private_dir(&stage.0).map_err(ApiError::internal)?;
+        stage
+    };
+    authority.validate(state)?;
+    let prepared=prepare(&stage.0).map_err(|_|ApiError::bad_request("Clone preparation failed; no project was published. Check hosting CLI authentication, connectivity and disk space before a new operation."))?;
+    let project = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store unavailable"))?;
+        authority.validate_locked(state, &store)?;
+        let target = clone_destination(&destination, repository).map_err(ApiError::conflict)?;
+        dunlin_workspace::transfer::publish_directory(&prepared, &target)
+            .map_err(ApiError::conflict)?;
+        (|| {
+            let project = store.create_project(
+                &repository.replace('/', "-"),
+                target
+                    .to_str()
+                    .ok_or_else(|| authority::uncertain("Invalid destination path"))?,
+            )?;
+            store.grant(&project.id, &authority.user)?;
+            Ok::<_, ApiError>(project)
+        })()
+        .map_err(|e| {
+            authority::uncertain(format!(
+                "Files cloned to {} but registration failed: {}",
+                target.display(),
+                e.message
+            ))
+        })?
+    };
+    authority
+        .validate(state)
+        .map_err(|e| authority::uncertain(e.message))?;
+    Ok(project)
 }

@@ -1,0 +1,429 @@
+Sandbox suite=runtime container=dunlin-check-020a9f0e4fb34a878aaeba3265569273 image=sha256:ea8b01a74044ba86c02e56de10481dd58ae940d8e09233199b191187c9295360 platform=linux/arm64 memory=3328m scratch=1536m file_size=2147483648 wall=900s source_sha256=a6a0b3928555627b3f40c9d2776cb142bcf60e0b830fb4cb84a8c1f3521dfa39
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling libc v0.2.191
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling rand_core v0.10.1
+   Compiling serde_core v1.0.229
+   Compiling itoa v1.0.19
+   Compiling getrandom v0.4.3
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling block-buffer v0.12.1
+   Compiling bytes v1.12.1
+   Compiling digest v0.11.3
+   Compiling libm v0.2.16
+   Compiling autocfg v1.5.1
+   Compiling num-traits v0.2.19
+   Compiling log v0.4.35
+   Compiling memchr v2.8.3
+   Compiling synstructure v0.14.0
+   Compiling zmij v1.0.23
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling base64ct v1.8.3
+   Compiling serde_json v1.0.154
+   Compiling zerofrom-derive v0.1.8
+   Compiling http v1.5.0
+   Compiling smallvec v1.16.5
+   Compiling pin-project-lite v0.2.17
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling getrandom v0.2.17
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling cpufeatures v0.3.1
+   Compiling httparse v1.10.1
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling syn v2.0.119
+   Compiling zerocopy v0.8.63
+   Compiling once_cell v1.21.4
+   Compiling pem-rfc7468 v1.0.0
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling tinystr v0.8.5
+   Compiling sha2 v0.11.1
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling writeable v0.6.4
+   Compiling thiserror v2.0.21
+   Compiling litemap v0.8.3
+   Compiling percent-encoding v2.3.2
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling signal-hook-registry v1.4.8
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling tokio-macros v2.7.2
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling futures-core v0.3.34
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling cpubits v0.1.1
+   Compiling crypto-bigint v0.7.11
+   Compiling tokio v1.54.1
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling rustls-pki-types v1.15.1
+   Compiling untrusted v0.9.0
+   Compiling pkcs8 v0.11.0
+   Compiling vcpkg v0.2.15
+   Compiling bitflags v2.13.2
+   Compiling rustls v0.23.46
+   Compiling crc32fast v1.5.4
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling base64 v0.23.1
+   Compiling foldhash v0.2.0
+   Compiling hex v0.4.3
+   Compiling base16ct v1.0.0
+   Compiling getrandom v0.3.4
+   Compiling adler2 v2.0.1
+   Compiling thiserror v1.0.69
+   Compiling simd-adler32 v0.3.10
+   Compiling miniz_oxide v0.9.1
+   Compiling sec1 v0.8.1
+   Compiling hashbrown v0.17.1
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling pem-rfc7468 v0.7.0
+   Compiling signature v3.0.0
+   Compiling hmac v0.13.0
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling semver v1.0.28
+   Compiling rustc_version v0.4.1
+   Compiling darling_core v0.24.1
+   Compiling der v0.7.10
+   Compiling flate2 v1.1.11
+   Compiling idna v1.1.0
+   Compiling hashlink v0.12.2
+   Compiling elliptic-curve v0.14.3
+   Compiling ureq-proto v0.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling webpki-roots v1.0.11
+   Compiling primefield v0.14.0
+   Compiling tracing-core v0.1.36
+   Compiling tracing-attributes v0.1.31
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling chacha20 v0.10.2
+   Compiling iana-time-zone v0.1.65
+   Compiling fallible-iterator v0.3.0
+   Compiling utf8-zero v0.8.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling rusqlite v0.41.1
+   Compiling ureq v3.5.1
+   Compiling chrono v0.4.45
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling rand_core v0.9.5
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling darling_macro v0.24.1
+   Compiling curve25519-dalek v5.0.0
+   Compiling rfc6979 v0.6.0
+   Compiling http-body v1.1.0
+   Compiling num-integer v0.1.47
+   Compiling futures-macro v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling futures-sink v0.3.34
+   Compiling crossbeam-utils v0.8.23
+   Compiling slab v0.4.12
+   Compiling spin v0.9.9
+   Compiling num-bigint-dig v0.8.6
+   Compiling cfg_aliases v0.1.1
+   Compiling futures-task v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling rand_chacha v0.9.0
+   Compiling primeorder v0.14.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling serde_path_to_error v0.1.20
+   Compiling tower-service v0.3.3
+   Compiling try-lock v0.2.5
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling base64 v0.22.1
+   Compiling event-listener v5.4.2
+   Compiling want v0.3.2
+   Compiling rand v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling sha1 v0.10.7
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling httpdate v1.0.3
+   Compiling winnow v1.0.5
+   Compiling atomic-waker v1.1.2
+   Compiling tower-layer v0.3.3
+   Compiling either v1.19.0
+   Compiling arrayvec v0.7.8
+   Compiling sync_wrapper v1.0.2
+   Compiling jiff-core v0.1.4
+   Compiling jiff v0.2.41
+   Compiling vte v0.15.0
+   Compiling itertools v0.14.0
+   Compiling hyper v1.12.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling tungstenite v0.29.0
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling http-body-util v0.1.5
+   Compiling filedescriptor v0.8.3
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling hmac v0.12.1
+   Compiling sha1 v0.11.0
+   Compiling serde_plain v1.0.2
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling mime v0.3.18
+   Compiling shell-words v1.1.1
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling ryu v1.0.23
+   Compiling unicode-width v0.2.3
+   Compiling dyn-clone v1.0.20
+   Compiling openidconnect v4.1.0
+   Compiling vt100 v0.18.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling portable-pty v0.9.0
+   Compiling axum-core v0.5.6
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling async-channel v2.5.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+    Finished `dev` profile [unoptimized] target(s) in 1m 54s
+Filesystem     1K-blocks    Used Available Use% Mounted on
+tmpfs            1572864 1027300    545564  66% /scratch
+1027208	/scratch/target
+low 0
+high 0
+max 0
+oom 0
+oom_kill 0
+oom_group_kill 0
+   Compiling bitflags v2.13.2
+   Compiling rusqlite v0.41.1
+   Compiling rustix v1.1.6
+   Compiling linux-raw-sys v0.12.1
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling nix v0.28.0
+   Compiling portable-pty v0.9.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+    Finished `test` profile [unoptimized] target(s) in 46.81s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_identity-11d8cf44d473e148)
+
+running 1 test
+test tests::configuration_requires_private_callback_and_explicit_provider_origins ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47)
+
+running 449 tests
+test acp::coordination_tests::disconnected_runtime_is_unknown_not_success_and_token_is_revoked ... ok
+test acp::coordination_tests::remote_continuation_uses_only_approved_text_and_cannot_be_replayed ... ok
+test acp::coordination_tests::sandbox_exposes_exact_broker_sockets_not_the_ledger_or_host_temp_directory ... ok
+test acp::coordination_tests::stdio_capability_is_injected_bound_and_revoked_with_device_authorization ... ok
+test acp::metadata_tests::approved_metadata_is_separate_from_acp_workspace_directories_and_profiles ... ok
+test acp::metadata_tests::metadata_mount_cannot_cover_another_registered_workspace_or_its_alias ... ok
+test acp::metadata_tests::production_browser_acceptance_runtime_metadata ... ignored, requires dedicated real bubblewrap AppArmor/seccomp runtime runner
+test acp::metadata_tests::production_browser_acceptance_runtime_metadata_lingering ... ignored, requires dedicated real bubblewrap AppArmor/seccomp runtime runner
+test acp::native_grant_tests::tracker_and_new_broker_tokens_cannot_refresh_primary_or_additional_epochs_implicitly ... ok
+test acp::native_grant_tests::websocket_primary_and_additional_epoch_aba_stop_input_stdout_and_old_process ... ok
+test acp::tests::rejects_client_requested_extra_roots_and_mcp_servers ... ok
+test acp::tests::relay_vault_is_injected_as_a_stdio_mcp_server ... ok
+test acp::tests::revoked_devices_and_project_grants_fail_reauthorization ... ok
+test acp::tests::sandbox_denies_other_projects_and_credentials ... ok
+test acp::tests::sandbox_does_not_deny_the_active_project_under_documents ... ok
+test acp::tests::splits_the_harness_command ... ok
+test acp::tests::takes_the_first_prompt_line_as_a_title ... ok
+test api::presence::tests::presence_expires_and_heartbeats_do_not_duplicate_devices ... ok
+test api::presence::tests::presence_is_bounded_without_evicting_live_connections ... ok
+test api::tests::artifacts_upload_share_revoke_and_public_read ... ok
+test api::tests::attachment_upload_rejects_a_symlinked_namespace ... ok
+test api::tests::audit_artifact_names_are_allowlisted_and_bounded ... ok
+test api::tests::audit_artifacts_are_scoped_to_the_granted_project ... ok
+test api::tests::billing_evidence_is_device_scoped_and_admin_only_to_aggregate ... ok
+test api::tests::concurrent_file_saves_return_one_success_and_one_conflict ... ok
+test api::tests::coordination::exact_approval_binds_the_live_device_connection_and_reconnect_revokes_it ... ok
+test api::tests::coordination::offline_coordinator_returns_an_explicit_error_not_empty_success ... ok
+test api::tests::coordination::snapshots_are_user_and_project_scoped_and_revoked_devices_fail ... ok
+test api::tests::explorer_mutations_require_authentication_and_a_project_grant ... ok
+test api::tests::explorer_routes_create_move_and_initialize_only_inside_the_granted_project ... ok
+test api::tests::history::cancelled_http_work_keeps_its_slot_until_the_blocking_read_finishes ... ok
+test api::tests::history::history_branch_creation_is_scoped_authenticated_and_never_moves_head ... ok
+test api::tests::history::history_inflight_read_cannot_escape_after_atomic_revoke_and_regrant ... ok
+test api::tests::history::history_routes_require_authentication_and_project_grants_before_reading_git ... ok
+test api::tests::history::history_scope_and_branch_consent_do_not_revive_after_regrant ... ok
+test api::tests::history::linked_history_inflight_read_is_withheld_after_metadata_grant_revoke_and_regrant ... ok
+test api::tests::history::linked_history_requires_own_metadata_read_and_scope_tracks_grant_aba_without_native_refresh ... ok
+test api::tests::history::malformed_scope_paths_limits_and_file_indices_never_select_another_root ... ok
+test api::tests::history::ordinary_history_scope_keeps_the_legacy_native_grant_digest ... ok
+test api::tests::history::overview_matches_local_stashes_worktrees_and_conflicts_without_mutation ... ok
+test api::tests::history::overview_supports_unborn_repositories_and_rejects_scope_and_path_overrides ... ok
+test api::tests::history::relay_merge_parent_selection_matches_each_local_comparison ... ok
+test api::tests::history::remote_history_matches_local_root_rename_binary_and_preserves_dirty_state ... ok
+test api::tests::history::retargeted_project_alias_rejects_the_original_history_scope ... ok
+test api::tests::history::saturation_is_bounded_and_revoked_devices_cannot_receive_inflight_results ... ok
+test api::tests::linear::linear_background_sync_does_not_require_a_live_desktop_device ... ok
+test api::tests::linear::linear_configuration_does_not_accept_arbitrary_endpoints_users_or_invalid_filters ... ok
+test api::tests::linear::linear_failure_preserves_the_last_complete_snapshot_and_disconnect_removes_the_key ... ok
+test api::tests::linear::linear_integration_is_user_scoped_uses_mcp_and_never_returns_credentials ... ok
+test api::tests::linear::revocation_during_mcp_work_prevents_saving_the_connection ... ok
+test api::tests::management::checksum_failure_never_registers_or_publishes_a_project ... ok
+test api::tests::management::history_copy_preserves_branch_and_dirty_files_without_importing_hooks_or_remotes ... ok
+test api::tests::management::management_does_not_require_a_harness_and_writes_require_admin ... ok
+test api::tests::management::remote_git_login_refuses_mixed_trust_users_before_starting_a_cli ... ok
+test api::tests::management::tool_updates_and_agent_connections_are_mutually_exclusive ... ok
+test api::tests::management::transfer_is_verified_owner_bound_and_never_overwrites ... ok
+test api::tests::native_git_io::actual_git_http_rejects_unapproved_linked_shape_without_changing_workspace_file_policy ... ok
+test api::tests::native_git_io::git_prepared_write_pins_settings_and_rejects_before_side_effect ... ok
+test api::tests::native_git_io::git_read_withholds_real_bytes_after_native_grant_aba ... ok
+test api::tests::native_git_io::linked_git_requires_own_metadata_grant_without_expanding_plain_workspace_access ... ok
+test api::tests::native_git_io::linked_upload_appends_only_through_own_write_metadata_authority ... ok
+test api::tests::native_git_io::metadata_exclude_rejects_info_symlink_exclude_symlink_and_hardlink ... ok
+test api::tests::native_git_io::metadata_revocation_after_actual_write_returns_unknown_without_replay ... ok
+test api::tests::native_git_io::public_project_copy_cannot_redirect_a_captured_git_operation ... ok
+test api::tests::native_git_io::read_checkout_proof_cannot_authorize_mutation_and_init_has_narrow_terminal_shape ... ok
+test api::tests::native_io::actual_http_file_read_queued_before_regrant_returns_no_bytes_and_releases_its_permit ... ok
+test api::tests::native_io::actual_private_artifact_http_read_queued_under_an_old_epoch_returns_no_payload ... ok
+test api::tests::native_io::artifact_public_capability_survives_native_revoke_but_project_reader_cannot_mutate_owner_metadata ... ok
+test api::tests::native_io::artifact_staging_cannot_publish_or_register_after_source_grant_epoch_changes ... ok
+test api::tests::native_io::attachment_filesystem_failure_preserves_internal_error_status ... ok
+test api::tests::native_io::attachment_namespace_creation_revalidates_the_captured_grant ... ok
+test api::tests::native_io::current_admin_postflight_check_withholds_local_metadata_after_role_downgrade ... ok
+test api::tests::native_io::disabled_legacy_transcript_storage_still_refuses_a_current_owners_write ... ok
+test api::tests::native_io::github_metadata_never_trusts_an_extracted_admin_snapshot_over_current_member_role ... ok
+test api::tests::native_io::legacy_pinned_session_proof_cannot_read_save_delete_or_takeover_after_atomic_regrant ... ok
+test api::tests::native_io::legacy_session_owner_needs_current_project_grant_for_data_delete_and_takeover ... ok
+test api::tests::native_io::native_io_mutation_captured_before_regrant_never_invokes_its_write ... ok
+test api::tests::native_io::native_io_mutation_losing_epoch_after_write_reports_uncertain_result_without_replay ... ok
+test api::tests::native_io::native_io_read_withholds_actual_file_bytes_after_atomic_revoke_regrant ... ok
+test api::tests::native_io::project_settings_proof_fences_aba_and_cached_admin_role_cannot_escalate_writes ... ok
+test api::tests::native_io::public_artifact_rechecks_its_token_capability_after_queued_io_without_a_native_grant_dependency ... ok
+test api::tests::native_io::settings_write_checks_current_admin_under_the_same_store_cut_as_the_update ... ok
+test api::tests::native_io::stale_artifact_metadata_proof_cannot_delete_or_revoke_an_existing_capability ... ok
+test api::tests::operations::blame_endpoint_is_authenticated_scoped_and_matches_local_objects ... ok
+test api::tests::operations::deleting_a_linked_worktree_outside_the_granted_root_requires_its_own_grant ... ok
+test api::tests::operations::git_mutations_require_auth_grants_and_reject_client_roots_commands_and_force ... ok
+test api::tests::operations::linked_prepared_mutation_requires_write_and_consumes_old_metadata_grant_epoch ... ok
+test api::tests::operations::prepared_git_mutation_is_consumed_without_writes_after_grant_epoch_changes ... ok
+test api::tests::operations::prepared_stash_is_read_only_until_execute_and_token_is_one_use ... ok
+test api::tests::operations::source_control_actions_share_scoped_one_use_consent_and_stale_checks ... ok
+test api::tests::operations::stale_expired_and_other_device_confirmations_never_mutate ... ok
+test api::tests::operations::worktree_removal_pins_covering_grant_epoch_even_if_an_alternative_is_granted ... ok
+test api::tests::presence::presence_counts_devices_per_user_and_removes_revoked_devices ... ok
+test api::tests::presence::presence_is_local_to_the_relay_and_does_not_return_offline_accounts ... ok
+test api::tests::presence::presence_requires_authentication_and_ignores_caller_identity ... ok
+test api::tests::presence::presence_responses_cannot_be_cached ... ok
+test api::tests::presence::presence_retains_the_administrator_only_host_account_boundary ... ok
+test api::tests::preview_rename_and_delete_preserve_binary_data_scope_and_non_recursive_safety ... ok
+test api::tests::provider_usage_is_admin_only ... ok
+test api::tests::relay_checks_record_real_exit_status_for_granted_users ... ok
+test api::tests::relay_project_settings_are_granted_readable_and_admin_only_writable ... ok
+test api::tests::safe_branch_endpoints_require_grants_and_explicit_consent_without_legacy_fallbacks ... ok
+test api::tests::special_files_cannot_exhaust_the_file_read_slots ... ok
+test api::tests::terminal::relay_terminal_drains_sizable_final_output_before_reporting_a_fast_shell_exit ... ok
+test api::tests::terminal::relay_terminal_requires_auth_and_a_project_grant_then_streams_pty_bytes ... ok
+test api::tests::terminal::terminal_blocked_input_then_client_disconnect_releases_processes_and_permit_without_revocation ... ok
+test api::tests::terminal::terminal_device_revocation_closes_1008_and_kills_the_existing_shell ... ok
+test api::tests::terminal::terminal_linked_checkout_requires_own_write_grant_and_remains_a_host_shell ... ok
+test api::tests::terminal::terminal_metadata_grant_aba_kills_blocked_foreground_and_shell_without_refreshing_authority ... ok
+test api::tests::terminal::terminal_metadata_objects_identity_and_settings_changes_are_seen_without_client_input ... ok
+test api::tests::terminal::terminal_native_grant_aba_kills_hup_ignoring_shell_and_foreground_job_without_forwarding_bytes ... ok
+test api::tests::terminal::terminal_raw_project_alias_retarget_kills_shell_even_when_original_checkout_is_intact ... ok
+test api::tests::terminal::terminal_revocation_watchdog_still_kills_a_pty_with_a_blocked_input_writer ... ok
+test api::tests::transcript_revisions_reject_late_and_legacy_snapshots ... ok
+test api::tests::usage_authority::aggregated_billing_get_never_trusts_a_cached_admin_claim_or_revoked_admin_device ... ok
+test api::tests::usage_authority::billing_submission_stays_member_owned_device_scoped_and_revoked_proof_cannot_save ... ok
+test api::tests::usage_authority::dropping_usage_request_cancels_its_probe_callback_and_retains_permit_until_worker_settles ... ok
+test api::tests::usage_authority::stale_admin_proof_cannot_publish_cache_or_read_aggregated_billing_rows ... ok
+test api::tests::usage_authority::usage_cache_requires_current_admin_and_device_even_with_a_cached_extractor_snapshot ... ok
+test api::tests::usage_authority::usage_downgrade_or_device_revocation_during_a_controlled_probe_returns_no_output_or_cache ... ok
+test api::tests::workbench::active_checks_cannot_be_cancelled_by_another_principal_device_or_project ... ok
+test api::tests::workbench::checks_guardian_kills_real_process_after_grant_aba_or_device_revocation ... ok
+test api::tests::workbench::comparison_plan_preserves_owner_confirmation_until_consumed_and_never_revives_after_aba ... ok
+test api::tests::workbench::comparison_registration_revalidates_source_proof_and_never_grants_derived_paths_after_aba ... ok
+test api::tests::workbench::dropped_check_request_cancels_process_and_worker_eventually_releases_registry_and_permit ... ok
+test api::tests::workbench::pending_workbench_proofs_do_not_keep_their_appstate_alive ... 

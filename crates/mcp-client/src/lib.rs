@@ -9,7 +9,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod authorization;
 pub mod linear;
+pub mod metadata;
+pub mod negotiated;
+pub mod oauth;
+pub mod schema;
+pub use authorization::DispatchGuard;
+use authorization::authorize;
 
 const VERSION: &str = "2025-06-18";
 const MAX_BYTES: usize = 2 * 1024 * 1024;
@@ -43,16 +50,44 @@ pub enum Error {
     ToolFailed,
     #[error("The MCP server does not advertise the required tool or input schema")]
     Unsupported,
+    #[error("Invalid or unsupported MCP JSON Schema")]
+    Schema,
+    #[error("MCP input does not match the requested schema")]
+    Arguments,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tool {
     pub name: String,
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
+    #[serde(
+        default,
+        rename = "outputSchema",
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "schema::optional_output"
+    )]
+    pub output_schema: Option<Value>,
 }
 
 impl Tool {
+    /// Pin the complete admitted definition, including both schemas. No server
+    /// annotations or metadata can turn this observation into a tool grant.
+    pub fn definition_digest(&self) -> Result<String, Error> {
+        use sha2::{Digest, Sha256};
+        if self.name.is_empty() || self.name.len() > 256 || self.name.chars().any(char::is_control)
+        {
+            return Err(Error::Protocol);
+        }
+        schema::ToolValidation::compile(self)?;
+        let mut value = serde_json::to_value(self).map_err(|_| Error::Schema)?;
+        value.sort_all_objects();
+        let encoded = serde_json::to_vec(&value).map_err(|_| Error::Schema)?;
+        let mut hash = Sha256::new();
+        hash.update(b"dunlin.mcp.tool.v1\0");
+        hash.update(encoded);
+        Ok(hex::encode(hash.finalize()))
+    }
     pub fn supports(&self, fields: &[&str]) -> bool {
         if self
             .input_schema
@@ -80,6 +115,8 @@ impl Tool {
 }
 
 pub struct Client<'a> {
+    catalog: std::collections::HashMap<String, schema::ToolValidation>,
+    guard: Option<DispatchGuard>,
     endpoint: String,
     bearer: &'a str,
     agent: Agent,
@@ -111,15 +148,23 @@ pub fn validate_endpoint(endpoint: &str) -> Result<(), Error> {
 }
 
 impl<'a> Client<'a> {
+    /// Explicit adapter for initialization-based MCP 2025 servers.
+    /// New integrations can use `negotiated::Client` to probe the modern era.
     pub fn connect(endpoint: &str, bearer: &'a str) -> Result<Self, Error> {
+        Self::connect_since(endpoint, bearer, Instant::now(), None)
+    }
+
+    fn connect_since(
+        endpoint: &str,
+        bearer: &'a str,
+        started: Instant,
+        guard: Option<DispatchGuard>,
+    ) -> Result<Self, Error> {
         validate_endpoint(endpoint)?;
-        if bearer.is_empty()
-            || bearer.len() > 8192
-            || !bearer.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
-        {
-            return Err(Error::Credential);
-        }
+        validate_credential(bearer)?;
         let mut client = Self {
+            catalog: Default::default(),
+            guard,
             endpoint: endpoint.into(),
             bearer,
             agent: AgentBuilder::new()
@@ -130,7 +175,7 @@ impl<'a> Client<'a> {
             version: VERSION.into(),
             next_id: 1,
             initialized: false,
-            started: Instant::now(),
+            started,
         };
         let result = client.request(
             "initialize",
@@ -154,6 +199,7 @@ impl<'a> Client<'a> {
     }
 
     fn post(&self, body: &Value) -> Result<Response, Error> {
+        authorize(self.guard.as_ref())?;
         let remaining = Duration::from_secs(90).saturating_sub(self.started.elapsed());
         if remaining.is_zero() {
             return Err(Error::Transport);
@@ -182,6 +228,7 @@ impl<'a> Client<'a> {
         if response.status() != 200 && response.status() != 202 {
             return Err(Error::Http(response.status()));
         }
+        authorize(self.guard.as_ref())?;
         Ok(response)
     }
 
@@ -201,10 +248,16 @@ impl<'a> Client<'a> {
             }
             self.session = Some(session.into());
         }
-        decode_response(response, id)
+        let result = decode_response(response, id)?;
+        authorize(self.guard.as_ref())?;
+        Ok(result)
     }
 
     pub fn tools(&mut self) -> Result<Vec<Tool>, Error> {
+        self.catalog.clear();
+        self.collect_tools()
+    }
+    fn collect_tools(&mut self) -> Result<Vec<Tool>, Error> {
         if !self.initialized {
             return Err(Error::Protocol);
         }
@@ -212,6 +265,8 @@ impl<'a> Client<'a> {
         let mut cursor = None;
         let mut cursors = HashSet::new();
         let mut names = HashSet::new();
+        let mut catalog = std::collections::HashMap::new();
+        let mut budget = schema::CatalogBudget::default();
         for _ in 0..16 {
             let result = self.request(
                 "tools/list",
@@ -227,13 +282,23 @@ impl<'a> Client<'a> {
                 {
                     return Err(Error::Protocol);
                 }
-                tools.push(tool);
-                if tools.len() > MAX_TOOLS {
+                if names.len() > MAX_TOOLS {
                     return Err(Error::Limit);
                 }
+                let compiled = match schema::ToolValidation::compile(&tool) {
+                    Ok(compiled) => compiled,
+                    Err(Error::Schema) => continue,
+                    Err(error) => return Err(error),
+                };
+                budget.admit(&compiled)?;
+                catalog.insert(tool.name.clone(), compiled);
+                tools.push(tool);
             }
             match result.get("nextCursor").filter(|value| !value.is_null()) {
-                None => return Ok(tools),
+                None => {
+                    self.catalog = catalog;
+                    return Ok(tools);
+                }
                 Some(value) => {
                     let next = value
                         .as_str()
@@ -253,10 +318,19 @@ impl<'a> Client<'a> {
         if !self.initialized || !arguments.is_object() {
             return Err(Error::Protocol);
         }
+        let validation = self
+            .catalog
+            .get(&tool.name)
+            .cloned()
+            .ok_or(Error::Unsupported)?;
+        validation.arguments(tool, &arguments)?;
         let result = self.request(
             "tools/call",
             json!({"name":tool.name,"arguments":arguments}),
         )?;
+        if result["resultType"] == "input_required" {
+            return Err(Error::Unsupported);
+        }
         if result.get("isError").is_some_and(|flag| !flag.is_boolean()) {
             return Err(Error::Protocol);
         }
@@ -266,6 +340,7 @@ impl<'a> Client<'a> {
         if !result.is_object() {
             return Err(Error::Protocol);
         }
+        validation.output(&result)?;
         Ok(result)
     }
 
@@ -274,6 +349,7 @@ impl<'a> Client<'a> {
         let Some(session) = self.session.take() else {
             return Ok(());
         };
+        authorize(self.guard.as_ref())?;
         let response = self
             .agent
             .delete(&self.endpoint)
@@ -282,12 +358,23 @@ impl<'a> Client<'a> {
             .set("MCP-Protocol-Version", &self.version)
             .timeout(Duration::from_secs(5))
             .call();
+        authorize(self.guard.as_ref())?;
         match response {
             Ok(response) if matches!(response.status(), 200 | 202 | 204) => Ok(()),
             Err(dunlin_http::Error::Status(404 | 405, _)) => Ok(()),
             _ => Err(Error::Transport),
         }
     }
+}
+
+fn validate_credential(bearer: &str) -> Result<(), Error> {
+    if bearer.is_empty()
+        || bearer.len() > 8192
+        || !bearer.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+    {
+        return Err(Error::Credential);
+    }
+    Ok(())
 }
 
 fn rpc_result(message: Value, id: u64) -> Result<Value, Error> {

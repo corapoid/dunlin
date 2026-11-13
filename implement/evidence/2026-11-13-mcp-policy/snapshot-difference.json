@@ -1,0 +1,11 @@
+{
+  "final_source_sha256": "818eaf1ffec5c479175ab7b8f0b3a6b4658874a61048d898d70034381bfe28fb",
+  "client_source_sha256": "2795871405fe99ae8f93e6bafaa2d8b5f8948400d2bf5eab0eb09042478bf509",
+  "first_clippy_sha256": "d5c2ba5c7e98d7f4a0eaa4fd7e678d20419ee5f7b19f178ba3709e2a97ac117c",
+  "client_library_and_tests_identical": true,
+  "differences": [
+    "restore/remove a wrongly added test-only TurnSpec.mcp field",
+    "controller early refusal and tests for MCP profiles in remote execution/session admission"
+  ],
+  "verification": "Reversing precisely these server-only changes reconstructs the full earlier snapshot SHA256."
+}

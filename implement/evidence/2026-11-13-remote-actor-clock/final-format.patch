@@ -1,0 +1,13 @@
+--- apps/server/src/remote_sessions/actor.rs
++++ apps/server/src/remote_sessions/actor.rs
+@@ -185,7 +185,9 @@
+                 ))
+             })
+             .await?;
+-        actor.authorize(&snapshot).map_err(|_| Error::Unauthorized)?;
++        actor
++            .authorize(&snapshot)
++            .map_err(|_| Error::Unauthorized)?;
+         actor
+             .turn
+             .lock()

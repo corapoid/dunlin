@@ -1,0 +1,75 @@
+{
+  "source_sha256": "00887f71e9bf7fef95eb4a89534fd9687563aa45f8886d34cf0f022ae8073983",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "f655bcd7af42f911954e4f686f19f3f26fb5ea9f7a082572d58078c1a12297da",
+      "source_sha256": "00887f71e9bf7fef95eb4a89534fd9687563aa45f8886d34cf0f022ae8073983",
+      "exit_code": 0,
+      "scope": "803 passing backend-family tests: 663 relay, 1 identity, 75 SDK, 27 terminal, 37 usage; 40 acceptance tests ignored. Includes deterministic stop-record-before-stream chain draining, no late text projection or early ACK, wrong anchor/extra-event rejection and confirmed final ACK."
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "bb57074f3a05d4ae7f747b2b7e33ef45f1fcfda96af366fe4641da0e3a97727f",
+      "source_sha256": "00887f71e9bf7fef95eb4a89534fd9687563aa45f8886d34cf0f022ae8073983",
+      "exit_code": 0,
+      "scope": "11 remote runtime scenarios with both actual production Chromium branches enabled. MCP UI selects a private account with local MCP disabled, resets selection across targets, retries a genuine lost REST response with identical body/key, confirms the shown tool arguments and verifies a completed reply. Desktop/mobile no overflow or stale unknown-creation alert. MCP: 2 native sessions, 3 turns/HTTP calls/effects, reservation0, ACK8 and stopped held-FD descendants. Existing Remote legacy UI, transport/restart/timeout/quota/revocation also pass. Controlled ACP peer and OAuth/MCP provider; no real harness/account/tailnet."
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "6f75dc25a3b860906a4608f16362e92e3899cf33188a3ca459652a8cbfaba425",
+      "source_sha256": "00887f71e9bf7fef95eb4a89534fd9687563aa45f8886d34cf0f022ae8073983",
+      "exit_code": 0,
+      "scope": "All targets, warnings denied."
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "3a58165ad6181d806f8c749dc2aeb9761733bac91db273e74af96435376776aa",
+      "source_sha256": "fc48eeedc4a613431e8c6a20eaf2c5e0ac4f8c2cd0cd7ec564c055d1e6de9845",
+      "exit_code": 0,
+      "scope": "143 frontend tests, including explicit remote MCP capability and immutable local/remote private account/target retry. Smaller frontend-only snapshot input set."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "1ab20ebc5e0dee828b92ed3c9f51a62d7e4f8a9d2e23d844af936ee45645e476",
+      "source_sha256": "98c183df7278dbef9847c2a70a8347830d28219b60d8fb604447a58deb973ca5",
+      "exit_code": 0,
+      "scope": "TypeScript check, frontend/config-only snapshot input set."
+    }
+  ],
+  "artifact_sha256": {
+    "desktop.png": "69d6bc4c8a0e7ce98f7f5b741deacd8378d0d4a86e1e28bdfea41e5451366127",
+    "mobile.png": "eb677fc9c57221fe66e23df62c9306a38b3d59a962f29c9cf2a102d336956bfd"
+  },
+  "additional_source_sha256": {
+    "scripts/test_web_sandbox.py": "38b0b59b3f6f59368458d0587644cd48e258b4f01bb50378a276b8431e6602ef",
+    "scripts/tests/test_web_sandbox_launcher.py": "5610a5dabd9b6f99413da146734b77bac3d8955ae92a48ac95b2ff041dd30f27",
+    ".github/workflows/ci.yml": "fc6770d2b1a7140d9fea236c09157e25ff9d1e39067a18df883c74cb8e82d088",
+    "scripts/tests/test_ci_workflows.py": "464f2a6c8a0c819f34f9b8bc8dd12d629ede81addf83a976b3cebe89f24163f0"
+  },
+  "tooling_checks": [
+    {
+      "command": "python3 -m unittest scripts/tests/test_web_sandbox_launcher.py",
+      "tests": 18,
+      "exit_code": 0,
+      "log": "launcher-final.log"
+    },
+    {
+      "command": "python3 -m unittest scripts/tests/test_ci_workflows.py",
+      "tests": 14,
+      "exit_code": 0,
+      "log": "ci-contract-final.log"
+    },
+    {
+      "command": "actionlint -shellcheck= -pyflakes= .github/workflows/ci.yml",
+      "exit_code": 0,
+      "log": "actionlint-final.log"
+    }
+  ],
+  "scope": "Remote MCP creation/approval UI accepted on desktop/mobile with real REST/AHP/WSS/runtime/stdio and a controlled OAuth/MCP provider. Source stop reconciliation now drains its authenticated final chain without restoring execution authority, projecting late text or ACKing an unverified prefix. GitHub Actions configured and locally checked, not executed remotely. Joined deny/lost-HTTP-reply/revoke cases, MRTR/revoke/GC/general scoped secrets, A2A and remaining E0-E10 requirements remain open. No real accounts/services/tailnet."
+}

@@ -1,0 +1,119 @@
+{
+  "source_sha256": "2ca93310b1a8a5fb214b1241aea7b2ee7ddccd9c7da06ae180852d0e130c3d2a",
+  "tested_source_sha256": "05fb6521cb773246431f99ce7cf9fcb1bc46a19b9ad28852b91c4912bf70fccc",
+  "source_equivalence": "source-equivalence.json",
+  "checks": [
+    {
+      "suite": "mcp",
+      "exit_code": 0,
+      "log": "mcp-final.log",
+      "log_sha256": "babef9c36f1bd046b52aebcc6897d5444866d4a646950693d42b29129fb99ef3",
+      "source_sha256": "05fb6521cb773246431f99ce7cf9fcb1bc46a19b9ad28852b91c4912bf70fccc",
+      "source_equivalence": "source-equivalence.json",
+      "scope": "174 runtime/unit tests:116 MCP,6 HTTP,52 vault;2 additional compile-fail doctests for non-deserializable/non-cloneable Permit;package all-targets Clippy -D warnings. Eleven new scoped tests use controlled MemoryStore/Journal/Authority fixtures;not production SQL durability or managed runtime acceptance.",
+      "memory": {
+        "memory.peak": "1217617920",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "../2026-11-13-mcp-url-input/frontend-final.log",
+      "log_sha256": "d27c8d57549c0ad06ac60f1fb7e12ef5a337a8115efa48c6177037ffe7563b4b",
+      "source_sha256": "86f046de06716554f67e5c6ad83c2a7a31c9f7b0dea9982526feda74d4a6b35d",
+      "exit_code": 0,
+      "scope": "157 tests,including full URL/ASCII host/punycode/parser ambiguity and immutable URL action without answers. Absolute parsed href differs from original display address when needed; tests cover https: relative-special parsing.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "typecheck",
+      "log": "../2026-11-13-mcp-url-input/typecheck-final.log",
+      "log_sha256": "26d632c5bafc5059233b27168bdbab52f36ad66a0d024883226496303933d18a",
+      "source_sha256": "d800150d96d1f92150ddfbd103554a2223f87a768d5e67fb914ab23ce524f0b3",
+      "exit_code": 0,
+      "scope": "Final TypeScript noEmit check of current frontend and configuration.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "ci-contract",
+      "log": "../2026-11-13-mcp-url-input/ci-contract-final.log",
+      "log_sha256": "80a8da2e12329a24b64bdc54557a72dca687bd2962d3191735bf615f1d10a47c",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "14 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    },
+    {
+      "suite": "launcher",
+      "log": "../2026-11-13-mcp-url-input/launcher-final.log",
+      "log_sha256": "d8a5e6f40e696cef2a23743dfc5c5264a374d87192bac5e9b25d15bf189656aa",
+      "source_sha256": "821cd92540e9c7abdbdbd9be5c1966d071203070e9aca4a39d128d1e0720f47f",
+      "exit_code": 0,
+      "scope": "18 host Python contract tests; unchanged tooling inputs. Not a GitHub Actions execution.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "local_checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--check",
+        "--edition",
+        "2024",
+        "--config",
+        "skip_children=true",
+        "crates/vault/src/scoped.rs",
+        "crates/vault/src/lib.rs",
+        "crates/vault/src/store.rs",
+        "crates/vault/src/linux_store.rs"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "65598d057bd744997279f6d8e5de84d001bce5407ca5e9296d1bd431caab5d92",
+    "source-equivalence.json": "482a91e2ad4376c2130bba9d8609a97a9e5d8b16c1c10d24f7971908b3b28833",
+    "run-results.json": "ffb6921c45a22dce0b13fe626ceea62a10f9f661dd915d32d28141bab2911cc5",
+    "local-checks.log": "19cbf4e36c032ef392a0a4f21a1e632edfdee2ff5b758695d368738b30ea160f",
+    "local-results.json": "e8b4c878a8d73c2033352c689fb309eb3d31f1677c386821e52306f088d7ac65"
+  },
+  "milestone": {
+    "id": "E5.3",
+    "status": "partial",
+    "formal_progress": "21/68=30.9%;whole E0-E10 goal remains active"
+  },
+  "implemented": "Library-only immutable policy/value envelope,isolated production keyring namespace factory,two-phase Journal write contract and host-created one-use HTTP Permit. Authority check/consume/complete contracts carry full scope;engine enforces input/record digest,bindings,read-only,expiry and provider-response redaction/discard.",
+  "boundaries": [
+    "No production SQL Journal or Authority yet:durability,CAS,grant authorization and replay retention are tested through controlled fixtures and remain required in the real adapter.",
+    "Not wired to production server/runner/UI or managed sessions;no production feature completion claim.",
+    "New scoped engine supports HTTP;managed recipes and full kill switch remain required. OAuth2 refresh is explicitly refused here and remains in the separate durable OAuth engine.",
+    "No real keyring,accounts,tailnet or services. No new browser or production executable acceptance.",
+    "Backend861 and root Clippy from the preceding vault-live-access increment were not rerun here and are historical,not checks on this new implementation."
+  ],
+  "historical_application_regression": {
+    "manifest": "../2026-11-13-vault-live-access/verified-source.json",
+    "manifest_sha256": "194de0d92797e0c22655b4cbc0f6869873e156a322ca7a734fb40006c66d1e4c",
+    "source_sha256": "2cdb317814515646d50bcbc984b2129d920df91fba6f38634b5a5299bde1e6bf",
+    "scope": "Previous backend861 and root Clippy;not rerun for this library-only increment."
+  },
+  "diagnostics": {
+    "mcp-first.log": "Exit101 while compiling the new fixture:Vec header pairs incorrectly indexed by string. Fixed fixture;no passing-test claim.",
+    "mcp-second.log": "Exit0:172 runtime/unit plus2 compile-fail tests and package Clippy,before adding policy expiry/activation-commit cases. Superseded by final174+2.",
+    "formatting": "Only final change after tested snapshot is rustfmt ordering two adjacent pub mod declarations. Full normalized source snapshot exactly reproduces tested hash;no claim of a new run on formatting-only snapshot."
+  }
+}

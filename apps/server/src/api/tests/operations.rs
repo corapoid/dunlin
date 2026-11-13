@@ -278,15 +278,228 @@ async fn deleting_a_linked_worktree_outside_the_granted_root_requires_its_own_gr
     {
         let store = f.state.store.lock().unwrap();
         let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        let ancestor = store
+            .create_project(
+                "ancestor cannot adopt linked metadata",
+                outside.path().to_str().unwrap(),
+            )
+            .unwrap();
+        store.grant(&ancestor.id, &user.id).unwrap();
+    }
+    assert_eq!(
+        prepare(&f, action.clone()).await.0,
+        StatusCode::FORBIDDEN,
+        "Ancestor native grant must not stand in for the target's own linked metadata authority"
+    );
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
         let project = store
             .create_project("authorized linked tree", &path)
             .unwrap();
         store.grant(&project.id, &user.id).unwrap();
     }
+    assert_eq!(
+        prepare(&f, action.clone()).await.0,
+        StatusCode::FORBIDDEN,
+        "Native grant alone must not approve linked Git metadata"
+    );
+    let linked_project = {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store
+            .projects_for_user(&user.id)
+            .unwrap()
+            .into_iter()
+            .find(|project| project.path == path)
+            .unwrap()
+            .id
+    };
+    f.approve_linked_metadata(&linked_project, &target, true);
     let (status, plan) = prepare(&f, action).await;
     assert_eq!(status, StatusCode::OK, "{plan}");
     let (status, result) = execute(&f, &plan["id"]).await;
     assert_eq!(status, StatusCode::OK, "{result}");
     assert_eq!(result["success"], true);
     assert!(!target.exists());
+}
+
+#[tokio::test]
+async fn prepared_git_mutation_is_consumed_without_writes_after_grant_epoch_changes() {
+    let f = Fixture::new();
+    repo(&f);
+    fs::write(f.root.join("file"), "epoch dirty\n").unwrap();
+    let index = fs::read(f.root.join(".git/index")).unwrap();
+    let (status, plan) = prepare(
+        &f,
+        json!({"kind":"stash_push","message":"stale epoch","include_untracked":false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store.revoke_grant(&f.project, &user.id).unwrap();
+        store.grant(&f.project, &user.id).unwrap();
+    }
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::CONFLICT);
+    assert_eq!(
+        fs::read_to_string(f.root.join("file")).unwrap(),
+        "epoch dirty\n"
+    );
+    assert_eq!(fs::read(f.root.join(".git/index")).unwrap(), index);
+    assert!(git(&f, &["stash", "list"]).is_empty());
+    let (status, fresh) = prepare(
+        &f,
+        json!({"kind":"stash_push","message":"fresh epoch","include_untracked":false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(execute(&f, &fresh["id"]).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn worktree_removal_pins_covering_grant_epoch_even_if_an_alternative_is_granted() {
+    let f = Fixture::new();
+    repo(&f);
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("tree");
+    git(
+        &f,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            target.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    let extra = {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        let project = store
+            .create_project("linked epoch", target.to_str().unwrap())
+            .unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        project.id
+    };
+    f.approve_linked_metadata(&extra, &target, true);
+    let (status, plan) = prepare(&f, json!({"kind":"worktree_remove","path":target})).await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    {
+        let plans = f.state.git_plans.lock().unwrap();
+        assert_eq!(
+            plans[plan["id"].as_str().unwrap()]
+                .worktree_grant
+                .as_ref()
+                .unwrap()
+                .project
+                .id,
+            extra
+        );
+    }
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store.revoke_grant(&extra, &user.id).unwrap();
+        store.grant(&extra, &user.id).unwrap();
+        let replacement = store
+            .create_project("new covering grant", outside.path().to_str().unwrap())
+            .unwrap();
+        store.grant(&replacement.id, &user.id).unwrap();
+    }
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(execute(&f, &plan["id"]).await.0, StatusCode::CONFLICT);
+    assert!(target.join("file").exists());
+    assert_eq!(
+        dunlin_workspace::git::overview::load(f.root.to_str().unwrap())
+            .unwrap()
+            .worktrees
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn linked_prepared_mutation_requires_write_and_consumes_old_metadata_grant_epoch() {
+    let f = Fixture::new();
+    repo(&f);
+    let directory = tempfile::tempdir().unwrap();
+    let linked = directory.path().join("linked");
+    git(
+        &f,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            linked.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    let project = {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        let project = store
+            .create_project("linked mutation", linked.to_str().unwrap())
+            .unwrap();
+        store.grant(&project.id, &user.id).unwrap();
+        project.id
+    };
+    fs::write(linked.join("file"), "linked dirty\n").unwrap();
+    f.approve_linked_metadata(&project, &linked, false);
+    let body = json!({"project":project,"action":{"kind":"stash_push","message":"linked","include_untracked":false}});
+    assert_eq!(
+        f.post("/v1/git/operation/prepare", Some(&f.token), body.clone())
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    f.approve_linked_metadata(&project, &linked, true);
+    let (status, plan) = f
+        .post("/v1/git/operation/prepare", Some(&f.token), body.clone())
+        .await;
+    assert_eq!(status, StatusCode::OK, "{plan}");
+    {
+        let store = f.state.store.lock().unwrap();
+        let user = store.authenticate(&f.token).unwrap().unwrap().0;
+        store
+            .revoke_local_metadata_grant(&project, &user.id, 2)
+            .unwrap();
+    }
+    f.approve_linked_metadata(&project, &linked, true);
+    let execute_body = json!({"project":project,"id":plan["id"]});
+    assert_eq!(
+        f.post(
+            "/v1/git/operation/execute",
+            Some(&f.token),
+            execute_body.clone()
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.post("/v1/git/operation/execute", Some(&f.token), execute_body)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        fs::read_to_string(linked.join("file")).unwrap(),
+        "linked dirty\n"
+    );
+    assert!(git(&f, &["stash", "list"]).is_empty());
+    let (status, fresh) = f
+        .post("/v1/git/operation/prepare", Some(&f.token), body)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{fresh}");
+    let (status, outcome) = f
+        .post(
+            "/v1/git/operation/execute",
+            Some(&f.token),
+            json!({"project":project,"id":fresh["id"]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{outcome}");
 }

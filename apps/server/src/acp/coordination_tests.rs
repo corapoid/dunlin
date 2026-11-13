@@ -187,6 +187,7 @@ fn sandbox_exposes_exact_broker_sockets_not_the_ledger_or_host_temp_directory() 
         &[],
         std::path::Path::new("/agent-home"),
         &[socket.clone(), executable.clone()],
+        &SandboxMetadataRoots::default(),
     );
     let args: Vec<_> = command
         .as_std()

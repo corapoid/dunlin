@@ -2,6 +2,10 @@
 use crate::{
     api::{ApiError, AppState, AuthUser},
     store::jobs::{Record, Task},
+    store::{
+        local_metadata::MetadataPermission,
+        native_checkout::{NativeCheckoutAuthority, NativeCheckoutStamp},
+    },
 };
 use axum::{
     Json,
@@ -53,43 +57,119 @@ pub(crate) fn settings(
 }
 pub(crate) fn authorized(state: &AppState, record: &Record) -> Result<(), String> {
     let store = state.store.lock().map_err(|_| "Store lock poisoned")?;
-    let user = store
-        .active_device_user(&record.task.device)
-        .map_err(|_| "Authorization unavailable")?
-        .filter(|user| user.id == record.job.owner)
-        .ok_or("Authorizing device was revoked; review and requeue from an active device")?;
-    if user.role != "admin" && crate::management::host_accounts(&state.config) {
-        return Err("Host account policy no longer allows this user".into());
+    store
+        .native_checkout_transaction(|store| {
+            authorized_in_store(state, store, record).map_err(crate::store::StoreError::Conflict)
+        })
+        .map_err(|e| e.to_string())
+}
+pub(crate) fn authorized_in_store(
+    state: &AppState,
+    store: &crate::store::Store,
+    record: &Record,
+) -> Result<(), String> {
+    let user = crate::management::authority::current_user_locked(
+        state,
+        store,
+        &record.job.owner,
+        &record.task.device,
+    )
+    .map_err(|_| "Authorizing device, OIDC or host policy changed")?;
+    let stamp = record
+        .task
+        .source_checkout_stamp
+        .as_ref()
+        .ok_or("Legacy task has no pinned checkout authority; review and enqueue again")?;
+    if stamp.native_grant.project_id != record.job.project_id
+        || stamp.native_grant.user_id != user.id
+        || stamp.permission != MetadataPermission::Read
+        || record.task.native_grant.as_ref() != Some(&stamp.native_grant)
+        || record.task.settings_digest != stamp.settings_digest
+    {
+        return Err("Task checkout scope changed".into());
     }
-    let project = store
-        .project_for_user(&record.job.project_id, &user.id)
-        .map_err(|_| "Project authorization unavailable")?
-        .ok_or("Project grant was revoked")?;
+    store
+        .validate_native_checkout_stamp_in_transaction(stamp)
+        .map_err(|_| "Source checkout authority changed; reapprove task")?;
     let revision = store
         .linear_revision(&user.id)
         .map_err(|_| "Linear configuration unavailable")?
         .ok_or("Linear was disconnected")?;
     if revision != record.task.linear_revision {
-        return Err("Linear configuration changed; reapprove the task".into());
+        return Err("Linear configuration changed; reapprove task".into());
     }
-    let current = std::fs::canonicalize(&project.path).map_err(|_| "Project root unavailable")?;
-    if current != std::path::Path::new(&record.task.root) {
-        return Err("Project root changed; reapprove the task".into());
+    let raw = store
+        .project_settings(&record.job.project_id)
+        .map_err(|_| "Project settings unavailable")?
+        .unwrap_or_else(|| "{}".into());
+    if crate::auth::hash_token(&raw) != record.task.settings_digest {
+        return Err("Project settings changed; reapprove task".into());
     }
-    drop(store);
-    let (digest, settings) = settings(state, &record.job.project_id)?;
-    if digest != record.task.settings_digest {
-        return Err("Project settings changed; reapprove the task".into());
-    }
+    let settings: dunlin_domain::ProjectSettings =
+        serde_json::from_str(&raw).map_err(|_| "Invalid project settings")?;
     if settings.permission_mode == Some(dunlin_domain::PermissionMode::ReadOnly)
         && record.job.profile.allow_tools
     {
-        return Err(
-            "Project read-only permission policy disallows approving client write/tool requests"
-                .into(),
-        );
+        return Err("Read-only policy disallows approved tools".into());
     }
     Ok(())
+}
+async fn capture_checkout(
+    state: &AppState,
+    project: &str,
+    user: &str,
+    permission: MetadataPermission,
+    expected: Option<&NativeCheckoutStamp>,
+    deadline: tokio::time::Instant,
+) -> Result<NativeCheckoutAuthority, String> {
+    let candidate = state
+        .store
+        .lock()
+        .map_err(|_| "Store unavailable")?
+        .native_checkout_candidate(project, user, permission)
+        .map_err(|e| e.to_string())?;
+    let permit = state
+        .fs_permit()
+        .map_err(|_| "Checkout validation capacity reached")?;
+    let job = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        candidate.validate_filesystem()
+    });
+    let validated = tokio::time::timeout_at(
+        deadline.min(tokio::time::Instant::now() + Duration::from_secs(5)),
+        job,
+    )
+    .await
+    .map_err(|_| "Checkout filesystem validation timed out")?
+    .map_err(|_| "Checkout filesystem validation interrupted")?
+    .map_err(|e| e.to_string())?;
+    let authority = state
+        .store
+        .lock()
+        .map_err(|_| "Store unavailable")?
+        .authorize_native_checkout(validated)
+        .map_err(|e| e.to_string())?;
+    if expected.is_some_and(|stamp| stamp != &authority.stamp()) {
+        return Err("Persisted checkout stamp changed; explicit reapproval required".into());
+    }
+    Ok(authority)
+}
+/// Reconstruct only by inspecting current SQL/FS and comparing every persisted
+/// pin. This helper never refreshes the caller's saved approval or starts work.
+pub(crate) async fn restore_job_checkout(
+    state: &AppState,
+    stamp: &NativeCheckoutStamp,
+    deadline: tokio::time::Instant,
+) -> Result<NativeCheckoutAuthority, String> {
+    capture_checkout(
+        state,
+        &stamp.native_grant.project_id,
+        &stamp.native_grant.user_id,
+        stamp.permission,
+        Some(stamp),
+        deadline,
+    )
+    .await
 }
 pub(crate) async fn list(
     State(state): State<AppState>,
@@ -153,7 +233,17 @@ pub(crate) async fn enqueue(
             "An explicit task/profile approval and bounded idempotency key are required",
         ));
     }
-    let project = state.project_for_user(&auth.user.id, &request.project_id)?;
+    let (project, native_grant) = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store lock poisoned"))?;
+        let project = store
+            .project_for_user(&request.project_id, &auth.user.id)?
+            .ok_or_else(ApiError::forbidden)?;
+        let grant = store.capture_native_grant(&project.id, &auth.user.id)?;
+        (project, grant)
+    };
     let connection=state.store.lock().map_err(|_|ApiError::internal("Store lock poisoned"))?.linear_connection(&auth.user.id)?
         .filter(|connection|connection.inbox.error.is_none() && connection.inbox.synced_at.is_some_and(|at|crate::store::now_secs()-at<=120))
         .ok_or_else(||ApiError::conflict("Connect/synchronize Linear on the target host first; the issue must be in your fresh tagged inbox"))?;
@@ -174,31 +264,33 @@ pub(crate) async fn enqueue(
         .clone()
         .try_acquire_owned()
         .map_err(|_| ApiError::conflict("Task preparation is busy"))?;
-    let root = tokio::fs::canonicalize(&project.path)
-        .await
-        .map_err(|_| ApiError::bad_request("Project root unavailable"))?
-        .to_string_lossy()
-        .into_owned();
-    let mut command = tokio::process::Command::new("git");
-    let output = tokio::time::timeout(
-        Duration::from_secs(10),
-        command
-            .args(["-C", &root, "rev-parse", "--verify", "HEAD"])
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .kill_on_drop(true)
-            .output(),
+    let source = capture_checkout(
+        &state,
+        &project.id,
+        &auth.user.id,
+        MetadataPermission::Read,
+        None,
+        tokio::time::Instant::now() + Duration::from_secs(10),
     )
     .await
-    .map_err(|_| ApiError::conflict("Git HEAD lookup timed out"))?
-    .map_err(|_| ApiError::bad_request("Git is unavailable"))?;
-    let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !output.status.success()
-        || !matches!(head.len(), 40 | 64)
-        || !head.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Err(ApiError::bad_request("Jobs require an existing Git commit"));
-    }
+    .map_err(ApiError::conflict)?;
+    let root = source.root().to_owned();
+    let head = runner::approved_head(&root)
+        .await
+        .map_err(ApiError::bad_request)?;
+    let source = capture_checkout(
+        &state,
+        &project.id,
+        &auth.user.id,
+        MetadataPermission::Read,
+        Some(&source.stamp()),
+        tokio::time::Instant::now() + Duration::from_secs(5),
+    )
+    .await
+    .map_err(ApiError::conflict)?;
     let task = Task {
+        source_checkout_stamp: Some(source.stamp()),
+        native_grant: Some(native_grant),
         linear_revision: connection.revision,
         settings_digest: settings(&state, &project.id)
             .map_err(ApiError::bad_request)?
@@ -210,6 +302,8 @@ pub(crate) async fn enqueue(
         device: auth.device.id.clone(),
     };
     let provisional = Record {
+        checkout_grant: None,
+        checkout_stamp: None,
         job: Job {
             id: String::new(),
             owner: auth.user.id.clone(),
@@ -230,12 +324,20 @@ pub(crate) async fn enqueue(
         task,
     };
     authorized(&state, &provisional).map_err(|_| ApiError::forbidden())?;
-    let job = state
-        .store
-        .lock()
-        .map_err(|_| ApiError::internal("Store lock poisoned"))?
-        .enqueue(&auth.user.id, &provisional.task)
-        .map_err(|error| ApiError::conflict(error.to_string()))?;
+    let job = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store lock poisoned"))?;
+        store
+            .native_checkout_transaction(|store| {
+                authorized_in_store(&state, store, &provisional)
+                    .map_err(crate::store::StoreError::Conflict)?;
+                store.revalidate_native_checkout_in_transaction(&source)?;
+                store.enqueue_in_transaction(&auth.user.id, &provisional.task)
+            })
+            .map_err(|e| ApiError::conflict(e.to_string()))?
+    };
     Ok(response(job))
 }
 pub(crate) async fn action(

@@ -1,0 +1,121 @@
+Sandbox suite=mcp container=dunlin-check-c44d1d828cdf426288806d35d2ee1c22 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=600s source_sha256=b55e83f7661cca5dece231a44ad75e62c09e3e8aa6fe74b5141cd801b36e3e87
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling synstructure v0.14.0
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling zerofrom-derive v0.1.8
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling serde_core v1.0.229
+   Compiling zerovec-derive v0.11.7
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.229
+   Compiling itoa v1.0.19
+   Compiling ring v0.17.14
+   Compiling serde_derive v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling typenum v1.20.1
+   Compiling hybrid-array v0.4.15
+   Compiling zeroize v1.9.1
+   Compiling memchr v2.8.3
+   Compiling rustls-pki-types v1.15.1
+   Compiling tinystr v0.8.5
+   Compiling getrandom v0.2.17
+   Compiling writeable v0.6.4
+   Compiling cmov v0.5.4
+   Compiling crc32fast v1.5.4
+   Compiling litemap v0.8.3
+   Compiling untrusted v0.9.0
+   Compiling httparse v1.10.1
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling ctutils v0.4.8
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling simd-adler32 v0.3.10
+   Compiling smallvec v1.16.5
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling once_cell v1.21.4
+   Compiling percent-encoding v2.3.2
+   Compiling log v0.4.35
+   Compiling const-oid v0.10.2
+   Compiling rustls v0.23.46
+   Compiling adler2 v2.0.1
+   Compiling bytes v1.12.1
+   Compiling http v1.5.0
+   Compiling miniz_oxide v0.9.1
+   Compiling digest v0.11.3
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling base64 v0.23.1
+   Compiling subtle v2.6.1
+   Compiling ureq-proto v0.7.1
+   Compiling flate2 v1.1.11
+   Compiling webpki-roots v1.0.11
+   Compiling cpufeatures v0.3.1
+   Compiling getrandom v0.4.3
+   Compiling utf8-zero v0.8.1
+   Compiling rand_core v0.10.1
+   Compiling ureq v3.5.1
+   Compiling sha2 v0.11.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling hex v0.4.3
+   Compiling thiserror v2.0.21
+   Compiling idna_adapter v1.2.2
+   Compiling thiserror-impl v2.0.21
+   Compiling vcpkg v0.2.15
+   Compiling pkg-config v0.3.34
+   Compiling libsqlite3-sys v0.39.1
+   Compiling idna v1.1.0
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling chacha20 v0.10.2
+   Compiling form_urlencoded v1.2.2
+   Compiling bitflags v2.13.2
+   Compiling autocfg v1.5.1
+   Compiling foldhash v0.2.0
+   Compiling hashbrown v0.17.1
+   Compiling num-traits v0.2.19
+   Compiling url v2.5.8
+   Compiling rand v0.10.3
+   Compiling hashlink v0.12.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling rustix v1.1.6
+   Compiling rusqlite v0.41.1
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling iana-time-zone v0.1.65
+   Compiling linux-raw-sys v0.12.1
+   Compiling chrono v0.4.45
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling hmac v0.13.0
+   Compiling fastrand v2.5.0
+   Compiling tempfile v3.27.0
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+error[E0616]: field `result` of struct `Reply` is private
+  --> crates/mcp-client/src/negotiated/tests.rs:16:12
+   |
+16 |     cached.result["ttlMs"] = json!(60000);
+   |            ^^^^^^ private field
+
+For more information about this error, try `rustc --explain E0616`.
+error: could not compile `dunlin-mcp-client` (lib test) due to 1 previous error
+Sandbox memory: {"memory.peak": "808841216", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

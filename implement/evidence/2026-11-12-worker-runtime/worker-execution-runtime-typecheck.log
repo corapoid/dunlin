@@ -1,0 +1,420 @@
+Sandbox suite=server container=dunlin-check-4609914924e44868b6c81e8bc62fe28a image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=3328m scratch=1280m file_size=134217728 wall=900s source_sha256=bb827a4d57c65adb760c396d15192ebf997a43bffe4a22004ac614696dac54e7
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.229
+   Compiling rand_core v0.10.1
+   Compiling itoa v1.0.19
+   Compiling getrandom v0.4.3
+   Compiling hybrid-array v0.4.15
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling serde v1.0.229
+   Compiling const-oid v0.10.2
+   Compiling serde_derive v1.0.229
+   Compiling crypto-common v0.2.2
+   Compiling bytes v1.12.1
+   Compiling block-buffer v0.12.1
+   Compiling digest v0.11.3
+   Compiling libm v0.2.16
+   Compiling memchr v2.8.3
+   Compiling autocfg v1.5.1
+   Compiling log v0.4.35
+   Compiling num-traits v0.2.19
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling zmij v1.0.23
+   Compiling cc v1.11.1
+   Compiling serde_json v1.0.154
+   Compiling synstructure v0.14.0
+   Compiling pin-project-lite v0.2.17
+   Compiling smallvec v1.16.5
+   Compiling http v1.5.0
+   Compiling base64ct v1.8.3
+   Compiling zerofrom-derive v0.1.8
+   Compiling getrandom v0.2.17
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling stable_deref_trait v1.2.1
+   Compiling once_cell v1.21.4
+   Compiling yoke v0.8.4
+   Compiling cpufeatures v0.3.1
+   Compiling syn v2.0.119
+   Compiling httparse v1.10.1
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling zerocopy v0.8.63
+   Compiling sha2 v0.11.1
+   Compiling pem-rfc7468 v1.0.0
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling bitflags v2.13.2
+   Compiling percent-encoding v2.3.2
+   Compiling signal-hook-registry v1.4.8
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling tinystr v0.8.5
+   Compiling tokio-macros v2.7.2
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling thiserror v2.0.21
+   Compiling utf_types v1.0.0
+   Compiling utf8_iter v1.1.0
+   Compiling icu_locale_core v2.4.0
+   Compiling tokio v1.54.1
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling rustls-pki-types v1.15.1
+   Compiling thiserror-impl v2.0.21
+   Compiling futures-core v0.3.34
+   Compiling untrusted v0.9.0
+   Compiling cpubits v0.1.1
+   Compiling icu_properties_data v2.4.0
+   Compiling icu_normalizer_data v2.4.0
+   Compiling crypto-bigint v0.7.11
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling spki v0.8.1
+   Compiling ff v0.14.0
+   Compiling pkg-config v0.3.34
+   Compiling rustls v0.23.46
+   Compiling vcpkg v0.2.15
+   Compiling crc32fast v1.5.4
+   Compiling libsqlite3-sys v0.39.1
+   Compiling pkcs8 v0.11.0
+   Compiling rustls-webpki v0.103.16
+   Compiling foldhash v0.2.0
+   Compiling hex v0.4.3
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.10
+   Compiling base64 v0.23.1
+   Compiling thiserror v1.0.69
+   Compiling miniz_oxide v0.9.1
+   Compiling hashbrown v0.17.1
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling group v0.14.0
+   Compiling form_urlencoded v1.2.2
+   Compiling thiserror-impl v1.0.69
+   Compiling rand_core v0.6.4
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling cpufeatures v0.2.17
+   Compiling base16ct v1.0.0
+   Compiling sec1 v0.8.1
+   Compiling flate2 v1.1.11
+   Compiling idna_adapter v1.2.2
+   Compiling hashlink v0.12.2
+   Compiling ureq-proto v0.7.1
+   Compiling webpki-roots v1.0.11
+   Compiling pem-rfc7468 v0.7.0
+   Compiling hmac v0.13.0
+   Compiling signature v3.0.0
+   Compiling fallible-iterator v0.3.0
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling utf8-zero v0.8.1
+   Compiling semver v1.0.28
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling iana-time-zone v0.1.65
+   Compiling getrandom v0.3.4
+   Compiling chrono v0.4.45
+   Compiling rusqlite v0.41.1
+   Compiling rustc_version v0.4.1
+   Compiling ureq v3.5.1
+   Compiling darling_core v0.24.1
+   Compiling der v0.7.10
+   Compiling idna v1.1.0
+   Compiling elliptic-curve v0.14.3
+   Compiling rand_chacha v0.3.1
+   Compiling primefield v0.14.0
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling chacha20 v0.10.2
+   Compiling rand v0.10.3
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling darling_macro v0.24.1
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling curve25519-dalek v5.0.0
+   Compiling rfc6979 v0.6.0
+   Compiling num-integer v0.1.47
+   Compiling crossbeam-utils v0.8.23
+   Compiling spin v0.9.9
+   Compiling cfg_aliases v0.1.1
+   Compiling num-bigint-dig v0.8.6
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling rand_core v0.9.5
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling primeorder v0.14.0
+   Compiling http-body v1.1.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling futures-macro v0.3.34
+   Compiling slab v0.4.12
+   Compiling futures-task v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling base64 v0.22.1
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling futures-sink v0.3.34
+   Compiling futures-util v0.3.34
+   Compiling event-listener v5.4.2
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling rand_chacha v0.9.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling signature v2.2.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling serde_repr v0.1.21
+   Compiling either v1.19.0
+   Compiling tower-service v0.3.3
+   Compiling jiff-core v0.1.4
+   Compiling rustix v1.1.6
+   Compiling try-lock v0.2.5
+   Compiling arrayvec v0.7.8
+   Compiling vte v0.15.0
+   Compiling want v0.3.2
+   Compiling jiff v0.2.41
+   Compiling itertools v0.14.0
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling rand v0.9.5
+   Compiling serde_with v3.24.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling filedescriptor v0.8.3
+   Compiling sha1 v0.10.7
+   Compiling hmac v0.12.1
+   Compiling serde_plain v1.0.2
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling shell-words v1.1.1
+   Compiling atomic-waker v1.1.2
+   Compiling dyn-clone v1.0.20
+   Compiling httpdate v1.0.3
+   Compiling winnow v1.0.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling sync_wrapper v1.0.2
+   Compiling unicode-width v0.2.3
+   Compiling tower-layer v0.3.3
+   Compiling vt100 v0.18.1
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling hyper v1.12.0
+   Compiling openidconnect v4.1.0
+   Compiling portable-pty v0.9.0
+   Compiling tungstenite v0.29.0
+   Compiling async-channel v2.5.0
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling http-body-util v0.1.5
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling sha1 v0.11.0
+   Compiling serde_spanned v1.1.3
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling mime v0.3.18
+   Compiling fastrand v2.5.0
+   Compiling ryu v1.0.23
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling tempfile v3.27.0
+   Compiling axum-core v0.5.6
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling tokio-tungstenite v0.29.0
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+warning: unused imports: `ExecutionEvent`, `ExecutionProducerRegistration`, and `ExecutionTransport`
+  --> apps/server/src/worker_channel.rs:38:5
+   |
+38 |     ExecutionEvent, ExecutionProducerRegistration, ExecutionTransport, ExecutionTransportError,
+   |     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `export_id`, `export_revision`, and `principal` are never used
+  --> apps/server/src/store/remote_bindings/resolver/execution.rs:60:12
+   |
+56 | impl PreparedRemoteExecution {
+   | ---------------------------- methods in this implementation
+...
+60 |     pub fn export_id(&self) -> &str {
+   |            ^^^^^^^^^
+...
+63 |     pub fn export_revision(&self) -> u64 {
+   |            ^^^^^^^^^^^^^^^
+...
+66 |     pub fn principal(&self) -> ExportPrincipal {
+   |            ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `request` is never read
+   --> apps/server/src/store/remote_bindings/resolver/execution.rs:115:5
+    |
+110 | struct StoredExecution {
+    |        --------------- field in this struct
+...
+115 |     request: RemoteExecutionRequest,
+    |     ^^^^^^^
+
+warning: fields `transport` and `message` are never read
+  --> apps/server/src/worker_channel/execution.rs:33:9
+   |
+32 | pub(crate) struct ExecutionEvent {
+   |                   -------------- fields in this struct
+33 |     pub transport: ExecutionTransport,
+   |         ^^^^^^^^^
+34 |     pub message: Reply,
+   |         ^^^^^^^
+
+warning: method `send_ack` is never used
+   --> apps/server/src/worker_channel/execution.rs:197:18
+    |
+ 70 | impl ExecutionTransport {
+    | ----------------------- method in this implementation
+...
+197 |     pub async fn send_ack(
+    |                  ^^^^^^^^
+
+warning: field `version` is never read
+  --> apps/server/src/worker_execution/runtime/process.rs:50:5
+   |
+47 | pub(super) struct Platform {
+   |                   -------- field in this struct
+...
+50 |     version: String,
+   |     ^^^^^^^
+   |
+   = note: `Platform` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `observation` is never used
+   --> apps/server/src/worker_execution/runtime/process.rs:866:19
+    |
+751 | impl Platform {
+    | ------------- method in this implementation
+...
+866 |     pub(super) fn observation(&self) -> (&str, &str) {
+    |                   ^^^^^^^^^^^
+
+warning: `dunlin-relay` (bin "dunlin-relay" test) generated 7 warnings (run `cargo fix --bin "dunlin-relay" -p dunlin-relay --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized] target(s) in 2m 14s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_identity-11d8cf44d473e148)
+     Running unittests src/main.rs (/scratch/target/debug/deps/dunlin_relay-f1d183387c2c6a47)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+
+running 45 tests
+test jobs::tests::removed_project_grant_revokes_execution_authority ... ok
+test jobs::tests::restart_blocks_dispatch_and_never_replays_ambiguous_execution_or_status ... ok
+test store::hosts::tests::tickets_and_credentials_are_distinct_hashed_single_use_and_survive_reopen_without_execution_authority ... ok
+test store::remote_bindings::resolver::execution::tests::cancellation_after_dispatch_with_lost_acceptance_retains_unknown_and_late_receipt_never_enables_renewal ... ok
+test store::remote_bindings::resolver::execution::tests::cancellation_before_dispatch_suppresses_locally_without_fabricating_a_worker_epoch ... ok
+test store::remote_bindings::resolver::execution::tests::each_renewal_pins_actual_worker_execute_and_logical_epochs_and_exact_duplicate_sequence ... ok
+test store::remote_bindings::resolver::execution::tests::historical_intent_lookup_survives_lost_http_response_and_offline_recovery_without_positive_authority ... ok
+test store::remote_bindings::resolver::execution::tests::identical_intent_retains_one_command_and_lost_dispatch_ack_never_replays_positive_work ... ok
+test store::remote_bindings::resolver::execution::tests::migration_35_preserves_v34_local_remote_bindings_and_existing_logical_native_grants_without_attempts ... ok
+test store::remote_bindings::resolver::execution::tests::migration_35_second_table_collision_rolls_back_first_table_and_version_then_recovers_after_only_collision_removal ... ok
+test store::remote_bindings::resolver::execution::tests::persisted_renewal_sequence_must_be_a_nonnegative_safe_sql_integer ... ok
+test store::remote_bindings::resolver::execution::tests::private_owner_device_scope_and_revocation_are_required_even_for_ledger_reads ... ok
+test store::remote_bindings::resolver::execution::tests::recovery_reserves_unknown_and_new_channel_reconcile_neither_renews_nor_dispatches ... ok
+test store::remote_bindings::resolver::execution::tests::revoked_user_permissions_cannot_block_producer_cancel_or_durable_terminal_ack_cleanup ... ok
+test store::remote_bindings::resolver::execution::tests::terminal_inbox_is_exact_fenced_digest_checked_and_applied_once_across_reopen ... ok
+test store::remote_bindings::resolver::execution::tests::two_independent_connections_racing_the_same_intent_commit_one_reservation ... ok
+test store::remote_bindings::resolver::execution::tests::v2_observation_without_live_v3_attestation_and_late_callback_failure_cannot_reserve ... ok
+test store::remote_bindings::tests::resolver_tests::create_only_actual_caller_resolves_own_read_grant_without_inheriting_admin_or_execution_authority ... ok
+test worker_channel::execution::tests::execution_request_queue_and_permits_remain_bounded_while_the_socket_consumer_is_stalled ... ok
+test worker_channel::execution::tests::metadata_or_unregistered_producer_never_manufactures_execution_transport ... ok
+test worker_channel::execution::tests::opaque_v3_attestation_requires_fresh_transaction_and_dies_on_slot_or_producer_replacement ... ok
+test worker_channel::execution::tests::reply_correlation_binds_renew_sequence_duration_and_query_identity_not_only_attempt_id ... ok
+test worker_client::tests::execution_configuration_is_explicit_strict_and_never_downgrades_an_enabled_invalid_runtime ... ok
+test worker_execution::tests::command_integrity_includes_every_scope_pin_boot_input_and_budget_except_its_self_digest ... ok
+test worker_execution::tests::outcome_codec_has_a_fixed_domain_separated_golden_and_excludes_only_its_digest ... ok
+test worker_execution::tests::profile_codec_matches_a_real_published_store_version_and_covers_skill_instructions ... ok
+test worker_exports::execution::tests::delayed_sqlite_commit_cannot_revive_an_expired_monotonic_lease ... ok
+test worker_exports::execution::tests::exact_retry_lost_receipt_and_start_intent_are_durable_not_new_process_permits ... ok
+test worker_exports::execution::tests::export_rebind_and_profile_or_policy_mismatch_cannot_admit_or_renew_authority ... ok
+test worker_exports::execution::tests::guardian_stop_finalization_after_revoke_is_atomic_without_reconstructing_a_lease ... ok
+test worker_exports::execution::tests::guardian_stop_finalization_preserves_an_existing_completed_outcome ... ok
+test worker_exports::execution::tests::last_v3_table_collision_rolls_back_first_tables_and_reopens_after_only_collision_removed ... ok
+test worker_exports::execution::tests::late_trusted_channel_loss_rolls_back_acceptance_and_reserved_outbox ... ok
+test worker_exports::execution::tests::lifetime_capacity_survives_terminal_ack_and_exact_receipt_still_bypasses_quota ... ok
+test worker_exports::execution::tests::old_boot_recovery_unknown_is_atomic_and_never_replays_or_overwrites_terminal ... ok
+test worker_exports::execution::tests::outbox_filters_before_paging_and_denied_rows_cannot_starve_a_readable_principal ... ok
+test worker_exports::execution::tests::read_revocation_blocks_retained_output_but_exact_ack_releases_only_outbox ... ok
+test worker_exports::execution::tests::real_operator_upgrade_v2_preserves_policy_and_grants_while_peer_open_never_migrates ... ok
+test worker_exports::execution::tests::renewal_exact_duplicates_never_extend_and_expired_clocks_cannot_be_restored ... ok
+test worker_exports::execution::tests::reserved_outcome_failure_rolls_back_acceptance_and_epoch ... ok
+test worker_exports::execution::tests::sql_revoke_regrant_and_filesystem_changes_do_not_refresh_an_old_live_authority ... ok
+test worker_exports::execution::tests::trusted_callback_loss_and_cancel_prevent_positive_completion_but_allow_unknown ... ok
+test worker_exports::execution::tests::two_connections_same_acceptance_have_one_launch_handle_and_active_capacity_is_global ... ok
+test worker_fixture::production_browser_acceptance_runtime_worker_execution_transport ... ignored, requires provisioned real bubblewrap/pidfd worker runtime runner
+test worker_fixture::real_private_dial_tls_wss_nonce_callback_and_heartbeat_revoke_without_execution ... ok
+
+test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 453 filtered out; finished in 3.36s
+
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_session_runtime-cbb2a147b6d2f4da)
+
+running 1 test
+test permissions::tests::nonce_supersession_expiry_and_denial_do_not_enable_late_execution ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_terminal-2b38cc8df1a2e6a9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_usage-828b2d3698218c9a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 37 filtered out; finished in 0.00s
+
+Sandbox memory: {"memory.peak": "3013017600", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

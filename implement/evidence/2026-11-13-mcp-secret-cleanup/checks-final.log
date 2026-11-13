@@ -1,0 +1,6 @@
+PASS selected rustfmt (edition2024, skip_children; root mcp_oauth preserves module ordering)
+PASS Node --check apps/web/e2e/mcp-oauth.mjs
+PASS documentation: 122 Markdown files, local links/anchors/navigation (before final receipt links)
+PASS git diff --check
+PASS final documentation after receipt links: 122 Markdown files
+PASS final git diff --check after receipt updates

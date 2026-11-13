@@ -1,0 +1,8 @@
+{
+  "before_source_sha256": "da8f90090cfc4abee3a08bf21e8e22942dae1495f0277688ca35c8fbb621ba0b",
+  "after_source_sha256": "6481dd1ea1e5a5078ba416b8153d07a9d2b9d706048bd003ae17103a3daaa956",
+  "only_changed_rust_input": "apps/server/src/api/web/tests/mcp_oauth_browser.rs",
+  "before_file_sha256": "66c349e0debf79cfde048522307c7053d233394d9a97dc7d8ccf68c0ca3dfda8",
+  "after_file_sha256": "5128a37b2bf8eb0e94dd52ba0c6254dcc8d72317d709fb0467ac7ed8dda537bc",
+  "verification": "Replacing only this ignored Chromium fixture with its saved prior bytes reconstructs the exact passed840 backend source hash. No production Rust or ordinary backend test changed; selected Chromium and current Clippy must validate the observation fix."
+}

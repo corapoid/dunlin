@@ -1,0 +1,17 @@
+     Locking 16 packages to highest Rust 1.92 compatible versions
+      Adding bit-set v0.8.0
+      Adding bit-vec v0.8.0
+      Adding borrow-or-share v0.2.4
+      Adding bytecount v0.6.9
+      Adding email_address v0.2.9
+      Adding fancy-regex v0.17.0
+      Adding fluent-uri v0.4.1
+      Adding fraction v0.15.4
+      Adding jsonschema v0.46.0
+      Adding micromap v0.3.0
+      Adding num-cmp v0.1.0
+      Adding outref v0.5.2
+      Adding referencing v0.46.10
+      Adding unicode-general-category v1.1.0
+      Adding uuid-simd v0.8.0
+      Adding vsimd v0.8.0

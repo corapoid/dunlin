@@ -19,6 +19,7 @@ use std::{
 
 pub struct Pending {
     owner: String,
+    authority: super::authority::AdminAuthority,
     created: Instant,
     stage: PathBuf,
     manifest: Manifest,
@@ -48,10 +49,17 @@ pub async fn begin(
     State(state): State<AppState>,
     Json(manifest): Json<Manifest>,
 ) -> Result<Json<Value>, ApiError> {
-    super::admin(&auth)?;
+    let authority = super::authority::AdminAuthority::capture(&state, &auth)?;
     project_copy::validate(&manifest).map_err(ApiError::bad_request)?;
     let root = super::root(&state.config).join("projects");
-    super::private_dir(&root).map_err(ApiError::internal)?;
+    {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store unavailable"))?;
+        authority.validate_locked(&state, &store)?;
+        super::private_dir(&root).map_err(ApiError::internal)?;
+    }
     if root.join(&manifest.name).symlink_metadata().is_ok() {
         return Err(ApiError::conflict(
             "A project with this name already exists; choose another name",
@@ -71,12 +79,20 @@ pub async fn begin(
     }
     let id = uuid::Uuid::now_v7().to_string();
     let stage = root.join(format!(".transfer-{id}"));
-    fs::create_dir(&stage).map_err(|e| ApiError::internal(e.to_string()))?;
-    super::private_dir(&stage).map_err(ApiError::internal)?;
+    {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store unavailable"))?;
+        authority.validate_locked(&state, &store)?;
+        fs::create_dir(&stage).map_err(|e| ApiError::internal(e.to_string()))?;
+        super::private_dir(&stage).map_err(ApiError::internal)?;
+    }
     management.copies.insert(
         id.clone(),
         Pending {
             owner: auth.user.id,
+            authority,
             created: Instant::now(),
             stage,
             manifest,
@@ -100,7 +116,7 @@ pub async fn chunk(
     Path(id): Path<String>,
     Json(chunk): Json<Chunk>,
 ) -> Result<StatusCode, ApiError> {
-    super::admin(&auth)?;
+    let authority = super::authority::AdminAuthority::capture(&state, &auth)?;
     if chunk.contents.len() > project_copy::CHUNK * 4 / 3 + 4 {
         return Err(ApiError::bad_request("Transfer chunk exceeds 1 MiB"));
     }
@@ -130,6 +146,14 @@ pub async fn chunk(
         return Err(ApiError::conflict(
             "Transfer offset or file size mismatch; do not retry blindly",
         ));
+    }
+    {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| ApiError::internal("Store unavailable"))?;
+        authority.validate_locked(&state, &store)?;
+        pending.authority.validate_locked(&state, &store)?;
     }
     let path = pending.stage.join(&chunk.path);
     if let Some(parent) = path.parent() {
@@ -163,7 +187,7 @@ pub async fn finish(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    super::admin(&auth)?;
+    let authority = super::authority::AdminAuthority::capture(&state, &auth)?;
     let pending = {
         let mut management = state
             .management
@@ -175,88 +199,20 @@ pub async fn finish(
             .remove(&id)
             .ok_or_else(ApiError::not_found)?
     };
-    let owner = auth.user.id;
-    let project = super::super::api::run_blocking(move || {
+    let project = super::authority::worker(move || {
         let mut pending = pending;
-        for entry in &pending.manifest.files {
-            if pending.offsets.get(&entry.path) != Some(&entry.size) {
-                return Err("Incomplete transfer".into());
-            }
-            let path = pending.stage.join(&entry.path);
-            if fs::metadata(&path).map_err(|e| e.to_string())?.len() != entry.size
-                || project_copy::digest(&path)? != entry.sha256
-            {
-                return Err(
-                    "Transfer checksum mismatch; the local project may have changed".into(),
-                );
-            }
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(
-                    &path,
-                    fs::Permissions::from_mode(if entry.executable { 0o700 } else { 0o600 }),
-                )
-                .map_err(|e| e.to_string())?;
-            }
-        }
-        if pending.manifest.history {
-            // shortcut: history import assumes SHA-1; carry object-format metadata before supporting SHA-256 repositories.
-            project_copy::git(&pending.stage, &["init", "-q"])?;
-            project_copy::git(
-                &pending.stage,
-                &[
-                    "fetch",
-                    "--update-head-ok",
-                    "--no-write-fetch-head",
-                    BUNDLE,
-                    "refs/heads/*:refs/heads/*",
-                    "refs/tags/*:refs/tags/*",
-                ],
-            )?;
-            let branch = pending
-                .manifest
-                .branch
-                .as_deref()
-                .ok_or("Missing Git branch")?;
-            project_copy::git(
-                &pending.stage,
-                &["symbolic-ref", "HEAD", &format!("refs/heads/{branch}")],
-            )?;
-            // shortcut: staging becomes unstaged; export a portable index when staged-state fidelity is required.
-            project_copy::git(&pending.stage, &["reset", "--mixed", "HEAD"])?;
-            fs::remove_file(pending.stage.join(BUNDLE)).map_err(|e| e.to_string())?;
-        }
-        let destination = pending
-            .stage
-            .parent()
-            .ok_or("Missing project root")?
-            .join(&pending.manifest.name);
-        dunlin_workspace::transfer::publish_directory(&pending.stage, &destination)?;
-        let result = (|| {
-            let store = state
-                .store
-                .lock()
-                .map_err(|_| "Store lock poisoned".to_string())?;
-            let project = store
-                .create_project(
-                    &pending.manifest.name,
-                    destination.to_str().ok_or("Invalid project destination")?,
-                )
-                .map_err(|e| e.to_string())?;
-            store
-                .grant(&project.id, &owner)
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>(project)
-        })();
-        // Keep a completed copy if registration fails; never delete user content.
-        pending.published = true;
-        result.map_err(|e| {
-            format!(
-                "Files copied to {} but registration failed: {e}",
-                destination.display()
-            )
-        })
+        authority.validate(&state)?;
+        pending.authority.validate(&state)?;
+        prepare(&pending).map_err(ApiError::bad_request)?;
+        let project = publish(&state, &authority, &mut pending)?;
+        authority
+            .validate(&state)
+            .map_err(|e| super::authority::uncertain(e.message))?;
+        pending
+            .authority
+            .validate(&state)
+            .map_err(|e| super::authority::uncertain(e.message))?;
+        Ok(project)
     })
     .await?;
     Ok(Json(json!(project)))
@@ -267,7 +223,7 @@ pub async fn cancel(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    super::admin(&auth)?;
+    let _authority = super::authority::AdminAuthority::capture(&state, &auth)?;
     let mut management = state
         .management
         .lock()
@@ -275,4 +231,176 @@ pub async fn cancel(
     valid(&mut management.copies, &id, &auth.user.id)?;
     management.copies.remove(&id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+// All expensive verification and Git operations stay inside the unpublished
+// stage, outside Store and Management locks.
+pub(super) fn prepare(pending: &Pending) -> Result<(), String> {
+    for entry in &pending.manifest.files {
+        if pending.offsets.get(&entry.path) != Some(&entry.size) {
+            return Err("Incomplete transfer".into());
+        }
+        let path = pending.stage.join(&entry.path);
+        if fs::metadata(&path).map_err(|e| e.to_string())?.len() != entry.size
+            || project_copy::digest(&path)? != entry.sha256
+        {
+            return Err("Transfer checksum mismatch; the local project may have changed".into());
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(
+                &path,
+                fs::Permissions::from_mode(if entry.executable { 0o700 } else { 0o600 }),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    if pending.manifest.history {
+        // shortcut: history import assumes SHA-1; carry object-format metadata before supporting SHA-256 repositories.
+        project_copy::git(&pending.stage, &["init", "-q"])?;
+        project_copy::git(
+            &pending.stage,
+            &[
+                "fetch",
+                "--update-head-ok",
+                "--no-write-fetch-head",
+                BUNDLE,
+                "refs/heads/*:refs/heads/*",
+                "refs/tags/*:refs/tags/*",
+            ],
+        )?;
+        let branch = pending
+            .manifest
+            .branch
+            .as_deref()
+            .ok_or("Missing Git branch")?;
+        project_copy::git(
+            &pending.stage,
+            &["symbolic-ref", "HEAD", &format!("refs/heads/{branch}")],
+        )?;
+        // shortcut: staging becomes unstaged; export a portable index when staged-state fidelity is required.
+        project_copy::git(&pending.stage, &["reset", "--mixed", "HEAD"])?;
+        fs::remove_file(pending.stage.join(BUNDLE)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+pub(super) fn publish(
+    state: &AppState,
+    authority: &super::authority::AdminAuthority,
+    pending: &mut Pending,
+) -> Result<crate::store::Project, ApiError> {
+    if authority.user != pending.owner
+        || pending.authority.user != pending.owner
+        || pending.created.elapsed() >= Duration::from_secs(1800)
+    {
+        return Err(ApiError::not_found());
+    }
+    let destination = pending
+        .stage
+        .parent()
+        .ok_or_else(|| ApiError::internal("Missing project root"))?
+        .join(&pending.manifest.name);
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| ApiError::internal("Store unavailable"))?;
+    authority.validate_locked(state, &store)?;
+    pending.authority.validate_locked(state, &store)?;
+    dunlin_workspace::transfer::publish_directory(&pending.stage, &destination)
+        .map_err(ApiError::conflict)?;
+    // Files are now published. Never remove the destination if SQL registration
+    // fails, and never report a retry-safe failure for this partial outcome.
+    pending.published = true;
+    (|| {
+        let project = store.create_project(
+            &pending.manifest.name,
+            destination
+                .to_str()
+                .ok_or_else(|| ApiError::internal("Invalid project destination"))?,
+        )?;
+        store.grant(&project.id, &pending.owner)?;
+        Ok::<_, ApiError>(project)
+    })()
+    .map_err(|e| {
+        super::authority::uncertain(format!(
+            "Files copied to {} but registration failed: {}",
+            destination.display(),
+            e.message
+        ))
+    })
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    #[test]
+    fn revoked_begin_device_cannot_publish_a_verified_stage_via_another_admin_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::open(dir.path().join("db")).unwrap();
+        let user = store.create_user("admin", "admin").unwrap();
+        let (first, _) = store.create_device(&user.id, "begin").unwrap();
+        let (second, _) = store.create_device(&user.id, "finish").unwrap();
+        let state = AppState::new(
+            store,
+            crate::config::Config {
+                db: dir.path().join("db"),
+                ..Default::default()
+            },
+        );
+        let begin = super::super::authority::AdminAuthority::capture(
+            &state,
+            &AuthUser {
+                user: user.clone(),
+                device: first.clone(),
+            },
+        )
+        .unwrap();
+        let finish = super::super::authority::AdminAuthority::capture(
+            &state,
+            &AuthUser {
+                user: user.clone(),
+                device: second,
+            },
+        )
+        .unwrap();
+        let root = super::super::root(&state.config).join("projects");
+        fs::create_dir_all(&root).unwrap();
+        let stage = root.join(".transfer-controlled");
+        fs::create_dir(&stage).unwrap();
+        fs::write(stage.join("file.txt"), b"private contents").unwrap();
+        let manifest=serde_json::from_value(json!({"name":"must-not-publish","history":false,"branch":null,"files":[{"path":"file.txt","size":16,"sha256":hex::encode(Sha256::digest(b"private contents")),"executable":false}]})).unwrap();
+        let mut pending = Pending {
+            owner: user.id.clone(),
+            authority: begin,
+            created: Instant::now(),
+            stage: stage.clone(),
+            manifest,
+            offsets: HashMap::from([("file.txt".into(), 16)]),
+            published: false,
+        };
+        prepare(&pending).unwrap();
+        state
+            .store
+            .lock()
+            .unwrap()
+            .revoke_device(&first.id)
+            .unwrap();
+        assert_eq!(
+            publish(&state, &finish, &mut pending).unwrap_err().status,
+            StatusCode::UNAUTHORIZED
+        );
+        assert!(!root.join("must-not-publish").exists());
+        assert!(
+            state
+                .store
+                .lock()
+                .unwrap()
+                .list_projects()
+                .unwrap()
+                .is_empty()
+        );
+        drop(pending);
+        assert!(!stage.exists());
+    }
 }

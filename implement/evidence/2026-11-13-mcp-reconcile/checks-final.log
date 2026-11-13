@@ -1,0 +1,8 @@
+PASS selected rustfmt (edition2024, skip_children)
+PASS Node syntax mcp-oauth.mjs
+PASS git diff --check
+PASS 122 Markdown files / local links / anchors / navigation before final receipt links
+PASS independent current Rust/frontend/typecheck snapshot hashes match accepted logs
+PASS original reconcile desktop/mobile PNGs viewed (1440/390 widths)
+PASS final documentation with receipt links: 122 Markdown files
+PASS final git diff --check after documentation updates

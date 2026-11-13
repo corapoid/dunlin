@@ -3,6 +3,7 @@ use crate::{config::Config, store::Store};
 use dunlin_domain::jobs::Profile;
 use dunlin_mcp_client::linear::{Filter, Inbox, Issue, issue_digest};
 use std::{fs, process::Command};
+mod checkout;
 mod status;
 
 struct Fixture {
@@ -106,7 +107,31 @@ impl Fixture {
             )),
             ..Default::default()
         });
+        let native_grant = state
+            .store
+            .lock()
+            .unwrap()
+            .capture_native_grant(&project.id, &user.id)
+            .unwrap();
+        let source_checkout_stamp = {
+            let candidate = state
+                .store
+                .lock()
+                .unwrap()
+                .native_checkout_candidate(&project.id, &user.id, MetadataPermission::Read)
+                .unwrap();
+            let validated = candidate.validate_filesystem().unwrap();
+            state
+                .store
+                .lock()
+                .unwrap()
+                .authorize_native_checkout(validated)
+                .unwrap()
+                .stamp()
+        };
         let task = Task {
+            native_grant: Some(native_grant),
+            source_checkout_stamp: Some(source_checkout_stamp),
             request: Enqueue {
                 issue_id: issue.id.clone(),
                 expected_issue_digest: issue_digest(&issue),
@@ -288,13 +313,33 @@ fn removed_project_grant_revokes_execution_authority() {
     let f = Fixture::new("ok");
     let record = f.claim();
     assert!(authorized(&f.state, &record).is_ok());
-    let connection = rusqlite::Connection::open(f.dir.path().join("relay.db")).unwrap();
-    connection
-        .execute(
-            "DELETE FROM project_grants WHERE project_id=?1 AND user_id=?2",
-            rusqlite::params![f.task.request.project_id, f.user],
-        )
-        .unwrap();
+    {
+        let store = f.state.store.lock().unwrap();
+        store
+            .revoke_grant(&f.task.request.project_id, &f.user)
+            .unwrap();
+    }
+    assert!(authorized(&f.state, &record).is_err());
+}
+
+#[test]
+fn revoked_regranted_native_epoch_never_revives_approved_or_legacy_job() {
+    let f = Fixture::new("ok");
+    let mut record = f.claim();
+    assert!(authorized(&f.state, &record).is_ok());
+    {
+        let store = f.state.store.lock().unwrap();
+        store.revoke_grant(&record.job.project_id, &f.user).unwrap();
+        store.grant(&record.job.project_id, &f.user).unwrap();
+        assert!(
+            store
+                .project_for_user(&record.job.project_id, &f.user)
+                .unwrap()
+                .is_some()
+        );
+    }
+    assert!(authorized(&f.state, &record).is_err());
+    record.task.native_grant = None;
     assert!(authorized(&f.state, &record).is_err());
 }
 
@@ -535,3 +580,257 @@ async fn queue_api_requires_device_project_and_owner_or_admin_authority() {
     }
 }
 use std::path::PathBuf;
+
+#[tokio::test]
+async fn derived_checkout_epoch_revocation_stops_old_process_and_new_job_needs_fresh_checkout() {
+    let mut f = Fixture::new("hang");
+    let script = f.dir.path().join("fake.py");
+    let original = include_str!("tests/fake_acp.py");
+    let delayed = original.replace(
+        "while True:\n                time.sleep(1)",
+        "time.sleep(2)\n            open('late-derived-mutation', 'w').write('must not run')\n            while True:\n                time.sleep(1)",
+    );
+    assert_ne!(delayed, original);
+    fs::write(&script, delayed).unwrap();
+    let record = f.claim();
+    let id = record.job.id.clone();
+    let marker = f.checkout(&id).join("started");
+    let state = f.state.clone();
+    let owner = f.user.clone();
+    let control = async move {
+        let pid = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                if let Some(pid) = fs::read_to_string(&marker)
+                    .ok()
+                    .and_then(|s| s.parse::<i32>().ok())
+                {
+                    break pid;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("The real fixture process must reach its prompt");
+        let store = state.store.lock().unwrap();
+        let running = store.job(&id).unwrap().unwrap();
+        let project = running.job.checkout_project.as_ref().unwrap().clone();
+        let pin = running.checkout_grant.as_ref().unwrap().clone();
+        assert_eq!(pin.project_id, project);
+        assert_eq!(pin.user_id, owner);
+        // No observer can see the intermediate denial. Presence-only checks
+        // would accept this exact same project again and let the process run.
+        store.revoke_grant(&project, &owner).unwrap();
+        store.grant(&project, &owner).unwrap();
+        assert!(store.project_for_user(&project, &owner).unwrap().is_some());
+        assert!(store.revalidate_native_grant(&pin).is_err());
+        (project, pin, pid)
+    };
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let (result, (derived, old_pin, pid)) =
+        tokio::join!(runner::execute_until(&f.state, &record, deadline), control);
+    let error = result.unwrap_err();
+    assert_eq!(error.0, Status::Blocked);
+    assert!(
+        !f.checkout(&record.job.id)
+            .join("late-derived-mutation")
+            .exists()
+    );
+    #[cfg(unix)]
+    assert_ne!(
+        unsafe { libc::kill(pid, 0) },
+        0,
+        "The stale process must be stopped"
+    );
+    {
+        let store = f.state.store.lock().unwrap();
+        let persisted = store.job(&record.job.id).unwrap().unwrap();
+        assert_eq!(persisted.checkout_grant, Some(old_pin.clone()));
+        assert_eq!(
+            store
+                .capture_native_grant(&derived, &f.user)
+                .unwrap()
+                .revision,
+            old_pin.revision + 2
+        );
+        store
+            .finish_job(&record.job.id, Status::Blocked, &error.1)
+            .unwrap();
+    }
+    let reopened = Store::open(&f.state.config.db).unwrap();
+    assert_eq!(
+        reopened
+            .job(&record.job.id)
+            .unwrap()
+            .unwrap()
+            .checkout_grant,
+        Some(old_pin)
+    );
+    drop(reopened);
+
+    fs::write(&script, original).unwrap();
+    let (program, mut args) = f.state.jobs.command.clone().unwrap();
+    *args.last_mut().unwrap() = "ok".into();
+    f.state.jobs = Arc::new(Service {
+        command: Some((program, args)),
+        ..Default::default()
+    });
+    f.task.issue.id = "fresh-derived-issue".into();
+    f.task.request.issue_id = f.task.issue.id.clone();
+    f.task.request.idempotency_key = "fresh-derived-approval".into();
+    f.task.native_grant = Some(
+        f.state
+            .store
+            .lock()
+            .unwrap()
+            .capture_native_grant(&f.task.request.project_id, &f.user)
+            .unwrap(),
+    );
+    f.task.source_checkout_stamp = Some({
+        let candidate = f
+            .state
+            .store
+            .lock()
+            .unwrap()
+            .native_checkout_candidate(
+                &f.task.request.project_id,
+                &f.user,
+                MetadataPermission::Read,
+            )
+            .unwrap();
+        let validated = candidate.validate_filesystem().unwrap();
+        f.state
+            .store
+            .lock()
+            .unwrap()
+            .authorize_native_checkout(validated)
+            .unwrap()
+            .stamp()
+    });
+    let fresh = f.claim();
+    let report = runner::execute(&f.state, &fresh).await.unwrap();
+    assert!(report.contains("fixture review"));
+    assert!(f.checkout(&fresh.job.id).join("result.txt").exists());
+    let store = f.state.store.lock().unwrap();
+    let current = store.job(&fresh.job.id).unwrap().unwrap();
+    let pin = current.checkout_grant.unwrap();
+    assert_ne!(pin.project_id, derived);
+    store.revalidate_native_grant(&pin).unwrap();
+}
+
+#[tokio::test]
+async fn migration_preserves_legacy_checkout_without_inventing_a_grant_pin() {
+    let f = Fixture::new("ok");
+    let record = f.claim();
+    let derived = {
+        let store = f.state.store.lock().unwrap();
+        let project = store
+            .create_project(
+                "legacy-checkout",
+                f.checkout(&record.job.id).to_str().unwrap(),
+            )
+            .unwrap();
+        store.grant(&project.id, &f.user).unwrap();
+        store
+            .job_running(&record.job.id, &project.id, "legacy-branch")
+            .unwrap();
+        // Reproduce the exact pre-migration 25 table: the source task stamp
+        // already existed, while derived checkout authority was not captured.
+        rusqlite::Connection::open(&f.state.config.db)
+            .unwrap()
+            .execute_batch(
+                "DROP TABLE IF EXISTS scoped_secret_references; DROP TABLE IF EXISTS scoped_credentials; ALTER TABLE team_audit DROP COLUMN resource_id; DROP TABLE IF EXISTS interactive_mcp_inputs; DROP TABLE mcp_oauth_secret_references; DROP TABLE mcp_oauth_connections; DROP TABLE controller_remote_session_stream; DROP TABLE controller_remote_session_turns; DROP TABLE controller_remote_sessions; DROP TABLE controller_remote_execution_outcomes; DROP TABLE controller_remote_executions; ALTER TABLE relay_jobs DROP COLUMN checkout_stamp; ALTER TABLE team_local_bindings DROP COLUMN metadata_approval_revision; DROP TABLE team_local_binding_revocations; DROP TABLE native_metadata_grants; DROP TABLE native_metadata_audit; DROP TABLE native_metadata_revocations; DROP TABLE native_metadata_approvals; DROP TABLE team_remote_binding_revocations; DROP TABLE team_remote_bindings; DROP TABLE team_worker_channels; DROP TABLE team_host_revocations; DROP TABLE team_hosts; DROP TABLE interactive_session_profiles; DROP TABLE team_agent_versions; DROP TABLE team_agent_drafts; DROP TABLE interactive_session_admissions; ALTER TABLE relay_jobs DROP COLUMN checkout_grant; ALTER TABLE interactive_ahp_clients DROP COLUMN views; PRAGMA user_version=25;",
+            )
+            .unwrap();
+        project.id
+    };
+    let restarted = AppState::new(
+        Store::open(&f.state.config.db).unwrap(),
+        (*f.state.config).clone(),
+    );
+    let old = restarted
+        .store
+        .lock()
+        .unwrap()
+        .job(&record.job.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(old.job.checkout_project.as_deref(), Some(derived.as_str()));
+    assert!(old.checkout_grant.is_none());
+    let error = runner::execute_until(
+        &restarted,
+        &old,
+        tokio::time::Instant::now() + Duration::from_secs(1),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.0, Status::Blocked);
+    assert!(error.1.contains("Legacy checkout"));
+    assert!(!f.checkout(&record.job.id).exists());
+    assert!(
+        restarted
+            .store
+            .lock()
+            .unwrap()
+            .job(&record.job.id)
+            .unwrap()
+            .unwrap()
+            .checkout_grant
+            .is_none()
+    );
+}
+
+#[test]
+fn checkout_registration_rolls_back_status_project_branch_and_stamp_together() {
+    let f = Fixture::new("ok");
+    let record = f.claim();
+    let task = serde_json::to_value(&record.task).unwrap();
+    let project = {
+        let store = f.state.store.lock().unwrap();
+        let project = store
+            .create_project(
+                "atomic-checkout",
+                f.checkout(&record.job.id).to_str().unwrap(),
+            )
+            .unwrap();
+        store.grant(&project.id, &f.user).unwrap();
+        project
+    };
+    let connection = rusqlite::Connection::open(&f.state.config.db).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_checkout BEFORE UPDATE OF checkout_grant ON relay_jobs BEGIN SELECT RAISE(ABORT,'injected'); END;").unwrap();
+    {
+        let store = f.state.store.lock().unwrap();
+        assert!(
+            store
+                .job_running(&record.job.id, &project.id, "atomic-branch")
+                .is_err()
+        );
+        let unchanged = store.job(&record.job.id).unwrap().unwrap();
+        assert_eq!(unchanged.job.status, Status::Preparing);
+        assert!(unchanged.job.checkout_project.is_none());
+        assert!(unchanged.job.branch.is_none());
+        assert!(unchanged.checkout_grant.is_none());
+    }
+    connection
+        .execute_batch("DROP TRIGGER fail_checkout")
+        .unwrap();
+    let store = f.state.store.lock().unwrap();
+    store
+        .job_running(&record.job.id, &project.id, "atomic-branch")
+        .unwrap();
+    let running = store.job(&record.job.id).unwrap().unwrap();
+    assert_eq!(running.job.status, Status::Running);
+    assert_eq!(
+        running.job.checkout_project.as_deref(),
+        Some(project.id.as_str())
+    );
+    assert_eq!(running.job.branch.as_deref(), Some("atomic-branch"));
+    assert_eq!(
+        running.checkout_grant.as_ref().unwrap(),
+        &store.capture_native_grant(&project.id, &f.user).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&running.task).unwrap(),
+        task,
+        "Derived execution authority must not rewrite the approved Task/fingerprint"
+    );
+}

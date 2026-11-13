@@ -1,12 +1,12 @@
 # Reviewed dependency migrations (no advisory exceptions)
 
-These are **Dunlin-maintained local forks**, not unmodified upstream packages.
+This directory contains **Dunlin-maintained local forks** and pinned AHP SDK source copies.
 Their upstream versions remain in the directory names for provenance; patches
 are explicit in the workspace `[patch.crates-io]` table. They are not published
 to crates.io. Upstream licenses, notices and sources are retained.
 
 `provenance.json` records the SHA-256 of each original crates.io archive from
-the application lockfile, every modified file's before/after hash, and the complete
+the application lockfile (or explicitly pinned source archive), every modified file's before/after hash, and the complete
 patched tree digest. `python3 scripts/verify_vendor.py` fails on unreviewed tree
 changes, unregistered patches, symlinks or reintroduction of any of the five old
 packages anywhere in the lockfile. It does not exempt forks from cargo-deny.
@@ -84,3 +84,14 @@ Mirrored upstream CI templates under `vendor/**/.github` cannot execute from tha
 location and are excluded from workflow analysis. Patched Rust sources remain
 in CodeQL scope. Upstream whitespace is preserved; first-party formatting rules
 and the complete-tree integrity check remain active.
+
+## Agent Host Protocol SDK
+
+`ahp` and `ahp-types` 1.0.0 use unchanged upstream `src/` from the pinned
+[v1.0.0 tag](https://github.com/microsoft/agent-host-protocol/tree/v1.0.0).
+Their standalone manifests normalize workspace inheritance and omit upstream
+example/dev dependencies; the original manifests and MIT licenses are retained.
+`provenance.json` records the source archive SHA256, normalized manifest hashes
+and complete tree digests verified by the same CI gate. These entries are source
+copies, not new security forks or advisory exceptions. Reducer/type checks do
+not establish Dunlin AHP transport conformance.

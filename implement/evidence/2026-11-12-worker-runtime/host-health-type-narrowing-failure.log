@@ -1,0 +1,13 @@
+Sandbox suite=typecheck container=dunlin-check-278688f1e6374a399cf85db77e59ea41 image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=120s source_sha256=5af79d049b2d9901ac0d17bb77ebcb6c49e77987707d5591b2cf9a7506ff8fae
+src/lib/host-health.ts(142,19): error TS2339: Property 'sequence' does not exist on type 'Event'.
+  Property 'sequence' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.
+src/lib/host-health.ts(143,52): error TS2339: Property 'health' does not exist on type 'Event'.
+  Property 'health' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.
+src/lib/host-health.ts(144,64): error TS2339: Property 'sequence' does not exist on type 'Event'.
+  Property 'sequence' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.
+src/lib/host-health.ts(146,29): error TS2339: Property 'health' does not exist on type 'Event'.
+  Property 'health' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.
+src/lib/host-health.ts(148,18): error TS2339: Property 'health' does not exist on type 'Event'.
+  Property 'health' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.
+src/lib/host-health.ts(149,70): error TS2339: Property 'health' does not exist on type 'Event'.
+  Property 'health' does not exist on type '{ type: "heartbeat" | "unavailable"; stream_id: string; }'.

@@ -1,0 +1,30 @@
+{
+  "source_sha256": "f44ac2f408dd802c033724ef33f15bb27056256413ce73cc7598b4e4e03030f5",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-scope-server-final.log",
+      "log_sha256": "61f765b8bbf4c21dbe4f452c9500ec9d52292e9a238c3336e63e6967c7fb5e3d",
+      "source_sha256": "f44ac2f408dd802c033724ef33f15bb27056256413ce73cc7598b4e4e03030f5",
+      "exit_code": 0,
+      "scope": "764 server-family tests, including six scoped SQL/OAuth tests."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-scope-runtime-final.log",
+      "log_sha256": "ede4eede262d57c34cf57afb001493a43f8a529a6ab5d8babe0ba7d3c5f22f8f",
+      "source_sha256": "f44ac2f408dd802c033724ef33f15bb27056256413ce73cc7598b4e4e03030f5",
+      "exit_code": 0,
+      "scope": "Focused actual production executable, bwrap/LSM and local MCP stdio acceptance; not remote tools/call."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-scope-clippy-final.log",
+      "log_sha256": "4e30b35f3a6b5b8219e47a96395eec2d30f5eb9226d712c32ca7528e85ba5782",
+      "source_sha256": "f44ac2f408dd802c033724ef33f15bb27056256413ce73cc7598b4e4e03030f5",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied."
+    }
+  ],
+  "scope": "Private scoped SQL authority and live OAuth refresh guards. Host Authority adapter, typed v5 producer/runner proxy and public remote MCP remain incomplete."
+}

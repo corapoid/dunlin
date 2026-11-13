@@ -1,0 +1,63 @@
+{
+  "final_source_sha256": "f93067224e098288494f85f54eb8425bf6a25eb42be5cd45064691109122faef",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "mcp-v5-wire-server-final.log",
+      "log_sha256": "1d7aec1071c79f9647029df42199cdda5454172d4f01ee6bd5ffa2036774373e",
+      "source_sha256": "2901151ba42551a657f1a6950686baa2b1b2f700b8b0e4845cb14372c6299044",
+      "exit_code": 0,
+      "scope": "748 full server-family tests; before the additional manual probe/rate assertions and three comment changes."
+    },
+    {
+      "suite": "runtime",
+      "log": "mcp-v5-wire-runtime-final.log",
+      "log_sha256": "04471d4e12487313962b06b96c85442df7abea83c95b57e9825cb826ebb7bdca",
+      "source_sha256": "2359ca5689209ce88683cbf66d56b29d5d92749af9679fddb32319e5e5e52658",
+      "exit_code": 0,
+      "scope": "Five real remote acceptance scenarios: v3 execution, process restarts, v5 persistent transport, session Journal and v4 persistent transport; UI label-only difference from final."
+    },
+    {
+      "suite": "unbound",
+      "log": "mcp-v5-wire-unbound-final.log",
+      "log_sha256": "b6bbf86260efb6e381a4c77f10fb325a3e138e5e36ac9f97c01337b4fb6f78f3",
+      "source_sha256": "f93067224e098288494f85f54eb8425bf6a25eb42be5cd45064691109122faef",
+      "exit_code": 0,
+      "scope": "One new real TLS/WSS reverse-proof test: no MCP authority from transport alone."
+    },
+    {
+      "suite": "clippy",
+      "log": "mcp-v5-wire-clippy-final.log",
+      "log_sha256": "ea681bc7f8c84c57f83d4509b2372523d9d8b8552b1d77f3ce82180ca4b4f48a",
+      "source_sha256": "f93067224e098288494f85f54eb8425bf6a25eb42be5cd45064691109122faef",
+      "exit_code": 0,
+      "scope": "All targets with warnings denied, final source."
+    },
+    {
+      "suite": "domain",
+      "log": "mcp-v5-wire-domain-final.log",
+      "log_sha256": "6ce2f324d0d64dfdb4cbf7cf43d7c0b8308faa3dade0e56d59a54d444d310978",
+      "source_sha256": "f93067224e098288494f85f54eb8425bf6a25eb42be5cd45064691109122faef",
+      "exit_code": 0,
+      "scope": "50 domain and 44 protocol tests, including v5/unknown-version rate assertions."
+    },
+    {
+      "suite": "typecheck",
+      "log": "mcp-v5-wire-typecheck-final.log",
+      "log_sha256": "4ed508e5c7ed162bfecae36e75805f23c38c7c1c5d286a7da04a3a3d66d4a47f",
+      "source_sha256": "368dbb82eed6059902ec751cd01637a2aa2968dba52247964692d68c7e13bd71",
+      "exit_code": 0,
+      "scope": "Frontend-only snapshot/input set; TypeScript --noEmit including the v5 monitor label."
+    },
+    {
+      "suite": "frontend",
+      "log": "mcp-v5-wire-frontend-final.log",
+      "log_sha256": "b8700db02c35a809a06880a36d51b2c88e02c1c71d6a014e01affc0e9f58112f",
+      "source_sha256": null,
+      "exit_code": 0,
+      "scope": "141 host Node tests on the final frontend; no Rust was run on the host."
+    }
+  ],
+  "source_scope_proof": "source-scope-proof.json",
+  "scope": "Active opt-in v5 transport with Hello5, private reverse proof, normal persistent ACP and denied unbound MCP. Private remote MCP admission/Authority, new open producer, runner proxy/dispatcher binding and full tools/call acceptance remain open."
+}

@@ -169,7 +169,7 @@ jobs:
   # always() is essential: a failed/cancelled prerequisite must fail this gate,
   # not leave a skipped check that GitHub could consider mergeable.
   test:
-    needs: [macos-checks, macos-build, headless]
+    needs: [macos-checks, macos-build, headless, app-web, runtime-sandbox]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -179,9 +179,11 @@ jobs:
           CHECKS_RESULT: ${{ needs.macos-checks.result }}
           BUILD_RESULT: ${{ needs.macos-build.result }}
           HEADLESS_RESULT: ${{ needs.headless.result }}
+          APP_WEB_RESULT: ${{ needs.app-web.result }}
+          RUNTIME_RESULT: ${{ needs.runtime-sandbox.result }}
         run: |
-          if [[ "$CHECKS_RESULT" != "success" || "$BUILD_RESULT" != "success" || "$HEADLESS_RESULT" != "success" ]]; then
-            echo "::error::macOS checks: $CHECKS_RESULT; macOS build: $BUILD_RESULT; headless: $HEADLESS_RESULT"
+          if [[ "$CHECKS_RESULT" != "success" || "$BUILD_RESULT" != "success" || "$HEADLESS_RESULT" != "success" || "$APP_WEB_RESULT" != "success" || "$RUNTIME_RESULT" != "success" ]]; then
+            echo "::error::macOS checks: $CHECKS_RESULT; macOS build: $BUILD_RESULT; headless: $HEADLESS_RESULT; web app: $APP_WEB_RESULT; runtime sandbox: $RUNTIME_RESULT"
             exit 1
           fi
 
@@ -218,6 +220,93 @@ jobs:
           cargo test -p dunlin-relay -p dunlin-workspace -p dunlin-vault --locked
           CC=musl-gcc cargo build --release -p dunlin-relay --target "$TARGET" --locked
           "target/$TARGET/release/dunlin-relay" --help
+
+  app-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install locked web app dependencies without lifecycle scripts
+        working-directory: apps/web
+        run: npm ci --ignore-scripts
+      - name: Typecheck web app
+        working-directory: apps/web
+        run: npm run check
+      - name: Test web transport and live state
+        working-directory: apps/web
+        run: npm test
+      - name: Build web app
+        working-directory: apps/web
+        run: npm run build
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          shared-key: headless-v1
+          save-if: "false"
+      - name: Install locked browser driver without lifecycle scripts
+        working-directory: apps/web/e2e
+        run: npm ci --ignore-scripts
+      - name: Provision Chromium for browser acceptance
+        run: node apps/web/e2e/node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Real browser to relay acceptance
+        env:
+          DUNLIN_WEB_E2E_ROOT: ${{ github.workspace }}/apps/web/dist
+        run: cargo test -p dunlin-relay production_browser_acceptance --locked -- --ignored --nocapture --skip production_browser_acceptance_runtime_
+
+  # Separate policy for real nested bubblewrap; ordinary browser checks retain
+  # Docker's default LSM/seccomp settings. See implement/runtime-checks.md.
+  runtime-sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Require Linux AppArmor and install its parser
+        run: |
+          test "$(uname -s)" = Linux
+          test "$(cat /sys/module/apparmor/parameters/enabled)" = Y
+          docker info --format '{{json .SecurityOptions}}' | grep -q apparmor
+          sudo apt-get update
+          sudo apt-get install -y apparmor
+      - name: Provision cached runtime toolchain images
+        run: |
+          docker build --tag dunlin-web-checks:rust-1.99 - < scripts/web-checks.Dockerfile
+          docker build --tag dunlin-web-checks:browser - < scripts/web-browser-checks.Dockerfile
+          docker build --tag dunlin-web-checks:browser-bwrap - < scripts/runtime-checks.Dockerfile
+      - name: Fetch locked Rust dependencies before offline execution
+        run: |
+          mkdir -p target/web-checks/cargo
+          docker run --rm --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/repo,readonly" --mount "type=bind,src=$GITHUB_WORKSPACE/target/web-checks/cargo,dst=/cache" --workdir /repo --env CARGO_HOME=/cache dunlin-web-checks:rust-1.99 cargo fetch --locked
+      - name: Provision and load only the named runtime policy
+        run: |
+          python3 scripts/prepare_runtime_sandbox.py --fetch --output target/web-checks/runtime-policies
+          sudo apparmor_parser -r target/web-checks/runtime-policies/runtime.apparmor
+          sudo grep -q '^dunlin-runtime-checks (enforce)$' /sys/kernel/security/apparmor/profiles
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/web/e2e/package-lock.json
+      - name: Install locked runtime UI dependencies without lifecycle scripts
+        working-directory: apps/web
+        run: npm ci --ignore-scripts
+      - name: Install locked runtime browser driver without lifecycle scripts
+        working-directory: apps/web/e2e
+        run: npm ci --ignore-scripts
+      - name: Actual relay restart and Remote UI with real bubblewrap, offline
+        run: python3 scripts/test_web_sandbox.py --suite runtime --runtime-browser --node-modules apps/web/node_modules --browser-node-modules apps/web/e2e/node_modules --registry target/web-checks/cargo/registry --wall-seconds 900
 
   web:
     runs-on: ubuntu-latest

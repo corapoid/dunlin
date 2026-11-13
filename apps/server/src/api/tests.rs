@@ -10,9 +10,12 @@ mod coordination;
 mod history;
 mod linear;
 mod management;
+mod native_git_io;
+mod native_io;
 mod operations;
 mod presence;
 mod terminal;
+mod usage_authority;
 mod workbench;
 
 struct Fixture {

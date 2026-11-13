@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "Manual completion fixture",
+  "limits": {
+    "max_duration_seconds": 60,
+    "max_agent_turns": 1,
+    "max_step_attempts": 1,
+    "max_concurrent_steps": 1
+  },
+  "nodes": [
+    { "id": "start", "name": "Start", "kind": { "type": "trigger", "source": { "type": "manual" } }, "inputs": {}, "outputs": {} },
+    { "id": "end", "name": "Complete", "kind": { "type": "complete" }, "inputs": {}, "outputs": {} }
+  ],
+  "edges": [{ "from": "start", "to": "end", "outcome": "always" }],
+  "bindings": [],
+  "outputs": {}
+}

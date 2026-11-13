@@ -1,0 +1,13 @@
+{
+  "final_source_sha256": "f93067224e098288494f85f54eb8425bf6a25eb42be5cd45064691109122faef",
+  "runtime_source_sha256": "2359ca5689209ce88683cbf66d56b29d5d92749af9679fddb32319e5e5e52658",
+  "runtime_difference": "health-label-only.patch",
+  "server_source_sha256": "2901151ba42551a657f1a6950686baa2b1b2f700b8b0e4845cb14372c6299044",
+  "clippy_source_sha256": "04bb0f058a25e5fab881cba99b16e6d588e0d0831ef020751b1acf92e244c37a",
+  "server_additional_difference": [
+    "manual-probe-test.patch",
+    "tests-and-comments.patch"
+  ],
+  "clippy_additional_difference": "health-codec-only.patch",
+  "method": "Exact reverse in a disposable source copy; same input set/digest as the sandbox launcher. Original worktree never mutated."
+}

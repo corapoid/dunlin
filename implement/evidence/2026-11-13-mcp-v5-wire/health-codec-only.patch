@@ -1,0 +1,54 @@
+--- apps/web/src/lib/host-health.ts
++++ apps/web/src/lib/host-health.ts
+@@ -5,7 +5,7 @@
+ export type HostHealth = {
+   host: Host;
+   connection: null | {
+-    protocol_version: 1 | 2 | 3 | 4;
++    protocol_version: 1 | 2 | 3 | 4 | 5;
+     heartbeat_sequence: number;
+     heartbeat_age_ms: number;
+     lease_remaining_ms: number;
+@@ -55,7 +55,7 @@
+       || !integer(c.protocol_version, 1, 5) || !integer(c.heartbeat_sequence)
+       || !integer(c.heartbeat_age_ms, 0, 9999) || !integer(c.lease_remaining_ms, 1, 10000)
+       || c.heartbeat_age_ms + c.lease_remaining_ms > 10000) throw new Error('Niepoprawna obserwacja kanału.');
+-    connection = { protocol_version: c.protocol_version as 1 | 2 | 3 | 4, heartbeat_sequence: c.heartbeat_sequence,
++    connection = { protocol_version: c.protocol_version as 1 | 2 | 3 | 4 | 5, heartbeat_sequence: c.heartbeat_sequence,
+       heartbeat_age_ms: c.heartbeat_age_ms, lease_remaining_ms: c.lease_remaining_ms };
+   }
+   return { host: decodeHost(value.host, workspace), connection,
+--- apps/web/src/lib/host-health.ts
++++ apps/web/src/lib/host-health.ts
+@@ -52,7 +52,7 @@
+   if (value.connection !== null) {
+     const c = value.connection;
+     if (!object(c) || !only(c, ['protocol_version', 'heartbeat_sequence', 'heartbeat_age_ms', 'lease_remaining_ms'])
+-      || !integer(c.protocol_version, 1, 4) || !integer(c.heartbeat_sequence)
++      || !integer(c.protocol_version, 1, 5) || !integer(c.heartbeat_sequence)
+       || !integer(c.heartbeat_age_ms, 0, 9999) || !integer(c.lease_remaining_ms, 1, 10000)
+       || c.heartbeat_age_ms + c.lease_remaining_ms > 10000) throw new Error('Niepoprawna obserwacja kanału.');
+     connection = { protocol_version: c.protocol_version as 1 | 2 | 3 | 4, heartbeat_sequence: c.heartbeat_sequence,
+--- apps/web/tests/host-health.test.ts
++++ apps/web/tests/host-health.test.ts
+@@ -36,6 +36,9 @@
+   const decoded = decodeHostHealth(health, 'workspace', 'host');
+   assert.equal(decoded.connection?.protocol_version, 4);
+   assert.equal(decoded.host.execution_ready, false);
++  const broker = decodeHostHealth({ ...health, connection: { ...health.connection, protocol_version: 5 } }, 'workspace', 'host');
++  assert.equal(broker.connection?.protocol_version, 5);
++  assert.equal(broker.host.execution_ready, false);
+   for (const value of [
+     { ...health, host: { ...health.host, id: 'other' } },
+     { ...health, host: { ...health.host, workspace_id: 'other' } },
+--- apps/web/tests/host-health.test.ts
++++ apps/web/tests/host-health.test.ts
+@@ -46,7 +46,7 @@
+     { ...health, runtime: { ...health.runtime, active_turns: 2 } },
+     { ...health, runtime: { ...health.runtime, uncertain_reservations: 2 } },
+     { ...health, connection: { ...health.connection, lease_remaining_ms: 9000 } },
+-    { ...health, connection: { ...health.connection, protocol_version: 5 } },
++    { ...health, connection: { ...health.connection, protocol_version: 6 } },
+   ]) assert.throws(() => decodeHostHealth(value, 'workspace', 'host'));
+   assert.throws(() => decodeHostHealthEvent(JSON.stringify({ ...frame(), sequence: 0 }), 'workspace', 'host'));
+   assert.throws(() => decodeHostHealthEvent(JSON.stringify({ ...frame(), credential: 'secret' }), 'workspace', 'host'));

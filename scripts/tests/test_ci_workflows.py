@@ -23,21 +23,57 @@ def job(workflow, name):
 class WorkflowTests(unittest.TestCase):
     def test_required_test_gate_rejects_failed_cancelled_skipped_or_missing_results(self):
         gate = job("ci.yml", "test")
-        self.assertIn("needs: [macos-checks, macos-build, headless]", gate)
+        self.assertIn("needs: [macos-checks, macos-build, headless, app-web, runtime-sandbox]", gate)
         self.assertIn("if: ${{ always() }}", gate)
         self.assertIn("CHECKS_RESULT: ${{ needs.macos-checks.result }}", gate)
         self.assertIn("BUILD_RESULT: ${{ needs.macos-build.result }}", gate)
         self.assertIn("HEADLESS_RESULT: ${{ needs.headless.result }}", gate)
+        self.assertIn("APP_WEB_RESULT: ${{ needs.app-web.result }}", gate)
+        self.assertIn("RUNTIME_RESULT: ${{ needs.runtime-sandbox.result }}", gate)
         command = textwrap.dedent(gate.split("        run: |\n", 1)[1])
         results = ["success", "failure", "cancelled", "skipped", ""]
-        for checks, build, headless in itertools.product(results, repeat=3):
-            with self.subTest(checks=checks, build=build, headless=headless):
+        for checks, build, headless, app_web, runtime in itertools.product(results, repeat=5):
+            with self.subTest(checks=checks, build=build, headless=headless, app_web=app_web, runtime=runtime):
                 result = subprocess.run(
                     ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
-                    env=dict(os.environ, CHECKS_RESULT=checks, BUILD_RESULT=build, HEADLESS_RESULT=headless),
+                    env=dict(os.environ, CHECKS_RESULT=checks, BUILD_RESULT=build, HEADLESS_RESULT=headless,
+                             APP_WEB_RESULT=app_web, RUNTIME_RESULT=runtime),
                     capture_output=True, text=True,
                 )
-                self.assertEqual(result.returncode == 0, checks == build == headless == "success")
+                self.assertEqual(result.returncode == 0, checks == build == headless == app_web == runtime == "success")
+
+    def test_web_application_has_independent_required_checks(self):
+        app = job("ci.yml", "app-web")
+        self.assertIn("apps/web/package-lock.json", app)
+        self.assertIn("working-directory: apps/web", app)
+        for command in ["npm ci --ignore-scripts", "npm run check", "npm test", "npm run build"]:
+            self.assertIn(command, app)
+        self.assertIn("working-directory: apps/web/e2e", app)
+        self.assertIn("playwright-core/cli.js install --with-deps chromium", app)
+        self.assertIn("cargo test -p dunlin-relay production_browser_acceptance --locked -- --ignored --nocapture", app)
+        self.assertIn("working-directory: web", job("ci.yml", "web"))
+
+    def test_runtime_requires_named_kernel_policy_and_offline_launcher(self):
+        runtime = job("ci.yml", "runtime-sandbox")
+        for required in ["runs-on: ubuntu-24.04", "persist-credentials: false",
+                         "/sys/module/apparmor/parameters/enabled", "docker info",
+                         "scripts/web-checks.Dockerfile", "scripts/web-browser-checks.Dockerfile",
+                         "scripts/runtime-checks.Dockerfile", "cargo fetch --locked",
+                         "scripts/prepare_runtime_sandbox.py --fetch",
+                         "sudo apparmor_parser -r target/web-checks/runtime-policies/runtime.apparmor",
+                         "^dunlin-runtime-checks (enforce)$",
+                         "scripts/test_web_sandbox.py --suite runtime"]:
+            self.assertIn(required, runtime)
+        for image in ["rust-1.99", "browser", "browser-bwrap"]:
+            self.assertIn(f"docker build --tag dunlin-web-checks:{image} - < scripts/", runtime)
+        self.assertNotIn("docker build -f", runtime)
+        for forbidden in ["--privileged", "apparmor=unconfined", "seccomp=unconfined",
+                          "sysctl", "systemctl", "continue-on-error"]:
+            self.assertNotIn(forbidden, runtime)
+        self.assertIn("--runtime-browser --node-modules apps/web/node_modules --browser-node-modules apps/web/e2e/node_modules", runtime)
+        self.assertIn("working-directory: apps/web/e2e", runtime)
+        self.assertEqual(runtime.count("npm ci --ignore-scripts"), 2)
+        self.assertIn("--skip production_browser_acceptance_runtime_", job("ci.yml", "app-web"))
 
     def test_macos_checks_and_build_are_independent_and_keep_full_checks(self):
         checks = job("ci.yml", "macos-checks")

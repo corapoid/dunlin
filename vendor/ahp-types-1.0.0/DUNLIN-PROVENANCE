@@ -1,0 +1,3 @@
+Source: https://github.com/microsoft/agent-host-protocol/tree/v1.0.0
+Archive SHA256: 9805d962cbab1d56579e458a000aa7fa98c906eb16971dd484c9bb2a50aaf5d1
+All src/ files are unchanged. Cargo.toml normalized to standalone, pinned SDK dependency resolved through the workspace provenance-checked patch; upstream manifest retained.

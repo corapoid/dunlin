@@ -7,12 +7,11 @@
 //! of inventing percentages. ACP context usage is not a subscription allowance.
 
 pub mod billing;
+mod process;
 
-use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::process::Command;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::DateTime;
 
@@ -22,7 +21,16 @@ use serde_json::{Value, json};
 
 /// Probe every provider that can be read locally.
 pub fn probe_all() -> Vec<ProviderUsage> {
-    vec![probe_claude(), probe_codex()]
+    probe_all_guarded(|| true)
+}
+
+/// Relay probes must recheck their initiating device while local processes run.
+/// Callers must also deny delivery/cache publication if their authority changed.
+pub fn probe_all_guarded(authorized: impl Fn() -> bool) -> Vec<ProviderUsage> {
+    vec![
+        probe_claude_guarded(&authorized),
+        probe_codex_guarded(&authorized),
+    ]
 }
 
 /// Probe only the active harness. OpenCode provider limits are location-scoped
@@ -41,6 +49,17 @@ pub fn probe_harness(harness: &str) -> ProviderUsage {
 }
 
 fn probe_codex() -> ProviderUsage {
+    probe_codex_guarded(&|| true)
+}
+fn probe_codex_guarded(authorized: &dyn Fn() -> bool) -> ProviderUsage {
+    if !authorized() {
+        return unavailable(
+            "Codex",
+            "unavailable",
+            "Account probe authorization changed",
+            ProjectTone::Blue,
+        );
+    }
     let Some(binary) = codex_binary() else {
         return unavailable(
             "Codex",
@@ -49,14 +68,17 @@ fn probe_codex() -> ProviderUsage {
             ProjectTone::Blue,
         );
     };
-    match codex_rate_limits(&binary) {
+    match codex_rate_limits(&binary, authorized) {
         Ok(limits) => limits.into_usage(),
         Err(error) => unavailable("Codex", "unavailable", &error, ProjectTone::Blue),
     }
 }
 
 fn probe_claude() -> ProviderUsage {
-    let credentials = match claude_credentials() {
+    probe_claude_guarded(&|| true)
+}
+fn probe_claude_guarded(authorized: &dyn Fn() -> bool) -> ProviderUsage {
+    let credentials = match claude_credentials(authorized) {
         Ok(credentials) => credentials,
         Err(error) => {
             return unavailable("Claude Code", "not signed in", &error, ProjectTone::Violet);
@@ -85,7 +107,7 @@ fn probe_claude() -> ProviderUsage {
             ProjectTone::Violet,
         );
     }
-    match claude_usage(&credentials.access_token) {
+    match claude_usage(&credentials.access_token, authorized) {
         Ok(usage) => usage,
         Err(error) => unavailable("Claude Code", "unavailable", &error, ProjectTone::Violet),
     }
@@ -127,7 +149,10 @@ fn parse_claude_credentials(raw: &str) -> Result<ClaudeCredentials, String> {
     })
 }
 
-fn claude_usage(token: &str) -> Result<ProviderUsage, String> {
+fn claude_usage(token: &str, authorized: &dyn Fn() -> bool) -> Result<ProviderUsage, String> {
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
     let response = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(15))
         .build()
@@ -148,9 +173,24 @@ fn claude_usage(token: &str) -> Result<ProviderUsage, String> {
                 "Could not reach Claude usage (network error or timeout).".to_string()
             }
         })?;
-    let value: Value = response
-        .into_json()
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .take(64 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Claude usage response could not be read".to_owned())?;
+    if bytes.len() > 64 * 1024 {
+        return Err("Claude usage response exceeds the read limit".into());
+    }
+    let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| "Claude usage returned an invalid response".to_string())?;
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
     parse_claude_usage(&value)
 }
 
@@ -312,76 +352,52 @@ impl CodexWindow {
     }
 }
 
-fn codex_rate_limits(binary: &Path) -> Result<CodexLimits, String> {
-    let mut child = Command::new(binary)
-        .arg("app-server")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| format!("Could not start Codex: {error}"))?;
-
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "Codex stdin is unavailable".to_string())?;
-    let initialize = json!({
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "clientInfo": { "name": "dunlin", "version": env!("CARGO_PKG_VERSION") }
+fn codex_rate_limits(binary: &Path, authorized: &dyn Fn() -> bool) -> Result<CodexLimits, String> {
+    let mut command = Command::new(binary);
+    command.arg("app-server");
+    codex_limits_from_command(command, authorized)
+}
+fn codex_limits_from_command(
+    command: Command,
+    authorized: &dyn Fn() -> bool,
+) -> Result<CodexLimits, String> {
+    let mut process = process::ProbeProcess::spawn(command, Duration::from_secs(6), authorized)?;
+    let initialize = json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"dunlin","version":env!("CARGO_PKG_VERSION")}}});
+    let read = json!({"id":2,"method":"account/rateLimits/read","params":null});
+    process.write(format!("{initialize}\n{read}\n").as_bytes(), authorized)?;
+    let mut buffer = Vec::new();
+    let response = 'read: loop {
+        let chunk = process.read(authorized)?;
+        if chunk.is_empty() {
+            return Err("Codex closed before returning rate limits".into());
         }
-    });
-    let read = json!({ "id": 2, "method": "account/rateLimits/read", "params": null });
-    writeln!(stdin, "{initialize}").map_err(|error| error.to_string())?;
-    writeln!(stdin, "{read}").map_err(|error| error.to_string())?;
-    stdin.flush().map_err(|error| error.to_string())?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Codex stdout is unavailable".to_string())?;
-    let (sender, receiver) = mpsc::channel();
-    std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if sender.send(line).is_err() {
-                break;
+        buffer.extend(chunk);
+        if buffer.len() > 64 * 1024 {
+            return Err("Codex rate-limit line is too large".into());
+        }
+        while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
+            let line = buffer.drain(..=end).collect::<Vec<_>>();
+            if let Ok(value) = serde_json::from_slice::<Value>(&line)
+                && value.get("id").and_then(Value::as_i64) == Some(2)
+            {
+                break 'read value;
             }
         }
-    });
-
-    let deadline = Instant::now() + Duration::from_secs(6);
-    let mut response = None;
-    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-        match receiver.recv_timeout(remaining) {
-            Ok(line) => {
-                let Ok(value) = serde_json::from_str::<Value>(&line) else {
-                    continue;
-                };
-                if value.get("id").and_then(Value::as_i64) == Some(2) {
-                    response = Some(value);
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
+    };
+    // Drop kills the owned group even after early errors or a valid response.
+    drop(process);
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
     }
-    let _ = child.kill();
-    let _ = child.wait();
-    drop(stdin);
-
-    let response = response.ok_or_else(|| "Codex did not answer within 6 seconds".to_string())?;
-    let result = response
+    let limits = response
         .get("result")
-        .ok_or_else(|| "Codex returned no rate-limit result".to_string())?;
-    let limits = result
-        .get("rateLimits")
-        .ok_or_else(|| "Codex returned no rate-limit windows".to_string())?;
+        .and_then(|r| r.get("rateLimits"))
+        .ok_or_else(|| "Codex returned no rate-limit windows".to_owned())?;
     Ok(CodexLimits {
         plan: limits
             .get("planType")
             .and_then(Value::as_str)
-            .map(str::to_string),
+            .map(str::to_owned),
         primary: parse_codex_window(limits.get("primary")),
         secondary: parse_codex_window(limits.get("secondary")),
     })
@@ -396,25 +412,91 @@ fn parse_codex_window(value: Option<&Value>) -> Option<CodexWindow> {
     })
 }
 
-fn claude_credentials() -> Result<ClaudeCredentials, String> {
-    let raw = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            "Claude Code-credentials",
-            "-w",
-        ])
-        .output()
+fn claude_credentials(authorized: &dyn Fn() -> bool) -> Result<ClaudeCredentials, String> {
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    let mut command = Command::new("security");
+    command.args([
+        "find-generic-password",
+        "-s",
+        "Claude Code-credentials",
+        "-w",
+    ]);
+    let keyring = read_credentials_command(command, authorized);
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    let raw = keyring
         .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
         .or_else(|| {
             let home = std::env::var_os("HOME")?;
-            std::fs::read_to_string(PathBuf::from(home).join(".claude/.credentials.json")).ok()
+            read_credentials_file(
+                &PathBuf::from(home).join(".claude/.credentials.json"),
+                authorized,
+            )
+            .ok()
         })
-        .ok_or_else(|| "No Claude Code credentials were found".to_string())?;
-
+        .ok_or_else(|| "No Claude Code credentials were found".to_owned())?;
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
     parse_claude_credentials(&raw)
+}
+fn read_credentials_file(path: &Path, authorized: &dyn Fn() -> bool) -> Result<String, String> {
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options
+        .open(path)
+        .map_err(|_| "Account credentials could not be opened".to_owned())?;
+    if !file.metadata().is_ok_and(|metadata| metadata.is_file()) {
+        return Err("Account credentials must be a regular file".into());
+    }
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    file.take(64 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Account credentials could not be read".to_owned())?;
+    if !authorized() {
+        return Err("Account probe authorization changed".into());
+    }
+    if bytes.len() > 64 * 1024 {
+        return Err("Account credentials exceed the read limit".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "Account credentials are not readable".into())
+}
+fn read_credentials_command(
+    command: Command,
+    authorized: &dyn Fn() -> bool,
+) -> Result<String, String> {
+    let mut process = process::ProbeProcess::spawn(command, Duration::from_secs(3), authorized)?;
+    process.close_input();
+    let mut bytes = Vec::new();
+    loop {
+        let chunk = process.read(authorized)?;
+        if chunk.is_empty() {
+            break;
+        }
+        bytes.extend(chunk);
+        if bytes.len() > 64 * 1024 {
+            return Err("Account credentials exceed the read limit".into());
+        }
+    }
+    if !process.finish(authorized)?.success() {
+        return Err("No account credentials returned".into());
+    }
+    String::from_utf8(bytes).map_err(|_| "Account credentials are not readable".into())
 }
 
 fn plan_label(plan: &str) -> String {
@@ -548,5 +630,78 @@ mod tests {
             "{}",
             usage.detail
         );
+    }
+
+    #[test]
+    fn guarded_codex_rpc_reads_a_real_fixture_process_and_cleans_up() {
+        let mut command = std::process::Command::new("python3");
+        command.args(["-c", "import sys,json,time\nfirst=json.loads(sys.stdin.readline())\nsecond=json.loads(sys.stdin.readline())\nassert first['method']=='initialize'\nassert second['method']=='account/rateLimits/read'\nprint(json.dumps({'id':2,'result':{'rateLimits':{'planType':'plus','primary':{'usedPercent':12.5,'windowDurationMins':300}}}}),flush=True)\ntime.sleep(30)"]);
+        let limits = super::codex_limits_from_command(command, &|| true).unwrap();
+        let usage = limits.into_usage();
+        assert_eq!(usage.plan, "PLUS");
+        assert_eq!(usage.windows.len(), 1);
+        assert_eq!(usage.windows[0].used_percent, 12.5);
+    }
+
+    #[test]
+    fn guarded_keyring_read_requires_successful_bounded_process_output() {
+        for (code, success) in [(0, true), (1, false)] {
+            let mut command = std::process::Command::new("python3");
+            command.args([
+                "-c",
+                &format!("import sys\nprint('fixture-credentials')\nsys.exit({code})"),
+            ]);
+            let result = super::read_credentials_command(command, &|| true);
+            assert_eq!(result.is_ok(), success);
+            if let Ok(value) = result {
+                assert_eq!(value.trim(), "fixture-credentials");
+            }
+        }
+    }
+
+    #[test]
+    fn revoked_probe_all_never_reads_any_account() {
+        let usages = super::probe_all_guarded(|| false);
+        assert_eq!(usages.len(), 2);
+        assert!(usages.iter().all(|u| u.windows.is_empty()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn credential_fallback_rejects_fifo_and_oversized_file_without_blocking() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = std::env::temp_dir().join(format!(
+            "dunlin-credentials-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("credentials");
+        let cpath = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(cpath.as_ptr(), 0o600) }, 0);
+        let start = std::time::Instant::now();
+        assert!(
+            super::read_credentials_file(&path, &|| true)
+                .unwrap_err()
+                .contains("regular file")
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, b"fixture-credentials").unwrap();
+        assert_eq!(
+            super::read_credentials_file(&path, &|| true).unwrap(),
+            "fixture-credentials"
+        );
+        assert!(super::read_credentials_file(&path, &|| false).is_err());
+        std::fs::write(&path, vec![b'x'; 64 * 1024 + 1]).unwrap();
+        assert!(
+            super::read_credentials_file(&path, &|| true)
+                .unwrap_err()
+                .contains("read limit")
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

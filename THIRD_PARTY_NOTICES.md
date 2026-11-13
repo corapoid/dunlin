@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Web application components
+
+`apps/web/src/components/reui/frame.tsx` adapts the free MIT-licensed ReUI Frame
+from the public Base Nova registry (retrieved 2026-11-10). Copyright (c) 2025
+Keenthemes Inc. The full notice is in `apps/web/REUI-LICENSE.txt` and is emitted
+with the web build. No premium ReUI blocks, templates or icons are included.
+
 Harness response marks (Claude, OpenAI/Codex, GitHub Copilot and Google Gemini)
 are from Simple Icons (CC0); the OpenCode mark is derived from its MIT-licensed
 favicon. Sources, modifications and the MIT notice are in
@@ -48,6 +55,11 @@ SHA-256: `f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60`.
 
 ## Rust dependencies
 
+The MCP JSON Schema validator uses `jsonschema` 0.46.0 with file/HTTP resolution
+disabled. Its MIT notice is retained in [licenses/jsonschema-MIT.txt](licenses/jsonschema-MIT.txt).
+The `borrow-or-share` dependency uses MIT-0; its notice is retained in
+[licenses/borrow-or-share-MIT-0.txt](licenses/borrow-or-share-MIT-0.txt).
+
 | Component | License |
 | --- | --- |
 | GPUI, GPUI Kit, GPUI Component | Apache-2.0 |
@@ -60,6 +72,10 @@ SHA-256: `f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60`.
 | similar | Apache-2.0 |
 | rusqlite, fontdb, hyper, tower | MIT |
 | axum, tokio, tokio-tungstenite | MIT |
+| jsonschema, referencing, email_address, fluent-uri, micromap, outref, uuid-simd, vsimd | MIT |
+| fraction, num-cmp, bytecount | MIT or Apache-2.0 |
+| unicode-general-category | Apache-2.0 |
+| borrow-or-share | MIT-0 |
 | notify | CC0-1.0 |
 | tiny-skia | BSD-3-Clause |
 | webpki-roots | CDLA-Permissive-2.0 |
@@ -70,6 +86,9 @@ SHA-256: `f0f624d9b474bea1662cf7e862d44aebe1ae1f6c7f9cb7a0ca5d0e5ac9561c60`.
 | serde, serde_json, thiserror, base64, http, uuid | MIT OR Apache-2.0 |
 | notify-rust, rand, sha2, toml, futures-util, async-channel, async-io, ttf-parser | MIT OR Apache-2.0 |
 | ureq | MIT OR Apache-2.0 |
+| openidconnect | MIT |
+| oauth2 | MIT OR Apache-2.0 |
+| rsa | MIT OR Apache-2.0 |
 | hex | MIT OR Apache-2.0 |
 | security-framework | MIT OR Apache-2.0 |
 | zeroize, percent-encoding | MIT OR Apache-2.0 |
@@ -109,3 +128,13 @@ ships with Xcode.
 The marketing site in `web/` is built with Astro, React, Tailwind CSS, Motion
 and Phosphor Icons. It bundles Manrope, Instrument Serif and Geist Mono. The
 license texts are in `web/public/licenses/`.
+
+## Agent Host Protocol Rust SDK 1.0.0
+
+`vendor/ahp-types-1.0.0` and `vendor/ahp-1.0.0` contain the unchanged Rust SDK
+sources from Microsoft's [AHP v1.0.0](https://github.com/microsoft/agent-host-protocol/tree/v1.0.0),
+under the MIT license. Copyright (c) Microsoft Corporation. All rights reserved.
+Each directory includes LICENSE, the original manifest and archive provenance;
+standalone manifests use a pinned local dependency. Dunlin uses the wire types
+and official reducers for its ACP projection; this does not establish server
+transport conformance.

@@ -1,0 +1,700 @@
+Sandbox suite=server container=dunlin-check-7b1e53e55d8c414b81ea0a890f28649e image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=3328m scratch=1280m file_size=2147483648 wall=600s source_sha256=8fe67f840ef872dfaccbe064a0e9c6b51113757f422afa1718528e661f2f9b74
+   Compiling unicode-ident v1.0.27
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling cfg-if v1.0.5
+   Compiling syn v3.0.10
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.9.1
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.229
+   Compiling rand_core v0.10.1
+   Compiling itoa v1.0.19
+   Compiling getrandom v0.4.3
+   Compiling hybrid-array v0.4.15
+   Compiling serde v1.0.229
+   Compiling cmov v0.5.4
+   Compiling ctutils v0.4.8
+   Compiling serde_derive v1.0.229
+   Compiling const-oid v0.10.2
+   Compiling crypto-common v0.2.2
+   Compiling bytes v1.12.1
+   Compiling block-buffer v0.12.1
+   Compiling log v0.4.35
+   Compiling memchr v2.8.3
+   Compiling digest v0.11.3
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling num-traits v0.2.19
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling zmij v1.0.23
+   Compiling cc v1.11.1
+   Compiling serde_json v1.0.154
+   Compiling pin-project-lite v0.2.17
+   Compiling smallvec v1.16.5
+   Compiling http v1.5.0
+   Compiling synstructure v0.14.0
+   Compiling getrandom v0.2.17
+   Compiling base64ct v1.8.3
+   Compiling once_cell v1.21.4
+   Compiling zerofrom-derive v0.1.8
+   Compiling syn v2.0.119
+   Compiling cpufeatures v0.3.1
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling httparse v1.10.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.4
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling zerovec-derive v0.11.7
+   Compiling const-oid v0.9.6
+   Compiling zerovec v0.11.9
+   Compiling sha2 v0.11.1
+   Compiling displaydoc v0.2.7
+   Compiling bitflags v2.13.2
+   Compiling zerocopy v0.8.63
+   Compiling ring v0.17.14
+   Compiling errno v0.3.14
+   Compiling percent-encoding v2.3.2
+   Compiling signal-hook-registry v1.4.8
+   Compiling pem-rfc7468 v1.0.0
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.4
+   Compiling tokio v1.54.1
+   Compiling der v0.8.3
+   Compiling ppv-lite86 v0.2.21
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling tinystr v0.8.5
+   Compiling rustls-pki-types v1.15.1
+   Compiling utf_types v1.0.0
+   Compiling thiserror v2.0.21
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling untrusted v0.9.0
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling digest v0.10.7
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling thiserror-impl v2.0.21
+   Compiling crc32fast v1.5.4
+   Compiling rustls v0.23.46
+   Compiling pkg-config v0.3.34
+   Compiling futures-core v0.3.34
+   Compiling cpubits v0.1.1
+   Compiling icu_properties_data v2.4.0
+   Compiling vcpkg v0.2.15
+   Compiling icu_normalizer_data v2.4.0
+   Compiling hex v0.4.3
+   Compiling libsqlite3-sys v0.39.1
+   Compiling crypto-bigint v0.7.11
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling rustls-webpki v0.103.16
+   Compiling spki v0.8.1
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling ff v0.14.0
+   Compiling thiserror v1.0.69
+   Compiling foldhash v0.2.0
+   Compiling base64 v0.23.1
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.10
+   Compiling miniz_oxide v0.9.1
+   Compiling hashbrown v0.17.1
+   Compiling pkcs8 v0.11.0
+   Compiling thiserror-impl v1.0.69
+   Compiling icu_normalizer v2.4.0
+   Compiling icu_properties v2.4.0
+   Compiling flate2 v1.1.11
+   Compiling hashlink v0.12.2
+   Compiling ureq-proto v0.7.1
+   Compiling group v0.14.0
+   Compiling webpki-roots v1.0.11
+   Compiling form_urlencoded v1.2.2
+   Compiling rand_core v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling fallible-iterator v0.3.0
+   Compiling base16ct v1.0.0
+   Compiling iana-time-zone v0.1.65
+   Compiling utf8-zero v0.8.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling rusqlite v0.41.1
+   Compiling ureq v3.5.1
+   Compiling chrono v0.4.45
+   Compiling sec1 v0.8.1
+   Compiling idna_adapter v1.2.2
+   Compiling pem-rfc7468 v0.7.0
+   Compiling signature v3.0.0
+   Compiling hmac v0.13.0
+   Compiling chacha20 v0.10.2
+   Compiling semver v1.0.28
+   Compiling strsim v0.11.1
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.24.1
+   Compiling rustc_version v0.4.1
+   Compiling rand v0.10.3
+   Compiling der v0.7.10
+   Compiling idna v1.1.0
+   Compiling elliptic-curve v0.14.3
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling rand_chacha v0.3.1
+   Compiling primefield v0.14.0
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling getrandom v0.3.4
+   Compiling tracing v0.1.44
+   Compiling wnaf v0.14.1
+   Compiling rand v0.8.8
+   Compiling url v2.5.8
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v5.0.0
+   Compiling darling_macro v0.24.1
+   Compiling rfc6979 v0.6.0
+   Compiling num-integer v0.1.47
+   Compiling spin v0.9.9
+   Compiling num-bigint-dig v0.8.6
+   Compiling crossbeam-utils v0.8.23
+   Compiling cfg_aliases v0.1.1
+   Compiling nix v0.28.0
+   Compiling lazy_static v1.5.1
+   Compiling num-iter v0.1.46
+   Compiling ecdsa v0.17.0
+   Compiling darling v0.24.1
+   Compiling pkcs8 v0.10.2
+   Compiling primeorder v0.14.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling base64 v0.22.1
+   Compiling parking v2.2.1
+   Compiling anyhow v1.0.104
+   Compiling event-listener v5.4.2
+   Compiling rand_core v0.9.5
+   Compiling pkcs1 v0.7.5
+   Compiling serde_with_macros v3.24.0
+   Compiling ed25519 v3.0.0
+   Compiling sha2 v0.10.9
+   Compiling signature v2.2.0
+   Compiling http-body v1.1.0
+   Compiling ordered-float v2.10.1
+   Compiling uuid v1.29.2
+   Compiling futures-macro v0.3.34
+   Compiling serde_repr v0.1.21
+   Compiling futures-task v0.3.34
+   Compiling jiff-core v0.1.4
+   Compiling futures-sink v0.3.34
+   Compiling data-encoding v2.11.1
+   Compiling slab v0.4.12
+   Compiling either v1.19.0
+   Compiling rustix v1.1.6
+   Compiling arrayvec v0.7.8
+   Compiling vte v0.15.0
+   Compiling itertools v0.14.0
+   Compiling futures-util v0.3.34
+   Compiling jiff v0.2.41
+   Compiling ahp-types v1.0.0 (/repo/vendor/ahp-types-1.0.0)
+   Compiling serde-value v0.7.0
+   Compiling rsa v0.9.10
+   Compiling oauth2 v5.0.0
+   Compiling ed25519-dalek v3.0.0
+   Compiling concurrent-queue v2.5.0
+   Compiling serde_with v3.24.0
+   Compiling rand_chacha v0.9.0
+   Compiling event-listener-strategy v0.5.4
+   Compiling p384 v0.14.0
+   Compiling p256 v0.14.0
+   Compiling filedescriptor v0.8.3
+   Compiling hmac v0.12.1
+   Compiling serde_plain v1.0.2
+   Compiling serial2 v0.2.39
+   Compiling downcast-rs v1.2.1
+   Compiling dyn-clone v1.0.20
+   Compiling shell-words v1.1.1
+   Compiling try-lock v0.2.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling unicode-width v0.2.3
+   Compiling tower-service v0.3.3
+   Compiling vt100 v0.18.1
+   Compiling want v0.3.2
+   Compiling portable-pty v0.9.0
+   Compiling openidconnect v4.1.0
+   Compiling async-channel v2.5.0
+   Compiling rand v0.9.5
+   Compiling ahp v1.0.0 (/repo/vendor/ahp-1.0.0)
+   Compiling sha1 v0.10.7
+   Compiling tower-layer v0.3.3
+   Compiling winnow v1.0.5
+   Compiling fastrand v2.5.0
+   Compiling atomic-waker v1.1.2
+   Compiling sync_wrapper v1.0.2
+   Compiling httpdate v1.0.3
+   Compiling hyper v1.12.0
+   Compiling tempfile v3.27.0
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling tungstenite v0.29.0
+   Compiling http-body-util v0.1.5
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling sha1 v0.11.0
+   Compiling toml_datetime v1.1.3+spec-1.1.0
+   Compiling serde_spanned v1.1.3
+   Compiling ryu v1.0.23
+   Compiling toml_writer v1.2.0+spec-1.1.0
+   Compiling mime v0.3.18
+   Compiling axum-core v0.5.6
+   Compiling toml v1.2.1+spec-1.1.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling tungstenite v0.30.0
+   Compiling dunlin-storage v0.2.0 (/repo/crates/storage)
+   Compiling tokio-tungstenite v0.29.0
+   Compiling hyper-util v0.1.21
+   Compiling tower v0.5.3
+   Compiling dunlin-session-runtime v0.2.0 (/repo/crates/session-runtime)
+   Compiling dunlin-terminal v0.2.0 (/repo/crates/terminal)
+   Compiling dunlin-identity v0.2.0 (/repo/crates/identity)
+   Compiling dunlin-usage v0.2.0 (/repo/crates/usage)
+   Compiling matchit v0.8.4
+   Compiling axum v0.8.9
+   Compiling dunlin-workspace v0.2.0 (/repo/crates/workspace)
+   Compiling dunlin-vault v0.2.0 (/repo/crates/vault)
+   Compiling tokio-tungstenite v0.30.0
+   Compiling dunlin-coordination v0.2.0 (/repo/crates/coordination)
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling tokio-rustls v0.26.6
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+   Compiling dunlin-relay v0.2.0 (/repo/apps/server)
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:80:49
+    |
+ 80 |         |r| Ok(CredentialRecord { generation: r.get(0)?, secret_reference: r.get(1)?, sha256: r.get(2)? }))
+    |                                                 ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+  --> apps/server/src/store/mcp_oauth.rs:79:9
+   |
+79 |         params![context.connection_id, context.workspace_id, context.user_id, context.connection_revision, binding],
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ToSql` is not implemented for `u64`
+   |
+   = help: the following other types implement trait `ToSql`:
+             f32
+             f64
+             i16
+             i32
+             i64
+             i8
+             isize
+             u16
+           and 2 others
+   = note: required for the cast from `&u64` to `&dyn ToSql`
+   = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:95:19
+    |
+ 95 |             |r| r.get(0),
+    |                   ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0599]: no associated function or constant named `new_v4` found for struct `Uuid` in the current scope
+   --> apps/server/src/store/mcp_oauth.rs:104:35
+    |
+104 |         operation_id: uuid::Uuid::new_v4().to_string(),
+    |                                   ^^^^^^ associated function or constant not found in `Uuid`
+    |
+note: if you're trying to build a new `Uuid` consider using one of the following associated functions:
+      uuid::builder::<impl Uuid>::nil
+      uuid::builder::<impl Uuid>::max
+      uuid::builder::<impl Uuid>::from_fields
+      uuid::builder::<impl Uuid>::from_fields_le
+      and 12 others
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/builder.rs:72:5
+    |
+ 72 |     pub const fn nil() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 98 |     pub const fn max() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+122 |     pub const fn from_fields(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+168 |     pub const fn from_fields_le(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `new_v7` with a similar name
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/v7.rs:72:5
+    |
+ 72 |     pub fn new_v7(ts: Timestamp) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no associated function or constant named `new_v4` found for struct `Uuid` in the current scope
+   --> apps/server/src/store/mcp_oauth.rs:105:63
+    |
+105 |         staged_reference: format!("mcp-oauth:{}", uuid::Uuid::new_v4()),
+    |                                                               ^^^^^^ associated function or constant not found in `Uuid`
+    |
+note: if you're trying to build a new `Uuid` consider using one of the following associated functions:
+      uuid::builder::<impl Uuid>::nil
+      uuid::builder::<impl Uuid>::max
+      uuid::builder::<impl Uuid>::from_fields
+      uuid::builder::<impl Uuid>::from_fields_le
+      and 12 others
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/builder.rs:72:5
+    |
+ 72 |     pub const fn nil() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 98 |     pub const fn max() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+122 |     pub const fn from_fields(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+168 |     pub const fn from_fields_le(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `new_v7` with a similar name
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/v7.rs:72:5
+    |
+ 72 |     pub fn new_v7(ts: Timestamp) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:139:39
+    |
+139 |                         generation: r.get(0)?,
+    |                                       ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:130:17
+    |
+130 | /                 params![
+131 | |                     context.connection_id,
+132 | |                     context.workspace_id,
+133 | |                     context.user_id,
+134 | |                     context.connection_revision,
+135 | |                     binding
+136 | |                 ],
+    | |_________________^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:160:69
+    |
+160 |             [&context.connection_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(storage)?;
+    |                                                                     ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:160:79
+    |
+160 |             [&context.connection_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional().map_err(storage)?;
+    |                                                                               ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:175:71
+    |
+175 |                 params![context.workspace_id, context.user_id], |r| r.get(0)).map_err(storage)?;
+    |                                                                       ^^^ the trait `FromSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:225:13
+    |
+225 | /             params![context.connection_id,context.workspace_id,context.user_id,context.connection_revision,binding,
+226 | |                 intent.generation,sha256,intent.generation-1,intent.operation_id,intent.staged_reference]).map_err(storage)?;
+    | |_________________________________________________________________________________________________________^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `u64: ToSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth.rs:239:13
+    |
+239 |             params![context.connection_id,context.workspace_id,context.user_id,context.connection_revision]).map_err(storage)?;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `ToSql` is not implemented for `u64`
+    |
+    = help: the following other types implement trait `ToSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+    = note: required for the cast from `&u64` to `&dyn ToSql`
+    = note: this error originates in the macro `params` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: no associated function or constant named `new_v4` found for struct `Uuid` in the current scope
+   --> apps/server/src/store/mcp_oauth/tests.rs:13:36
+    |
+ 13 |         connection_id: uuid::Uuid::new_v4().to_string(),
+    |                                    ^^^^^^ associated function or constant not found in `Uuid`
+    |
+note: if you're trying to build a new `Uuid` consider using one of the following associated functions:
+      uuid::builder::<impl Uuid>::nil
+      uuid::builder::<impl Uuid>::max
+      uuid::builder::<impl Uuid>::from_fields
+      uuid::builder::<impl Uuid>::from_fields_le
+      and 12 others
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/builder.rs:72:5
+    |
+ 72 |     pub const fn nil() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 98 |     pub const fn max() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+122 |     pub const fn from_fields(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+168 |     pub const fn from_fields_le(d1: u32, d2: u16, d3: u16, d4: &[u8; 8]) -> Uuid {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: there is an associated function `new_v7` with a similar name
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.29.2/src/v7.rs:72:5
+    |
+ 72 |     pub fn new_v7(ts: Timestamp) -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth/tests.rs:51:36
+    |
+ 51 |                     |r| r.get::<_, u64>(0)
+    |                           ---      ^^^ the trait `FromSql` is not implemented for `u64`
+    |                           |
+    |                           required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth/tests.rs:93:32
+    |
+ 93 |                 |r| r.get::<_, u64>(0)
+    |                       ---      ^^^ the trait `FromSql` is not implemented for `u64`
+    |                       |
+    |                       required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth/tests.rs:171:73
+    |
+171 |                 raw.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
+    |                                                                ---      ^^^ the trait `FromSql` is not implemented for `u64`
+    |                                                                |
+    |                                                                required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth/tests.rs:186:36
+    |
+186 |                     |r| r.get::<_, u64>(0)
+    |                           ---      ^^^ the trait `FromSql` is not implemented for `u64`
+    |                           |
+    |                           required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+error[E0277]: the trait bound `u64: FromSql` is not satisfied
+   --> apps/server/src/store/mcp_oauth/tests.rs:203:74
+    |
+203 |                     .query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
+    |                                                                 ---      ^^^ the trait `FromSql` is not implemented for `u64`
+    |                                                                 |
+    |                                                                 required by a bound introduced by this call
+    |
+    = help: the following other types implement trait `FromSql`:
+              f32
+              f64
+              i16
+              i32
+              i64
+              i8
+              isize
+              u16
+            and 2 others
+note: required by a bound in `Row::<'_>::get`
+   --> /scratch/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rusqlite-0.41.1/src/row.rs:285:32
+    |
+285 |     pub fn get<I: RowIndex, T: FromSql>(&self, idx: I) -> Result<T> {
+    |                                ^^^^^^^ required by this bound in `Row::<'_>::get`
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+error: could not compile `dunlin-relay` (bin "dunlin-relay" test) due to 18 previous errors
+Sandbox memory: {"memory.peak": "2411397120", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

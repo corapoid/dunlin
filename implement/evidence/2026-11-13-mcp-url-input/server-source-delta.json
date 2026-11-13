@@ -1,0 +1,23 @@
+{
+  "server_source_sha256": "2583f2d04e93b239fdea07ab37c385e00966113fd64382f4ed9ef952ef82d5a4",
+  "current_source_sha256": "c9cb28a50021ab58b8867d6070c3817a17685c5d6622df9aaa1b3a3a39107907",
+  "scope": "Only three frontend files changed while server tests ran; all Rust and backend fixtures are byte-identical. Overlay server-original-inputs onto a current launcher source snapshot to reconstruct the tested source hash. Frontend and TypeScript must be rerun.",
+  "changes": [
+    {
+      "path": "apps/web/src/components/McpInput.tsx",
+      "before_sha256": "045c56ee3f35e3647047fa10fdba1b948cca09d2e1de44664b6067ba44b7cff2",
+      "after_sha256": "7d157974a497ae85d0d4ce0b042751080a120686f60bf90437c3c74668367aa0"
+    },
+    {
+      "path": "apps/web/src/lib/mcp-input.ts",
+      "before_sha256": "6b6c3439af31b6698e124450f605eecd88cb99ffbc940933035177b71fa2a47d",
+      "after_sha256": "17c2d54d066ffdb9fcfa5d655675050b5f008f67129fdbed8ee4b25b9a0fa34e"
+    },
+    {
+      "path": "apps/web/tests/mcp-input.test.ts",
+      "before_sha256": "89e4e63bcd2de36d6203abbb9a1ee945df6c999ed7efda454e36f896b904cd89",
+      "after_sha256": "a74eda589d7504630356bbe63ec1de7cbce1008744b7ce33638d1f2d68a8edfe"
+    }
+  ],
+  "reconstructed_source_sha256": "2583f2d04e93b239fdea07ab37c385e00966113fd64382f4ed9ef952ef82d5a4"
+}

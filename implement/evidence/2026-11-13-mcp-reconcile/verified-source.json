@@ -1,0 +1,64 @@
+{
+  "source_sha256": "63eadf5f2833807d07e94c195d6fed7d46fb7a70786e22e3677e7b9a1275fcdd",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "8e38987985d7346ad0535a0849b6d5f7577e306fe85dc59d1367e4b3474b3cb3",
+      "source_sha256": "63eadf5f2833807d07e94c195d6fed7d46fb7a70786e22e3677e7b9a1275fcdd",
+      "exit_code": 0,
+      "scope": "835 tests:691 relay,1 identity,79 SDK,27 terminal,37 usage;49 separate acceptance ignored. Six new tests cover live-process exclusion/SIGKILL release, unsafe lock inode and hardlink DB, SQLite reopen, immutable ACK/unknown, lease identity/stale CAS, legacy and failed fresh authority, and HTTP live-worker conflict followed by reconciliation without provider configuration or secrets. The full audit-cap test also covers reconciliation.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 230\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "e6edd5e025a4d8bfe94c05bf36dc64b17bafa374146de2bac195d055a8c0e640",
+      "source_sha256": "63eadf5f2833807d07e94c195d6fed7d46fb7a70786e22e3677e7b9a1275fcdd",
+      "exit_code": 0,
+      "scope": "Server and companion packages, all-targets, warnings denied. Includes compilation of current tests and production Chromium fixture.",
+      "memory": {
+        "memory.peak": "2352218112",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "6858f2016d1262e154bc0a27c245ec10e36eed77543a905e2932224dd8bd29ef",
+      "source_sha256": "63eadf5f2833807d07e94c195d6fed7d46fb7a70786e22e3677e7b9a1275fcdd",
+      "exit_code": 0,
+      "scope": "One focused Chromium case,739 filtered out: production router/UI and MCP helper inside Linux sandbox with controlled AS/ACP/MemoryStore. Prepared durable unknown cut is reconciled via UI; successful POST reply lost, GET recovers unconfirmed without retry and reauthorization becomes available. Then normal MCP tool approval, provider revoke and cleanup regression. Actual process SIGKILL is a separate server test, not this prepared browser cut. AS authorizations2/tokens2/revocations4/tools1, private writes2/deletes4/late write1. Generic stdout mentions raw replay dedupe; that branch is not exercised here.",
+      "memory": {
+        "memory.peak": "3758096384",
+        "memory.events": "low 0\nhigh 0\nmax 713\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "d7711126c64404bb96a2e05d5a1f90865ae0cd2892f8222ccd303d6e8a17208e",
+      "source_sha256": "63e45ef560be096c42aa6645179798ab62f234a01b88f79a92c02babb7ac3cce",
+      "exit_code": 0,
+      "scope": "153 tests, including one new multi-case reconciliation client test: support flag, fixed owner-bound CAS, unchanged exact receipt counters/revision and no retry after network loss. Narrow frontend snapshot."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "62318f534cc501645a981e20d766884afb580f102b6a39aa21fb65b3fd0654f9",
+      "source_sha256": "48e3c60cd4a05939de5788ef99c43211564ece27ccdcbb5cd83aa2445eccb100",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check of current frontend/config inputs."
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "4024af870fbbff6f29566c685e5b69d50f401ca166573deaaf8ef2530f6b42ea",
+    "reconcile-desktop.png": "5b68287272b91be641bc147cb045d6cf3d2e33c286488259c44bd5e8459ff4d6",
+    "reconcile-mobile.png": "c6b38149536cedf1838a3999ebead76f4c9d557fbab4f7dba9f9e1ec04a703b1",
+    "checks-final.log": "4c562cb4a56f58304e61da08906c46280f6f404f180f917a7f5407067b093e77"
+  },
+  "scope": "Explicit owner-only reconciliation of lease-protected Running revocation journals. Actual blocking worker keeps Store-local admission and persistent kernel flock until it returns, including after HTTP waiter cancellation. Recovery takes the same lease and performs fresh browser/device/IdP/member revision checks inside immediate SQLite transaction; no vault or AS I/O, no retries or reactivation. Confirmed targets remain confirmed, unknown remains unknown; local worker death does not prove an already-sent AS effect. Legacy unleased Running journals fail closed and expose unsupported status; their quiesced migration remains open. Single revocation lease per DB intentionally serializes these negative operations. Retention/reference quota, legacy recovery migration, URL elicitation, general scoped secrets, A2A and remaining E0-E10 are open. No real provider/account/keyring/tailnet/native macOS or actual GitHub Actions acceptance. Formal20/68 unchanged. MCP library/vault source files were unchanged in this increment; their prior151-test suite was not rerun here."
+}

@@ -1,0 +1,45 @@
+{
+  "rust": {
+    "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+    "inputs": [
+      "Cargo.toml",
+      "Cargo.lock",
+      "apps",
+      "crates",
+      "vendor",
+      "tests/fixtures",
+      "scripts/install-harness.sh"
+    ]
+  },
+  "frontend": {
+    "source_sha256": "391a58a9b99dab735a6505a1c79961d1dfa8d481db5b8940cfe04bbefe672241",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog"
+    ]
+  },
+  "typecheck": {
+    "source_sha256": "92381de2871ce76741d4980b2f84d0a717e4f4bfe420d4970cea3b18f309364d",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog",
+      "apps/web/tsconfig.json",
+      "apps/web/vite.config.ts"
+    ]
+  },
+  "tooling": {
+    "source_sha256": "93ef677648bc44e33a7715779f058ec17a2259878f01d8f5fcdc07f130f0e7e3",
+    "inputs": [
+      "scripts",
+      ".github",
+      "README.md",
+      "CONTRIBUTING.md",
+      "docs",
+      "web/src"
+    ]
+  }
+}

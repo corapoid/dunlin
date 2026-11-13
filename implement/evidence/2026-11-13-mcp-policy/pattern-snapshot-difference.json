@@ -1,0 +1,10 @@
+{
+  "final_builder_source_sha256": "b4ccf30653cd8d02edd8a9596c090fd7b94d3ba09d3730ac07d80b0c69446d45",
+  "server_clippy_oauth_browser_source_sha256": "818eaf1ffec5c479175ab7b8f0b3a6b4658874a61048d898d70034381bfe28fb",
+  "only_differences": [
+    "AgentBuilder.tsx: escaped literal hyphen in provider HTML pattern",
+    "ahp-create.mjs: actual Chromium validity assertions for a hyphen and invalid question mark"
+  ],
+  "rust_and_oauth_ui_identical": true,
+  "verification": "Reversing exactly these two UI changes reconstructs the entire previous snapshot SHA256."
+}

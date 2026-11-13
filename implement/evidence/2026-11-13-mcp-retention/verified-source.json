@@ -1,0 +1,90 @@
+{
+  "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "log_sha256": "1a668e490c504bb12df2142ccda0bb9970f92fcf31fa61173f2e767bf3517f30",
+      "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+      "exit_code": 0,
+      "scope": "851 tests:707 relay,1 identity,79 SDK,27 terminal,37 usage;49 separate acceptance ignored. Five new retention Store/REST cases cover768 writes across restart, bounded safe/uncertain history, durable AS confirmations independent of journal/binding, migration47 rollback and protection of new authorization.",
+      "memory": {
+        "memory.peak": "3594330112",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "log_sha256": "a6008f55e04018a476f1adc944313bd3c9b7e9f46612fd3d125b31b744291615",
+      "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+      "exit_code": 0,
+      "scope": "153 tests:116 MCP,6 HTTP,31 vault; package all-targets Clippy with warnings denied.",
+      "memory": {
+        "memory.peak": "1237581824",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "log_sha256": "107eee3d08e68206754d1236ec9b1260334a272ee6d2c4928d22563e174f752d",
+      "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+      "exit_code": 0,
+      "scope": "Server and companion packages all-targets Clippy,-D warnings on final source.",
+      "memory": {
+        "memory.peak": "2349420544",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "log_sha256": "69dc8a9e3a92d4fec81b2f554fc3c1813c56082c08848be5d30bdd313e3ae57e",
+      "source_sha256": "895b6ab3bff8656151ed2ca4cf2f53c8b0cd5f4780682379fe47eec907226b6c",
+      "exit_code": 0,
+      "scope": "One selected production helper/Chromium OAuth/reconcile/lost-reply/AHP tool/revoke/cleanup acceptance,755 other tests filtered out,7.99s. Controlled AS/ACP/MemoryStore; two modern write receipts,late writes0; storage available256/history2/uncertain0,private writes2/deletes4. Legacy late write remains an API fixture. Generic raw replay-dedupe wording is not additional mcp-real coverage.",
+      "memory": {
+        "memory.peak": "3612385280",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "log_sha256": "169cbe6baf942948136f30c1767bea8806b22bef05665a6e1308a8baef207845",
+      "source_sha256": "391a58a9b99dab735a6505a1c79961d1dfa8d481db5b8940cfe04bbefe672241",
+      "exit_code": 0,
+      "scope": "155 tests; new storage counters and historical cleanup/no retry decoding cases."
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "log_sha256": "fdb0aa59180e579432643484be4503a8c8c7d39bb3c2891446ee61958ae8fd29",
+      "source_sha256": "92381de2871ce76741d4980b2f84d0a717e4f4bfe420d4970cea3b18f309364d",
+      "exit_code": 0,
+      "scope": "TypeScript noEmit check."
+    },
+    {
+      "suite": "tooling",
+      "log": "../2026-11-13-mcp-write-receipt/tooling-final.log",
+      "log_sha256": "2af9535dd98cc048fa65b1bac9b94c60fb5446d45fbd9b29c8a15aa7de9179c0",
+      "source_sha256": "93ef677648bc44e33a7715779f058ec17a2259878f01d8f5fcdc07f130f0e7e3",
+      "exit_code": 0,
+      "scope": "14 CI-contract and18 launcher tests; mocks validate CGU256/strip=symbols and retained CPU/RAM/scratch/selection/isolation/single-job requirements. This is not actual nested Rust execution or a GitHub Actions run.",
+      "reused_unchanged_source": true
+    }
+  ],
+  "artifact_sha256": {
+    "source-current.json": "74311b8872438cef720ec9fbf94442c4edf1b2286bad0b3836ff8c4ecce375f1",
+    "mcp_cleanup_image_mobile.png": "f98ab91e58949f6907cdda2a9b4832ecf8063767fc79a07bdf7ad7a7dc2f41c7",
+    "mcp_cleanup_image_desktop.png": "1ba1bd5ee0f85a34f790174d2b89e69922d42f1f9e8aa10165515cd5e1ce881b"
+  },
+  "diagnostics": {
+    "clippy-first.log": "Initial usize FromSql compile errors; fixed using bounded u32/i64 reads.",
+    "server-first.log": "Exit101:705 relay passed,2 obsolete JSON expectations failed; both fixed in final source.49 separate acceptance ignored. Final full server suite passes."
+  },
+  "limits": "256 pending references,512 verified history after completed sweep,256 uncertain history never automatically pruned,256 temporary verified rows; hard1280 references per connection. Explicit owner AS revoke/cleanup/reauthorization only; no automatic active-token AS/GC or background cleanup.",
+  "open": "E5.2/E5.3 and full E0-E10 remain incomplete; formal20/68. Real AS/accounts/keyring/tailnet/native macOS,legacy unfinished,URL elicitation,general scoped secrets,A2A and later stages remain separate.",
+  "visual_review": "Original cleanup desktop/mobile PNGs inspected; capacity and action text fit cards. Focus skip-link visible in prepared browser flow. Not full accessibility/cross-browser acceptance."
+}
