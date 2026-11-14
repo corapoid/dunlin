@@ -729,6 +729,13 @@ fn permission_action(
     f: &Fixture,
     s: &Session,
 ) -> Option<ahp_types::commands::DispatchActionParams> {
+    permission_decision_action(f, s, true)
+}
+fn permission_decision_action(
+    f: &Fixture,
+    s: &Session,
+    approved: bool,
+) -> Option<ahp_types::commands::DispatchActionParams> {
     let store = f.state.store.lock().unwrap();
     let a = store
         .team_project_context(&f.workspace, &f.project, &f.auth.user.id)
@@ -750,9 +757,9 @@ fn permission_action(
     let option = tool["options"]
         .as_array()?
         .iter()
-        .find(|o| o["kind"] == "approve")?["id"]
+        .find(|o| o["kind"] == if approved { "approve" } else { "deny" })?["id"]
         .clone();
-    Some(serde_json::from_value(json!({"channel":format!("ahp-chat:/{}",s.id),"clientSeq":1,"action":{"type":"chat/toolCallConfirmed","turnId":turn["id"],"toolCallId":tool["toolCallId"],"approved":true,"selectedOptionId":option}})).unwrap())
+    Some(serde_json::from_value(json!({"channel":format!("ahp-chat:/{}",s.id),"clientSeq":1,"action":{"type":"chat/toolCallConfirmed","turnId":turn["id"],"toolCallId":tool["toolCallId"],"approved":approved,"selectedOptionId":option}})).unwrap())
 }
 #[tokio::test]
 async fn approval_device_revoked_before_consumption_never_grants_acp_permission() {

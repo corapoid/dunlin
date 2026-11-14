@@ -398,14 +398,24 @@ fn bind_connections(
                 .filter(|t| t.provider_id == selected.provider_id)
                 .cloned()
                 .collect();
-            let tool = dunlin_vault::scoped::tool::http();
             if grant.provider_id != selected.provider_id
-                || pins.len() != 1
-                || pins[0].name != tool.name
-                || pins[0].definition_digest
-                    != tool
-                        .definition_digest()
-                        .map_err(|_| "mcp_schema_unavailable")?
+                || pins.is_empty()
+                || pins.len() > 2
+                || pins
+                    .iter()
+                    .map(|pin| &pin.name)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != pins.len()
+                || pins.iter().any(|pin| {
+                    let tool = match pin.name.as_str() {
+                        "http" => dunlin_vault::scoped::tool::http(),
+                        "recipe" if !grant.read_only => dunlin_vault::scoped::tool::recipe(),
+                        _ => return true,
+                    };
+                    tool.definition_digest()
+                        .map_or(true, |digest| pin.definition_digest != digest)
+                })
             {
                 return Err("mcp_secret_profile_changed");
             }

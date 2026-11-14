@@ -14,6 +14,8 @@ use std::time::Instant;
 use zeroize::{Zeroize, Zeroizing};
 
 mod cleanup;
+mod recipe;
+pub use recipe::{RecipeAuthority, RecipePermit, RecipeTarget};
 pub mod tool;
 pub use cleanup::{CleanupClaim, CleanupJournal};
 
@@ -330,6 +332,24 @@ impl<J: Journal> Credentials<J> {
         deadline: Instant,
         authority: Arc<dyn Authority>,
     ) -> Result<Permit> {
+        self.permit_for(
+            scope,
+            version,
+            &input.secret,
+            input_digest(input)?,
+            deadline,
+            authority,
+        )
+    }
+    fn permit_for(
+        &self,
+        scope: UseScope,
+        version: Version,
+        credential: &str,
+        input_sha256: String,
+        deadline: Instant,
+        authority: Arc<dyn Authority>,
+    ) -> Result<Permit> {
         scope.validate()?;
         let reference = version
             .reference
@@ -348,12 +368,11 @@ impl<J: Journal> Credentials<J> {
             || version.revision > 9_007_199_254_740_991
             || !token(&version.credential)
             || scope.binding != version.binding
-            || input.secret != version.credential
+            || credential != version.credential
             || deadline <= Instant::now()
         {
             return Err(Error::Denied);
         }
-        let input_sha256 = input_digest(input)?;
         authority.check(&scope, &version)?;
         authority.consume(&scope, &version, &input_sha256)?;
         let checked_scope = scope.clone();
@@ -409,14 +428,8 @@ impl<J: Journal> Credentials<J> {
         }
         result
     }
-    fn http_inner(
-        &self,
-        permit: &Permit,
-        input: HttpInput,
-        executor: &dyn HttpExecutor,
-        dispatched: &mut bool,
-    ) -> Result<HttpOutput> {
-        if input_digest(&input)? != permit.input_sha256 || !permit.access.allowed() {
+    fn load_record(&self, permit: &Permit) -> Result<Record> {
+        if !permit.access.allowed() {
             return Err(Error::Denied);
         }
         let raw = self
@@ -449,6 +462,22 @@ impl<J: Journal> Credentials<J> {
         {
             return Err(Error::Denied);
         }
+        if !permit.access.allowed() {
+            return Err(Error::Denied);
+        }
+        Ok(record)
+    }
+    fn http_inner(
+        &self,
+        permit: &Permit,
+        input: HttpInput,
+        executor: &dyn HttpExecutor,
+        dispatched: &mut bool,
+    ) -> Result<HttpOutput> {
+        if input_digest(&input)? != permit.input_sha256 || !permit.access.allowed() {
+            return Err(Error::Denied);
+        }
+        let record = self.load_record(permit)?;
         let validated = http::validate_input(&record.policy, &input).map_err(|_| Error::Denied)?;
         if permit.scope.read_only && validated.method.is_write() {
             return Err(Error::Denied);
@@ -509,7 +538,7 @@ mod tests {
         active: Option<Version>,
     }
     #[derive(Default)]
-    struct TestJournal {
+    pub(super) struct TestJournal {
         state: Mutex<State>,
         fail_ack: AtomicBool,
         deny_activation: AtomicBool,
@@ -660,14 +689,14 @@ mod tests {
             fail: false,
         }
     }
-    fn binding() -> Binding {
+    pub(super) fn binding() -> Binding {
         Binding {
             workspace: "workspace".into(),
             project: "project".into(),
             host: "host".into(),
         }
     }
-    fn policy() -> SecretPolicy {
+    pub(super) fn policy() -> SecretPolicy {
         SecretPolicy {
             version: 1,
             managed: true,
@@ -686,7 +715,7 @@ mod tests {
             operations: vec![],
         }
     }
-    fn scope() -> UseScope {
+    pub(super) fn scope() -> UseScope {
         UseScope {
             principal_kind: PrincipalKind::Human,
             actor: "actor".into(),

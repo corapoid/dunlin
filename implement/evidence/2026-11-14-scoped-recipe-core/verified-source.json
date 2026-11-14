@@ -1,0 +1,86 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "8acfc5c0182fb23b95812beb136be2624113748a8e4add9649b3436d3ee770fa",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    }
+  },
+  "runs": {
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "8acfc5c0182fb23b95812beb136be2624113748a8e4add9649b3436d3ee770fa",
+      "log_sha256": "106d7798aeefa2f65eab90c5cba4c3ea7611c92cc6608feb5d4c49a054b0914e"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "8acfc5c0182fb23b95812beb136be2624113748a8e4add9649b3436d3ee770fa",
+      "log_sha256": "eb08ce7e843965909a18f1879d9eec93ecabda55293340f12a268d22af9494eb"
+    },
+    "runtime-local-final.log": {
+      "exit_code": 0,
+      "source_sha256": "8acfc5c0182fb23b95812beb136be2624113748a8e4add9649b3436d3ee770fa",
+      "log_sha256": "c6ca0fce113818f6c22e968d9f21d2b7131308bce09410385739ca4e7ef99f94"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "8acfc5c0182fb23b95812beb136be2624113748a8e4add9649b3436d3ee770fa",
+      "log_sha256": "d73dd1046a0f4772ba9deeb82101c3f77b770fc6d05412135cd84ffc195d1797"
+    }
+  },
+  "results": {
+    "backend_passed": 911,
+    "relay_passed": 766,
+    "backend_acceptance_ignored": 63,
+    "http_mcp_vault_passed": 198,
+    "http_passed": 9,
+    "mcp_passed": 121,
+    "vault_passed": 68,
+    "compile_fail_passed": 5,
+    "local_scoped_http_runtime_regression_passed": 3,
+    "runtime_browser": false
+  },
+  "frontend_reused": {
+    "proof": "frontend-unchanged.json",
+    "proof_sha256": "7fffc90679cabe181872f5754e2c1fed7f4c0190b0b528dec05bf55834b8e78d",
+    "rerun": false
+  },
+  "intermediate": {
+    "mcp-first.log": {
+      "exit_code": 0,
+      "source_sha256": "673c0ee5968446c459e43b4e4a6ae0f9b90e65091cae3066fc32a34471846131",
+      "log_sha256": "136fcbaae70ec4522b411aa67aca1162f104bd11319df9a8b17680b1dff1b838",
+      "reason": "Initial recipe/group implementation, 195+5 pass; before duplicate-name/output-bound/Basic extensions."
+    },
+    "mcp-before-basic.log": {
+      "exit_code": 0,
+      "source_sha256": "c32097c94e7960872944b5bc106602e661faf2905482afb6a29de54b402d9d9c",
+      "log_sha256": "094a8d22646815a93077dbd462a31643efd8032bd68941f8a347d84f81c78bfb",
+      "reason": "197+5 pass; before final Basic redaction regression."
+    },
+    "server-before-basic.log": {
+      "exit_code": 0,
+      "source_sha256": "c32097c94e7960872944b5bc106602e661faf2905482afb6a29de54b402d9d9c",
+      "log_sha256": "db756ef56691c36114f783dc86c15e177aa7c1447682a279303007576ac6f957",
+      "reason": "911 pass; before final recipe Basic redaction extension."
+    }
+  },
+  "limitations": [
+    "Recipe admission/execution and target checks are a library foundation; managed session catalog/runtime/UI and remote recipe transport are not integrated yet.",
+    "RecipeTarget constructor validates shape only; concrete host adapter must attest the actual binding, canonical cwd and immutable checkout stamp.",
+    "CommandExecutor owns a Unix process group; target adapter still requires sandbox/process-tree ownership, isolated HOME/config/credential store and executable identity through spawn.",
+    "Managed recipe execution requires an unambiguous template and SHA-256 executable pin; read-only recipes are denied.",
+    "Local HTTP runtime regression uses production relay/proxy/sandbox with controlled keyring and HTTP substitutes; this is not runtime recipe acceptance.",
+    "No Chromium rerun, native macOS acceptance, real account, service, keyring or tailnet acceptance.",
+    "Recipes/service workflow integration, full E5.3/E10 acceptance and remaining E0-E10 stay open."
+  ],
+  "local_checks": "local-results.json",
+  "local_checks_sha256": "5d14ae0f85e2f30ec618f023b94c9d1ef6057aff7d97fdd32cf96627f8f0bf05"
+}

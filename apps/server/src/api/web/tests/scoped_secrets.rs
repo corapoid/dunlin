@@ -397,8 +397,11 @@ async fn scoped_secret_requests_require_cookie_origin_exact_actor_and_explicit_h
 }
 
 fn published_secret_profile(s: &Scope, digest: &str) -> Value {
+    published_named_profile(s, "http", digest)
+}
+fn published_named_profile(s: &Scope, tool_name: &str, digest: &str) -> Value {
     let store = s.state.store.lock().unwrap();
-    let definition=serde_json::from_value(json!({"schema_version":2,"name":"Secret consumer","harness":"claude","model":"fixture","mode":"plan","skills":[],"mcp":[{"provider_id":"dunlin-secret-work","name":"http","definition_digest":digest}],"max_seconds":60,"max_output_bytes":65536})).unwrap();
+    let definition=serde_json::from_value(json!({"schema_version":2,"name":"Secret consumer","harness":"claude","model":"fixture","mode":"plan","skills":[],"mcp":[{"provider_id":"dunlin-secret-work","name":tool_name,"definition_digest":digest}],"max_seconds":60,"max_output_bytes":65536})).unwrap();
     let draft = store
         .create_agent(&s.owner, &s.workspace, &s.project, definition)
         .unwrap();
@@ -710,4 +713,48 @@ async fn scoped_cleanup_api_keeps_unknown_writer_and_records_delete_fact_after_l
     assert_eq!(counts["deleted_history"], 1);
     assert_eq!(counts["pending_writes"], 1);
     assert_eq!(counts["retained"], 2);
+}
+
+#[tokio::test]
+async fn scoped_recipe_catalog_and_grants_require_exact_pin_and_writable_access() {
+    let s = scope().await;
+    let path = s.base.replace("/scoped-secrets", "/scoped-secret-tool");
+    let (status, catalog) = request(&s, "GET", &format!("{path}?kind=recipe"), Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(catalog["tool"]["name"], "recipe");
+    assert_eq!(catalog["execution_supported"], false);
+    for suffix in ["?kind=arbitrary", "?kind=recipe&program=untrusted"] {
+        assert_eq!(
+            request(&s, "GET", &format!("{path}{suffix}"), Value::Null)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        request(&s, "POST", &format!("{}/work-api", s.base), save(&s, 0))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let profile =
+        published_named_profile(&s, "recipe", catalog["definition_digest"].as_str().unwrap());
+    let mut body = grant_request(&profile, &s.owner);
+    let grants = format!("{}/work-api/grants", s.base);
+    assert_eq!(
+        request(&s, "POST", &grants, body.clone()).await.0,
+        StatusCode::FORBIDDEN
+    );
+    body["read_only"] = json!(false);
+    assert_eq!(
+        request(&s, "POST", &grants, body.clone()).await.0,
+        StatusCode::OK
+    );
+    let stale = published_named_profile(&s, "recipe", &"a".repeat(64));
+    body["profile"] = stale;
+    assert_eq!(
+        request(&s, "POST", &grants, body).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(s.secrets.reads.load(Ordering::Acquire), 0);
 }

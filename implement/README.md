@@ -302,7 +302,21 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   Przerywanie guarded HTTP/MCP/JSON/SSE po utracie uprawnień wdrożone;
   backend908, biblioteki183+3, runtime remote27/local3 z Chromium i Clippy PASS.
   [Manifest odbioru](evidence/2026-11-14-http-kill-switch/verified-source.json).
-  Pozostałe AS oraz recipes/service workflow nadal otwarte.
+  Pozytywna wymiana kodu OAuth i refresh również mają aktywne przerwanie:
+  backend909, biblioteki184+3 i Clippy PASS; kontrolowany AS peer potwierdza
+  zamknięcie socketu po logout bez install/replay. [Manifest OAuth](evidence/2026-11-14-oauth-token-cancellation/verified-source.json).
+  Discovery także ma aktywne przerwanie przez probe/resource/AS i fallback.
+  Odbiór backend911, biblioteki186+3, root/package Clippy i realny runner2 PASS:
+  refresh po wygaśnięciu przed SDK consent oraz disconnect podczas refreshu
+  (close AS bez odpowiedzi, zero tools/call, Unknown, stop/ACK i reservation0).
+  [Manifest discovery/runner](evidence/2026-11-14-oauth-discovery-runner/verified-source.json).
+  Rdzeń CLI ma osobny RecipePermit, wymagane potwierdzanie hosta/checkoutu,
+  pin programu, jednorazowy input/target digest i ograniczony zredagowany wynik.
+  Poprawiono sprzątanie grupy po wyjściu rodzica i panic watchdoga. Biblioteki198+5,
+  backend911, regresja lokalnego scoped HTTP3 i Clippy PASS.
+  [Manifest rdzenia receptur](evidence/2026-11-14-scoped-recipe-core/verified-source.json).
+  Adaptery runtime/runnera, katalog/UI receptur, service workflow i pełny odbiór
+  E5.3/E10 nadal otwarte.
   Dziennik runtime ma oddzielne jednorazowe zgody MCP z przypięciem całego
   wywołania, blokadą replay i hostową przestrzenią tool IDs chronioną przed ACP.
   SDK zgód ma74 testy PASS. Schema2 profilu przechowuje dokładne allowlisty

@@ -18,7 +18,7 @@ model, mode = "fixture-model", "plan"
 mcp_config = None
 mcp_process = None
 def mcp_request(method, params, request_id):
-    if behavior in ("mcp-real", "mcp-scoped-real"):
+    if behavior in ("mcp-real", "mcp-scoped-real", "mcp-scoped-recipe-real"):
         # Exercise the production facade over MCP JSON lines, including legal
         # reuse of a correlation ID after the previous reply.
         mcp_process.stdin.write(json.dumps({"jsonrpc":"2.0", "id":1, "method":method, "params":params})+"\n")
@@ -67,12 +67,12 @@ for line in sys.stdin:
         assert params["clientCapabilities"]["terminal"] is False
         reply(request, {"protocolVersion":1})
     elif method == "session/new":
-        if behavior in ("mcp", "mcp-real", "mcp-scoped-real"):
+        if behavior in ("mcp", "mcp-real", "mcp-scoped-real", "mcp-scoped-recipe-real"):
             assert len(params["mcpServers"]) == 1
             mcp_config = params["mcpServers"][0]
             assert mcp_config["args"] == ["--mcp-tools"]
             assert {item["name"] for item in mcp_config["env"]} == {"DUNLIN_MCP_SOCKET", "DUNLIN_MCP_TOKEN"}
-            if behavior in ("mcp-real", "mcp-scoped-real"):
+            if behavior in ("mcp-real", "mcp-scoped-real", "mcp-scoped-recipe-real"):
                 env = {item["name"]:item["value"] for item in mcp_config["env"]}
                 mcp_process = subprocess.Popen([mcp_config["command"],*mcp_config["args"]],env=env,
                     stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
@@ -92,12 +92,19 @@ for line in sys.stdin:
         text = params["prompt"][0]["text"]
         with open("received-prompts", "a") as log:
             log.write(text + "\n")
-        if behavior in ("mcp", "mcp-real", "mcp-scoped-real"):
+        if behavior in ("mcp", "mcp-real", "mcp-scoped-real", "mcp-scoped-recipe-real"):
             tools = mcp_request("tools/list", {}, "catalog")
             assert len(tools["result"]["tools"]) == 1
             name = tools["result"]["tools"][0]["name"]
-            call = {"name":name,"arguments":({"method":"GET","url":"https://api.example.com/items"} if behavior == "mcp-scoped-real" else {"query":"approved fixture"})}
+            call = {"name":name,"arguments":({"method":"GET","url":"https://api.example.com/items"} if behavior == "mcp-scoped-real" else {"recipe":"check","params":{"item":"approved"}} if behavior == "mcp-scoped-recipe-real" else {"query":"approved fixture"})}
             result = mcp_request("tools/call", call, "call-1")
+            if behavior == "mcp-scoped-recipe-real":
+                assert "DUNLIN_SECRET" not in os.environ
+                if result.get("result", {}).get("isError"):
+                    assert "denied" in result["result"]["content"][0]["text"]
+                else:
+                    output = json.loads(result["result"]["content"][0]["text"])
+                    assert output["exit_code"] == 0 and output["stdout"] == "[REDACTED] recipe result" and output["stderr"] == "[REDACTED]"
             if behavior == "mcp-scoped-real":
                 output = json.loads(result["result"]["content"][0]["text"])
                 assert output["status"] == 200 and output["body"] == "[REDACTED] local result"

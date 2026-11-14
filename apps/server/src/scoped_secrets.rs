@@ -80,6 +80,30 @@ impl Service {
         }
         credentials.http(permit, input, &dunlin_vault::http::UreqExecutor::new())
     }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn recipe(
+        &self,
+        scope: dunlin_vault::scoped::UseScope,
+        version: Version,
+        input: dunlin_vault::recipe::RecipeInput,
+        target: dunlin_vault::scoped::RecipeTarget,
+        deadline: std::time::Instant,
+        authority: Arc<dyn dunlin_vault::scoped::RecipeAuthority>,
+        executor: &dyn dunlin_vault::recipe::RecipeExecutor,
+    ) -> Result<dunlin_vault::recipe::RecipeOutput> {
+        let _slot = self
+            .slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Limit)?;
+        let credentials = match &self.backend {
+            Some(backend) => Credentials::new(Arc::new(UseJournal), backend.clone()),
+            None => Credentials::relay(Arc::new(UseJournal)),
+        };
+        let permit =
+            credentials.permit_recipe(scope, version, &input, target, deadline, authority)?;
+        credentials.recipe(permit, input, executor)
+    }
     pub(crate) async fn cleanup(
         &self,
         state: AppState,

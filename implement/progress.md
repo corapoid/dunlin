@@ -6025,3 +6025,201 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
 - Końcowy [manifest źródeł i wyników](evidence/2026-11-14-http-kill-switch/verified-source.json)
   wiąże wszystkie pięć odbiorów Rust z d5203238 i sumami logów. E5.3 pozostaje
   otwarte; ten odbiór nie zamyka pozostałych AS ani recipes/service workflow.
+
+
+### 2026-11-14 — E5.3: przerwanie pozytywnej wymiany OAuth, odbiór bibliotek/API zakończony
+
+- Poprzedni przyrost zakończono commitem b499531 i push na gałąź roboczą.
+  Bieżąca kontynuacja nie tworzy kolejnego commita automatycznie.
+- `AuthorizationFlow::with_token_guard` zamyka izolowany transport wymiany kodu
+  i refresh po utracie authority. Watchdog trwa przez walidację odpowiedzi;
+  EOF po shutdown nie przyjmuje nawet kompletnego JSON-u z tokenami.
+- Podłączono callback OAuth (oryginalna przeglądarka + authorizing), katalog
+  osobisty (tożsamość, członkostwo, rewizja i stan połączenia) i broker sesji
+  lokalnych/zdalnych (scope, deadline, dodatkowy warunek operacji).
+- Kontrolowany peer testuje code/refresh × nagłówki/body/close-delimited EOF,
+  wymaga rzeczywistego zamknięcia socketu do1s i odrzuca ponowienie po regrant.
+  Callback/inspect mają osobny test API z rzeczywistym logout podczas AS HTTP,
+  brakiem zapisu tokenów/MCP dispatch i trwałą blokadą niepewnego refreshu.
+- Pierwszy zestaw bibliotek184+3 compile-fail PASS, package Clippy PASS26,96s;
+  peak1230290944B/max0/OOM0. To snapshot da5b8c72 sprzed końcowego testu
+  negatywnej revocation i testu API; nie zastępuje końcowego odbioru.
+- Jawna revocation zachowuje własny journal authority i factual ACK. Nowy guard
+  dotyczy dodatnich operacji, nie blokuje negatywnego cleanup po odmowie użycia.
+- Discovery AS, recipes/service workflow i realne konta/keyring/tailnet pozostają
+  otwarte. E5.3 nie jest zakończone. Trwa pełny backend dla snapshotu46a56616.
+
+- **Backend909 PASS** (764 relay+1 identity+80 SDK+27 terminal+37 usage),
+  61 acceptance ignored; relay215,37s. Nowy test API code/refresh+logout PASS,
+  poprzednie scenariusze revocation, cleanup, katalogu i brokera również PASS.
+  Source46a56616; peak3671453696B/max0/OOM0, scratch62%,601784KiB wolnego.
+- **Root selected all-targets Clippy PASS2m03s**, source46a56616;
+  peak2415919104B/max181/OOM0 (limit cgroup osiągnięty, bez OOM).
+- Frontend164/TypeScript/build nie uruchamiano ponownie; niezależny snapshot
+  ich dokładnych wejść jest identyczny z odbiorem scoped-retention.
+- Ten przyrost nie ma nowego odbioru runtime+Chromium. Runtime guard jest
+  podłączony i kompilowany/testowany w backendzie; osobny scenariusz wygaśnięcia
+  i anulowania refreshu podczas realnej sesji runnera pozostaje do odbioru.
+
+- **Końcowe biblioteki184+3 compile-fail PASS** (HTTP9+MCP119+vault56),
+  package Clippy PASS26,88s; source46a56616 jak backend i root Clippy.
+  Peak1239457792B/max0/OOM0. Test negatywnej revocation przy odmowie token guard PASS.
+- [Manifest źródeł i wyników](evidence/2026-11-14-oauth-token-cancellation/verified-source.json)
+  wiąże trzy końcowe odbiory z niezależnie policzonym snapshotem i sumami logów.
+  Formalna checklist nadal21/68 (30,9%); E5.3 otwarte. Kolejne wymagania:
+  discovery AS, dedykowany runtime refresh/cancel oraz recipes/service workflow.
+
+
+### 2026-11-14 — E5.3: discovery z authority i refresh w runnerze, odbiór lokalny zakończony
+
+- Poprzedni turn to postęp: pozytywne token exchange/refresh, backend909,
+  biblioteki184+3 i oba Clippy PASS, manifest zapisany. Cel E0–E10 pozostaje aktywny.
+- `Discovery::with_guard` obejmuje probe, resource metadata i issuer metadata
+  przez parse/validation; EOF po shutdown nie publikuje pozornego sukcesu.
+  Każdy fallback ma ponowne sprawdzenie authority. Odmowa pozostaje terminalna.
+- `Provider::flow_authorized` jest podłączony do startu OAuth, katalogu i brokera
+  sesji. Discovery guard nie jest przechowywany w Pending; callback zachowuje
+  własną authorizing authority, a katalog/runtime jawnie podpinają token guard.
+  Test Weak sprawdza, że Pending nie tworzy cyklu własności AppState/Service.
+- Pierwsze biblioteki186+3 compile-fail i package Clippy PASS26,76s (snapshot
+  sprzed końcowych fixtures runnera/API). Obejmują probe headers i resource/AS
+  headers/body/pełny JSON bez EOF, rzeczywisty close do1s oraz brak fallbacku,
+  flow construction i kolejnego requestu po regrant.
+- Fixture runnera ma dwa nowe scenariusze: token wygasa przed zgodą SDK i jest
+  odświeżany przed pierwszym tools/call; albo disconnect podczas realnego AS
+  refresh zamyka socket przed odpowiedzią. Testy sprawdzają writes/calls,
+  Unknown, brak replay, stop/ACK i reservation0. Trwa pierwszy odbiór runtime2.
+- Test API start+logout podczas AS discovery wymaga close do1s, zero token HTTP,
+  zero zapisów sekretu i brak przygotowanego połączenia. Pełny backend w kolejce.
+- Nie zmieniono UI i nie użyto realnych kont, usług, keyringu ani tailnetu.
+  Recipes/service workflow i pełny E5.3/E10 nadal otwarte.
+
+- **Realny remote runtime2 PASS38,07s**,827 filtered, sourcea5f333bd.
+  Dodatni przypadek czeka na lokalne wygaśnięcie tokenu przed SDK consent;
+  jeden refresh, dwa zapisy kopert i dwie ukończone tury z tools/call.
+  Disconnect podczas refreshu potwierdza close socketu AS do1s bez odpowiedzi,
+  jeden refresh, jeden pierwotny write, zero tools/call, Unknown bez replay,
+  stop/ACK i reservation0. Użyto rzeczywistych TLS/WSS/REST/AHP/runner/proxy/
+  bubblewrap, kontrolowanego AS HTTP i pamięciowego keyringu; bez Chromium.
+  Peak3669299200B/max0/OOM0, scratch65%,565876KiB wolnego.
+- Trwa pełny backend dla tego samego snapshotu; następnie root Clippy i końcowy
+  zestaw bibliotek. UI unchanged potwierdzono trzema niezależnymi narrow snapshots.
+
+- **Backend911 PASS** (766 relay+1 identity+80 SDK+27 terminal+37 usage),
+  63 acceptance ignored; sourcea5f333bd jak runtime. Test start+logout podczas
+  discovery i Weak Pending/Service PASS, dotychczasowe callback/refresh/
+  revocation/retention i lokalny broker również PASS. Peak3728420864B/max0/OOM0,
+  scratch62%,601712KiB wolnego. Root Clippy w toku.
+
+- **Root selected all-targets Clippy PASS2m02s**, sourcea5f333bd;
+  peak2415919104B/max7/OOM0 (limit cgroup osiągnięty, bez OOM).
+  Końcowy zestaw bibliotek dla tego samego snapshotu w toku.
+
+- **Końcowe biblioteki186+3 compile-fail PASS** (HTTP9+MCP121+vault56),
+  package Clippy PASS27,37s; sourcea5f333bd jak backend, runtime i root Clippy.
+  Peak1236865024B/max0/OOM0. Pierwszy zestaw miał także186+3 i Clippy PASS,
+  lecz końcowe źródła i fixtures potwierdzono osobnym uruchomieniem.
+- [Manifest źródeł i wyników](evidence/2026-11-14-oauth-discovery-runner/verified-source.json)
+  wiąże cztery końcowe odbiory ze wspólnym, niezależnie policzonym snapshotem.
+  Rustfmt14 zmienionych/nowych plików, dokumentacja122 i whitespace PASS.
+- E5.3 pozostaje otwarte: recipes/service workflow oraz pełny odbiór E10.
+  Formalna checklist nadal21/68. Nie tworzono commita/push w tej kontynuacji.
+
+
+### 2026-11-14 — E5.3: rdzeń permitów receptur i własność procesów, odbiór rdzenia zakończony
+
+- Poprzedni turn: postęp — discovery authority, realny runner refresh/cancel2,
+  backend911, biblioteki186+3 i Clippy PASS; wspólny manifest a5f333bd zapisany.
+- Wprowadzono RecipeTarget (binding/cwd/checkout stamp), wymagane RecipeAuthority
+  i osobny nieklonowalny/niedeserializowalny RecipePermit. Admission wiąże input
+  i target w osobnej domenie digestu; read-only odmawia CLI. Wspólny odczyt
+  immutable envelope zachowuje aktualne authority/expiry również dla HTTP.
+- Wykonanie wymaga jednoznacznej nazwy, pinu programu i template parametrów;
+  po dispatch błędy/odwołanie/utrata ACK pozostają Unknown, bez retry. Wyjście
+  jest redagowane i ograniczane po redakcji. Plan Debug nie drukuje sekretu/argv.
+- Naprawiono zawieszenie CommandExecutor po wyjściu rodzica: własna grupa jest
+  kończona przed reaping i zakończeniem readerów. WNOWAIT zachowuje identity
+  do zakończenia watchdoga; RAII sprząta przy unwind. Panic authority w watchdogu
+  powoduje revoke i kill. Testy uruchamiają rzeczywiste fixed scripts/procesy.
+- Pierwsze biblioteki195+5 compile-fail i package Clippy PASS26,55s,
+  peak1231032320B/max0/OOM0. Końcowe197+5 PASS i package Clippy PASS26,63s,
+  peak1231040512B/max0/OOM0; dodano duplikaty nazw i limity wzrostu redakcji.
+- Trwa backend. Następnie regresja produkcyjnego lokalnego scoped HTTP oraz
+  root Clippy. UI i transport runnera nie otrzymały jeszcze narzędzia recipe.
+  Kontrakt dalszego podłączenia jest w agent-profiles.md; E5.3 i cały cel E0–E10
+  pozostają otwarte. Receptura remote wymaga własnego adaptera/polityki runnera,
+  a workflow — trwałej authority service principal i kroku, nie imitacji human.
+
+- Pierwszy pełny **backend911 PASS** (766 relay+1 identity+80 SDK+27 terminal+
+  37 usage),63 acceptance ignored, relay217,44s; sourcec32097c9,
+  peak3667894272B/max0/OOM0, scratch62%,601372KiB wolnego.
+- Następnie domknięto redakcję pary Basic username:value w stdout/stderr
+  receptury, analogicznie do HTTP. Dodano test tej formy diagnostyki CLI.
+  Wyniki c32097c9 zachowano jako before-basic; trwa końcowy zestaw bibliotek
+  i ponowny odbiór wspólnego finalnego snapshotu. Nie traktujemy starego logu
+  jako dowodu wykonania późniejszego testu Basic.
+
+- **Końcowe biblioteki198+5 compile-fail PASS** (HTTP9+MCP121+vault68),
+  package Clippy PASS27,11s; source8acfc5c0. Redakcja Basic PASS.
+  Peak1310978048B/max0/OOM0. Trwa pełny backend finalnego snapshotu; potem
+  lokalny runtime scoped HTTP i root Clippy. Źródła Rust pozostają zamrożone.
+
+- **Końcowy backend911 PASS** (766 relay+1 identity+80 SDK+27 terminal+37
+  usage),63 acceptance ignored, source8acfc5c0 jak biblioteki z Basic.
+  Peak3669381120B/max0/OOM0, scratch62%,601364KiB wolnego. Trwa lokalny
+  runtime scoped HTTP3 bez Chromium, potem root Clippy.
+
+- **Lokalny runtime scoped HTTP3 PASS1,71s**,826 filtered, source8acfc5c0,
+  bez Chromium. Produkcyjny relay/proxy i sandbox zachowują poprawne wykonanie,
+  native revoke po keyring read i binding revoke podczas HTTP. Keyring i HTTP
+  są kontrolowanymi substitutes. To regresja współdzielonego odczytu koperty,
+  nie odbiór podłączonej receptury runtime. Peak3749924864B/max0/OOM0,
+  scratch65%,565524KiB wolnego. Root Clippy w toku.
+
+- **Root selected all-targets Clippy PASS2m01s**, source8acfc5c0;
+  peak2396225536B/max0/OOM0. Wszystkie cztery końcowe odbiory mają ten sam
+  snapshot, niezależnie przeliczony w [manifeście](evidence/2026-11-14-scoped-recipe-core/verified-source.json).
+- Rustfmt19 zmienionych/nowych plików, dokumentacja122 i whitespace PASS.
+  Frontend164/TypeScript/build nie były ponawiane; trzy narrow snapshots wejść
+  pozostały identyczne z przyrostem scoped-retention.
+- E5.3 pozostaje otwarte. Kolejne prace: konkretny adapter local z pełną
+  authority checkoutu/programu, prywatny adapter/protokół runnera i polityka
+  operatora, następnie katalog/UI i service workflow. Biblioteczny RecipeTarget
+  nie jest samodzielnym dowodem hosta, a grupa procesu nie zastępuje sandboxa.
+  Formalnie nadal21/68. Nie tworzono commita/push w tej kontynuacji.
+
+
+### 2026-11-14 — E5.3: lokalny adapter receptur Linux, odbiór w toku
+
+- Poprzedni turn: postęp — rdzeń RecipePermit/Target/Authority, grupy procesów,
+  biblioteki198+5, backend911, lokalna regresja HTTP3 i Clippy PASS, manifest8acfc5c0.
+- Local authority buduje target ze świeżego NativeCheckoutStamp i otwiera root
+  z kontrolą dev/inode. Dodano test podmiany ścieżki po otwarciu deskryptora.
+- LinuxRecipeExecutor wykonuje hash-verified sealed memfd w bubblewrap, z root
+  przekazanym jako FD, prywatnym HOME/config/tmp i namespace PID. CLOEXEC jest
+  zmieniane wyłącznie w konkretnym fork; zmienne loader/config nie mogą być
+  nazwą wstrzykiwanego sekretu. Harness nie otrzymuje wartości ani deskryptorów.
+- Broker i SQL granty rozpoznają dokładne piny HTTP/recipe; read-only odmawia CLI.
+  API `scoped-secret-tool?kind=recipe` wystawia statyczny pin i skonfigurowaną
+  dostępność. Bieżący model domyślnego katalogu HTTP pozostaje kompatybilny.
+  Test API sprawdza kind, zły query, read-only i zmieniony digest bez keyring read.
+- Pierwsze biblioteki200+5 compile-fail i package Clippy PASS27,19s,
+  peak1243959296B/max0/OOM0. Nowe testy sprawdzają seals oraz niezależność obrazu
+  od późniejszej podmiany pliku programu i odmowę obrazu z checkoutu/po revoke.
+- Pierwszy realny lokalny runtime receptur3 PASS2,21s,829 filtered,
+  source4f0c9977, peak3664920576B/max0/OOM0, scratch65%,565112KiB wolnego.
+  Obejmuje sukces, zmieniony pin programu i revoke przy działającym potomku
+  setsid; prawdziwy proces/proxy/sandbox, pamięciowy keyring, zero HTTP fallback.
+- Pierwszy root Clippy PASS2m03s, peak2415919104B/max102/OOM0 (limit osiągnięty,
+  bez OOM). Później rozszerzono fixtures o canary hosta, deny przed keyringiem
+  i replay receipt SDK bez ponownego efektu. Trwa końcowy runtime HTTP+recipe7.
+- UI, dodatkowe runtime assets/linked metadata, native macOS, adapter/protokół
+  remote oraz service workflow pozostają otwarte. E5.3 i cel E0–E10 aktywne.
+
+- Checkpoint commit: końcowy lokalny runtime HTTP+recipe **7 PASS4,47s**,
+  828 filtered, source058e11ae. Canary hosta, deny przed keyringiem, replay
+  bez ponownego efektu i revoke potomka setsid PASS; peak3679633408B/max0/OOM0.
+  [Manifest](evidence/2026-11-14-local-recipe/verified-source.json) rozróżnia
+  finalny runtime od wcześniejszych snapshotów bibliotek/Clippy. Pełny backend
+  jest jeszcze w toku; końcowy MCP/root Clippy nie był ponawiany.
+  Rustfmt32, Python AST i dokumentacja122 PASS.

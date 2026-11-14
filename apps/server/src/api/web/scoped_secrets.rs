@@ -186,9 +186,15 @@ pub(in crate::api) async fn private_headers(response: Response) -> Response {
     private_response(response)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(in crate::api) struct ToolQuery {
+    kind: Option<String>,
+}
 pub(in crate::api) async fn tool_catalog(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Query(query): Query<ToolQuery>,
     Path(scope): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
     use crate::store::scoped_secrets::Principal;
@@ -199,12 +205,27 @@ pub(in crate::api) async fn tool_catalog(
             scoped_secrets::identity(&state, store, &proof)
         })
         .map_err(error)?;
-    let tool = dunlin_vault::scoped::tool::http();
+    let recipe = match query.kind.as_deref() {
+        None | Some("http") => false,
+        Some("recipe") => true,
+        _ => return Err(error(Error::Invalid)),
+    };
+    let tool = if recipe {
+        dunlin_vault::scoped::tool::recipe()
+    } else {
+        dunlin_vault::scoped::tool::http()
+    };
+    let supported = scoped_secrets::execution_supported(&state, &proof.binding.host)
+        && (!recipe
+            || (proof.binding.host == "local"
+                && cfg!(target_os = "linux")
+                && state.config.sandbox
+                && crate::management::isolated_agents(&state.config)));
     let digest = tool
         .definition_digest()
         .map_err(|_| ApiError::internal("Scoped tool schema unavailable"))?;
     Ok(private_response(Json(
-        json!({"provider_prefix":dunlin_vault::scoped::tool::PROVIDER_PREFIX,"tool":tool,"definition_digest":digest,"principal_kinds":[Principal::Human,Principal::Service],"execution_supported":scoped_secrets::execution_supported(&state,&proof.binding.host)}),
+        json!({"provider_prefix":dunlin_vault::scoped::tool::PROVIDER_PREFIX,"tool":tool,"definition_digest":digest,"principal_kinds":[Principal::Human,Principal::Service],"execution_supported":supported}),
     )))
 }
 pub(in crate::api) async fn grants(

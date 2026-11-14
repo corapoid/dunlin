@@ -272,8 +272,128 @@ subskrypcji SSE. Odmowa DispatchGuard pozostaje terminalna po regrant. Jego
 callback może być wywoływany współbieżnie; powinien sprawdzać bieżące authority
 bez trzymania blokady przez HTTP i bez wykonywania własnego sieciowego I/O.
 
+Pozytywna wymiana kodu OAuth i refresh mają osobny `with_token_guard`.
+Guard obejmuje wysłanie formularza, nagłówki, body i walidację tokenów na
+izolowanym poolu. Callback sprawdza oryginalną sesję przeglądarki i trwały
+stan authorizing; katalog sprawdza członkostwo i rewizję połączenia, a broker
+sesji także deadline, uprawnienia sesji i dodatkowy warunek danej operacji.
+Odmowa jest terminalna. Niepewny refresh pozostaje zablokowany w journalu;
+regrant lub ponowne inspect nie ponawia rotującego requestu. Token guard nie
+obejmuje jawnej negatywnej revocation: ta ma własne uprawnienia i potwierdzenia.
+Discovery ma osobny `Discovery::with_guard`: probe MCP, metadane zasobu i AS
+używają izolowanego poola z watch przez odczyt i walidację odpowiedzi. Odmowa
+blokuje też kolejne adresy fallback oraz utworzenie flow z metadanych. Limity
+10s/request i 30s/discovery nadal obowiązują. Pozytywne ścieżki serwera tworzą
+discovery przez `flow_authorized`; katalog/runtime jawnie zachowują ten guard
+również dla wymiany tokenów. Start autoryzacji nie zachowuje discovery guard
+w Pending: callback dostaje świeżą kontrolę dla przygotowanej rewizji. Dzięki
+temu Pending nie utrzymuje przez guard własnego serwisu. Wyniki odbioru są
+zapisywane w progress.md.
+
 Trwający systemowy DNS lub TCP connect nie jest przerywany przez shutdown.
 Obowiązują timeout i budżet; socket zakończony po shutdown nie może wysłać
 żądania. Zamknięcie transportu nie cofa wcześniejszego efektu u dostawcy.
-Pozostałe przepływy AS, recipes/service workflow i pełny odbiór kill switcha
-pozostają odrębnymi kryteriami E5.3/E10; status testów jest w progress.md.
+Jawne negatywne przepływy AS mają własne uprawnienia i factual ACK; nie są
+przerywane guardem dodatniego użycia. Recipes/service workflow i pełny odbiór
+kill switcha pozostają kryteriami E5.3/E10; status testów jest w progress.md.
+
+
+## Receptury scoped — rdzeń i kontrakt hosta
+
+Biblioteka vault udostępnia `permit_recipe`/`recipe`, osobny `RecipePermit` oraz
+statyczną definicję MCP `recipe`. Argumentami są nazwa i zadeklarowane parametry;
+credential, program, env i katalog roboczy wybiera host. Lokalny runtime Linux z włączonym sandboxem obsługuje również pin `recipe`.
+Katalog/API udostępnia go przez `scoped-secret-tool?kind=recipe`; interfejs Buildera,
+macOS, adapter zdalny i workflow wymagają dalszego podłączenia.
+
+`RecipeTarget` opisuje binding workspace/project/host, canonical cwd i digest
+niezmiennego checkout stamp. Konstruktor sprawdza format; dowód pochodzi z
+wymaganego `RecipeAuthority::check_target`, wykonywanego przy admission, przed
+keyringiem, po I/O i przez live guard. HTTP authority samodzielnie nie wystarcza.
+Digest jednorazowej zgody ma osobną domenę `dunlin.scoped-recipe.v1` i wiąże
+pełny input z targetem. RecipePermit nie ma Deserialize ani Clone i nie jest
+zamienny z permit HTTP. Zmiana inputu, checkoutu, hosta, wersji credential lub
+read-only odcina wykonanie. Zużytego request ID nie wolno przywrócić po regrant.
+
+Wykonanie wybiera dokładnie jedną recepturę z przypiętej koperty. Wymaga pinu
+SHA-256 programu, odrzuca brak pinu i niejednoznaczną nazwę. Parametry przechodzą
+walidację istniejącego template; agent nie wybiera shell ani dodatkowych argv.
+Timeout jest ograniczony pozostałym budżetem permitu i polityką receptury.
+Niepewne wykonanie lub utrata completion ACK zwracają Unknown, bez retry.
+Redakcja obejmuje stdout/stderr i wspólne kodowania wartości. Oba strumienie mają
+limit także po redakcji; zbyt duża odpowiedź adaptera jest odrzucana. Debug planu
+maskuje sekret i wartości argv; bufory przejściowe wyjścia są zeroizowane.
+
+CommandExecutor kończy własną grupę również po naturalnym wyjściu rodzica,
+żeby potomkowie nie trzymali odziedziczonych pipe. WNOWAIT zachowuje unreaped
+leader do zakończenia sygnalizacji i watchdoga, ograniczając ryzyko ponownego
+użycia PID/PGID. RAII sprząta posiadany proces przy błędzie/unwind. Panic live
+callbacku w watchdogu terminalnie odwołuje dostęp i zabija grupę. Ten prymityw
+nie stanowi sandboxa nieufnego programu; adapter targetu musi zapewnić wymaganą
+izolację, własność drzewa procesu oraz odseparowany HOME/config/credential store.
+Adapter utrzymuje zweryfikowaną tożsamość i niezmienność programu przez spawn.
+Test pinu CommandExecutor nie zastępuje dowodu tej własności w adapterze hosta.
+Dziedziczenie HOME w legacy CommandExecutor nie jest dowodem takiej izolacji.
+Guarded wykonanie na platformie bez mechanizmu grupy procesu jest odmawiane. Odbiór native platform pozostaje w E10.
+
+Docelowe podłączenie runtime wymaga następujących warstw:
+
+1. Adapter local buduje target z bieżącego, zaufanego checkoutu i potwierdza
+   go razem z grantem, profilem, turą i lease. Serwer wykonuje CLI dla celu local.
+2. Adapter remote wykonuje CLI na przypiętym runnerze. Wymaga jawnej negocjacji
+   capabilities/protokołu i polityki operatora dla nazwanych, przypiętych
+   programów; istniejące `mcp_broker` nie upoważnia do dostarczenia sekretu CLI.
+   Prywatna komenda wiąże nonce operacji z sesją/turą, fence kanału, hostem,
+   exportem/revision i checkout stamp. Runner weryfikuje swój grant i template,
+   korzysta z własnego cwd i izoluje proces od harnessu. Wartość trafia wyłącznie
+   do prywatnego wykonawcy; odpowiedź i ledger nie zawierają sekretu. Powtórzenie
+   receipt nie uruchamia programu. Brak capability pozostaje unsupported.
+3. Broker i Builder publikują pin receptury dopiero po podłączeniu adaptera;
+   jednorazowa zgoda SDK obejmuje pełną operację oraz przypięty cel sesji.
+4. Workflow używa żywego service principal, RunWorkflow, dokładnej opublikowanej
+   wersji workflow/step i grantu credential/target. Durable admission kroku
+   stanowi jego własny dowód użycia; nie podszywa się pod urządzenie człowieka.
+   Recovery zachowuje Unknown i nie ponawia potencjalnego efektu CLI.
+
+Te integracje pozostają wymaganiami E5.3/E7. Biblioteczny odbiór nie zastępuje
+odbioru runtime, protokołu runnera, UI ani rzeczywistego keyringu i kont.
+
+
+## Lokalny adapter receptur Linux
+
+Local authority konstruuje RecipeTarget z rzeczywistego NativeCheckoutStamp
+(binding, granty, canonical root i tożsamość checkoutu). Wymaga Write oraz
+włączonej izolacji; wszystkie dotychczasowe warunki sesji/tury/lease/urządzenia
+zatwierdzającego pozostają aktywne. Otwarty deskryptor katalogu jest porównany
+z zapisanymi dev/inode. Kernelowy bind deskryptora wybiera dokładnie ten obiekt
+nawet przy późniejszej podmianie ścieżki. Zmieniony checkout odcina kolejne guardy.
+
+LinuxRecipeExecutor przechwytuje maksymalnie128MiB obrazu programu, sprawdza
+SHA-256 i blokuje zapis/zmianę długości memfd przez kernel seals. Bubblewrap
+kopiuje ten obraz z deskryptora do własnej, read-only ścieżki wykonywalnej.
+Zmiana pliku źródłowego po przechwyceniu nie zmienia obrazu. Deskryptory mają
+CLOEXEC w procesie hosta; tylko konkretny fork udostępnia je launcherowi.
+
+Launcher `/usr/bin/bwrap` i jego systemowe katalogi muszą należeć do root oraz
+być niezapisywalne dla group/other. Namespace PID i `die-with-parent` wiążą drzewo
+procesu z wykonaniem, w tym potomków używających setsid. Checkout jest widoczny
+pod `/workspace`; HOME/config/cache/tmp są prywatne. Poza obrazem i checkoutem
+montowane są read-only systemowe runtime i wybrane publiczne pliki DNS/CA.
+Sekret trafia do środowiska prywatnego procesu, poza argv i środowiskiem harnessu.
+Zmienne sterujące loaderem, runtime i ambient credential/config są odmawiane.
+Wynik przechodzi redakcję i limity rdzenia przed wysłaniem do MCP.
+
+Grant może przypinać HTTP, recipe albo oba narzędzia z ich dokładnymi digestami;
+recipe wymaga read_only=false. Katalog recipe wymaga skonfigurowanego lokalnego
+adaptera, a dispatch ponownie odczytuje target i wykonawcę po zgodzie SDK.
+Błąd przygotowania po zużyciu zgody kończy request jako Unknown i przerywa
+runtime. Zwykły exit/error CLI ma jawne exit_code/signal/timed_out i isError.
+Powtórzone historyczne potwierdzenie SDK nie wykonuje programu ponownie.
+
+Bieżący odbiór jest Linux-only z produkcyjnym proxy i kontrolowanym keyringiem.
+To nie jest odbiór rzeczywistych kont, native macOS, restartu hosta ani polityki
+zasobów na docelowej maszynie. Programy korzystają z udostępnionego systemowego
+runtime; dodatkowe assets i linked Git metadata wymagają jawnego rozwiązania
+przez adapter. Remote authority nadal odmawia receptur do czasu negocjacji
+prywatnej capabilities/protokołu i polityki operatora; nie wykonuje ich na
+kontrolerze dla zdalnego celu. UI i service workflow pozostają otwarte.

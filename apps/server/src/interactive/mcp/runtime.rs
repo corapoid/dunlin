@@ -262,7 +262,14 @@ impl Broker {
         let mut bytes = 0usize;
         for (index, bound) in self.connections.iter().enumerate() {
             let tools = if matches!(&bound.backend, Backend::Scoped(_, _)) {
-                vec![dunlin_vault::scoped::tool::http()]
+                let mut tools = vec![dunlin_vault::scoped::tool::http()];
+                if bound.tools.iter().any(|pin| pin.name == "recipe") {
+                    let target = self.authority.recipe_target(&self.state, deadline)?;
+                    self.authority
+                        .recipe_executor(&self.state, &target, deadline)?;
+                    tools.push(dunlin_vault::scoped::tool::recipe());
+                }
+                tools
             } else {
                 self.client(index, deadline, None, |client, bearer| {
                     let tools = client.tools()?;

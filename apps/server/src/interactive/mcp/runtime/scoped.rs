@@ -16,6 +16,7 @@ struct Call {
     consumed: AtomicBool,
     permit: Mutex<Option<McpDispatchPermit>>,
     decision: PermissionDecision,
+    recipe_target: Option<scoped::RecipeTarget>,
 }
 impl Call {
     fn live(&self) -> Result<()> {
@@ -112,7 +113,7 @@ impl scoped::Authority for Call {
                     // Do not journal response bodies. The actual redacted result is
                     // returned only to this call; the durable row records completion.
                     Completion::Complete => McpCompletion::Complete(
-                        json!({"content":[{"type":"text","text":"Scoped HTTP call completed."}]}),
+                        json!({"content":[{"type":"text","text":"Scoped credential call completed."}]}),
                     ),
                     Completion::Failed => McpCompletion::Failed,
                     Completion::Unknown => McpCompletion::Unknown,
@@ -124,6 +125,35 @@ impl scoped::Authority for Call {
         }
         result.map_err(|_| scoped::Error::OutcomeUnknown)
     }
+}
+impl scoped::RecipeAuthority for Call {
+    fn check_target(
+        &self,
+        scope: &UseScope,
+        version: &Version,
+        target: &scoped::RecipeTarget,
+    ) -> scoped::Result<()> {
+        scoped::Authority::check(self, scope, version)?;
+        if self.recipe_target.as_ref() != Some(target)
+            || self
+                .broker
+                .authority
+                .recipe_target(&self.broker.state, self.deadline)
+                .map_err(|_| scoped::Error::Denied)?
+                != *target
+        {
+            return Err(scoped::Error::Denied);
+        }
+        Ok(())
+    }
+}
+enum Input {
+    Http(dunlin_vault::http::HttpInput),
+    Recipe(
+        dunlin_vault::recipe::RecipeInput,
+        scoped::RecipeTarget,
+        Arc<dyn dunlin_vault::recipe::RecipeExecutor>,
+    ),
 }
 impl Broker {
     #[allow(clippy::too_many_arguments)]
@@ -137,11 +167,52 @@ impl Broker {
         grant: Grant,
         version: Version,
     ) -> Result<Value> {
-        let input = scoped::tool::input(&version.credential, invocation.arguments.clone())
-            .map_err(|_| "mcp_arguments_invalid")?;
-        let input_sha256 = hex::encode(Sha256::digest(
-            serde_json::to_vec(&input).map_err(|_| "mcp_arguments_invalid")?,
-        ));
+        let prepared = (|| -> Result<(Input, String)> {
+            match invocation.tool_name.as_str() {
+                "http" => {
+                    let input =
+                        scoped::tool::input(&version.credential, invocation.arguments.clone())
+                            .map_err(|_| "mcp_arguments_invalid")?;
+                    let digest = hex::encode(Sha256::digest(
+                        serde_json::to_vec(&input).map_err(|_| "mcp_arguments_invalid")?,
+                    ));
+                    Ok((Input::Http(input), digest))
+                }
+                "recipe" => {
+                    let input = scoped::tool::recipe_input(
+                        &version.credential,
+                        invocation.arguments.clone(),
+                    )
+                    .map_err(|_| "mcp_arguments_invalid")?;
+                    let target = self.authority.recipe_target(&self.state, deadline)?;
+                    let executor =
+                        self.authority
+                            .recipe_executor(&self.state, &target, deadline)?;
+                    let digest = target
+                        .input_digest(&input)
+                        .map_err(|_| "mcp_arguments_invalid")?;
+                    Ok((Input::Recipe(input, target, executor), digest))
+                }
+                _ => Err("mcp_tool_unavailable"),
+            }
+        })();
+        let (input, input_sha256) = match prepared {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = self.journal(|j, a| {
+                    j.finish_mcp_dispatch(
+                        a,
+                        &self.pins.session,
+                        &self.pins.lease,
+                        permit,
+                        &invocation,
+                        McpCompletion::Unknown,
+                    )
+                });
+                self.authority.interrupt();
+                return Err(error);
+            }
+        };
         let decision = self.journal(|j, a| {
             j.validate_mcp_dispatch(
                 a,
@@ -175,14 +246,47 @@ impl Broker {
             consumed: AtomicBool::new(false),
             permit: Mutex::new(Some(permit)),
             decision,
+            recipe_target: match &input {
+                Input::Recipe(_, target, _) => Some(target.clone()),
+                _ => None,
+            },
         });
-        let result = self.state.scoped_secrets.http(
-            scope.clone(),
-            version.clone(),
-            input,
-            deadline.into_std(),
-            call.clone(),
-        );
+        let result = match input {
+            Input::Http(input) => self
+                .state
+                .scoped_secrets
+                .http(
+                    scope.clone(),
+                    version.clone(),
+                    input,
+                    deadline.into_std(),
+                    call.clone(),
+                )
+                .and_then(|output| {
+                    serde_json::to_value(output)
+                        .map(|v| (v, false))
+                        .map_err(|_| scoped::Error::OutcomeUnknown)
+                }),
+            Input::Recipe(input, target, executor) => self
+                .state
+                .scoped_secrets
+                .recipe(
+                    scope.clone(),
+                    version.clone(),
+                    input,
+                    target,
+                    deadline.into_std(),
+                    call.clone(),
+                    executor.as_ref(),
+                )
+                .and_then(|output| {
+                    let failed =
+                        output.exit_code != Some(0) || output.timed_out || output.signal.is_some();
+                    serde_json::to_value(output)
+                        .map(|v| (v, failed))
+                        .map_err(|_| scoped::Error::OutcomeUnknown)
+                }),
+        };
         if call
             .permit
             .lock()
@@ -196,12 +300,16 @@ impl Broker {
             self.authority.interrupt();
         }
         match result {
-            Ok(output) => Ok(
-                json!({"content":[{"type":"text","text":serde_json::to_string(&output).map_err(|_| "mcp_reply_limit")?}]}),
-            ),
+            Ok((output, failed)) => {
+                let mut result = json!({"content":[{"type":"text","text":serde_json::to_string(&output).map_err(|_| "mcp_reply_limit")?}]});
+                if failed {
+                    result["isError"] = json!(true);
+                }
+                Ok(result)
+            }
             Err(scoped::Error::OutcomeUnknown) => Err("mcp_outcome_unknown"),
             Err(_) => Ok(
-                json!({"isError":true,"content":[{"type":"text","text":"Scoped HTTP call rejected or failed. It was not retried."}]}),
+                json!({"isError":true,"content":[{"type":"text","text":"Scoped credential call rejected or failed. It was not retried."}]}),
             ),
         }
     }

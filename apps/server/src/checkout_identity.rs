@@ -394,6 +394,23 @@ impl CapturedCheckout {
     pub(crate) fn open_git_exclude(&self) -> Result<Option<fs::File>> {
         Err(Error::Invalid("Git metadata writes require macOS or Linux"))
     }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn open_recipe_root(&self) -> Result<fs::File> {
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        self.revalidate()?;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&self.0.root.path)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_dir()
+            || metadata.dev() != self.0.root.device
+            || metadata.ino() != self.0.root.inode
+        {
+            return Err(Error::Conflict("Recipe checkout descriptor changed"));
+        }
+        Ok(file)
+    }
     pub(crate) fn canonical_root(&self) -> &Path {
         &self.0.root.path
     }
@@ -520,5 +537,27 @@ mod tests {
         let captured = CapturedCheckout::capture(&ordinary, &"a".repeat(64), None).unwrap();
         assert_eq!(captured.repo_kind(), RepoKind::Directory);
         captured.revalidate().unwrap();
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recipe_descriptor_pins_the_captured_directory_and_rejects_path_replacement() {
+        use std::os::unix::fs::MetadataExt;
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("checkout");
+        fs::create_dir(&root).unwrap();
+        let capture = CapturedCheckout::capture(&root, &"a".repeat(64), None).unwrap();
+        let descriptor = capture.open_recipe_root().unwrap();
+        let original = descriptor.metadata().unwrap();
+        fs::rename(&root, temp.path().join("old")).unwrap();
+        fs::create_dir(&root).unwrap();
+        assert!(capture.open_recipe_root().is_err());
+        assert_eq!(
+            (
+                descriptor.metadata().unwrap().dev(),
+                descriptor.metadata().unwrap().ino()
+            ),
+            (original.dev(), original.ino())
+        );
+        assert_ne!(fs::metadata(root).unwrap().ino(), original.ino());
     }
 }

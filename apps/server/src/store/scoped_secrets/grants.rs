@@ -158,6 +158,7 @@ impl Store {
         binding: &Binding,
         profile: &AgentProfileRef,
         provider: &str,
+        read_only: bool,
     ) -> Result<()> {
         if !token(&profile.agent_id)
             || profile.version == 0
@@ -178,21 +179,31 @@ impl Store {
             .ok_or(Error::Denied)?;
         let computed = crate::worker_execution::profile_digest(&published.definition)
             .map_err(|_| Error::Storage)?;
-        let definition = tool::http()
-            .definition_digest()
-            .map_err(|_| Error::Invalid)?;
+        let pins: Vec<_> = published
+            .definition
+            .mcp
+            .iter()
+            .filter(|pin| pin.provider_id == provider)
+            .collect();
         if published.digest != profile.digest
             || computed != profile.digest
-            || published
-                .definition
-                .mcp
+            || pins.is_empty()
+            || pins.len() > 2
+            || pins
                 .iter()
-                .filter(|pin| pin.provider_id == provider)
-                .count()
-                != 1
-            || !published
-                .definition
-                .allows_mcp(provider, "http", &definition)
+                .map(|pin| &pin.name)
+                .collect::<BTreeSet<_>>()
+                .len()
+                != pins.len()
+            || pins.iter().any(|pin| {
+                let tool = match pin.name.as_str() {
+                    "http" => tool::http(),
+                    "recipe" if !read_only => tool::recipe(),
+                    _ => return true,
+                };
+                tool.definition_digest()
+                    .map_or(true, |digest| digest != pin.definition_digest)
+            })
         {
             return Err(Error::Denied);
         }
@@ -234,7 +245,7 @@ impl Store {
         }
         let tx = self.scoped_secret_cut(proof, true, identity)?;
         let b = &proof.binding;
-        self.secret_profile(b, &request.profile, &request.provider_id)?;
+        self.secret_profile(b, &request.profile, &request.provider_id, request.read_only)?;
         let recipient =
             self.secret_recipient_stamp(b, request.principal_kind, &request.principal_id)?;
         let version = self.secret_active_version(b, credential)?;
@@ -348,7 +359,7 @@ impl Store {
         {
             return Err(Error::Denied);
         }
-        self.secret_profile(binding, profile, &grant.provider_id)?;
+        self.secret_profile(binding, profile, &grant.provider_id, grant.read_only)?;
         let host = if binding.host == "local" {
             self.local_binding_candidate(
                 &context.membership.user_id,

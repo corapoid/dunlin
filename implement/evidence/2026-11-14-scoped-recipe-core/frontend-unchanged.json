@@ -1,0 +1,44 @@
+{
+  "baseline": "../2026-11-14-scoped-retention/verified-source.json",
+  "rerun": false,
+  "reason": "No frontend input changed in scoped recipe core increment.",
+  "snapshots": {
+    "frontend": {
+      "sha256": "11b651250fc42e811f1d7c4ccafa74d2837e887defeb26e4b4e80eeff8ca3e49",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog"
+      ],
+      "unchanged": true
+    },
+    "typecheck": {
+      "sha256": "8c995222593c3a2f7fe855d83df1ec371d683b562d23a2863ed2b986e5365527",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts"
+      ],
+      "unchanged": true
+    },
+    "build": {
+      "sha256": "c1d7ad410b018d7c27e0a623b6e902cfe8ada07436848ac9978022dd47239101",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/index.html",
+        "apps/web/postcss.config.mjs",
+        "apps/web/REUI-LICENSE.txt"
+      ],
+      "unchanged": true
+    }
+  }
+}

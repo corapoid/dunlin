@@ -31,7 +31,7 @@ pub struct RecipeOutput {
     pub timed_out: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RecipePlan {
     pub program: String,
     pub args: Vec<String>,
@@ -40,6 +40,72 @@ pub struct RecipePlan {
     pub cwd: PathBuf,
     pub timeout: Duration,
     pub program_hash: Option<String>,
+}
+
+impl std::fmt::Debug for RecipePlan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecipePlan")
+            .field("program", &self.program)
+            .field("argument_count", &self.args.len())
+            .field("env_var", &self.env_var)
+            .field("secret", &"[REDACTED]")
+            .field("cwd", &self.cwd)
+            .field("timeout", &self.timeout)
+            .field("program_hash", &self.program_hash)
+            .finish()
+    }
+}
+
+// Keep the leader unreaped until group cleanup and watchdog shutdown. Otherwise
+// an exited parent's PID/PGID may be reused while inherited pipes are still open.
+struct OwnedChild(Child, bool);
+impl OwnedChild {
+    fn reap(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        let result = self.0.wait();
+        self.1 = true;
+        result
+    }
+}
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        if self.1 {
+            return;
+        }
+        #[cfg(unix)]
+        kill_owned_group(self.0.id());
+        #[cfg(not(unix))]
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+#[cfg(unix)]
+fn exit_pending(pid: u32) -> std::io::Result<bool> {
+    loop {
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            return Ok(unsafe { info.si_pid() } != 0);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+#[cfg(unix)]
+fn kill_owned_group(pid: u32) {
+    if exit_pending(pid).is_ok() {
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
 }
 
 pub trait RecipeExecutor: Send + Sync {
@@ -58,6 +124,11 @@ pub trait RecipeExecutor: Send + Sync {
         self.execute(plan)
     }
 }
+
+#[cfg(target_os = "linux")]
+mod isolated;
+#[cfg(target_os = "linux")]
+pub use isolated::LinuxRecipeExecutor;
 
 pub struct CommandExecutor;
 
@@ -81,6 +152,10 @@ impl CommandExecutor {
         plan: &RecipePlan,
         access: Option<LiveAccess>,
     ) -> Result<RecipeOutput, String> {
+        #[cfg(not(unix))]
+        if access.is_some() {
+            return Err("Guarded recipe execution is unsupported on this platform".into());
+        }
         if access.as_ref().is_some_and(|access| !access.allowed()) {
             return Err("Credential authority is no longer valid".into());
         }
@@ -127,89 +202,120 @@ impl CommandExecutor {
         if let Ok(tmp) = std::env::var("TMPDIR") {
             command.env("TMPDIR", tmp);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            command.process_group(0);
-        }
-        let mut child = {
-            // Process creation can fail transiently on loaded CI hosts (fork
-            // pressure, or a just-written executable still busy). Retry only
-            // unambiguous transient errors; all other spawn failures stay
-            // visible and fail closed.
-            let mut attempt = 0;
-            loop {
-                if access.as_ref().is_some_and(|access| !access.allowed()) {
-                    return Err("Credential authority is no longer valid".into());
+        run_command(command, plan.timeout, access)
+    }
+}
+
+fn run_command(
+    mut command: Command,
+    timeout: Duration,
+    access: Option<LiveAccess>,
+) -> Result<RecipeOutput, String> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let child = {
+        // Process creation can fail transiently on loaded CI hosts (fork
+        // pressure, or a just-written executable still busy). Retry only
+        // unambiguous transient errors; all other spawn failures stay
+        // visible and fail closed.
+        let mut attempt = 0;
+        loop {
+            if access.as_ref().is_some_and(|access| !access.allowed()) {
+                return Err("Credential authority is no longer valid".into());
+            }
+            match command.spawn() {
+                Ok(child) => break child,
+                Err(error)
+                    if attempt < 5
+                        && matches!(
+                            error.kind(),
+                            std::io::ErrorKind::Interrupted
+                                | std::io::ErrorKind::WouldBlock
+                                | std::io::ErrorKind::ExecutableFileBusy
+                        ) =>
+                {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(20 * attempt));
                 }
-                match command.spawn() {
-                    Ok(child) => break child,
-                    Err(error)
-                        if attempt < 5
-                            && matches!(
-                                error.kind(),
-                                std::io::ErrorKind::Interrupted
-                                    | std::io::ErrorKind::WouldBlock
-                                    | std::io::ErrorKind::ExecutableFileBusy
-                            ) =>
-                    {
-                        attempt += 1;
-                        std::thread::sleep(Duration::from_millis(20 * attempt));
-                    }
-                    Err(error) => {
-                        return Err(format!("Could not start the recipe program: {error}"));
-                    }
+                Err(error) => {
+                    return Err(format!("Could not start the recipe program: {error}"));
                 }
             }
-        };
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "Could not capture recipe output".to_string())?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| "Could not capture recipe output".to_string())?;
-        let out_reader =
-            std::thread::spawn(move || read_capped(stdout, crate::http::MAX_RESPONSE_BODY));
-        let err_reader =
-            std::thread::spawn(move || read_capped(stderr, crate::http::MAX_RESPONSE_BODY));
-        let done = Arc::new(AtomicBool::new(false));
-        let timed_out = Arc::new(AtomicBool::new(false));
-        let watchdog = spawn_watchdog(
-            &mut child,
-            plan.timeout,
-            done.clone(),
-            timed_out.clone(),
-            access.clone(),
-        );
-        let status = child.wait();
-        done.store(true, Ordering::Relaxed);
-        let _ = watchdog.join();
-        let (stdout, stdout_truncated) =
-            out_reader.join().unwrap_or_else(|_| (String::new(), true));
-        let (stderr, stderr_truncated) =
-            err_reader.join().unwrap_or_else(|_| (String::new(), true));
-        if access.as_ref().is_some_and(|access| !access.allowed()) {
-            return Err("Credential authority was revoked; recipe outcome unknown".into());
         }
-        let status = status.map_err(|error| format!("Could not wait for the recipe: {error}"))?;
-        #[cfg(unix)]
-        let signal = {
-            use std::os::unix::process::ExitStatusExt;
-            status.signal()
-        };
-        #[cfg(not(unix))]
-        let signal = None;
-        Ok(RecipeOutput {
-            exit_code: status.code(),
-            signal,
-            stdout,
-            stderr,
-            truncated: stdout_truncated || stderr_truncated,
-            timed_out: timed_out.load(Ordering::Relaxed),
-        })
+    };
+    let mut child = OwnedChild(child, false);
+    let stdout = child
+        .0
+        .stdout
+        .take()
+        .ok_or_else(|| "Could not capture recipe output".to_string())?;
+    let stderr = child
+        .0
+        .stderr
+        .take()
+        .ok_or_else(|| "Could not capture recipe output".to_string())?;
+    let out_reader =
+        std::thread::spawn(move || read_capped(stdout, crate::http::MAX_RESPONSE_BODY));
+    let err_reader =
+        std::thread::spawn(move || read_capped(stderr, crate::http::MAX_RESPONSE_BODY));
+    let done = Arc::new(AtomicBool::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let watchdog = spawn_watchdog(
+        &mut child.0,
+        timeout,
+        done.clone(),
+        timed_out.clone(),
+        access.clone(),
+    );
+    #[cfg(unix)]
+    let observed = loop {
+        match exit_pending(child.0.id()) {
+            Ok(false) => std::thread::sleep(Duration::from_millis(10)),
+            Ok(true) => break Ok(()),
+            Err(error) => break Err(error),
+        }
+    };
+    #[cfg(unix)]
+    kill_owned_group(child.0.id());
+    // Join the watchdog before reaping the leader, retaining group identity
+    // for every possible signal. Kill remaining group members on normal exit
+    // too, so they cannot keep stdout/stderr open after the parent finishes.
+    #[cfg(not(unix))]
+    let status = child.reap();
+    done.store(true, Ordering::Relaxed);
+    let _ = watchdog.join();
+    #[cfg(unix)]
+    observed.map_err(|_| "Could not observe the recipe process".to_string())?;
+    #[cfg(unix)]
+    let status = child.reap();
+    let (stdout, stdout_truncated) = out_reader.join().unwrap_or_else(|_| (String::new(), true));
+    let (stderr, stderr_truncated) = err_reader.join().unwrap_or_else(|_| (String::new(), true));
+    if access.as_ref().is_some_and(|access| !access.allowed()) {
+        return Err("Credential authority was revoked; recipe outcome unknown".into());
     }
+    let status = status.map_err(|error| format!("Could not wait for the recipe: {error}"))?;
+    #[cfg(unix)]
+    let signal = {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal()
+    };
+    #[cfg(not(unix))]
+    let signal = None;
+    Ok(RecipeOutput {
+        exit_code: status.code(),
+        signal,
+        stdout,
+        stderr,
+        truncated: stdout_truncated || stderr_truncated,
+        timed_out: timed_out.load(Ordering::Relaxed),
+    })
 }
 
 fn safe_path() -> String {
@@ -247,7 +353,13 @@ fn spawn_watchdog(
             if done.load(Ordering::Relaxed) {
                 return;
             }
-            if access.as_ref().is_some_and(|access| !access.allowed()) {
+            if access.as_ref().is_some_and(|access| {
+                !std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| access.allowed()))
+                    .unwrap_or_else(|_| {
+                        access.revoke();
+                        false
+                    })
+            }) {
                 break;
             }
             std::thread::sleep(Duration::from_millis(25));
@@ -255,20 +367,17 @@ fn spawn_watchdog(
         if !done.load(Ordering::Relaxed) {
             timed_out.store(Instant::now() >= deadline, Ordering::Relaxed);
             #[cfg(unix)]
-            unsafe {
-                // The child was spawned as its own process group.
-                libc::kill(-(pid as i32), libc::SIGKILL);
-            }
+            kill_owned_group(pid);
         }
     })
 }
 
 fn read_capped(mut reader: impl Read, cap: usize) -> (String, bool) {
-    let mut stored = Vec::new();
+    let mut stored = Zeroizing::new(Vec::new());
     let mut truncated = false;
-    let mut buffer = [0u8; 16 * 1024];
+    let mut buffer = Zeroizing::new([0u8; 16 * 1024]);
     loop {
-        match reader.read(&mut buffer) {
+        match reader.read(&mut *buffer) {
             Ok(0) => break,
             Ok(read) => {
                 if stored.len() < cap {
@@ -372,5 +481,43 @@ mod tests {
         plan.timeout = Duration::from_millis(100);
         let output = CommandExecutor.execute(&plan).unwrap();
         assert!(output.timed_out);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn exited_parent_cannot_leave_its_group_holding_output_pipes() {
+        let cwd = tempfile::tempdir().unwrap();
+        let mut command = plan("/bin/sh");
+        command.cwd = cwd.path().to_path_buf();
+        command.timeout = Duration::from_secs(30);
+        command.args = vec!["-c".into(), "(echo child-output; touch child-ready; sleep 20; touch escaped) & while ! test -f child-ready; do sleep 0.01; done; exit 0".into()];
+        let started = Instant::now();
+        let result = CommandExecutor.execute(&command).unwrap();
+        assert_eq!(result.exit_code, Some(0));
+        assert!(result.stdout.contains("child-output"));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(!cwd.path().join("escaped").exists());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn panicking_live_authority_fails_closed_and_kills_the_owned_group() {
+        let cwd = tempfile::tempdir().unwrap();
+        let marker = cwd.path().join("started");
+        let mut command = plan("/bin/sh");
+        command.cwd = cwd.path().to_path_buf();
+        command.args = vec!["-c".into(), "touch started; sleep 20; touch escaped".into()];
+        command.timeout = Duration::from_secs(30);
+        let access = LiveAccess::new(Instant::now() + Duration::from_secs(20), move || {
+            assert!(!marker.exists(), "recipe authority fixture fault");
+            true
+        });
+        let started = Instant::now();
+        assert!(
+            CommandExecutor
+                .execute_guarded(&command, Some(access))
+                .unwrap_err()
+                .contains("unknown")
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(!cwd.path().join("escaped").exists());
     }
 }

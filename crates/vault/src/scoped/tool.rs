@@ -40,6 +40,37 @@ pub fn http() -> Tool {
         }),
     }
 }
+/// Named CLI template; program, environment and checkout are host-owned.
+pub fn recipe() -> Tool {
+    Tool {
+        name: "recipe".into(),
+        output_schema: None,
+        input_schema: json!({"type":"object","additionalProperties":false,
+        "required":["recipe"],"properties":{
+            "recipe":{"type":"string","pattern":"^[a-z0-9_-]{1,64}$"},
+            "params":{"type":"object","maxProperties":16,"additionalProperties":{"type":"string","maxLength":4096}}
+        }}),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecipeCall {
+    recipe: String,
+    #[serde(default)]
+    params: BTreeMap<String, String>,
+}
+pub fn recipe_input(credential: &str, arguments: Value) -> Result<crate::recipe::RecipeInput> {
+    Schema::compile(&recipe().input_schema)
+        .map_err(|_| Error::Invalid)?
+        .validate(&arguments)
+        .map_err(|_| Error::Invalid)?;
+    let call: RecipeCall = serde_json::from_value(arguments).map_err(|_| Error::Invalid)?;
+    Ok(crate::recipe::RecipeInput {
+        secret: credential.into(),
+        recipe: call.recipe,
+        params: call.params,
+    })
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Call {
@@ -110,6 +141,23 @@ mod tests {
                 json!({"operation":"list","params":{"id":"one"}})
             )
             .is_ok()
+        );
+    }
+    #[test]
+    fn recipe_arguments_cannot_choose_host_program_environment_or_credential() {
+        let arguments = json!({"recipe":"deploy","params":{"environment":"test"}});
+        let parsed = recipe_input("host-selected", arguments.clone()).unwrap();
+        assert_eq!(parsed.secret, "host-selected");
+        assert_eq!(parsed.recipe, "deploy");
+        for field in ["secret", "program", "cwd", "env", "host", "checkout_stamp"] {
+            let mut changed = arguments.clone();
+            changed[field] = json!("untrusted");
+            assert!(recipe_input("host-selected", changed).is_err());
+        }
+        assert!(recipe_input("host-selected", json!({"recipe":"../other"})).is_err());
+        assert_ne!(
+            recipe().definition_digest().unwrap(),
+            http().definition_digest().unwrap()
         );
     }
 }

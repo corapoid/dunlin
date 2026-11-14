@@ -2,6 +2,7 @@
 //! A remote adapter must attest its live worker fence/export in both SQL cuts;
 //! the broker itself retains ownership of OAuth and one-use human approvals.
 use super::*;
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub(crate) struct SessionPins {
@@ -80,6 +81,21 @@ pub(crate) trait Authority: Send + Sync {
             state,
         }))
     }
+    fn recipe_target(
+        &self,
+        _state: &AppState,
+        _deadline: Instant,
+    ) -> Result<dunlin_vault::scoped::RecipeTarget> {
+        Err("mcp_recipe_target_unsupported")
+    }
+    fn recipe_executor(
+        &self,
+        _state: &AppState,
+        _target: &dunlin_vault::scoped::RecipeTarget,
+        _deadline: Instant,
+    ) -> Result<Arc<dyn dunlin_vault::recipe::RecipeExecutor>> {
+        Err("mcp_recipe_target_unsupported")
+    }
     fn turn(&self) -> Result<TurnScope>;
     fn changed(&self, store: &Store);
     fn interrupt(&self);
@@ -133,6 +149,67 @@ impl Authority for Local {
     }
     fn context_in_transaction(&self, state: &AppState, store: &Store) -> Result<AccessContext> {
         context_in_transaction(state, store, &self.task)
+    }
+    fn recipe_target(
+        &self,
+        state: &AppState,
+        deadline: Instant,
+    ) -> Result<dunlin_vault::scoped::RecipeTarget> {
+        if !cfg!(target_os = "linux")
+            || !state.config.sandbox
+            || !crate::management::isolated_agents(&state.config)
+            || self.pins.secret_target.host != "local"
+            || self.task.checkout.stamp().permission
+                != crate::store::local_metadata::MetadataPermission::Write
+        {
+            return Err("mcp_recipe_target_unsupported");
+        }
+        self.check(state, deadline)?;
+        let stamp = hex::encode(Sha256::digest(
+            serde_json::to_vec(&self.task.checkout.stamp())
+                .map_err(|_| "mcp_recipe_target_unavailable")?,
+        ));
+        dunlin_vault::scoped::RecipeTarget::new(
+            self.pins.secret_target.clone(),
+            PathBuf::from(&self.task.root),
+            stamp,
+        )
+        .map_err(|_| "mcp_recipe_target_unavailable")
+    }
+    fn recipe_executor(
+        &self,
+        state: &AppState,
+        target: &dunlin_vault::scoped::RecipeTarget,
+        deadline: Instant,
+    ) -> Result<Arc<dyn dunlin_vault::recipe::RecipeExecutor>> {
+        #[cfg(target_os = "linux")]
+        {
+            if self.recipe_target(state, deadline)? != *target {
+                return Err("mcp_recipe_target_changed");
+            }
+            let executor = {
+                let _slot = state
+                    .interactive
+                    .fs_slots
+                    .clone()
+                    .try_acquire_owned()
+                    .map_err(|_| "mcp_authority_busy")?;
+                let root = self
+                    .task
+                    .checkout
+                    .open_recipe_root()
+                    .map_err(|_| "mcp_recipe_target_unavailable")?;
+                dunlin_vault::recipe::LinuxRecipeExecutor::new(target.cwd().into(), root)
+                    .map_err(|_| "mcp_recipe_sandbox_unavailable")?
+            };
+            self.check(state, deadline)?;
+            Ok(Arc::new(executor))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (state, target, deadline);
+            Err("mcp_recipe_target_unsupported")
+        }
     }
     fn turn(&self) -> Result<TurnScope> {
         let active = self

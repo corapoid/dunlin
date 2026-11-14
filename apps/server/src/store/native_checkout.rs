@@ -150,6 +150,14 @@ impl NativeCheckoutAuthority {
         self.validate_filesystem()?;
         self.checkout.open_git_exclude().map_err(checkout_error)
     }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn open_recipe_root(&self) -> Result<std::fs::File> {
+        if self.scope.permission != MetadataPermission::Write {
+            return Err(conflict());
+        }
+        self.validate_filesystem()?;
+        self.checkout.open_recipe_root().map_err(checkout_error)
+    }
     pub(crate) fn root(&self) -> &str {
         &self.root
     }
