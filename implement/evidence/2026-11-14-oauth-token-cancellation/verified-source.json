@@ -1,0 +1,63 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "46a566164350f42c3b4a4736cc6a254ea713cfff3d2e1e03af5a1c0fe3ea4312",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    }
+  },
+  "runs": {
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "46a566164350f42c3b4a4736cc6a254ea713cfff3d2e1e03af5a1c0fe3ea4312",
+      "log_sha256": "dea59dad1068cd66b28bd9d670ee1d6cf46824f977ab0ea694cf12fbd303b827"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "46a566164350f42c3b4a4736cc6a254ea713cfff3d2e1e03af5a1c0fe3ea4312",
+      "log_sha256": "ae350579e1df9044308785538ddc03b08171ec5ef4b36316f1e3ffd3cce38811"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "46a566164350f42c3b4a4736cc6a254ea713cfff3d2e1e03af5a1c0fe3ea4312",
+      "log_sha256": "a3a0d6eb3224064100af55376d5f12912f2b1371236f1f6ff6cddc66484e7b45"
+    }
+  },
+  "results": {
+    "backend_passed": 909,
+    "relay_passed": 764,
+    "backend_acceptance_ignored": 61,
+    "http_mcp_vault_passed": 184,
+    "compile_fail_passed": 3
+  },
+  "frontend_reused": {
+    "proof": "frontend-unchanged.json",
+    "proof_sha256": "680c2a1d7baeeaf1afcc679e70fa58fa21ec1ce687f7aee45360a57a2f32d534",
+    "rerun": false
+  },
+  "intermediate": {
+    "mcp-first.log": {
+      "exit_code": 0,
+      "source_sha256": "da5b8c7267d4c289461365e91a4e44f4ed340377e7bb665c8037a1636ac78532",
+      "log_sha256": "504d7823378b9250981ee5fea3694e49621dfe0942c57154ab561e75d02cd84e",
+      "reason": "Before final server test and negative revocation regression edit; superseded by mcp-final.log."
+    }
+  },
+  "limitations": [
+    "AS metadata discovery is still bounded by timeout, without this live cancellation extension.",
+    "No new runtime/Chromium acceptance in this increment; dedicated refresh-cancellation fixture for actual runner sessions remains open.",
+    "DNS/connect in progress are timeout-bounded; late sockets cannot send after shutdown.",
+    "Cannot undo effects accepted by the provider before cancellation.",
+    "Explicit negative revocation retains independent journal authority; token guard applies to positive exchange/refresh only.",
+    "No real accounts, external services, keyring or tailnet acceptance; recipes/service workflows and remaining E5-E10 remain open."
+  ],
+  "local_checks": "local-results.json",
+  "local_checks_sha256": "19b23247364d0a459b556fc107bcff9c0d4c30b4e651f3e5b5d4c6a7e2d9d172"
+}

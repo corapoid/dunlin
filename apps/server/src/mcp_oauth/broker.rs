@@ -65,10 +65,39 @@ impl Service {
                 return Err(PersistenceError::Conflict);
             }
         }
+        let token_guard = DispatchGuard::new(Arc::new({
+            let journal = journal.clone();
+            let context = context.clone();
+            let provider = scope.provider.id.clone();
+            move || {
+                let Ok(store) = journal.state.store.lock() else {
+                    return false;
+                };
+                journal.validate(&store, &context).is_ok()
+                    && store
+                        .mcp_oauth_connection(
+                            &context.user_id,
+                            &context.workspace_id,
+                            &context.connection_id,
+                        )
+                        .is_ok_and(|row| {
+                            row.is_some_and(|row| {
+                                row.revision == context.connection_revision
+                                    && row.provider_id.as_deref() == Some(provider.as_str())
+                                    && matches!(
+                                        row.status,
+                                        ConnectionStatus::Connected
+                                            | ConnectionStatus::ReauthorizationRequired
+                                    )
+                            })
+                        })
+            }
+        }));
         let flow = scope
             .provider
-            .flow(self.secrets.as_ref())
-            .map_err(|_| PersistenceError::Storage)?;
+            .flow_authorized(self.secrets.as_ref(), token_guard.clone())
+            .map_err(|_| PersistenceError::Storage)?
+            .with_token_guard(token_guard);
         let credentials = OAuthCredentials::new(journal.clone(), self.secrets.clone());
         let binding = flow.credential_binding();
         let (record, bearer) = {

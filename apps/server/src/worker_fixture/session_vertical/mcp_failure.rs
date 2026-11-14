@@ -18,8 +18,15 @@ pub(super) struct Case<'a> {
 
 impl Case<'_> {
     pub async fn verify(&self, socket: &mut SessionSocket, confirmation: Value) {
-        self.provider.wait_call().await;
-        if matches!(self.mode, "revoke" | "forms-revoke" | "urls-revoke") {
+        if self.mode == "oauth-revoke" {
+            self.provider.wait_refresh(false).await;
+        } else {
+            self.provider.wait_call().await;
+        }
+        if matches!(
+            self.mode,
+            "revoke" | "forms-revoke" | "urls-revoke" | "oauth-revoke"
+        ) {
             let (status, result) = fixture_http(
                 &self.fixture.state,
                 self.cookie,
@@ -31,7 +38,12 @@ impl Case<'_> {
             )
             .await;
             assert_eq!(status, 200, "{result}");
-            self.provider.release();
+            if self.mode == "oauth-revoke" {
+                self.provider.wait_refresh(true).await;
+                self.provider.assert_refresh(true);
+            } else {
+                self.provider.release();
+            }
         }
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
@@ -107,7 +119,10 @@ impl Case<'_> {
             self.payload.clone(),
         )
         .await;
-        if matches!(self.mode, "revoke" | "forms-revoke" | "urls-revoke") {
+        if matches!(
+            self.mode,
+            "revoke" | "forms-revoke" | "urls-revoke" | "oauth-revoke"
+        ) {
             assert_eq!(status, 409, "{replay}");
         } else {
             assert_eq!(status, 202, "{replay}");
@@ -124,7 +139,13 @@ impl Case<'_> {
                 .len(),
             held
         );
-        assert_eq!(self.provider.calls(), 1);
+        assert_eq!(
+            self.provider.calls(),
+            usize::from(self.mode != "oauth-revoke")
+        );
+        if self.mode == "oauth-revoke" {
+            self.provider.assert_refresh(true);
+        }
         assert!(!self.root.join("effects").exists());
         let database = rusqlite::Connection::open(self.state_dir.join("exports.sqlite3")).unwrap();
         let counts:(i64,i64,i64,i64)=database.query_row("SELECT (SELECT count(*) FROM worker_sessions),(SELECT count(*) FROM worker_session_turns),(SELECT coalesce(sum(reservation),0) FROM worker_sessions),(SELECT min(ack_sequence) FROM worker_sessions)",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();

@@ -175,9 +175,15 @@ impl Broker {
             .get(index)
             .ok_or(PersistenceError::Unauthorized)?;
         let provider = bound.oauth().map_err(|_| PersistenceError::Unauthorized)?;
+        let token_guard = DispatchGuard::new(Arc::new({
+            let scope = self.clone();
+            let extra = extra.clone();
+            move || scope.check(deadline).is_ok() && extra.as_ref().is_none_or(|check| check())
+        }));
         let flow = provider
-            .flow(self.state.mcp_oauth.secrets.as_ref())
-            .map_err(|_| PersistenceError::Storage)?;
+            .flow_authorized(self.state.mcp_oauth.secrets.as_ref(), token_guard.clone())
+            .map_err(|_| PersistenceError::Storage)?
+            .with_token_guard(token_guard);
         self.check(deadline)
             .map_err(|_| PersistenceError::Unauthorized)?;
         let journal = Arc::new(RuntimeJournal {

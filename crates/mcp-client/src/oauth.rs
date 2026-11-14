@@ -249,18 +249,21 @@ pub struct Discovery {
     allowed: HashSet<String>,
     agent: Agent,
     started: Instant,
+    guard: Option<crate::DispatchGuard>,
 }
 impl Discovery {
     /// Read-only unauthenticated MCP probe. Never carries a token or retries a
     /// tool. Uses every WWW-Authenticate value from an actual 401 response.
     pub fn protected_resource_from_server(&self) -> Result<DiscoveredResource, Error> {
+        self.guarded(|agent| self.probe(agent))
+    }
+    fn probe(&self, agent: &Agent) -> Result<DiscoveredResource, Error> {
         let left = Duration::from_secs(30).saturating_sub(self.started.elapsed());
         if left.is_zero() {
             return Err(Error::Transport);
         }
         let prepared = crate::metadata::request(1, "server/discover", serde_json::json!({}))?;
-        let mut request = self
-            .agent
+        let mut request = agent
             .post(self.endpoint.as_str())
             .set("Accept", "application/json, text/event-stream")
             .set("Content-Type", "application/json")
@@ -288,7 +291,7 @@ impl Discovery {
         let challenge = Challenge::parse(&headers)?;
         drop(headers);
         drop(response);
-        let metadata = self.protected_resource(challenge.as_ref())?;
+        let metadata = self.resource(agent, challenge.as_ref())?;
         Ok(DiscoveredResource {
             metadata,
             challenge,
@@ -316,7 +319,29 @@ impl Discovery {
                 .redirects(0)
                 .build(),
             started: Instant::now(),
+            guard: None,
         })
+    }
+    /// Application authority for this discovery attempt. A denial is terminal,
+    /// including between metadata fallbacks; callbacks may run concurrently.
+    pub fn with_guard(mut self, guard: crate::DispatchGuard) -> Self {
+        self.guard = Some(guard);
+        self
+    }
+    fn guarded<T>(&self, operation: impl FnOnce(&Agent) -> Result<T, Error>) -> Result<T, Error> {
+        let agent = self.agent.isolated();
+        let cancellation = self
+            .guard
+            .as_ref()
+            .map(|guard| guard.watch(&agent))
+            .transpose()?;
+        let result = operation(&agent);
+        let allowed = cancellation.is_none_or(dunlin_http::Cancellation::finish);
+        crate::authorize(self.guard.as_ref())?;
+        if !allowed {
+            return Err(Error::Unauthorized);
+        }
+        result
     }
     fn allowed_url(&self, value: &str, query: bool) -> Result<Url, Error> {
         let url = secure_url(value, query)?;
@@ -329,16 +354,31 @@ impl Discovery {
         &self,
         challenge: Option<&Challenge>,
     ) -> Result<ResourceMetadata, Error> {
+        self.guarded(|agent| self.resource(agent, challenge))
+    }
+    fn resource(
+        &self,
+        agent: &Agent,
+        challenge: Option<&Challenge>,
+    ) -> Result<ResourceMetadata, Error> {
         let urls = match challenge.and_then(|c| c.resource_metadata.as_ref()) {
             Some(url) => vec![self.allowed_url(url, true)?],
             None => resource_urls(&self.endpoint),
         };
-        let metadata: ResourceMetadata = self.fetch_first(urls)?;
+        let metadata: ResourceMetadata = self.fetch_first(agent, urls)?;
         metadata.validate(&self.endpoint)?;
         Ok(metadata)
     }
     pub fn authorization_server(
         &self,
+        resource: &ResourceMetadata,
+        index: usize,
+    ) -> Result<AuthorizationMetadata, Error> {
+        self.guarded(|agent| self.issuer(agent, resource, index))
+    }
+    fn issuer(
+        &self,
+        agent: &Agent,
         resource: &ResourceMetadata,
         index: usize,
     ) -> Result<AuthorizationMetadata, Error> {
@@ -348,7 +388,7 @@ impl Discovery {
             .get(index)
             .ok_or(Error::Protocol)?;
         let url = self.allowed_url(issuer, false)?;
-        let metadata: AuthorizationMetadata = self.fetch_first(issuer_urls(&url))?;
+        let metadata: AuthorizationMetadata = self.fetch_first(agent, issuer_urls(&url))?;
         if metadata.issuer != *issuer {
             return Err(Error::Protocol);
         }
@@ -370,14 +410,18 @@ impl Discovery {
         }
         Ok(metadata)
     }
-    fn fetch_first<T: serde::de::DeserializeOwned>(&self, urls: Vec<Url>) -> Result<T, Error> {
+    fn fetch_first<T: serde::de::DeserializeOwned>(
+        &self,
+        agent: &Agent,
+        urls: Vec<Url>,
+    ) -> Result<T, Error> {
         for url in urls {
+            crate::authorize(self.guard.as_ref())?;
             let left = Duration::from_secs(30).saturating_sub(self.started.elapsed());
             if left.is_zero() {
                 return Err(Error::Transport);
             }
-            let response = match self
-                .agent
+            let response = match agent
                 .get(url.as_str())
                 .set("Accept", "application/json")
                 .timeout(left.min(Duration::from_secs(10)))
@@ -480,3 +524,6 @@ fn issuer_urls(issuer: &Url) -> Vec<Url> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cancellation_tests;

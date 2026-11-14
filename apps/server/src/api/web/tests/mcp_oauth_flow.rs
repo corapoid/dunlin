@@ -91,12 +91,17 @@ struct ProviderServer {
     origin: String,
     stop: Arc<AtomicBool>,
     token_requests: Arc<AtomicUsize>,
+    stall_token: Arc<AtomicBool>,
+    closed_tokens: Arc<AtomicUsize>,
     mcp_requests: Arc<AtomicUsize>,
     expires_in: Arc<AtomicUsize>,
     on_catalog: Arc<Mutex<Option<Hook>>>,
     lose_refresh: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
     on_token: Arc<Mutex<Option<Hook>>>,
+    on_discovery: Arc<Mutex<Option<Hook>>>,
+    stall_discovery: Arc<AtomicBool>,
+    closed_discovery: Arc<AtomicUsize>,
     cimd_supported: Arc<AtomicBool>,
     client_ids: Arc<Mutex<Vec<String>>>,
 }
@@ -118,6 +123,9 @@ impl ProviderServer {
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let stop = Arc::new(AtomicBool::new(false));
         let token_requests = Arc::new(AtomicUsize::new(0));
+        let stall_token = Arc::new(AtomicBool::new(false));
+        let closed_tokens = Arc::new(AtomicUsize::new(0));
+        let (stall, closed) = (stall_token.clone(), closed_tokens.clone());
         let mcp_requests = Arc::new(AtomicUsize::new(0));
         let expires_in = Arc::new(AtomicUsize::new(3600));
         let lose_refresh = Arc::new(AtomicBool::new(false));
@@ -129,6 +137,14 @@ impl ProviderServer {
             lose_refresh.clone(),
         );
         let on_token: Arc<Mutex<Option<Hook>>> = Arc::new(Mutex::new(None));
+        let on_discovery: Arc<Mutex<Option<Hook>>> = Arc::default();
+        let stall_discovery = Arc::new(AtomicBool::new(false));
+        let closed_discovery = Arc::new(AtomicUsize::new(0));
+        let (discovery_hook, discovery_stall, discovery_closed) = (
+            on_discovery.clone(),
+            stall_discovery.clone(),
+            closed_discovery.clone(),
+        );
         let cimd_supported = Arc::new(AtomicBool::new(false));
         let support = cimd_supported.clone();
         let client_ids = Arc::new(Mutex::new(Vec::new()));
@@ -231,6 +247,22 @@ impl ProviderServer {
                         json!({"resource":format!("{url}/mcp"),"authorization_servers":[format!("{url}/issuer")],"scopes_supported":["files:read"]}),
                     )
                 } else if first == "GET /.well-known/oauth-authorization-server/issuer HTTP/1.1" {
+                    if let Some(hook) = discovery_hook.lock().unwrap().take() {
+                        hook();
+                    }
+                    if discovery_stall.swap(false, Ordering::SeqCst) {
+                        socket
+                            .set_read_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        let result = socket.read(&mut [0; 1]);
+                        assert!(
+                            matches!(result, Ok(0))
+                                || matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset),
+                            "discovery socket remained open: {result:?}"
+                        );
+                        discovery_closed.fetch_add(1, Ordering::SeqCst);
+                        continue;
+                    }
                     (
                         200,
                         String::new(),
@@ -282,6 +314,21 @@ impl ProviderServer {
                     if let Some(callback) = callback {
                         callback();
                     }
+                    if stall.swap(false, Ordering::SeqCst) {
+                        // Do not release a response: the client must close I/O
+                        // after the hook revokes its actual browser authority.
+                        socket
+                            .set_read_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        let result = socket.read(&mut [0; 1]);
+                        assert!(
+                            matches!(result, Ok(0))
+                                || matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset),
+                            "AS socket remained open: {result:?}"
+                        );
+                        closed.fetch_add(1, Ordering::SeqCst);
+                        continue;
+                    }
                     (
                         200,
                         String::new(),
@@ -291,7 +338,19 @@ impl ProviderServer {
                     panic!("Unexpected OAuth request: {first}")
                 };
                 let body = body.to_string();
-                write!(socket,"HTTP/1.1 {status} Fixture\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+                if let Err(error) = write!(
+                    socket,
+                    "HTTP/1.1 {status} Fixture\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                ) {
+                    assert!(
+                        matches!(
+                            error.kind(),
+                            std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                        ),
+                        "unexpected fixture response error: {error}"
+                    );
+                }
             }
         });
         Self {
@@ -304,12 +363,17 @@ impl ProviderServer {
             origin,
             stop,
             token_requests,
+            stall_token,
+            closed_tokens,
             mcp_requests,
             expires_in,
             on_catalog,
             lose_refresh,
             worker: Some(worker),
             on_token,
+            on_discovery,
+            stall_discovery,
+            closed_discovery,
             cimd_supported,
             client_ids,
         }
@@ -1253,13 +1317,7 @@ async fn mcp_oauth_browser_callback_rechecks_logout_disconnect_config_and_author
         let revoke = {
             let store = state.store.clone();
             let device = device.clone();
-            move || {
-                store
-                    .try_lock()
-                    .expect("Store lock held during provider HTTP or secret storage")
-                    .revoke_device(&device)
-                    .unwrap()
-            }
+            move || store.lock().unwrap().revoke_device(&device).unwrap()
         };
         let mut changed = state.clone();
         match fault {
@@ -2578,4 +2636,150 @@ async fn mcp_oauth_retention_rest_reclaims_slots_and_historical_sweeps_protect_n
     assert_eq!(row["storage"]["uncertain_history"], 0);
     assert_eq!(secrets.writes.lock().unwrap().len(), 2);
     assert_eq!(secrets.deletes.lock().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn mcp_oauth_positive_as_transport_closes_on_logout_without_install_or_refresh_replay() {
+    for refresh in [false, true] {
+        let (state, provider, secrets, user, workspace, cookie) = setup().await;
+        provider.expires_in.store(1, Ordering::SeqCst);
+        let (started, flow) = begun(&state, &workspace, &cookie, json!({})).await;
+        let callback_path = callback_url(&provider, &started);
+        let id = started["connection_id"].as_str().unwrap();
+        if refresh {
+            assert_eq!(
+                callback(&state, &callback_path, &flow).await.status(),
+                StatusCode::SEE_OTHER
+            );
+            tokio::time::sleep(Duration::from_millis(1100)).await;
+        }
+        let store = state.store.clone();
+        let token = cookie.split_once('=').unwrap().1.to_owned();
+        *provider.on_token.lock().unwrap() = Some(Box::new(move || {
+            store
+                .lock()
+                .unwrap()
+                .remove_browser_session(&token)
+                .unwrap();
+        }));
+        provider.stall_token.store(true, Ordering::SeqCst);
+        let response = if refresh {
+            team_request(
+                &state,
+                "POST",
+                &format!("/v1/web/workspaces/{workspace}/mcp-connections/{id}/inspect"),
+                &cookie,
+                json!({"expected_revision":1}),
+            )
+            .await
+            .0
+        } else {
+            callback(&state, &callback_path, &flow).await.status()
+        };
+        assert_eq!(
+            response,
+            if refresh {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::UNAUTHORIZED
+            }
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while provider.closed_tokens.load(Ordering::SeqCst) == 0
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        // The peer requires closure within one second without releasing any
+        // response; the normal ten-second client timeout cannot pass this.
+        assert_eq!(provider.closed_tokens.load(Ordering::SeqCst), 1);
+        assert_eq!(secrets.writes.lock().unwrap().len(), usize::from(refresh));
+        assert_eq!(
+            provider.token_requests.load(Ordering::SeqCst),
+            1 + usize::from(refresh)
+        );
+        assert_eq!(provider.mcp_requests.load(Ordering::SeqCst), 0);
+        let replacement = paired_cookie(&state, &user).await;
+        if refresh {
+            assert_eq!(
+                team_request(
+                    &state,
+                    "POST",
+                    &format!("/v1/web/workspaces/{workspace}/mcp-connections/{id}/inspect"),
+                    &replacement,
+                    json!({"expected_revision":1})
+                )
+                .await
+                .0,
+                StatusCode::CONFLICT
+            );
+            let row = state
+                .store
+                .lock()
+                .unwrap()
+                .mcp_oauth_connection(&user, &workspace, id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(row).unwrap()["status"],
+                "reauthorization_required"
+            );
+        } else {
+            assert_eq!(
+                callback(&state, &callback_path, &flow).await.status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+        assert_eq!(
+            provider.token_requests.load(Ordering::SeqCst),
+            1 + usize::from(refresh)
+        );
+    }
+}
+
+#[tokio::test]
+async fn mcp_oauth_start_closes_discovery_after_logout_before_preparing_any_connection() {
+    let (state, provider, secrets, user, workspace, cookie) = setup().await;
+    let store = state.store.clone();
+    let token = cookie.split_once('=').unwrap().1.to_owned();
+    *provider.on_discovery.lock().unwrap() = Some(Box::new(move || {
+        store
+            .lock()
+            .unwrap()
+            .remove_browser_session(&token)
+            .unwrap();
+    }));
+    provider.stall_discovery.store(true, Ordering::SeqCst);
+    let response = start(&state, &workspace, &cookie, json!({})).await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while provider.closed_discovery.load(Ordering::SeqCst) == 0
+        && std::time::Instant::now() < deadline
+    {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(provider.closed_discovery.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.token_requests.load(Ordering::SeqCst), 0);
+    assert!(secrets.writes.lock().unwrap().is_empty());
+    assert!(
+        state
+            .store
+            .lock()
+            .unwrap()
+            .mcp_oauth_connections(&user, &workspace)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn mcp_oauth_pending_discovery_does_not_retain_its_own_service() {
+    let (state, _provider, _secrets, _user, workspace, cookie) = setup().await;
+    let service = Arc::downgrade(&state.mcp_oauth);
+    let _pending = begun(&state, &workspace, &cookie, json!({})).await;
+    drop(state);
+    assert!(
+        service.upgrade().is_none(),
+        "Pending retained the application through its discovery guard"
+    );
 }

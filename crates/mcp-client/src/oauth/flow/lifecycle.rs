@@ -20,6 +20,7 @@ impl AuthorizationFlow {
     /// Rotates in place. Failure after admission leaves the credential blocked;
     /// reauthorization or explicit negative cleanup is required, never a retry.
     pub fn refresh(&self, context: &AuthContext, token: &mut TokenSet) -> Result<(), Error> {
+        crate::authorize(self.token_guard.as_ref())?;
         self.bound(context, token)?;
         if token.status != CredentialStatus::Active {
             return Err(Error::Unauthorized);

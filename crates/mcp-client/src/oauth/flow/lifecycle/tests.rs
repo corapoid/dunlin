@@ -235,6 +235,8 @@ fn lost_refresh_reply_blocks_positive_reuse_but_allows_explicit_revocation() {
         flow.refresh(&context(), &mut token),
         Err(Error::Unauthorized)
     ));
+    // A fence for positive token use must not prevent explicit negative cleanup.
+    let flow = flow.with_token_guard(crate::DispatchGuard::new(std::sync::Arc::new(|| false)));
     flow.revoke(&context(), &mut token).unwrap();
     assert_eq!(token.status(), CredentialStatus::Revoked);
     assert!(!token.has_refresh_token());

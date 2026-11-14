@@ -558,6 +558,16 @@ async fn production_browser_acceptance_runtime_remote_mcp_product_pipeline() {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_mcp_oauth_refresh() {
+    session_journal(Some("oauth-refresh")).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_mcp_oauth_revoke() {
+    session_journal(Some("oauth-revoke")).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
 async fn production_browser_acceptance_runtime_remote_mcp_product_deny() {
     session_journal(Some("deny")).await;
 }
@@ -680,11 +690,19 @@ async fn session_journal(mode: Option<&str>) {
             provider.hold_response();
         }
     }
+    let oauth_refresh = matches!(mode, Some("oauth-refresh" | "oauth-revoke"));
+    if oauth_refresh {
+        provider.as_ref().unwrap().expiry(10);
+    }
     let mut selections = provider
         .as_ref()
         .map(|provider| provider.install(&mut fixture.state, &fixture.owner, &fixture.workspace))
         .into_iter()
         .collect::<Vec<_>>();
+    let refresh_after = tokio::time::Instant::now() + Duration::from_secs(11);
+    if oauth_refresh {
+        provider.as_ref().unwrap().expiry(3600);
+    }
     let state_dir = fixture._dir.path().join("session-worker-state");
     let root = fixture._dir.path().join("session-checkout");
     fs::create_dir(&root).unwrap();
@@ -948,6 +966,14 @@ async fn session_journal(mode: Option<&str>) {
                 .find(|option| option["kind"] == if denied { "deny" } else { "approve" })
                 .unwrap();
             let confirmation = json!({"channel":format!("ahp-chat:/{id}"),"clientSeq":2,"action":{"type":"chat/toolCallConfirmed","turnId":tool.0,"toolCallId":tool.1["toolCallId"],"approved":!denied,"selectedOptionId":option["id"]}});
+            if oauth_refresh && index == 1 {
+                let provider = provider.as_ref().unwrap();
+                provider.assert_before_refresh();
+                tokio::time::sleep_until(refresh_after).await;
+                if mode == Some("oauth-revoke") {
+                    provider.hold_refresh();
+                }
+            }
             let approved = session_dispatch(
                 &mut socket,
                 &format!("remote-browser-{index}"),
@@ -993,7 +1019,7 @@ async fn session_journal(mode: Option<&str>) {
             }
             if matches!(
                 mode,
-                Some("lost" | "revoke" | "forms-revoke" | "urls-revoke")
+                Some("lost" | "revoke" | "forms-revoke" | "urls-revoke" | "oauth-revoke")
             ) {
                 mcp_failure::Case {
                     fixture: &fixture,
@@ -1055,6 +1081,9 @@ async fn session_journal(mode: Option<&str>) {
         if index == 1 {
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
+    }
+    if oauth_refresh {
+        provider.as_ref().unwrap().assert_refresh(false);
     }
     if no_effects {
         assert!(!root.join("effects").exists());

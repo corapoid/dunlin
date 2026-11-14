@@ -109,9 +109,27 @@ impl Provider {
         ))
     }
     pub(crate) fn flow(&self, secrets: &dyn SecretStore) -> Result<AuthorizationFlow, String> {
+        self.flow_checked(secrets, None)
+    }
+    pub(crate) fn flow_authorized(
+        &self,
+        secrets: &dyn SecretStore,
+        guard: dunlin_mcp_client::DispatchGuard,
+    ) -> Result<AuthorizationFlow, String> {
+        self.flow_checked(secrets, Some(guard))
+    }
+    fn flow_checked(
+        &self,
+        secrets: &dyn SecretStore,
+        guard: Option<dunlin_mcp_client::DispatchGuard>,
+    ) -> Result<AuthorizationFlow, String> {
         self.validate()?;
         let discovery = Discovery::new(&self.endpoint, &self.allowed_origins)
             .map_err(|_| "MCP discovery unavailable")?;
+        let discovery = match &guard {
+            Some(guard) => discovery.with_guard(guard.clone()),
+            None => discovery,
+        };
         let discovered = discovery
             .protected_resource_from_server()
             .map_err(|_| "MCP discovery unavailable")?;
@@ -162,9 +180,12 @@ impl Provider {
             }
         }
         .map_err(|_| "MCP registration unavailable")?;
-        discovery
+        let flow = discovery
             .authorization_flow(&discovered.metadata, metadata, registration)
-            .map_err(|_| "MCP authorization unavailable".into())
+            .map_err(|_| "MCP authorization unavailable".to_string())?;
+        // Discovery authority may belong to an earlier phase (before prepare).
+        // Do not retain it in a Pending flow stored by that same Service.
+        Ok(flow)
     }
 }
 pub fn validate_registry(providers: &[Provider]) -> Result<(), String> {

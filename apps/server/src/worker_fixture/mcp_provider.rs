@@ -14,13 +14,43 @@ use std::{
 };
 mod forms;
 pub(super) use forms::content as form_content;
-type Secrets = MemoryStore;
+#[derive(Default)]
+struct Secrets {
+    values: MemoryStore,
+    writes: AtomicUsize,
+}
+impl SecretStore for Secrets {
+    fn get(&self, id: &str) -> Result<Zeroizing<String>, String> {
+        self.values.get(id)
+    }
+    fn set(&self, id: &str, value: &str) -> Result<(), String> {
+        self.values.set(id, value)?;
+        self.writes.fetch_add(1, Ordering::Release);
+        Ok(())
+    }
+    fn delete(&self, id: &str) -> Result<(), String> {
+        self.values.delete(id)
+    }
+    fn get_policy(&self, _: &str) -> Result<Zeroizing<String>, String> {
+        panic!("private OAuth only")
+    }
+    fn set_policy(&self, _: &str, _: &str) -> Result<(), String> {
+        panic!("private OAuth only")
+    }
+    fn delete_policy(&self, _: &str) -> Result<(), String> {
+        panic!("private OAuth only")
+    }
+}
 
 pub(super) struct Provider {
     secrets: Arc<Secrets>,
     forms: Arc<forms::Forms>,
     origin: String,
     calls: Arc<AtomicUsize>,
+    expiry: Arc<AtomicUsize>,
+    refreshes: Arc<AtomicUsize>,
+    hold_refresh: Arc<AtomicBool>,
+    closed_refresh: Arc<AtomicBool>,
     _reply_bytes: Arc<AtomicUsize>,
     lose: Arc<AtomicBool>,
     hold: Arc<(Mutex<bool>, std::sync::Condvar)>,
@@ -33,6 +63,16 @@ impl Provider {
         listener.set_nonblocking(true).unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let calls = Arc::new(AtomicUsize::new(0));
+        let expiry = Arc::new(AtomicUsize::new(3600));
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let hold_refresh = Arc::new(AtomicBool::new(false));
+        let closed_refresh = Arc::new(AtomicBool::new(false));
+        let (expires, refresh_count, refresh_held, refresh_closed) = (
+            expiry.clone(),
+            refreshes.clone(),
+            hold_refresh.clone(),
+            closed_refresh.clone(),
+        );
         let reply_bytes = Arc::new(AtomicUsize::new(0));
         let lose = Arc::new(AtomicBool::new(false));
         let hold = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
@@ -151,12 +191,32 @@ impl Provider {
                     let form = url::form_urlencoded::parse(&body)
                         .into_owned()
                         .collect::<std::collections::BTreeMap<_, _>>();
-                    assert_eq!(form["grant_type"], "authorization_code");
-                    assert!(form.contains_key("code_verifier"));
+                    if form["grant_type"] == "refresh_token" {
+                        assert_eq!(form["refresh_token"], "pipeline-private-refresh");
+                        assert_eq!(form["resource"], format!("{url}/mcp"));
+                        assert!(!form.contains_key("code_verifier"));
+                        refresh_count.fetch_add(1, Ordering::Release);
+                        if refresh_held.load(Ordering::Acquire) {
+                            stream
+                                .set_read_timeout(Some(Duration::from_secs(5)))
+                                .unwrap();
+                            let result = stream.read(&mut [0; 1]);
+                            assert!(
+                                matches!(result, Ok(0))
+                                    || matches!(result, Err(ref e) if e.kind() == std::io::ErrorKind::ConnectionReset),
+                                "refresh socket remained open: {result:?}"
+                            );
+                            refresh_closed.store(true, Ordering::Release);
+                            continue;
+                        }
+                    } else {
+                        assert_eq!(form["grant_type"], "authorization_code");
+                        assert!(form.contains_key("code_verifier"));
+                    }
                     (
                         200,
                         String::new(),
-                        json!({"access_token":"pipeline-private-access","refresh_token":"pipeline-private-refresh","token_type":"Bearer","expires_in":3600,"scope":"files:read"}),
+                        json!({"access_token":"pipeline-private-access","refresh_token":"pipeline-private-refresh","token_type":"Bearer","expires_in":expires.load(Ordering::Acquire),"scope":"files:read"}),
                     )
                 } else {
                     panic!("unexpected HTTP request");
@@ -174,6 +234,10 @@ impl Provider {
             forms,
             origin,
             calls,
+            expiry,
+            refreshes,
+            hold_refresh,
+            closed_refresh,
             _reply_bytes: reply_bytes,
             lose,
             hold,
@@ -208,6 +272,36 @@ impl Drop for Provider {
 }
 
 impl Provider {
+    pub(super) fn expiry(&self, seconds: usize) {
+        self.expiry.store(seconds, Ordering::Release);
+    }
+    pub(super) fn hold_refresh(&self) {
+        self.hold_refresh.store(true, Ordering::Release);
+    }
+    pub(super) fn assert_refresh(&self, closed: bool) {
+        assert_eq!(self.refreshes.load(Ordering::Acquire), 1);
+        assert_eq!(self.closed_refresh.load(Ordering::Acquire), closed);
+        assert_eq!(
+            self.secrets.writes.load(Ordering::Acquire),
+            if closed { 1 } else { 2 }
+        );
+    }
+    pub(super) fn assert_before_refresh(&self) {
+        assert_eq!(self.refreshes.load(Ordering::Acquire), 0);
+    }
+    pub(super) async fn wait_refresh(&self, closed: bool) {
+        tokio::time::timeout(Duration::from_secs(if closed { 1 } else { 3 }), async {
+            while if closed {
+                !self.closed_refresh.load(Ordering::Acquire)
+            } else {
+                self.refreshes.load(Ordering::Acquire) == 0
+            } {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("real AS refresh/close deadline");
+    }
     pub(super) fn lose_response(&self) {
         self.lose.store(true, Ordering::Release);
     }

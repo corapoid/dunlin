@@ -1,0 +1,70 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "a5f333bd221e7907b9037197fe8cd77325ede66f74561ad60ca4495d14641fa5",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    }
+  },
+  "runs": {
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a5f333bd221e7907b9037197fe8cd77325ede66f74561ad60ca4495d14641fa5",
+      "log_sha256": "162fd349975c6ce793a7fdbae8fd79a09381e6ba6571a17f342ec05b71411b28"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a5f333bd221e7907b9037197fe8cd77325ede66f74561ad60ca4495d14641fa5",
+      "log_sha256": "c9c3ffba0fe01c17142d4c3d4fb8f322c71ad22b02a46868e1151ba8814583d4"
+    },
+    "runtime-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a5f333bd221e7907b9037197fe8cd77325ede66f74561ad60ca4495d14641fa5",
+      "log_sha256": "ffff906f44517f0cb49b6554a3939aaa1c812d655d56b801c692446aee168a59"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a5f333bd221e7907b9037197fe8cd77325ede66f74561ad60ca4495d14641fa5",
+      "log_sha256": "54027a72f43ceb4de404ff2bde303928a12abb182bedfd654f17e166f96e3f2c"
+    }
+  },
+  "results": {
+    "backend_passed": 911,
+    "relay_passed": 766,
+    "backend_acceptance_ignored": 63,
+    "http_mcp_vault_passed": 186,
+    "compile_fail_passed": 3,
+    "real_remote_runtime_passed": 2,
+    "runtime_browser": false
+  },
+  "frontend_reused": {
+    "proof": "frontend-unchanged.json",
+    "proof_sha256": "5a19ad66b3ac4195dad54a0bb4dcc5b98d21a8dbfebb3134a3c577572f1c04c8",
+    "rerun": false
+  },
+  "intermediate": {
+    "mcp-first.log": {
+      "exit_code": 0,
+      "source_sha256": "faf73f70bba845313cd489b29aad5778f5fb1637a392fe0822607c2d3f050893",
+      "log_sha256": "bb61ed1dc853a83acab5314173111345019b035e70d4f0394540b7e63273f19f",
+      "reason": "Before final API and runner fixtures; superseded by final source snapshot."
+    }
+  },
+  "limitations": [
+    "Controlled loopback OAuth AS and MemoryStore; no real accounts, external services, keyring or tailnet acceptance.",
+    "Runtime uses real TLS/WSS, REST/AHP, production relay/runner, Unix proxy and bubblewrap; Chromium was not rerun.",
+    "Negative AS revocation retains separate journal authority and factual acknowledgements; positive-use guards do not cancel negative cleanup.",
+    "System DNS/connect in progress are timeout-bounded; shutdown prevents request bytes on late sockets.",
+    "Cancellation cannot undo effects already accepted by the provider.",
+    "Recipes/service workflows, full E5.3/E10 acceptance and remaining E0-E10 requirements stay open."
+  ],
+  "local_checks": "local-results.json",
+  "local_checks_sha256": "35e2397b2c90c06b09ffaebb066a11d7bb9c89819cc534f00e55051ead9722b3"
+}

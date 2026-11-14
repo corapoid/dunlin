@@ -1,0 +1,35 @@
+{
+  "rust_files": [
+    "apps/server/src/api/web/tests/mcp_oauth_flow.rs",
+    "apps/server/src/interactive/mcp/runtime.rs",
+    "apps/server/src/mcp_oauth/broker.rs",
+    "apps/server/src/mcp_oauth/config.rs",
+    "apps/server/src/mcp_oauth/service.rs",
+    "apps/server/src/worker_fixture/mcp_provider.rs",
+    "apps/server/src/worker_fixture/session_vertical.rs",
+    "apps/server/src/worker_fixture/session_vertical/mcp_failure.rs",
+    "crates/mcp-client/src/oauth.rs",
+    "crates/mcp-client/src/oauth/cancellation_tests.rs",
+    "crates/mcp-client/src/oauth/flow.rs",
+    "crates/mcp-client/src/oauth/flow/cancellation_tests.rs",
+    "crates/mcp-client/src/oauth/flow/lifecycle.rs",
+    "crates/mcp-client/src/oauth/flow/lifecycle/tests.rs"
+  ],
+  "checks": [
+    {
+      "check": "rustfmt",
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "check": "docs",
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation.\n"
+    },
+    {
+      "check": "diff",
+      "exit_code": 0,
+      "output": ""
+    }
+  ]
+}

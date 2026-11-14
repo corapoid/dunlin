@@ -145,7 +145,21 @@ impl Service {
         }
         let _starting = self.reserve(state, &proof)?;
         let flow = provider
-            .flow(self.secrets.as_ref())
+            .flow_authorized(
+                self.secrets.as_ref(),
+                dunlin_mcp_client::DispatchGuard::new(Arc::new({
+                    let state = state.clone();
+                    let proof = proof.clone();
+                    let context = context.clone();
+                    move || {
+                        let Ok(store) = state.store.lock() else {
+                            return false;
+                        };
+                        proof.validate(&state, &store, &context).is_ok()
+                            && store.mcp_oauth_can_authorize(&context).is_ok()
+                    }
+                })),
+            )
             .map_err(|_| PersistenceError::Storage)?;
         {
             let store = state.store.lock().map_err(|_| PersistenceError::Storage)?;
@@ -219,7 +233,7 @@ impl Service {
         record: Callback,
         callback: &str,
     ) -> Result<(), PersistenceError> {
-        let pending = record.0;
+        let mut pending = record.0;
         let journal = Arc::new(BrowserJournal {
             membership_revision: None,
             state,
@@ -228,6 +242,14 @@ impl Service {
         journal.authorizing(&pending.context, &pending.flow.credential_binding())?;
         let _writer = journal.writer_lease(&pending.context)?;
         journal.authorizing(&pending.context, &pending.flow.credential_binding())?;
+        let binding = pending.flow.credential_binding();
+        pending.flow = pending
+            .flow
+            .with_token_guard(dunlin_mcp_client::DispatchGuard::new(Arc::new({
+                let journal = journal.clone();
+                let context = pending.context.clone();
+                move || journal.authorizing(&context, &binding).is_ok()
+            })));
         let token = pending.flow.finish(&pending.context, callback)?;
         OAuthCredentials::new(journal, self.secrets.clone()).install(
             &pending.flow,

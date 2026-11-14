@@ -207,6 +207,7 @@ pub struct AuthorizationFlow {
     issuer_required: bool,
     registration: Registration,
     agent: Agent,
+    token_guard: Option<crate::DispatchGuard>,
     pending: Mutex<HashMap<[u8; 32], Pending>>,
 }
 impl Discovery {
@@ -216,6 +217,7 @@ impl Discovery {
         metadata: AuthorizationMetadata,
         registration: Registration,
     ) -> Result<AuthorizationFlow, Error> {
+        crate::authorize(self.guard.as_ref())?;
         resource.validate(&self.endpoint)?;
         if !resource.authorization_servers.contains(&metadata.issuer)
             || metadata.issuer != registration.issuer
@@ -309,11 +311,20 @@ impl Discovery {
                 .try_proxy_from_env(false)
                 .redirects(0)
                 .build(),
+            token_guard: None,
             pending: Mutex::new(HashMap::new()),
         })
     }
 }
 impl AuthorizationFlow {
+    /// Live application authority for positive token exchange/refresh only.
+    /// Each request owns an isolated pool and retains cancellation through body
+    /// validation. Explicit negative revocation has its own journal authority.
+    pub fn with_token_guard(mut self, guard: crate::DispatchGuard) -> Self {
+        self.token_guard = Some(guard);
+        self
+    }
+
     /// context must come from a freshly authenticated Dunlin caller, never the
     /// callback's query. Return URL is reviewed/opened by the application UI.
     pub fn begin(
@@ -365,6 +376,7 @@ impl AuthorizationFlow {
     /// Single-use callback processing. Issuer is verified before error/code is
     /// acted on, and the record is consumed before any token HTTP request.
     pub fn finish(&self, context: &AuthContext, callback_uri: &str) -> Result<TokenSet, Error> {
+        crate::authorize(self.token_guard.as_ref())?;
         context.validate()?;
         if callback_uri.len() > 16384 {
             return Err(Error::Limit);
@@ -435,10 +447,18 @@ impl AuthorizationFlow {
     fn post_form(
         &self,
         endpoint: &Url,
+        form: url::form_urlencoded::Serializer<'_, String>,
+    ) -> Result<dunlin_http::Response, Error> {
+        self.post_form_with_agent(&self.agent, endpoint, form)
+    }
+
+    fn post_form_with_agent(
+        &self,
+        agent: &Agent,
+        endpoint: &Url,
         mut form: url::form_urlencoded::Serializer<'_, String>,
     ) -> Result<dunlin_http::Response, Error> {
-        let mut request = self
-            .agent
+        let mut request = agent
             .post(endpoint.as_str())
             .set("Accept", "application/json")
             .set("Content-Type", "application/x-www-form-urlencoded")
@@ -478,8 +498,31 @@ impl AuthorizationFlow {
         form: url::form_urlencoded::Serializer<'_, String>,
         permitted: &[String],
     ) -> Result<Validated, Error> {
+        let agent = self.agent.isolated();
+        let cancellation = self
+            .token_guard
+            .as_ref()
+            .map(|guard| guard.watch(&agent))
+            .transpose()?;
+        let result = self.tokens_with_agent(&agent, form, permitted);
+        // A closed response can appear as a clean EOF. Authority wins over
+        // both successful parsing and I/O/protocol errors after cancellation.
+        let allowed = cancellation.is_none_or(dunlin_http::Cancellation::finish);
+        crate::authorize(self.token_guard.as_ref())?;
+        if !allowed {
+            return Err(Error::Unauthorized);
+        }
+        result
+    }
+
+    fn tokens_with_agent(
+        &self,
+        agent: &Agent,
+        form: url::form_urlencoded::Serializer<'_, String>,
+        permitted: &[String],
+    ) -> Result<Validated, Error> {
         let token_started = Instant::now();
-        let response = self.post_form(&self.token_endpoint, form)?;
+        let response = self.post_form_with_agent(agent, &self.token_endpoint, form)?;
         if !response
             .header("Content-Type")
             .unwrap_or("")
@@ -585,5 +628,7 @@ impl TokenSet {
     }
 }
 
+#[cfg(test)]
+mod cancellation_tests;
 #[cfg(test)]
 mod tests;
