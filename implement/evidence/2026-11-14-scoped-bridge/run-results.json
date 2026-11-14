@@ -1,0 +1,12 @@
+[
+  {
+    "suite": "runtime",
+    "exit_code": 0,
+    "log": "runtime-first.log"
+  },
+  {
+    "suite": "clippy",
+    "exit_code": 0,
+    "log": "clippy-final.log"
+  }
+]

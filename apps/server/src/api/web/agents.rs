@@ -70,7 +70,7 @@ pub(in crate::api) async fn profiles(
             .authorize_team_project(user, &workspace, &project, Permission::ManageProject)
             .is_ok();
         Ok(
-            json!({"profiles":profiles,"can_edit":can_edit,"remote_sessions_supported":state.remote_sessions.get().is_some(),"remote_mcp_sessions_supported":cfg!(unix)&&state.remote_sessions.get().is_some()&&state.config.worker_controller.as_ref().is_some_and(|config|config.mcp_broker)&&!state.config.mcp_oauth.is_empty(),"mcp_sessions_supported":cfg!(unix)&&state.config.experimental_interactive_runtime&&!state.config.mcp_oauth.is_empty(),"configured_harness":crate::interactive::configured_harness_id(&state.config)}),
+            json!({"profiles":profiles,"can_edit":can_edit,"remote_sessions_supported":state.remote_sessions.get().is_some(),"remote_mcp_sessions_supported":crate::scoped_secrets::remote_execution_supported(&state),"mcp_sessions_supported":crate::scoped_secrets::local_execution_supported(&state),"configured_harness":crate::interactive::configured_harness_id(&state.config)}),
         )
     })?;
     Ok(private_response(Json(result)))

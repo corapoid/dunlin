@@ -10,6 +10,16 @@ struct Adapter {
 }
 fn pins() -> SessionPins {
     SessionPins {
+        secret_target: dunlin_vault::scoped::Binding {
+            workspace: "workspace".into(),
+            project: "project".into(),
+            host: "host".into(),
+        },
+        profile: dunlin_domain::agent::AgentProfileRef {
+            agent_id: "profile".into(),
+            version: 1,
+            digest: "a".repeat(64),
+        },
         session: "session".into(),
         workspace: "workspace".into(),
         owner: "owner".into(),
@@ -81,7 +91,7 @@ fn connection() -> BoundConnection {
             connection_id: "connection".into(),
             connection_revision: 1,
         },
-        provider: Provider {
+        backend: Backend::OAuth(Box::new(Provider {
             id: "fixture".into(),
             name: "Fixture".into(),
             endpoint: "http://127.0.0.1:1/mcp".into(),
@@ -92,7 +102,7 @@ fn connection() -> BoundConnection {
             scopes: vec![],
             authentication: crate::mcp_oauth::config::Authentication::Public,
             client_secret_ref: None,
-        },
+        })),
         tools: vec![],
     }
 }
@@ -125,6 +135,9 @@ fn broker_freezes_all_session_pins_before_adapter_sql_or_oauth() {
         "device",
         "binding",
         "profile",
+        "target",
+        "profile-id",
+        "profile-version",
     ] {
         let state = state();
         let mut changed = pins();
@@ -136,6 +149,9 @@ fn broker_freezes_all_session_pins_before_adapter_sql_or_oauth() {
             "instance" => changed.lease.instance = "another".into(),
             "device" => changed.starter_device = "another".into(),
             "binding" => changed.binding_revision += 1,
+            "target" => changed.secret_target.host = "another-host".into(),
+            "profile-id" => changed.profile.agent_id = "another-profile".into(),
+            "profile-version" => changed.profile.version += 1,
             _ => changed.profile_digest = "b".repeat(64),
         }
         let authority = Arc::new(Adapter::new(changed));

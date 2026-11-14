@@ -233,7 +233,8 @@ fn fresh_create_scope(
                 state,
                 store,
                 &current.id,
-                workspace,
+                &binding,
+                profile,
                 &version.definition,
                 mcp_connections,
             )?;

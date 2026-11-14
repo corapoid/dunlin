@@ -6,6 +6,7 @@ import { SessionCreationClient } from '../lib/session-create';
 import { readRemoteBindings } from '../lib/remote-bindings';
 import type { RemoteBinding } from '../lib/remote-bindings';
 import { McpOAuthClient, type McpConnection } from '../lib/mcp-oauth';
+import { ScopedSecretsClient, isSecretProvider, type SecretGrant } from '../lib/scoped-secrets';
 function Profiles({
   userId,
   workspace,
@@ -32,6 +33,8 @@ function Profiles({
     [connectionError,setConnectionError]=useState(''),
     [connectionsLoading,setConnectionsLoading]=useState(false),
     [reloadConnections,setReloadConnections]=useState(0);
+  const [secretGrants,setSecretGrants]=useState<SecretGrant[]>([]);
+  const remoteBinding = target === 'local' ? undefined : bindings.find(binding => binding.id === target && binding.active);
   const admissionStatus=client.current?.state.status;
   useEffect(()=>{if(admissionStatus==='accepted')setError('');},[admissionStatus]);
   const selectedProfile=catalog?.profiles.find(p=>p.agent_id===selected);
@@ -39,16 +42,19 @@ function Profiles({
   const mcpAvailable=target==='local'?catalog?.mcp_sessions_supported===true:catalog?.remote_mcp_sessions_supported===true;
   useEffect(()=>{
     const controller=new AbortController();
-    setConnections([]);setAccounts({});setConnectionError('');setConnectionsLoading(false);
+    setConnections([]);setSecretGrants([]);setAccounts({});setConnectionError('');setConnectionsLoading(false);
     if(mcpAvailable&&catalog?.profiles.find(p=>p.agent_id===selected)?.definition.mcp?.length){
       setConnectionsLoading(true);
-      new McpOAuthClient(workspace,userId,window.location.origin).connections(controller.signal)
-        .then(rows=>{if(!controller.signal.aborted)setConnections(rows);})
+      const profile=catalog.profiles.find(p=>p.agent_id===selected)!;
+      Promise.all([
+        providers.some(p=>!isSecretProvider(p))?new McpOAuthClient(workspace,userId,window.location.origin).connections(controller.signal):Promise.resolve([]),
+        providers.some(isSecretProvider)&&(target==='local'||remoteBinding)?new ScopedSecretsClient(workspace,project,target==='local'?'local':remoteBinding!.host_id,userId).available({agent_id:profile.agent_id,version:profile.version,digest:profile.digest},controller.signal):Promise.resolve({bindings:[],execution_supported:false}),
+      ]).then(([rows,secrets])=>{if(!controller.signal.aborted){setConnections(rows);setSecretGrants(secrets.execution_supported?secrets.bindings:[]);}})
         .catch(error=>{if(!controller.signal.aborted)setConnectionError(error instanceof Error?error.message:'Nie udało się wczytać połączeń MCP.');})
         .finally(()=>{if(!controller.signal.aborted)setConnectionsLoading(false);});
     }
     return ()=>controller.abort();
-  },[workspace,userId,selected,target,catalog,mcpAvailable,reloadConnections]);
+  },[workspace,project,userId,selected,target,catalog,mcpAvailable,reloadConnections,remoteBinding?.host_id]);
   useEffect(() => {
     const c = new AbortController();
     readProfiles(workspace, project, c.signal)
@@ -81,6 +87,11 @@ function Profiles({
       const intent = client.begin(workspace, project, {
         profile: { agent_id: version.agent_id, version: version.version, digest: version.digest },
         ...(providers.length?{mcp_connections:providers.map(provider=>{
+          if(isSecretProvider(provider)) {
+            const grant=secretGrants.find(g=>g.provider_id===provider&&g.id===accounts[provider]);
+            if((target!=='local'&&!remoteBinding)||!grant)throw new Error('Wybierz aktualny grant poświadczenia dla tego hosta i profilu.');
+            return {provider_id:provider,connection_id:grant.id,revision:grant.revision};
+          }
           const connection=connections.find(c=>c.provider_id===provider&&c.id===accounts[provider]&&c.status==='connected');
           if(!connection)throw new Error('Wybierz aktualne połączenie dla każdego dostawcy MCP.');
           return {provider_id:provider,connection_id:connection.id,revision:connection.revision};
@@ -99,9 +110,8 @@ function Profiles({
     }
   }
   const unresolved = !!client.current && client.current.state.status !== 'accepted';
-  const remoteBinding = target === 'local' ? undefined : bindings.find(binding => binding.id === target && binding.active);
   const needsMcp = providers.length>0;
-  const mcpReady=!needsMcp||mcpAvailable&&!connectionsLoading&&!connectionError&&providers.every(provider=>connections.some(c=>c.provider_id===provider&&c.id===accounts[provider]&&c.status==='connected'));
+  const mcpReady=!needsMcp||mcpAvailable&&!connectionsLoading&&!connectionError&&providers.every(provider=>isSecretProvider(provider)?(target==='local'||!!remoteBinding)&&secretGrants.some(g=>g.provider_id===provider&&g.id===accounts[provider]):connections.some(c=>c.provider_id===provider&&c.id===accounts[provider]&&c.status==='connected'));
   const supported = mcpReady && (target === 'local'
     ? !!catalog?.configured_harness && catalog.profiles.some(p => p.agent_id === selected && p.definition.harness === catalog.configured_harness)
     : catalog?.remote_sessions_supported === true && !!remoteBinding && catalog.profiles.some(p => p.agent_id === selected));
@@ -177,13 +187,13 @@ function Profiles({
           {needsMcp&&!mcpAvailable && <p role="alert">Wybrany cel nie obsługuje wykonania MCP.</p>}
           {needsMcp&&mcpAvailable&&<fieldset disabled={busy||unresolved||connectionsLoading}>
             <legend>Prywatne połączenia MCP tej sesji</legend>
-            <p>Wybierz konto dla każdego dostawcy. Każde wywołanie narzędzia będzie wymagało Twojej jednorazowej zgody.</p>
+            <p>Wybierz konto lub grant poświadczenia dla każdego narzędzia. Każde wywołanie będzie wymagało Twojej jednorazowej zgody.</p>
             {connectionsLoading&&<p role="status">Wczytywanie połączeń…</p>}
             {connectionError&&<p role="alert">{connectionError}</p>}
-            {providers.map(provider=><label key={provider}>Konto MCP: {provider}
+            {providers.map(provider=><label key={provider}>{isSecretProvider(provider)?'Poświadczenie':'Konto MCP'}: {provider}
               <select required data-testid={`session-mcp-${provider}`} value={accounts[provider]??''} onChange={event=>setAccounts({...accounts,[provider]:event.target.value})}>
                 <option value="">Wybierz prywatne połączenie</option>
-                {connections.filter(c=>c.provider_id===provider&&c.status==='connected').map(c=><option key={c.id} value={c.id}>{c.display_name??c.id}</option>)}
+                {isSecretProvider(provider)?secretGrants.filter(g=>g.provider_id===provider).map(g=><option key={g.id} value={g.id}>{g.credential}{g.read_only?' · tylko odczyt':''}</option>):connections.filter(c=>c.provider_id===provider&&c.status==='connected').map(c=><option key={c.id} value={c.id}>{c.display_name??c.id}</option>)}
               </select>
             </label>)}
             <button type="button" onClick={()=>setReloadConnections(value=>value+1)}>Odśwież połączenia MCP</button>

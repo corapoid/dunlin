@@ -1,0 +1,165 @@
+{
+  "source": {
+    "rust": {
+      "source_sha256": "2827f3e8ccf62b2661fb4f2de579b835484d4b562d7da82253bdea89052ecf13",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    },
+    "frontend": {
+      "source_sha256": "f4b50e73c97fb3e5f934210fa7f28338c50b97f718e553532b3796d6d5b2689d",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog"
+      ]
+    },
+    "typecheck": {
+      "source_sha256": "19d5ed9b07b9d28dd898794f172ea2bf3db22dcc1203ee1da00e537c5f208a85",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts"
+      ]
+    },
+    "tooling": {
+      "source_sha256": "7c74a343053519754b4ebb9f782239080b6c29898a6633245e4a674a36aff467",
+      "inputs": [
+        "scripts",
+        ".github",
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs",
+        "web/src"
+      ]
+    },
+    "build": {
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/index.html",
+        "apps/web/postcss.config.mjs",
+        "apps/web/REUI-LICENSE.txt"
+      ],
+      "source_sha256": "803fd74d425f3f21d00e6b550730f05fca3761736881e563e0c19b7996283569"
+    }
+  },
+  "checks": [
+    {
+      "suite": "runtime_browser",
+      "log": "runtime-browser-final.log",
+      "exit_code": 0,
+      "log_sha256": "cf5369a3e0e65697b827915e9c293658b15f7c7e913b6d374b5b7dc91e43c36a",
+      "source_sha256": "2827f3e8ccf62b2661fb4f2de579b835484d4b562d7da82253bdea89052ecf13",
+      "memory": {
+        "memory.peak": "3656581120",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "frontend",
+      "log": "frontend-final.log",
+      "exit_code": 0,
+      "log_sha256": "50283d6f5edf99fa3ea8bb2975854ba40c065f99c419e33eef58069afd3d0801",
+      "source_sha256": "f4b50e73c97fb3e5f934210fa7f28338c50b97f718e553532b3796d6d5b2689d"
+    },
+    {
+      "suite": "typecheck",
+      "log": "typecheck-final.log",
+      "exit_code": 0,
+      "log_sha256": "f98f2906015e628a2897ba2491bbb8c6b0a8052366da83fd1236722ca7178312",
+      "source_sha256": "19d5ed9b07b9d28dd898794f172ea2bf3db22dcc1203ee1da00e537c5f208a85"
+    },
+    {
+      "suite": "build",
+      "log": "build-final.log",
+      "exit_code": 0,
+      "log_sha256": "42406a602307749f97780ecf8c5b0bc4c5acb92439fe1b93ed76a57284dfc34b",
+      "source_sha256": "803fd74d425f3f21d00e6b550730f05fca3761736881e563e0c19b7996283569"
+    },
+    {
+      "suite": "tooling",
+      "log": "tooling-final.log",
+      "exit_code": 0,
+      "log_sha256": "e256e817face3b534fd43efddb026cfe54aea57828dd4078492a6d27f8040d0f",
+      "source_sha256": "7c74a343053519754b4ebb9f782239080b6c29898a6633245e4a674a36aff467"
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "exit_code": 0,
+      "log_sha256": "a6bf114f893fa158efc30a93b2e7893f3270dfb5895796a487c06f66699b4a4c",
+      "source_sha256": "2827f3e8ccf62b2661fb4f2de579b835484d4b562d7da82253bdea89052ecf13",
+      "memory": {
+        "memory.peak": "2411302912",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "server",
+      "log": "server-final.log",
+      "exit_code": 0,
+      "log_sha256": "6d6ab4b76f60f302cddce4e3daa68d91f5d04f14bba4e7b6e05ee64a6e28c7cd",
+      "source_sha256": "2827f3e8ccf62b2661fb4f2de579b835484d4b562d7da82253bdea89052ecf13",
+      "memory": {
+        "memory.peak": "3635613696",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    }
+  ],
+  "passed": {
+    "backend": 896,
+    "relay": 751,
+    "separate_relay_acceptance_ignored": 58,
+    "frontend": 163,
+    "new_scoped_client_test_groups": 6,
+    "runtime_acceptance_including_chromium": 4,
+    "ci_contract": 14,
+    "launcher": 18
+  },
+  "browser_scope": [
+    "Real rendered production UI and REST/AHP, controller, TLS/WSS, production proxy/helper and bubblewrap runner",
+    "Credential write receipt lost after server commit: cleared password input, no automatic retry, explicit status reload",
+    "Grant create/revoke and credential disable through UI; no value in localStorage/sessionStorage",
+    "Static HTTP pin loaded in Builder; new profile with skills/instructions published and assigned a fresh grant",
+    "Newly published profile and grant selected in session; target switch clears selection; lost admission response retries the identical intent",
+    "Human one-use approval precedes scoped TLS HTTP; redacted result consumed by sandbox harness; stop/ACK, no replay and reservation release",
+    "Desktop/mobile screenshot inspection; no horizontal overflow"
+  ],
+  "screenshots": {
+    "session-MOBILE.png": "51ec6606f36208fdab4aa83a0c4d55c86db340db30daa42fdf334983e3225d7e",
+    "session-DESKTOP.png": "894f1035e9181b49624432d38d2143c29062360ce7ff92c69afbb812486d1eed",
+    "scopedMobile.png": "fca063e2e3e02050c9012bc1977a2005fe9fbf2723b72b1ba48498b4e7c0de52",
+    "scopedDesktop.png": "1388930a552307dd76c28ecf0232f595064f26dea7bff73728579f8bd16f8208"
+  },
+  "baseline_mcp_inputs": "mcp-unchanged-inputs.json",
+  "limits": [
+    "HTTP dialer is pinned to synthetic TLS loopback CA; keyring is MemoryStore",
+    "No real OS keyring, public DNS/IP, tailnet, deployed hosts or real accounts acceptance",
+    "Local host identity/scoped credential binding, service workflow execution, full kill switch and retention remain open",
+    "execution_supported declares configured remote human interface only; it is not dispatch authority"
+  ],
+  "milestone": {
+    "E5.3": "open",
+    "completed": 21,
+    "total": 68
+  },
+  "local_checks": {
+    "local-checks.log": "ae3eb8aca7f68e797a63b9984a6d8a81bfcd151f92c550cd237555581b665816",
+    "local-results.json": "d01ef6d15e6626cc77a686feb21af9b5d2616e7397c8be654f8a407750958fc8"
+  }
+}

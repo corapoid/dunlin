@@ -22,12 +22,16 @@ pub(crate) struct Install {
 pub(crate) struct Service {
     slots: Arc<Semaphore>,
     backend: Option<Arc<dyn SecretStore>>,
+    #[cfg(test)]
+    executor: Option<Arc<dyn dunlin_vault::http::HttpExecutor>>,
 }
 impl Default for Service {
     fn default() -> Self {
         Self {
             slots: Arc::new(Semaphore::new(4)),
             backend: None,
+            #[cfg(test)]
+            executor: None,
         }
     }
 }
@@ -38,6 +42,40 @@ impl Service {
             backend: Some(backend),
             ..Self::default()
         }
+    }
+    #[cfg(test)]
+    pub(crate) fn testing_executor(
+        backend: Arc<dyn SecretStore>,
+        executor: Arc<dyn dunlin_vault::http::HttpExecutor>,
+    ) -> Self {
+        Self {
+            executor: Some(executor),
+            ..Self::testing(backend)
+        }
+    }
+    pub(crate) fn http(
+        &self,
+        scope: dunlin_vault::scoped::UseScope,
+        version: Version,
+        input: dunlin_vault::http::HttpInput,
+        deadline: std::time::Instant,
+        authority: Arc<dyn dunlin_vault::scoped::Authority>,
+    ) -> Result<dunlin_vault::http::HttpOutput> {
+        let _slot = self
+            .slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Limit)?;
+        let credentials = match &self.backend {
+            Some(backend) => Credentials::new(Arc::new(UseJournal), backend.clone()),
+            None => Credentials::relay(Arc::new(UseJournal)),
+        };
+        let permit = credentials.permit(scope, version, &input, deadline, authority)?;
+        #[cfg(test)]
+        if let Some(executor) = &self.executor {
+            return credentials.http(permit, input, executor.as_ref());
+        }
+        credentials.http(permit, input, &dunlin_vault::http::UreqExecutor::new())
     }
     pub(crate) async fn install(
         &self,
@@ -112,5 +150,46 @@ impl Journal for BrowserJournal {
         store.scoped_secret_activate(&self.proof, claim, &|store| {
             identity(&self.state, store, &self.proof)
         })
+    }
+}
+
+// Runtime code cannot provision credentials through its keyring client.
+struct UseJournal;
+impl Journal for UseJournal {
+    fn reserve(&self, _: &Candidate) -> Result<WriteClaim> {
+        Err(Error::Denied)
+    }
+    fn acknowledge(&self, _: &WriteClaim) -> Result<()> {
+        Err(Error::Denied)
+    }
+    fn activate(&self, _: WriteClaim) -> Result<Version> {
+        Err(Error::Denied)
+    }
+}
+
+/// Configured remote human-session interface, never a grant or live-host proof.
+pub(crate) fn remote_execution_supported(state: &AppState) -> bool {
+    cfg!(unix)
+        && state.remote_sessions.get().is_some()
+        && state
+            .config
+            .worker_controller
+            .as_ref()
+            .is_some_and(|config| {
+                config.execution_enabled && config.persistent_sessions && config.mcp_broker
+            })
+}
+
+/// Local native permissions remain independently checked by the actual actor.
+pub(crate) fn local_execution_supported(state: &AppState) -> bool {
+    cfg!(unix)
+        && state.config.experimental_interactive_runtime
+        && crate::interactive::configured_harness_id(&state.config).is_some()
+}
+pub(crate) fn execution_supported(state: &AppState, host: &str) -> bool {
+    if host == "local" {
+        local_execution_supported(state)
+    } else {
+        remote_execution_supported(state)
     }
 }

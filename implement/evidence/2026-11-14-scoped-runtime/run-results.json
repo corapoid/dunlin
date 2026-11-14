@@ -1,0 +1,22 @@
+[
+  {
+    "suite": "server",
+    "log": "server-second.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "clippy",
+    "log": "clippy-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "mcp",
+    "log": "mcp-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "runtime",
+    "log": "runtime-final.log",
+    "exit_code": 0
+  }
+]

@@ -1,0 +1,7 @@
+Command: ["rustfmt", "--check", "--edition", "2024", "--config", "skip_children=true", "apps/server/src/api/web/agents.rs", "apps/server/src/api/web/scoped_secrets.rs", "apps/server/src/interactive.rs", "apps/server/src/interactive/mcp.rs", "apps/server/src/interactive/mcp/authority.rs", "apps/server/src/interactive/mcp/bindings.rs", "apps/server/src/interactive/mcp/runtime.rs", "apps/server/src/interactive/mcp/runtime/input.rs", "apps/server/src/interactive/mcp/runtime/scoped.rs", "apps/server/src/interactive/mcp/runtime/scoped/tests.rs", "apps/server/src/interactive/mcp/runtime/tests.rs", "apps/server/src/scoped_secrets.rs", "apps/server/src/store/remote_bindings/resolver/sessions.rs", "apps/server/src/store/remote_bindings/resolver/sessions/authority.rs", "apps/server/src/store/remote_bindings/resolver/sessions/mcp.rs", "apps/server/src/store/scoped_secrets.rs", "apps/server/src/store/scoped_secrets/grants.rs", "apps/server/src/store/scoped_secrets/tests.rs", "apps/server/src/worker_fixture/session_vertical.rs", "apps/server/src/worker_fixture/session_vertical/mcp_browser.rs", "apps/server/src/worker_fixture/session_vertical/scoped_http.rs"]
+Command: ["git", "diff", "--check"]
+Command: ["python3", "scripts/check_docs.py"]
+Documentation check passed: 122 Markdown files; local links, anchors and navigation.
+Python AST PASS scripts/test_web_sandbox.py
+Python AST PASS scripts/tests/test_web_sandbox_launcher.py
+Python AST PASS apps/server/src/worker_execution/runtime/fixtures/session_agent.py

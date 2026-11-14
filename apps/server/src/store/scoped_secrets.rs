@@ -2,6 +2,7 @@
 //! never values or credential policies. Unknown references are never reclaimed.
 use super::Store;
 mod grants;
+mod local;
 use crate::mcp_oauth::BrowserProof;
 use dunlin_domain::{
     collaboration::{AuthorityStamp, Permission},
@@ -10,10 +11,11 @@ use dunlin_domain::{
 use dunlin_vault::scoped::{Binding, Candidate, Error, Result, Version, WriteClaim};
 pub(super) use grants::SCHEMA as GRANTS_SCHEMA;
 pub(crate) use grants::{Grant, GrantRequest, Principal};
+pub(super) use local::migrate as migrate_local;
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Serialize;
 
-pub(super) const SCHEMA: &str = "
+const CREDENTIALS_V48: &str = "
 CREATE TABLE scoped_credentials (
  workspace TEXT NOT NULL, project TEXT NOT NULL, host TEXT NOT NULL,
  credential TEXT NOT NULL CHECK(length(credential) BETWEEN 1 AND 128),
@@ -28,7 +30,8 @@ CREATE TABLE scoped_credentials (
     OR (state='active' AND active_reference IS NOT NULL AND staged_reference IS NULL)
     OR (state='disabled' AND staged_reference IS NULL))
 );
-CREATE TABLE scoped_secret_references (
+";
+const REFERENCES_SCHEMA: &str = "CREATE TABLE scoped_secret_references (
  reference TEXT PRIMARY KEY CHECK(length(reference)=78 AND substr(reference,1,14)='scoped-secret:'),
  workspace TEXT NOT NULL, project TEXT NOT NULL, host TEXT NOT NULL, credential TEXT NOT NULL,
  revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
@@ -43,6 +46,10 @@ CREATE TABLE scoped_secret_references (
 );
 CREATE INDEX scoped_references_scope ON scoped_secret_references(workspace,project,host,credential);
 ";
+pub(super) fn create_v48(tx: &Transaction<'_>) -> rusqlite::Result<()> {
+    tx.execute_batch(CREDENTIALS_V48)?;
+    tx.execute_batch(REFERENCES_SCHEMA)
+}
 
 #[derive(Clone)]
 pub(crate) struct Proof {
@@ -113,6 +120,33 @@ impl Store {
                 Permission::ManageProject,
             )
             .map_err(error)?;
+        if binding.host == "local" {
+            self.team_context(&binding.workspace, actor)
+                .map_err(error)?
+                .authorize_workspace(&binding.workspace, Permission::ManageHosts)
+                .map_err(|_| Error::Denied)?;
+            let local = self
+                .local_binding_row(&binding.workspace, &binding.project)
+                .map_err(error)?
+                .ok_or(Error::Denied)?;
+            let ready = self
+                .local_binding_candidate(
+                    actor,
+                    &binding.workspace,
+                    &binding.project,
+                    Permission::ManageProject,
+                )
+                .is_ok_and(|current| current.is_some_and(|(b, _)| b.revision == local.revision));
+            return Ok((
+                stamp,
+                local.revision,
+                if ready {
+                    HostStatus::Approved
+                } else {
+                    HostStatus::Revoked
+                },
+            ));
+        }
         let host = self
             .host(actor, &binding.workspace, &binding.host)
             .map_err(error)?
@@ -199,7 +233,7 @@ impl Store {
             return Err(Error::Conflict);
         }
         let revision = candidate.expected_revision + 1;
-        tx.execute("INSERT INTO scoped_credentials(workspace,project,host,credential,revision,state,staged_reference,updated_at) VALUES(?1,?2,?3,?4,?5,'installing',?6,?7) ON CONFLICT(workspace,project,host,credential) DO UPDATE SET revision=excluded.revision,state='installing',staged_reference=excluded.staged_reference,updated_at=excluded.updated_at",params![b.workspace,b.project,b.host,candidate.credential,revision as i64,candidate.reference,super::now_secs()]).map_err(storage)?;
+        tx.execute("INSERT INTO scoped_credentials(workspace,project,host,credential,revision,state,staged_reference,updated_at,remote_host,local_workspace,local_project) VALUES(?1,?2,?3,?4,?5,'installing',?6,?7,CASE WHEN ?3='local' THEN NULL ELSE ?3 END,CASE WHEN ?3='local' THEN ?1 ELSE NULL END,CASE WHEN ?3='local' THEN ?2 ELSE NULL END) ON CONFLICT(workspace,project,host,credential) DO UPDATE SET revision=excluded.revision,state='installing',staged_reference=excluded.staged_reference,updated_at=excluded.updated_at",params![b.workspace,b.project,b.host,candidate.credential,revision as i64,candidate.reference,super::now_secs()]).map_err(storage)?;
         tx.execute("INSERT INTO scoped_secret_references(reference,workspace,project,host,credential,revision,sha256,writer_user,writer_device,browser_hash,membership_revision,grant_revision,host_revision,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",params![candidate.reference,b.workspace,b.project,b.host,candidate.credential,revision as i64,candidate.sha256,proof.browser.user,proof.browser.device,proof.browser.session_hash,proof.stamp.membership_revision as i64,proof.stamp.grant_revision as i64,proof.host_revision as i64,super::now_secs()]).map_err(storage)?;
         self.scoped_secret_audit(
             proof,
@@ -349,3 +383,6 @@ impl Store {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) use tests::scope as testing_scope;

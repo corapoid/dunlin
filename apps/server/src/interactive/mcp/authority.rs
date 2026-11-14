@@ -12,10 +12,14 @@ pub(crate) struct SessionPins {
     pub starter_device: String,
     pub binding_revision: u64,
     pub profile_digest: String,
+    pub secret_target: dunlin_vault::scoped::Binding,
+    pub profile: dunlin_domain::agent::AgentProfileRef,
 }
 impl SessionPins {
     pub fn matches(&self, other: &Self) -> bool {
-        self.session == other.session
+        self.secret_target == other.secret_target
+            && self.profile == other.profile
+            && self.session == other.session
             && self.workspace == other.workspace
             && self.owner == other.owner
             && self.lease.epoch == other.lease.epoch
@@ -89,6 +93,12 @@ impl Local {
         Ok(Self {
             task: task.clone(),
             pins: SessionPins {
+                secret_target: dunlin_vault::scoped::Binding {
+                    workspace: task.workspace.clone(),
+                    project: task.project.clone(),
+                    host: task.binding_snapshot.host_id.into(),
+                },
+                profile: task.profile.clone().ok_or("mcp_profile_required")?,
                 session: task.id.clone(),
                 workspace: task.workspace.clone(),
                 owner: task.user.clone(),

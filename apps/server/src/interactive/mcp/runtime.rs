@@ -12,6 +12,7 @@ use dunlin_vault::oauth::OAuthCredentials;
 use std::{collections::BTreeMap, path::PathBuf};
 
 mod input;
+mod scoped;
 
 type NetResult<T> = std::result::Result<T, PersistenceError>;
 type ExtraGuard = Arc<dyn Fn() -> bool + Send + Sync>;
@@ -61,6 +62,12 @@ impl Broker {
         self.fence(self.lifetime)?;
         for connection in &self.connections {
             connection.validate(&self.state, store)?;
+            if let Backend::Scoped(grant, version) = &connection.backend
+                && (grant.profile != self.pins.profile
+                    || version.binding != self.pins.secret_target)
+            {
+                return Err("mcp_secret_target_changed");
+            }
         }
         let context = cut.context(store, in_transaction)?;
         store
@@ -105,7 +112,9 @@ impl Broker {
         lifetime: Instant,
     ) -> Result<Arc<Self>> {
         let pins = authority.pins().clone();
-        if connections.is_empty()
+        if pins.profile.digest != pins.profile_digest
+            || pins.secret_target.workspace != pins.workspace
+            || connections.is_empty()
             || connections.len() > 8
             || connections.iter().any(|connection| {
                 connection.context.user_id != pins.owner
@@ -165,8 +174,8 @@ impl Broker {
             .connections
             .get(index)
             .ok_or(PersistenceError::Unauthorized)?;
-        let flow = bound
-            .provider
+        let provider = bound.oauth().map_err(|_| PersistenceError::Unauthorized)?;
+        let flow = provider
             .flow(self.state.mcp_oauth.secrets.as_ref())
             .map_err(|_| PersistenceError::Storage)?;
         self.check(deadline)
@@ -224,7 +233,7 @@ impl Broker {
             }
         }));
         let mut client = Client::connect_authorized_with_input_support(
-            &bound.provider.endpoint,
+            &provider.endpoint,
             &bearer,
             dunlin_mcp_client::negotiated::InputSupport {
                 elicitation_form: true,
@@ -246,8 +255,10 @@ impl Broker {
         let mut aliases = BTreeSet::new();
         let mut bytes = 0usize;
         for (index, bound) in self.connections.iter().enumerate() {
-            let tools = self
-                .client(index, deadline, None, |client, bearer| {
+            let tools = if matches!(&bound.backend, Backend::Scoped(_, _)) {
+                vec![dunlin_vault::scoped::tool::http()]
+            } else {
+                self.client(index, deadline, None, |client, bearer| {
                     let tools = client.tools()?;
                     for tool in &tools {
                         if serde_json::to_string(tool)
@@ -259,7 +270,8 @@ impl Broker {
                     }
                     Ok(tools)
                 })
-                .map_err(|_| "mcp_catalog_unavailable")?;
+                .map_err(|_| "mcp_catalog_unavailable")?
+            };
             for pin in &bound.tools {
                 let tool = tools
                     .iter()
@@ -274,7 +286,7 @@ impl Broker {
                 }
                 let mut hash = Sha256::new();
                 hash.update(b"dunlin.mcp.alias.v1\0");
-                hash.update(bound.provider.id.as_bytes());
+                hash.update(bound.provider_id().as_bytes());
                 hash.update([0]);
                 hash.update(tool.name.as_bytes());
                 let alias = format!("mcp_{}", &hex::encode(hash.finalize())[..32]);
@@ -300,7 +312,7 @@ impl Broker {
         Ok(())
     }
     fn tool_value(&self, entry: &Entry) -> Value {
-        let mut value = json!({"name":entry.alias,"description":format!("{} / {}. Execution requires approval in Dunlin.",self.connections[entry.connection].provider.id,entry.tool.name),"inputSchema":entry.tool.input_schema});
+        let mut value = json!({"name":entry.alias,"description":format!("{} / {}. Execution requires approval in Dunlin.",self.connections[entry.connection].provider_id(),entry.tool.name),"inputSchema":entry.tool.input_schema});
         if let Some(output) = &entry.tool.output_schema {
             value["outputSchema"] = output.clone();
         }
@@ -394,7 +406,7 @@ impl Broker {
             .unwrap_or_else(|| json!({}));
         let bound = &self.connections[entry.connection];
         let invocation = Arc::new(McpInvocation {
-            provider_id: bound.provider.id.clone(),
+            provider_id: bound.provider_id().into(),
             connection_id: bound.context.connection_id.clone(),
             connection_revision: bound.context.connection_revision,
             tool_name: entry.tool.name.clone(),
@@ -413,13 +425,15 @@ impl Broker {
         let deadline = self.lifetime.min(active.deadline).min(caller_deadline);
         self.check(deadline)?;
         // A fresh validated catalog is required before presenting the action.
-        self.client(entry.connection, deadline, None, |client, _| {
-            if !client.tools()?.contains(&entry.tool) {
-                return Err(dunlin_mcp_client::Error::Unsupported);
-            }
-            Ok(())
-        })
-        .map_err(|_| "mcp_definition_changed")?;
+        if matches!(&bound.backend, Backend::OAuth(_)) {
+            self.client(entry.connection, deadline, None, |client, _| {
+                if !client.tools()?.contains(&entry.tool) {
+                    return Err(dunlin_mcp_client::Error::Unsupported);
+                }
+                Ok(())
+            })
+            .map_err(|_| "mcp_definition_changed")?;
+        }
         let approval = self.journal(|j, a| {
             j.register_mcp_permission(
                 a,
@@ -476,6 +490,17 @@ impl Broker {
                 json!({"isError":true,"content":[{"type":"text","text":"The user denied this MCP call."}]}),
             );
         };
+        if let Backend::Scoped(grant, version) = &bound.backend {
+            return self.scoped_call(
+                request,
+                &turn,
+                deadline,
+                invocation,
+                permit,
+                grant.as_ref().clone(),
+                version.as_ref().clone(),
+            );
+        }
         let permit = Arc::new(permit);
         let devices = Arc::new(Mutex::new(Vec::new()));
         let check: ExtraGuard = Arc::new({

@@ -146,10 +146,12 @@ Listowanie i receipts nie zawierają wartości ani referencji keyringu. Odpowied
 mają no-store. Niepewne zapisy zachowują referencje; limity256 na credential
 oraz4096 na workspace blokują nowe zapisy, zamiast usuwać niepewne rekordy.
 
-To nie jest jeszcze profilowy grant użycia. Schema2 agenta nadal zawiera
-allowlistę MCP. Status provisioning zwraca execution_supported:false do czasu
-podłączenia produkcyjnego Authority, jednorazowych zgód, managed runtime i
-runnera. Testy provisioning oraz ich granice są w [progress.md](progress.md).
+Publikacja wartości nie przyznaje prawa użycia. Schema2 agenta zawiera
+allowlistę MCP, a użycie wymaga osobnego grantu profilu i jednorazowej zgody.
+Status execution_supported opisuje skonfigurowany interfejs zdalnych sesji
+human: Unix, uruchomiony service oraz execution_enabled/persistent_sessions/
+mcp_broker. Nie potwierdza bieżącego dostępu ani żywotności hosta.
+Testy oraz granice odbioru są w [progress.md](progress.md).
 
 Odwołanie ma obowiązkowy, ograniczony `last_disable` receipt w wierszu
 poświadczenia. Wyłączenie może więc zapisać wynik przy pełnym ogólnym audycie;
@@ -177,6 +179,42 @@ CreateSession; service — ViewProject i RunWorkflow oraz żywego principal.
 Użytkownik z prawem tworzenia sesji może odczytać własne bieżące powiązania przez
 `secret-bindings?agent_id=…&version=…&digest=…`, bez prawa ManageHosts. Zarządzanie
 grantami pozostaje uprawnieniem ManageProject+ManageHosts. Katalog nie ujawnia
-wartości ani keyring reference. To nadal konfiguracja: execution_supported jest
-false, dopóki broker nie połączy grantu z rzeczywistą sesją/turą/lease i zgodą
-SDK. Status odbioru oraz granice są w [progress.md](progress.md).
+wartości ani keyring reference. Ten katalog opisuje konfigurację i sam nie
+upoważnia do wykonania. Marker execution_supported opisuje dostępność interfejsu
+zdalnych sesji human, a nie uprawnienie do dispatchu. Status i granice są w [progress.md](progress.md).
+
+W przyroście runtime z 2026-11-14 prywatny wybór slotu scoped HTTP używa
+istniejącego `mcp_connections`: `provider_id` wskazuje slot `dunlin-secret-*`,
+`connection_id` jest ID grantu z `secret-bindings`, a `revision` — jego rewizją.
+To identyfikator konfiguracji, bez wartości i referencji keyringu. Admission
+porównuje go z rzeczywistym projektem, hostem i pełnym AgentProfileRef.
+Broker wystawia statyczny schemat i rejestruje osobną, jednorazową zgodę SDK
+na całe wywołanie. Przed keyringiem i po I/O ponownie sprawdza turę, lease,
+źródłowe uprawnienia, grant, wersję poświadczenia i urządzenie zatwierdzające.
+HTTP wykonuje kontroler; harness/runner dostaje zredagowany wynik. Dziennik
+zgody zapisuje status zakończenia bez body odpowiedzi.
+
+Odbiór tej ścieżki jest opisany w progress.md. Osobne4 scenariusze przechodzą
+przez produkcyjny bridge/runner, REST/AHP, proxy stdio i sandbox bubblewrap:
+poprawne wykonanie, odmowę, odwołanie grantu podczas HTTP i utratę odpowiedzi.
+Endpoint wykonuje rzeczywiste TLS HTTP; testowy dialer przypina fixture CA i
+loopback, a magazyn sekretów jest pamięciowy. Nie jest to odbiór rzeczywistego
+keyringu ani publicznego DNS/IP, tailnetu i kont. Lokalny cel `local`
+nie jest utożsamiany z zatwierdzonym hostem zdalnym; wykonanie workflow przez
+service principal pozostaje odrębną pracą.
+
+Zakładka Poświadczenia pozwala zapisać/zastąpić wartość i politykę, wyłączyć
+credential i przypisać/odwołać grant human dla opublikowanej wersji profilu.
+Wartość znika z inputu przed oczekiwaniem na odpowiedź; po błędzie wymagany jest
+jawny odczyt statusu, bez retry zapisu. Builder pobiera pin HTTP z katalogu.
+Przy tworzeniu sesji użytkownik wybiera grant dla konkretnego hosta/profilu,
+a osobno konta OAuth pozostałych dostawców. Wybór nie przechodzi między celami.
+Nie ma zapisów credential value do localStorage/sessionStorage.
+
+Schema50 pozwala wskazać cel `local` przez istniejące powiązanie projektu
+z lokalnym checkoutem. Nie tworzy wpisu workera. Grant przypina rewizję tego
+powiązania i wymaga aktualnego native grant; rebind wymaga jawnego ponownego
+nadania dostępu. UI udostępnia ten cel, lecz pełny odbiór lokalnego procesu
+i przeglądarki pozostaje otwarty. Marker lokalnego execution_supported wymaga
+Unix, experimental_interactive_runtime i rozpoznanego skonfigurowanego harnessu;
+nie zastępuje kontroli filesystemu, sesji, tury, lease ani jednorazowej zgody.

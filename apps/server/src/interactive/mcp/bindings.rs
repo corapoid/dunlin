@@ -78,6 +78,14 @@ impl BoundSession {
             selections,
             false,
         )?;
+        let digest = crate::worker_execution::profile_digest(definition)
+            .map_err(|_| "invalid_agent_profile")?;
+        if connections
+            .iter()
+            .any(|c| matches!(&c.backend, Backend::Scoped(g, _) if g.profile.digest != digest))
+        {
+            return Err("mcp_secret_profile_changed");
+        }
         let snapshot = Snapshot {
             schema_version: 1,
             owner: owner.into(),
@@ -152,6 +160,7 @@ impl BoundSession {
             &selections,
             live,
         )?;
+        if connections.iter().any(|c| matches!(&c.backend, Backend::Scoped(g, _) if g.profile.digest != snapshot.profile_digest)) { return Err("mcp_secret_profile_changed"); }
         if connections
             .iter()
             .map(BoundConnection::pin)
@@ -169,6 +178,16 @@ impl BoundSession {
             snapshot,
             connections,
         })
+    }
+    pub(crate) fn validate_target(
+        &self,
+        target: &dunlin_vault::scoped::Binding,
+        profile: &dunlin_domain::agent::AgentProfileRef,
+    ) -> Result<()> {
+        if self.connections.iter().any(|c| matches!(&c.backend, Backend::Scoped(g,v) if g.profile != *profile || v.binding != *target)) {
+            return Err("mcp_secret_target_changed");
+        }
+        Ok(())
     }
     pub(crate) fn into_connections(self) -> Vec<BoundConnection> {
         self.connections
@@ -230,30 +249,85 @@ pub(crate) struct Selection {
 #[derive(Clone)]
 pub(crate) struct BoundConnection {
     pub(super) context: AuthContext,
-    pub(super) provider: Provider,
+    pub(super) backend: Backend,
     pub(super) tools: Vec<AgentMcpTool>,
 }
+#[derive(Clone)]
+pub(crate) enum Backend {
+    OAuth(Box<Provider>),
+    Scoped(
+        Box<crate::store::scoped_secrets::Grant>,
+        Box<dunlin_vault::scoped::Version>,
+    ),
+}
 impl BoundConnection {
+    pub(super) fn provider_id(&self) -> &str {
+        match &self.backend {
+            Backend::OAuth(p) => &p.id,
+            Backend::Scoped(g, _) => &g.provider_id,
+        }
+    }
+    pub(super) fn oauth(&self) -> Result<&Provider> {
+        match &self.backend {
+            Backend::OAuth(p) => Ok(p),
+            _ => Err("mcp_oauth_binding_required"),
+        }
+    }
+    fn configuration(&self) -> String {
+        match &self.backend {
+            Backend::OAuth(p) => p.digest(),
+            Backend::Scoped(g, v) => {
+                use sha2::{Digest, Sha256};
+                // Private fingerprint; neither the envelope reference nor its hash is exposed.
+                hex::encode(Sha256::digest(
+                    serde_json::to_vec(
+                        &json!({"domain":"dunlin.scoped-binding.v1","grant":g,"binding":v.binding,"reference":v.reference,"envelope_sha256":v.sha256}),
+                    )
+                    .expect("serializable binding"),
+                ))
+            }
+        }
+    }
+
     fn pin(&self) -> ConnectionPin {
         ConnectionPin {
-            provider_id: self.provider.id.clone(),
+            provider_id: self.provider_id().into(),
             connection_id: self.context.connection_id.clone(),
             revision: self.context.connection_revision,
-            configuration: self.provider.digest(),
+            configuration: self.configuration(),
         }
     }
     pub fn identity(&self) -> Value {
-        json!({"provider_id":self.provider.id,"connection_id":self.context.connection_id,
-            "revision":self.context.connection_revision,"configuration":self.provider.digest()})
+        json!({"provider_id":self.provider_id(),"connection_id":self.context.connection_id,
+            "revision":self.context.connection_revision,"configuration":self.configuration()})
     }
     pub fn validate(&self, state: &AppState, store: &Store) -> Result<()> {
         self.validate_config(&state.config, store)
     }
     pub(crate) fn validate_config(&self, config: &Config, store: &Store) -> Result<()> {
+        if let Backend::Scoped(saved, version) = &self.backend {
+            let (grant, current) = store
+                .scoped_secret_selection(
+                    &self.context.user_id,
+                    &self.context.workspace_id,
+                    &saved.id,
+                    saved.revision,
+                )
+                .map_err(|_| "mcp_secret_grant_changed")?;
+            if grant.profile != saved.profile
+                || grant.read_only != saved.read_only
+                || grant.provider_id != saved.provider_id
+                || current != **version
+            {
+                return Err("mcp_secret_grant_changed");
+            }
+            return Ok(());
+        }
+        let provider = self.oauth()?;
         if !config
             .mcp_oauth
             .iter()
-            .any(|p| p.id == self.provider.id && p.digest() == self.provider.digest())
+            .any(|p| p.id == provider.id && p.digest() == provider.digest())
         {
             return Err("mcp_provider_changed");
         }
@@ -266,7 +340,7 @@ impl BoundConnection {
             .map_err(|_| "mcp_connection_unavailable")?
             .ok_or("mcp_connection_unavailable")?;
         if connection.revision != self.context.connection_revision
-            || connection.provider_id.as_deref() != Some(self.provider.id.as_str())
+            || connection.provider_id.as_deref() != Some(provider.id.as_str())
             || matches!(
                 connection.status,
                 ConnectionStatus::Disabled | ConnectionStatus::AuthorizationIncomplete
@@ -310,6 +384,38 @@ fn bind_connections(
         context
             .validate()
             .map_err(|_| "mcp_connection_selection_invalid")?;
+        if dunlin_vault::scoped::tool::is_provider(&selected.provider_id) {
+            let (grant, version) = store
+                .scoped_secret_selection(
+                    user,
+                    workspace,
+                    &selected.connection_id,
+                    selected.revision,
+                )
+                .map_err(|_| "mcp_secret_grant_unavailable")?;
+            let pins: Vec<_> = tools
+                .iter()
+                .filter(|t| t.provider_id == selected.provider_id)
+                .cloned()
+                .collect();
+            let tool = dunlin_vault::scoped::tool::http();
+            if grant.provider_id != selected.provider_id
+                || pins.len() != 1
+                || pins[0].name != tool.name
+                || pins[0].definition_digest
+                    != tool
+                        .definition_digest()
+                        .map_err(|_| "mcp_schema_unavailable")?
+            {
+                return Err("mcp_secret_profile_changed");
+            }
+            bound.push(BoundConnection {
+                context,
+                backend: Backend::Scoped(Box::new(grant), Box::new(version)),
+                tools: pins,
+            });
+            continue;
+        }
         let provider = config
             .mcp_oauth
             .iter()
@@ -329,7 +435,7 @@ fn bind_connections(
         }
         let value = BoundConnection {
             context,
-            provider,
+            backend: Backend::OAuth(Box::new(provider)),
             tools: tools
                 .iter()
                 .filter(|t| t.provider_id == selected.provider_id)
@@ -339,7 +445,7 @@ fn bind_connections(
         value.validate_config(config, store)?;
         bound.push(value);
     }
-    bound.sort_by(|a, b| a.provider.id.cmp(&b.provider.id));
+    bound.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
     Ok(bound)
 }
 

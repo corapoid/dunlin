@@ -10,24 +10,33 @@ use std::collections::BTreeSet;
 mod bindings;
 pub(crate) mod forms;
 mod urls;
-pub(crate) use bindings::{BoundConnection, BoundSession, Selection};
+pub(crate) use bindings::{Backend, BoundConnection, BoundSession, Selection};
 pub(super) fn bind(
     state: &AppState,
     store: &Store,
     owner: &str,
-    workspace: &str,
+    target: &crate::store::Binding,
+    profile: &dunlin_domain::agent::AgentProfileRef,
     definition: &dunlin_domain::agent::AgentDefinition,
     selections: &[Selection],
 ) -> Result<Vec<BoundConnection>> {
-    BoundSession::capture(
+    let bound = BoundSession::capture(
         &state.config,
         store,
         owner,
-        workspace,
+        &target.workspace_id,
         definition,
         selections,
-    )
-    .map(BoundSession::into_connections)
+    )?;
+    bound.validate_target(
+        &dunlin_vault::scoped::Binding {
+            workspace: target.workspace_id.clone(),
+            project: target.project_id.clone(),
+            host: target.host_id.into(),
+        },
+        profile,
+    )?;
+    Ok(bound.into_connections())
 }
 
 pub(crate) mod authority;

@@ -1,0 +1,37 @@
+[
+  {
+    "suite": "runtime_browser",
+    "log": "runtime-browser-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "frontend",
+    "log": "frontend-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "typecheck",
+    "log": "typecheck-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "build",
+    "log": "build-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "tooling",
+    "log": "tooling-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "clippy",
+    "log": "clippy-final.log",
+    "exit_code": 0
+  },
+  {
+    "suite": "server",
+    "log": "server-final.log",
+    "exit_code": 0
+  }
+]

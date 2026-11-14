@@ -1,0 +1,18 @@
+{
+  "reference_commit": "4597a7e96354a9974ba82db14610301ab7d5475c",
+  "unchanged_paths": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "crates",
+    "vendor",
+    "tests/fixtures",
+    "scripts/install-harness.sh"
+  ],
+  "baseline_manifest": "../2026-11-14-scoped-runtime/verified-source.json",
+  "baseline_manifest_sha256": "fe374b2ddc4e4178d157934ff241db15b2383e66532e2e1a275a2da5ebb030a9",
+  "not_rerun": true,
+  "passed_at_baseline": {
+    "mcp_http_vault": 175,
+    "compile_fail": 2
+  }
+}

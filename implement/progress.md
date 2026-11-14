@@ -5692,3 +5692,180 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
   [Manifest odbioru](evidence/2026-11-14-scoped-grants/verified-source.json).
   Odbiór dotyczy grantów i katalogu konfiguracji; E5.3 pozostaje otwarte,
   execution_supported=false. Formalnie nadal21/68=30,9%.
+
+## 2026-11-14 — E5.3: podłączenie scoped HTTP do brokera, odbiór w toku
+
+- Poprzedni turn zapisał i wypchnął aktualny przyrost jako4597a7e; to postęp,
+  drzewo przed dalszą implementacją było czyste. Cel E0–E10 pozostaje aktywny.
+- Prywatne powiązania rozróżniają OAuth i scoped grant; grant selection zawiera
+  jawny identyfikator i rewizję, a snapshot przypina pełny profil i poświadczenie
+  prywatnym digestem. Nie przekazuje referencji ani wartości keyringu.
+- Hostowy SessionPins obejmuje pełny AgentProfileRef i workspace/project/host.
+  Capture sprawdza bieżące źródła, admission porównuje cel grantu z wykonaniem,
+  a broker kontroluje je ponownie przed i po blokujących operacjach.
+- Scoped HTTP przechodzi przez wspólną trwałą jednorazową zgodę SDK. Hostowy
+  adapter przenosi permit raz do vault; waliduje turę/lease, grant/generację
+  poświadczenia oraz urządzenie zatwierdzające. Wynik jest redagowany; dziennik
+  zapisuje completion bez body. Niepewność lub utrata authority zatrzymuje runtime.
+- Dodano testy katalogu/zgody/HTTP z pamięciowym magazynem i kontrolowanym
+  wykonawcą: replay także przez nowy broker, denial, błędne argumenty, zmiana
+  hosta/profilu/tury, revoke po keyring read i w trakcie HTTP, revoke urządzenia.
+  Nie zastępują produkcyjnego odbioru zdalnego bridge/runnera ani realnych usług.
+- Pierwszy launcher Clippy nie uruchomił kontenera: domyślny macOS tmp nie był
+  udostępniony w Colima. Drugi używa jawnego target/web-checks; kompilator wykrył
+  widoczność Backend i konwersję Tokio/std Instant. Oba błędy poprawiono.
+  Trwa kontrola backendu; brak deklaracji PASS dla nowej implementacji.
+- Lokalny target nadal identyfikuje host jako local; nie podstawia się pod grant
+  zatwierdzonego zdalnego hosta. Nie ogłaszamy ogólnego execution_supported.
+  E5.3 otwarte, formalnie21/68=30,9%. Bez realnego keyringu/kont/tailnet.
+
+- Pełny backend dla niezależnie potwierdzonego source9f7ce0a8 zakończył się
+  exit0: **896 PASS** (751 relay+1 identity+80 SDK+27 terminal+37 usage),
+  54 osobne acceptance ignored. Wszystkie7 nowych scenariuszy scoped HTTP PASS;
+  relay trwał201,26s, peak3683586048B/max0/OOM0, scratch62%,602968KiB wolnego.
+  [Log](evidence/2026-11-14-scoped-runtime/server-second.log).
+- Pierwszy filtrowany backend skompilował wcześniejszy snapshot i wybrał0 testów;
+  jest wyłącznie dowodem kompilacji, nie odbiorem nowych testów. Pełny backend
+  powyżej zawiera już ich wykonanie. Teraz sekwencyjnie root Clippy, MCP i CLI.
+
+- **Root all-targets Clippy PASS**,1m58s, peak2364579840B/max0/OOM0.
+  **MCP/HTTP/vault175+2 compile-fail PASS**, package Clippy PASS25,86s,
+  peak1238106112B/max0/OOM0. **Production CLI schema49 PASS**:1 test,804 filtered,
+  peak3616567296B/max0/OOM0; scratch64%,567320KiB wolnego.
+  Wszystkie4 suite mają exit0 i source9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23;
+  końcowy niezależny snapshot potwierdził zgodność.
+  [Manifest odbioru](evidence/2026-11-14-scoped-runtime/verified-source.json).
+- Dalej: dedykowany scenariusz scoped HTTP przez produkcyjny bridge/runner
+  (punkt startowy: worker_fixture/session_vertical.rs), identyfikacja lokalnego
+  hosta i wybór grantów w UI, następnie pełny kill switch/retencja. Service
+  workflow oraz realne konta/keyring/tailnet nie są objęte tym odbiorem.
+  E5.3 pozostaje otwarte; formalnie21/68=30,9%. Nowe zmiany nie są automatycznie
+  commitowane ani wypychane po zakończeniu wcześniejszej prośby właściciela.
+
+## 2026-11-14 — E5.3: scoped HTTP przez produkcyjny bridge, odbiór w toku
+
+- Poprzedni turn dodał i odebrał runtime scoped HTTP (896 backend,175+2 MCP,
+  CLI1, Clippy); był postępem. Rewalidacja potwierdziła lokalne, niewypchnięte
+  zmiany tego przyrostu. Cel E0–E10 nadal aktywny, formalnie21/68=30,9%.
+- Istniejący pionowy scenariusz REST/AHP/TLS/WSS/runnera rozszerzono o4 osobne
+  acceptance: scoped HTTP complete, deny, grant revoke podczas HTTP, lost reply.
+  Używa produkcyjnego brokera, hostowego Remote Authority, zgody SDK, proxy stdio,
+  runtime helpera oraz procesu ACP w rzeczywistym sandboxie bubblewrap/pidfd.
+- Endpoint fixture odbiera rzeczywisty TLS HTTP z wstrzykniętym nagłówkiem,
+  potwierdza efekt licznikiem i zwraca body zawierające syntetyczny sekret.
+  Harness wymaga zredagowanego wyniku. Zastąpione są magazyn keyringu (pamięć)
+  i dialer HTTP (stały loopback z wygenerowanym testowym CA/nazwą TLS); produkcyjne
+  ograniczenie publicznego DNS/IP nie jest osłabione ani odbierane tym fixture.
+- Deny sprawdza0 keyring reads/HTTP/effects; positive przechodzi2 tury przez
+  jeden proces i odnowienie lease, kończy stop/ACK i zwolnieniem rezerwacji.
+  Revoke/lost sprawdzają1 efekt HTTP, turę Unknown, brak ponowienia po ponownym
+  action i admission, stop/ACK, zwolnienie rezerwacji i śmierć potomka z held FD.
+  Dziennik workera i chat nie mogą zawierać plaintext ani keyring reference.
+- Pierwszy root Clippy PASS1m56s dla wcześniejszego snapshotu fixture. Przegląd
+  następnie zaostrzył skan: brak głównej bazy workera lub transcriptu jest błędem,
+  jedynie nieistniejący WAL można pominąć. Trwa runtime dla source418469e6.
+- Niezależny snapshot i mechaniczne odtworzenie wyłącznie3 plików fixture
+  odtwarza dokładnie poprzedni zaakceptowany source9f7ce0a8: kod produkcyjny
+  oraz pozostałe testy nie zmieniły się w tym przyroście.
+  [Dowód](evidence/2026-11-14-scoped-bridge/production-source-equivalence.json).
+  Wcześniejsze896/175+2 pozostają przypisane do9f7ce0a8; nie deklarujemy ich
+  ponownego uruchomienia dla nowego snapshotu. Nowe acceptance jeszcze bez PASS.
+
+- **Runtime scoped bridge4 PASS**,33,60s,805 filtered; exit0. Source418469e6,
+  peak3616817152B/max0/OOM0, scratch64%,567200KiB wolnego. Rzeczywiste proxy
+  stdio, TLS/WSS, runner/sandbox i SDK stop/ACK; kontrolowane TLS HTTP i keyring.
+  [Log](evidence/2026-11-14-scoped-bridge/runtime-first.log).
+  Dwa ukończone wywołania w positive,0 w deny, po1 w lost/revoke; niepewne
+  wyniki nie są zwracane ani ponawiane. Końcowy Clippy dla418469e6 w toku.
+
+- **Końcowy root all-targets Clippy PASS**1m57s dla418469e6;
+  peak2415919104B, memory.events max8/OOM0. Cgroup osiągnął limit pamięci,
+  kontrola zakończyła się exit0 bez OOM. Runtime4 i Clippy mają identyczny
+  source418469e6b7979e43fc2d6f569f9a769112077d9045a1b84990e483ac0d48a41b,
+  ponowny niezależny snapshot potwierdził aktualne źródła.
+  [Manifest odbioru](evidence/2026-11-14-scoped-bridge/verified-source.json).
+- Dalej: lokalny host/zakres credential oraz UI wyboru i odwoływania grantów,
+  potem pełna retencja/kill switch i udostępnienie execution_supported zgodnie
+  z rzeczywistymi możliwościami. Realny keyring/DNS/tailnet/konta i platformy
+  pozostają osobnym odbiorem. E5.3 nadal otwarte; formalnie21/68=30,9%.
+
+## 2026-11-14 — E5.3: interfejs poświadczeń/grantów i wybór sesji, odbiór w toku
+
+- Poprzedni turn odebrał4 scenariusze scoped HTTP przez bridge/runner i Clippy;
+  był postępem. Drzewo zawiera te lokalne zmiany, bez nowego commita/pusha.
+  Cel pozostaje E0–E10; E5.3 nadal otwarte, formalnie21/68=30,9%.
+- Lokalny Binding ma host_id local, a scoped credentials wskazują FK team_hosts.
+  Nie podstawiamy hosta workera pod lokalną tożsamość. Osobny model tożsamości
+  lokalnego kontrolera i migracja pozostają do wykonania. Bieżący przyrost domyka
+  UI istniejącej ścieżki zdalnej.
+- Dodano zakładkę Poświadczenia: scope workspace/project/approved host, zapis
+  i zastąpienie wartości/polityki, listę wersji/statusów, disable, granty human
+  do pełnej opublikowanej wersji profilu, read-only i revoke. Prosty formularz
+  ogranicza HTTP do GET/HEAD z Bearer; pełna polityka jest opcją zaawansowaną.
+  Nie odczytuje wartości ani chronionej polityki. Input password jest czyszczony
+  przed oczekiwaniem na zapis; błędy blokują kolejną zmianę do jawnego reloadu.
+- Nowy klient ma expected-user, same-origin/no-store/redirect:error, bounded
+  JSON1MiB, ścisłe DTO bez referencji/wartości, CAS i brak automatycznego retry.
+  Recipient list przypina principal oraz dokładny ID/version/digest profilu;
+  late responses po abort nie trafiają do stanu. Graniczny revoke MAX pozostaje
+  dostępny, positive writes nie mogą przekręcić rewizji.
+- Builder pobiera stały pin HTTP z katalogu i pozwala wybrać harness zdalny.
+  Tworzenie sesji osobno wybiera konta OAuth i granty sekretów dla konkretnego
+  hosta/profilu; nie wymaga OAuth dla samych scoped HTTP i zeruje wybór celu.
+  Lokalny target z takim pinem pozostaje niedostępny. Ujawniono i poprawiono
+  blokadę katalogu: remote MCP było błędnie zależne od niepustej konfiguracji OAuth.
+- execution_supported opisuje skonfigurowany interfejs remote human sessions:
+  Unix, uruchomiony service, execution_enabled/persistent_sessions/mcp_broker.
+  Nie jest dowodem grantu, żywego hosta ani authority; każde użycie nadal przechodzi
+  przez rzeczywisty source/turn/lease, grant i jednorazową zgodę SDK.
+- Frontend163 PASS (6 nowych grup klienta), typecheck PASS i launcher18 PASS
+  dla wcześniejszych snapshotów przyrostu. Pierwszy preflight typecheck exit1:
+  domyślne web/node_modules nie istnieje; użyto istniejącego, readonly cache
+  target/web-checks/node-deps. Bez instalacji zależności i hostowych Rust buildów.
+- Pierwszy Chromium+runtime4 PASS41,67s (source3316a138), z realnym zapisem,
+  grant/revoke/disable, Builder pin/publish i sesją UI bez skonfigurowanego OAuth.
+  Desktop/mobile zbadane wizualnie, bez poziomego overflow.
+  Drugi runtime4 PASS (source0aaf3bef) obejmuje też utratę receipt po skutecznym
+  zapisie: input wyczyszczony, brak retry, wymagany reload i wykrycie wersji1.
+  Teraz końcowy wariant używa w sesji nowego profilu i nowego grantu utworzonych
+  właśnie w UI. Jeszcze bez deklaracji PASS dla tego najnowszego snapshotu.
+
+- **Końcowy UI+runtime4 PASS41,90s**,source2827f3e8;805 filtered,
+  peak3656581120B/max0/OOM0, scratch65%,564940KiB wolnego. Przeglądarka
+  zapisała nowy profil (harness/model/mode/instrukcje/skill/limity/pin HTTP),
+  przypisała mu nowy grant i użyła właśnie tej pary w realnej sesji runnera.
+  Utrata receipt po zapisie credential nie powoduje retry; recovery wymaga reloadu.
+- **Backend896 PASS**:751 relay+1 identity+80 SDK+27 terminal+37 usage;
+  58 osobnych acceptance ignored. Relay201,64s;peak3635613696B/max0/OOM0,
+  scratch62%,602844KiB wolnego. **Root all-targets Clippy PASS1m59s**,
+  peak2411302912B/max0/OOM0. Ten sam source2827f3e8 dla backend/Clippy/runtime.
+- **Frontend163 PASS**,TypeScript PASS,produkcyjny build PASS774ms; CI contract14
+  i launcher18 PASS. Osobne, niezależne hashe frontend/typecheck/build/tooling
+  są przypisane do logów. Końcowy snapshot Rust potwierdza aktualny stan.
+  [Manifest odbioru](evidence/2026-11-14-scoped-ui/verified-source.json).
+  MCP175+2 nie uruchamiano ponownie: crates/vendor/Cargo/fixtures/install-harness
+  są bez zmian względem zaakceptowanej podstawy; dowód i baseline w manifeście.
+- Desktop/mobile poświadczeń i sesji ocenione wizualnie; obrazy związane SHA
+  z końcowym uruchomieniem. Realny keyring/DNS/tailnet/konta i pozostałe platformy
+  pozostają osobnym odbiorem. E5.3 otwarte: dalej lokalny target, retencja i pełny
+  kill switch, następnie kolejne punkty E5–E10. Formalnie21/68=30,9%.
+
+## 2026-11-14 — checkpoint przed commitem: lokalne poświadczenia
+
+- Schema50 rozdziela FK celu lokalnego i zdalnego. Lokalny credential wskazuje
+  istniejące team_local_bindings, bez tworzenia sztucznego workera. Migracja
+  zachowuje ledger i receipts; nieznany układ tabel przerywa ją bez utraty danych.
+- Grant lokalny przypina rewizję powiązania. Odwołanie/rebind i utrata native
+  grant blokują użycie; administrator nadal może wyłączyć credential lub grant.
+  Formularze poświadczeń i wybór sesji uwzględniają cel local.
+- Ponowny pełny backend dla source ae8ef414: **901 PASS** (756 relay,
+  1 identity,80 SDK,27 terminal,37 usage),58 acceptance ignored. Wszystkie5
+  nowych testów magazynu lokalnych poświadczeń PASS. Frontend163, TypeScript,
+  build, dokumentacja122 i launcher18 PASS.
+- Pełny odbiór lokalnego procesu/runtime i Chromium pozostaje otwarty; wcześniejsze
+  odbiory bridge/UI dotyczą celu zdalnego i źródeł wskazanych w ich manifestach.
+  Retencja, pełny kill switch i service workflow nadal wymagają pracy.
+  E5.3 pozostaje otwarte, formalnie21/68=30,9%.
+- Końcowy root all-targets Clippy PASS1m58s dla tego samego source ae8ef414;
+  peak2380681216B/max0/OOM0. Ponowny snapshot potwierdza bieżące wejścia Rust.
+  [Wyniki kontroli checkpointu](evidence/2026-11-14-commit-checkpoint/results.json).

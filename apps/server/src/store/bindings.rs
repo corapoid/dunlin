@@ -213,7 +213,11 @@ impl BindingPreparation {
     }
 }
 impl Store {
-    fn local_binding_row(&self, workspace: &str, project: &str) -> Result<Option<Binding>> {
+    pub(super) fn local_binding_row(
+        &self,
+        workspace: &str,
+        project: &str,
+    ) -> Result<Option<Binding>> {
         Ok(self.connection.query_row("SELECT native_project_id,root,identity,repo_kind,settings_digest,revision,active,metadata_approval_revision FROM team_local_bindings WHERE workspace_id=?1 AND project_id=?2",params![workspace,project],|r|Ok(Binding{workspace_id:workspace.into(),project_id:project.into(),native_project_id:r.get(0)?,host_id:"local",root:r.get(1)?,identity:r.get(2)?,repo_kind:r.get(3)?,settings_digest:r.get(4)?,revision:super::positive_revision(r,5)?,active:r.get(6)?,metadata_approval_revision:r.get::<_,Option<i64>>(7)?.map(|v|u64::try_from(v).map_err(|_|rusqlite::Error::InvalidQuery)).transpose()?})).optional()?)
     }
     fn binding_admin(&self, actor: &str, workspace: &str, project: &str) -> Result<()> {

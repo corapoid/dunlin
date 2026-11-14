@@ -204,6 +204,24 @@ impl Store {
     fn secret_grant_row(&self, binding: &Binding, id: &str) -> Result<Grant> {
         self.connection.query_row(&format!("SELECT {COLUMNS} FROM scoped_secret_grants WHERE workspace=?1 AND project=?2 AND host=?3 AND id=?4"),params![binding.workspace,binding.project,binding.host,id],row).optional().map_err(storage)?.ok_or(Error::Denied)
     }
+    /// Resolve an explicitly selected private grant. No keyring or dispatch authority.
+    pub(crate) fn scoped_secret_selection(
+        &self,
+        owner: &str,
+        workspace: &str,
+        id: &str,
+        revision: u64,
+    ) -> Result<(Grant, Version)> {
+        let binding = self.connection.query_row(
+            "SELECT workspace,project,host FROM scoped_secret_grants WHERE id=?1 AND workspace=?2 AND principal_kind='human' AND principal_id=?3",
+            params![id, workspace, owner], |r| Ok(Binding {workspace:r.get(0)?,project:r.get(1)?,host:r.get(2)?}),
+        ).optional().map_err(storage)?.ok_or(Error::Denied)?;
+        let context = self
+            .team_project_context(workspace, &binding.project, owner)
+            .map_err(error)?;
+        let profile = self.secret_grant_row(&binding, id)?.profile;
+        self.resolve_secret_grant(&context, &binding, &profile, id, revision)
+    }
     pub(crate) fn scoped_secret_set_grant(
         &self,
         proof: &Proof,
@@ -331,7 +349,18 @@ impl Store {
             return Err(Error::Denied);
         }
         self.secret_profile(binding, profile, &grant.provider_id)?;
-        let host:bool=self.connection.query_row("SELECT EXISTS(SELECT 1 FROM team_hosts WHERE workspace_id=?1 AND id=?2 AND status='approved' AND revision=?3)",params![binding.workspace,binding.host,grant.host_revision as i64],|r|r.get(0)).map_err(storage)?;
+        let host = if binding.host == "local" {
+            self.local_binding_candidate(
+                &context.membership.user_id,
+                &binding.workspace,
+                &binding.project,
+                Permission::CreateSession,
+            )
+            .map_err(error)?
+            .is_some_and(|(current, _)| current.revision == grant.host_revision)
+        } else {
+            self.connection.query_row("SELECT EXISTS(SELECT 1 FROM team_hosts WHERE workspace_id=?1 AND id=?2 AND status='approved' AND revision=?3)",params![binding.workspace,binding.host,grant.host_revision as i64],|r|r.get(0)).map_err(storage)?
+        };
         let version = self.secret_active_version(binding, &grant.credential)?;
         if !host || version.revision != grant.credential_revision {
             return Err(Error::Denied);
@@ -389,7 +418,7 @@ impl Store {
             return Err(Error::Denied);
         }
         let ids = {
-            let mut stmt=tx.prepare("SELECT g.id,g.revision FROM scoped_secret_grants g JOIN scoped_credentials c ON c.workspace=g.workspace AND c.project=g.project AND c.host=g.host AND c.credential=g.credential AND c.state='active' AND c.revision=g.credential_revision JOIN team_hosts h ON h.id=g.host AND h.workspace_id=g.workspace AND h.status='approved' AND h.revision=g.host_revision WHERE g.workspace=?1 AND g.project=?2 AND g.host=?3 AND g.principal_kind='human' AND g.principal_id=?4 AND g.profile_digest=?5 AND g.agent_id=?6 AND g.agent_version=?7 AND g.membership_revision=?8 AND g.project_revision=?9 AND g.active=1 ORDER BY g.id LIMIT 1025").map_err(storage)?;
+            let mut stmt=tx.prepare("SELECT g.id,g.revision FROM scoped_secret_grants g JOIN scoped_credentials c ON c.workspace=g.workspace AND c.project=g.project AND c.host=g.host AND c.credential=g.credential AND c.state='active' AND c.revision=g.credential_revision WHERE g.workspace=?1 AND g.project=?2 AND g.host=?3 AND g.principal_kind='human' AND g.principal_id=?4 AND g.profile_digest=?5 AND g.agent_id=?6 AND g.agent_version=?7 AND g.membership_revision=?8 AND g.project_revision=?9 AND g.active=1 AND ((g.host='local' AND EXISTS(SELECT 1 FROM team_local_bindings b WHERE b.workspace_id=g.workspace AND b.project_id=g.project AND b.active=1 AND b.revision=g.host_revision)) OR (g.host!='local' AND EXISTS(SELECT 1 FROM team_hosts h WHERE h.id=g.host AND h.workspace_id=g.workspace AND h.status='approved' AND h.revision=g.host_revision))) ORDER BY g.id LIMIT 1025").map_err(storage)?;
             stmt.query_map(
                 params![
                     binding.workspace,

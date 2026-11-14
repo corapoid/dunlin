@@ -13,6 +13,7 @@ import { SessionCreation } from './components/SessionCreation';
 import { SessionCreationClient } from './lib/session-create';
 import { McpConnections } from './components/McpConnections';
 import { consumeMcpReturn } from './lib/mcp-oauth';
+import { ScopedSecrets } from './components/ScopedSecrets';
 import { HostRegistry } from './components/HostRegistry';
 
 type Identity = { user: { id: string; name: string; role: string }; device_id: string; capabilities?: { ahp_observer?: boolean }; ahp_endpoint?: string };
@@ -44,7 +45,7 @@ export function App() {
   const [project, setProject] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [retry, setRetry] = useState(0);
-  const [view, setView] = useState<'projects' | 'teams' | 'sessions' | 'agents' | 'hosts' | 'mcp'>('projects');
+  const [view, setView] = useState<'projects' | 'teams' | 'sessions' | 'agents' | 'hosts' | 'mcp' | 'secrets'>('projects');
   const [mcpWorkspace,setMcpWorkspace]=useState<string>();
   useEffect(()=>{if(user){const workspace=consumeMcpReturn(user.user.id);setMcpWorkspace(workspace);if(workspace){setView('mcp');}}},[user?.user.id]);
   const creation = useRef<{identity:string;client:SessionCreationClient}|null>(null);
@@ -192,6 +193,7 @@ export function App() {
           <button aria-current={view === 'teams' ? 'page' : undefined} className={view === 'teams' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('teams'); }}>Zespół</button>
           <button aria-current={view === 'agents' ? 'page' : undefined} className={view === 'agents' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('agents'); }}>Agenci</button>
           <button aria-current={view === 'mcp' ? 'page' : undefined} className={view === 'mcp' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('mcp'); }}>Połączenia MCP</button>
+          <button aria-current={view === 'secrets' ? 'page' : undefined} className={view === 'secrets' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('secrets'); }}>Poświadczenia</button>
           <button aria-current={view === 'hosts' ? 'page' : undefined} className={view === 'hosts' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('hosts'); }}>Hosty</button>
           {user?.capabilities?.ahp_observer === true && user.ahp_endpoint === '/v1/web/ahp' && <button aria-current={view === 'sessions' ? 'page' : undefined} className={view === 'sessions' ? 'nav-current' : ''} onClick={() => { setProject(null); setView('sessions'); }}>Sesje</button>}
         </nav>
@@ -199,9 +201,9 @@ export function App() {
         <div className="profile"><strong>{user?.user.name}</strong><span className="muted">{user?.user.role}</span><button onClick={logout} disabled={busy}>Wyloguj</button></div>
       </aside>
       <main id="workspace-content" className="workspace-content">
-        <header className="topbar"><span>Workspace <span aria-hidden="true">/</span> {view === 'teams' ? 'Zespół' : view === 'sessions' ? 'Sesje' : view === 'agents' ? 'Agenci' : view === 'hosts' ? 'Hosty' : view === 'mcp' ? 'Połączenia MCP' : 'Projekty'}</span><span role="status" className={`live-status ${status === 'live' ? 'is-live' : ''}`}><span aria-hidden="true" />{statusLabels[status]}</span></header>
+        <header className="topbar"><span>Workspace <span aria-hidden="true">/</span> {view === 'teams' ? 'Zespół' : view === 'sessions' ? 'Sesje' : view === 'agents' ? 'Agenci' : view === 'hosts' ? 'Hosty' : view === 'mcp' ? 'Połączenia MCP' : view === 'secrets' ? 'Poświadczenia' : 'Projekty'}</span><span role="status" className={`live-status ${status === 'live' ? 'is-live' : ''}`}><span aria-hidden="true" />{statusLabels[status]}</span></header>
         <section className="workspace-body">
-          {view === 'mcp' && user ? <McpConnections key={browserIdentity} userId={user.user.id} onExpired={recheckIdentity} initialWorkspace={mcpWorkspace} revisionKey={`${catalog?.stream_id??'pending'}:${catalog?.workspace_revision??0}`}/> : view === 'hosts' && user ? <HostRegistry key={browserIdentity} userId={user.user.id} revisionKey={`${catalog?.stream_id??'pending'}:${catalog?.workspace_revision??0}`}/> : view === 'agents' && user ? <AgentBuilder key={browserIdentity} userId={user.user.id}/> : view === 'sessions' && user?.capabilities?.ahp_observer === true && user.ahp_endpoint === '/v1/web/ahp' ? <><SessionCreation key={`create:${browserIdentity}`} userId={user.user.id} client={creation.current!.client} onChanged={creationChanged}/><AhpSessions key={browserIdentity} userId={user.user.id} /></> : view === 'teams' ? catalog && user ? <TeamSettings userId={user.user.id} canCreate={user.user.role === 'admin'} revisionKey={`${catalog.stream_id}:${catalog.workspace_revision ?? 0}`} onExpired={onExpired} /> : <p role="status">Oczekiwanie na synchronizację…</p> : <>
+          {view === 'secrets' && user ? <ScopedSecrets key={browserIdentity} userId={user.user.id}/> : view === 'mcp' && user ? <McpConnections key={browserIdentity} userId={user.user.id} onExpired={recheckIdentity} initialWorkspace={mcpWorkspace} revisionKey={`${catalog?.stream_id??'pending'}:${catalog?.workspace_revision??0}`}/> : view === 'hosts' && user ? <HostRegistry key={browserIdentity} userId={user.user.id} revisionKey={`${catalog?.stream_id??'pending'}:${catalog?.workspace_revision??0}`}/> : view === 'agents' && user ? <AgentBuilder key={browserIdentity} userId={user.user.id}/> : view === 'sessions' && user?.capabilities?.ahp_observer === true && user.ahp_endpoint === '/v1/web/ahp' ? <><SessionCreation key={`create:${browserIdentity}`} userId={user.user.id} client={creation.current!.client} onChanged={creationChanged}/><AhpSessions key={browserIdentity} userId={user.user.id} /></> : view === 'teams' ? catalog && user ? <TeamSettings userId={user.user.id} canCreate={user.user.role === 'admin'} revisionKey={`${catalog.stream_id}:${catalog.workspace_revision ?? 0}`} onExpired={onExpired} /> : <p role="status">Oczekiwanie na synchronizację…</p> : <>
           <div className="page-heading"><div><span className="eyebrow">PRZESTRZEŃ PRACY</span><h1>{selected?.name ?? 'Projekty'}</h1><p className="muted">{project ? 'Twoje sesje w wybranym projekcie.' : 'Projekty udostępnione Ci na tym serwerze.'}</p></div><span className="preview">KATALOG LIVE · V1</span></div>
           {error && <p role="alert" className="notice error">{error}</p>}
           {status !== 'live' && <div className="notice"><p>{catalog ? 'Wyświetlane dane mogą być nieaktualne.' : 'Oczekiwanie na autorytatywny snapshot serwera.'}</p>{['offline', 'error'].includes(status) && <button onClick={reconnect}>Połącz ponownie</button>}</div>}

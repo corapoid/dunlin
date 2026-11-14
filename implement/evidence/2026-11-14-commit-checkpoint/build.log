@@ -1,0 +1,16 @@
+Sandbox suite=build container=dunlin-check-27687aec072247f080bb58548ae46eed image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=60s source_sha256=2738d5c6be696d61f4d31326541e30ac7649165e26f111757fa0e3b2a83bf4e0
+vite v8.3.6 building client environment for production...
+transforming...
+✓ 53 modules transformed.
+
+(!) outDir /scratch/dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../scratch/dist/index.html                   0.51 kB │ gzip:   0.31 kB
+../../../scratch/dist/REUI-LICENSE.txt             1.07 kB │ gzip:   0.64 kB
+../../../scratch/dist/assets/index-Doqhf46d.css   20.54 kB │ gzip:   5.10 kB
+../../../scratch/dist/assets/index-D8xy9ESu.js   426.04 kB │ gzip: 122.97 kB
+
+✓ built in 1.02s

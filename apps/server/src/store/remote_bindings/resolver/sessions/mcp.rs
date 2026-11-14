@@ -38,8 +38,14 @@ impl McpInput<'_> {
         owner: &str,
         workspace: &str,
         definition: &AgentDefinition,
+        profile: &AgentProfileRef,
         candidate: &RemoteTargetCandidate,
     ) -> Result<McpPreparation> {
+        let target = dunlin_vault::scoped::Binding {
+            workspace: workspace.into(),
+            project: candidate.binding.project_id.clone(),
+            host: candidate.host_id().into(),
+        };
         let (config, transport, snapshot) = match self {
             Self::Fresh(input) => {
                 let bound = BoundSession::capture(
@@ -51,6 +57,9 @@ impl McpInput<'_> {
                     input.selections,
                 )
                 .map_err(|_| denied())?;
+                bound
+                    .validate_target(&target, profile)
+                    .map_err(|_| denied())?;
                 (
                     input.config.clone(),
                     input.transport,
@@ -67,6 +76,9 @@ impl McpInput<'_> {
                     &previous.pins.snapshot,
                 )
                 .map_err(|_| denied())?;
+                bound
+                    .validate_target(&target, profile)
+                    .map_err(|_| denied())?;
                 (
                     previous.config.clone(),
                     previous.transport.clone(),

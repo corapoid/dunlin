@@ -10,6 +10,7 @@ try {
   page=await context.newPage();page.setDefaultTimeout(15000);
   const errors=[],attempts=[],targetRequests=[],urlDecisions=[];
   const urlInput=fixture.form_action?.startsWith('url-');
+  const scoped=fixture.selection.provider_id.startsWith('dunlin-secret-');
   page.on('pageerror',error=>errors.push(error.message));
   page.on('websocket',socket=>socket.on('framesent',({payload})=>{
     const value=JSON.parse(String(payload));
@@ -27,6 +28,92 @@ try {
   await page.goto(fixture.origin);
   await page.getByLabel('Jednorazowy kod parowania').fill(fixture.ownerCode);
   await page.getByRole('button',{name:'Połącz bezpiecznie',exact:true}).click();
+  let scopedDesktop,scopedMobile;
+  if(scoped) {
+    await page.getByRole('button',{name:'Poświadczenia',exact:true}).click();
+    await page.getByTestId('agent-workspace').selectOption(fixture.workspace);
+    await page.getByTestId('agent-project').selectOption(fixture.project);
+    await page.getByTestId('scoped-host').selectOption(fixture.host);
+    await page.getByTestId('scoped-name').fill('browser-ui-api');
+    await page.getByTestId('scoped-value').fill('browser-config-private-value');
+    await page.getByTestId('scoped-domain').fill('worker.tail123.ts.net');
+    await page.getByTestId('scoped-path').fill('/items');
+    let credentialWrites=0;
+    await page.route('**/scoped-secrets/browser-ui-api',async route=>{
+      if(route.request().method()!=='POST')return route.continue();
+      credentialWrites++;
+      const response=await route.fetch();assert.equal(response.status(),200);
+      await route.abort('failed'); // Effect committed, browser lost its receipt.
+    });
+    await page.getByTestId('scoped-save').click();
+    await page.getByRole('alert').filter({hasText:'Nie udało się potwierdzić operacji poświadczenia.'}).waitFor();
+    assert.equal(await page.getByTestId('scoped-value').inputValue(),'');
+    assert.equal(await page.getByTestId('scoped-save').isDisabled(),true);
+    assert.equal(credentialWrites,1);
+    await page.getByTestId('scoped-reload').click();
+    await page.getByTestId('scoped-credential').locator('option[value="browser-ui-api"]').waitFor({state:'attached'});
+    assert.equal(credentialWrites,1);
+    await page.unroute('**/scoped-secrets/browser-ui-api');
+    await page.getByTestId('scoped-credential').selectOption('browser-ui-api');
+    await page.getByTestId('scoped-profile').selectOption(fixture.profile.agent_id);
+    await page.getByTestId('scoped-slot').selectOption(fixture.selection.provider_id);
+    assert.equal(await page.getByTestId('scoped-principal').inputValue(),fixture.user);
+    assert.equal(await page.getByTestId('scoped-readonly').isChecked(),true);
+    await page.getByTestId('scoped-grant-save').click();
+    await page.getByRole('status').filter({hasText:'Grant zapisano'}).waitFor();
+    await page.locator('[data-testid^="scoped-revoke-"]').click();
+    await page.getByRole('status').filter({hasText:'Grant odwołano.'}).waitFor();
+    await page.getByTestId('scoped-disable').click();
+    await page.getByRole('status').filter({hasText:'Poświadczenie wyłączono.'}).waitFor();
+    assert.ok(!(await page.locator('body').innerText()).includes('browser-config-private-value'));
+    for(const storage of [await page.evaluate(()=>({...localStorage})),await page.evaluate(()=>({...sessionStorage}))])assert.ok(!JSON.stringify(storage).includes('browser-config-private-value'));
+    await page.waitForFunction(()=>document.querySelector('[data-testid="scoped-credential"]')?.selectedOptions[0]?.textContent.includes('wyłączone'));
+    scopedDesktop=(await page.screenshot({fullPage:true})).toString('base64');
+    await page.setViewportSize({width:390,height:844});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+    scopedMobile=(await page.screenshot({fullPage:true})).toString('base64');
+    await page.setViewportSize({width:1440,height:1000});
+    await page.getByRole('button',{name:'Agenci',exact:true}).click();
+    await page.getByTestId('agent-workspace').selectOption(fixture.workspace);
+    await page.getByTestId('agent-project').selectOption(fixture.project);
+    await page.getByTestId('agent-name').fill('Scoped HTTP browser builder');
+    await page.getByTestId('agent-harness').selectOption('opencode');
+    await page.getByTestId('agent-model').fill('fixture-model');
+    await page.getByTestId('agent-mode').fill('fixture-mode');
+    await page.getByTestId('agent-instructions').fill('literal-instructions');
+    await page.getByTestId('agent-skill-add').click();
+    await page.getByLabel('Identyfikator umiejętności',{exact:true}).fill('fixture');
+    await page.getByLabel('Wersja umiejętności',{exact:true}).fill('1');
+    await page.getByLabel('Instrukcje umiejętności',{exact:true}).fill('literal-skill');
+    await page.getByLabel('Limit czasu (sekundy)',{exact:true}).fill('60');
+    await page.getByLabel('Limit wyjścia (bajty)',{exact:true}).fill('65536');
+    await page.getByText('Dodaj dostęp HTTP z poświadczeniem',{exact:true}).click();
+    await page.getByTestId('scoped-tool-host').selectOption(fixture.host);
+    await page.getByTestId('scoped-tool-slot').fill('browser');
+    await page.getByTestId('scoped-tool-add').click();
+    await page.getByTestId('agent-mcp-tool').waitFor();
+    await page.getByTestId('agent-save').click();
+    await page.getByRole('status').filter({hasText:'Szkic zapisany.'}).waitFor();
+    await page.getByTestId('agent-publish').click();
+    await page.getByRole('status').filter({hasText:'Opublikowano wersję 1.'}).waitFor();
+    const published=await (await page.request.get(`${fixture.origin}/v1/web/workspaces/${fixture.workspace}/projects/${fixture.project}/agent-profiles`)).json();
+    const created=published.profiles.find(p=>p.definition.name==='Scoped HTTP browser builder');
+    assert.ok(created);fixture.profile={agent_id:created.agent_id,version:created.version,digest:created.digest};
+    await page.getByRole('button',{name:'Poświadczenia',exact:true}).click();
+    await page.getByTestId('agent-workspace').selectOption(fixture.workspace);
+    await page.getByTestId('agent-project').selectOption(fixture.project);
+    await page.getByTestId('scoped-host').selectOption(fixture.host);
+    await page.getByTestId('scoped-credential').locator('option[value="bridge"]').waitFor({state:'attached'});
+    await page.getByTestId('scoped-credential').selectOption('bridge');
+    await page.getByTestId('scoped-profile').selectOption(created.agent_id);
+    await page.getByTestId('scoped-slot').selectOption('dunlin-secret-browser');
+    const receipt=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/scoped-secrets/bridge/grants'));
+    await page.getByTestId('scoped-grant-save').click();
+    const grantResponse=await receipt;assert.equal(grantResponse.status(),200);
+    const assigned=await grantResponse.json();
+    fixture.selection={provider_id:assigned.provider_id,connection_id:assigned.id,revision:assigned.revision};
+    await page.getByRole('status').filter({hasText:'Grant zapisano'}).waitFor();
+  }
   await page.getByRole('button',{name:'Sesje',exact:true}).click();
   await page.getByTestId('session-create').locator('summary').click();
   await page.getByTestId('agent-workspace').selectOption(fixture.workspace);
@@ -36,7 +123,7 @@ try {
   assert.equal(catalog.mcp_sessions_supported,false);
   await page.getByTestId('session-create-target').selectOption(fixture.binding.id);
   await page.getByTestId('session-create-profile').selectOption(fixture.profile.agent_id);
-  const account=()=>page.getByTestId('session-mcp-work');
+  const account=()=>page.getByTestId(`session-mcp-${fixture.selection.provider_id}`);
   await account().locator(`option[value="${fixture.selection.connection_id}"]`).waitFor({state:'attached'});
   assert.equal(await account().inputValue(),'');
   assert.equal(await page.getByTestId('session-create-submit').isDisabled(),true);
@@ -69,10 +156,10 @@ try {
   await page.getByTestId('ahp-prompt').fill('Remember nonce:remote-ui-context');
   await page.getByTestId('ahp-send').click();
   await page.getByTestId('ahp-permission').waitFor();
-  await page.getByTestId('ahp-tool').locator('summary').filter({hasText:'MCP work / lookup'}).waitFor();
-  assert.deepEqual(JSON.parse(await page.getByTestId('ahp-tool').locator('pre').innerText()),{query:'native fixture'});
+  await page.getByTestId('ahp-tool').locator('summary').filter({hasText:scoped?`MCP ${fixture.selection.provider_id} / http`:'MCP work / lookup'}).waitFor();
+  assert.deepEqual(JSON.parse(await page.getByTestId('ahp-tool').locator('pre').innerText()),scoped?{method:'GET',url:'https://worker.tail123.ts.net/items'}:{query:'native fixture'});
   await page.getByTestId('ahp-tool-approve').waitFor();
-  for(const secret of ['pipeline-private-access','pipeline-private-refresh','DUNLIN_MCP_TOKEN'])assert.ok(!(await page.locator('body').innerText()).includes(secret));
+  for(const secret of ['pipeline-private-access','pipeline-private-refresh','DUNLIN_MCP_TOKEN','bridge-scoped-private-value','browser-config-private-value'])assert.ok(!(await page.locator('body').innerText()).includes(secret));
   if(fixture.form_action) {
     await page.getByTestId('ahp-tool-approve').click();
     await page.getByTestId('ahp-input').waitFor();
@@ -142,6 +229,6 @@ try {
   await page.getByTestId('ahp-cancel-turn').waitFor({state:'detached'});
   assert.deepEqual(errors,[]);
   await context.close();
-  process.stdout.write(JSON.stringify({status:'passed',session_id:id,epoch:accepted.session.epoch,desktop,mobile})+'\n');
+  process.stdout.write(JSON.stringify({status:'passed',session_id:id,epoch:accepted.session.epoch,desktop,mobile,scopedDesktop,scopedMobile})+'\n');
 } catch(error) {if(page)console.error('Visible UI:',(await page.locator('body').innerText()).slice(0,6000));throw error;}
 finally {await browser.close();}

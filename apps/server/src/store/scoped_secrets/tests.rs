@@ -4,7 +4,7 @@ use crate::store::team_projects::PROJECT_PERMISSIONS;
 use dunlin_domain::hosts::{HostCapabilities, HostDefinition};
 use std::collections::BTreeSet;
 
-pub(super) fn scope(store: &Store) -> Proof {
+pub(crate) fn scope(store: &Store) -> Proof {
     let user = store.create_user("scoped-owner", "admin").unwrap();
     let workspace = store.create_workspace(&user, "Scoped").unwrap();
     let project = store

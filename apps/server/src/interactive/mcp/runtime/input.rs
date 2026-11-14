@@ -49,7 +49,9 @@ impl Call<'_> {
                     let mut inputs = Vec::new();
                     for (key, url) in pending.input_requests() {
                         let request = super::super::urls::request(
-                            &self.broker.connections[self.entry.connection].provider,
+                            self.broker.connections[self.entry.connection]
+                                .oauth()
+                                .map_err(|_| dunlin_mcp_client::Error::Unauthorized)?,
                             &self.entry.tool.name,
                             url,
                         )?;
@@ -80,7 +82,9 @@ impl Call<'_> {
                     }
                     for (key, form) in pending.form_requests() {
                         let request = super::super::forms::request(
-                            &self.broker.connections[self.entry.connection].provider,
+                            self.broker.connections[self.entry.connection]
+                                .oauth()
+                                .map_err(|_| dunlin_mcp_client::Error::Unauthorized)?,
                             &self.entry.tool.name,
                             form,
                         )?;

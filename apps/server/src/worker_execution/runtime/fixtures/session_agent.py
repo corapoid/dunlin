@@ -109,6 +109,14 @@ for line in sys.stdin:
             stream.close()
             while True:
                 time.sleep(.02)
+        if behavior.startswith('native-mcp-scoped'):
+            result = mcp_rpc('tools/call', {'name':mcp_name,'arguments':{'method':'GET','url':'https://worker.tail123.ts.net/items'}})
+            if behavior.endswith('-deny'):
+                assert result['isError'] is True and 'denied' in result['content'][0]['text']
+            else:
+                output = json.loads(result['content'][0]['text'])
+                assert output['status'] == 200 and output['body'] == '[REDACTED] scoped broker result'
+                assert output['content_type'] == 'text/plain'
         if behavior in ['native-mcp', 'native-mcp-deny', 'native-mcp-tool-failed']:
             result = mcp_rpc('tools/call', {'name':mcp_name,'arguments':{'query':'native fixture'}})
             if behavior == 'native-mcp-deny':
@@ -117,7 +125,7 @@ for line in sys.stdin:
                 assert result['isError'] is True and 'reported failure' in result['content'][0]['text']
             else:
                 assert result['content'][0]['text'] == 'native broker result'
-        if behavior not in ['native-mcp-deny', 'native-mcp-tool-failed']:
+        if behavior not in ['native-mcp-deny', 'native-mcp-tool-failed', 'native-mcp-scoped-deny']:
             with open('effects', 'ab', buffering=0) as effects:
                 effects.write(b'x\n')
         cancelling = text == 'Start cancellation fixture'

@@ -315,8 +315,18 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   envelope policy/value, jednorazowy permit HTTP i kontrolowane testy174+2
   compile-fail oraz package Clippy PASS. Journal SQL schema48 i cookie API
   provisioning/status/disable mają odbiór backend875, MCP174+2, CLI1 i Clippy
-  PASS. Authority SQL użycia, profilowe grants i integracja managed runtime/runnera pozostają
-  otwarte; API konfiguracji jawnie zgłasza execution_supported:false.
+  PASS. Granty profilu i katalog konfiguracji schema49 mają odbiór backend889,
+  MCP175+2, CLI1 i Clippy PASS. Broker ma ścieżkę scoped HTTP z jednorazową
+  zgodą SDK i kontrolą celu/profilu/grantu po I/O: odbiór backend896 (7 nowych
+  scenariuszy), MCP175+2, CLI1 i Clippy PASS. Produkcyjny bridge/runner ma też
+  kontrolowany odbiór scoped HTTP4 PASS (TLS fixture i pamięciowy keyring).
+  UI poświadczeń, grantów, Buildera i wyboru sesji ma odbiór Chromium+runner4,
+  frontend163, backend896, TypeScript/build/Clippy PASS. Nowy profil i grant
+  utworzone w UI są użyte w tej samej ścieżce; obsłużono utracony receipt zapisu.
+  Schema50 dodaje lokalne powiązanie credential i grantów; ponowny backend901
+  PASS obejmuje5 nowych testów tego magazynu. Pełny odbiór lokalnego runtime
+  i kill switch/retencja pozostają otwarte. API deklaruje skonfigurowany
+  interfejs human sessions; to nie jest authority wykonania.
   Wspólny rdzeń ma hostowy adapter authority i testy niezmienności pinów oraz
   zachowania pojemności po anulowaniu waitera. Proponowany kontrakt v5 wiąże
   MCP z sesją/turą i dzieli odpowiedzi na ograniczone fragmenty. Negocjacja Hello5

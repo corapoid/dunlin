@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ScopedToolPicker } from './ScopedSecrets';
 import { AgentScope } from './AgentScope';
 import { readDrafts, readProfiles, saveDraft, publishDraft } from '../lib/agents';
 import type { AgentDraft, AgentDefinition, ProfileCatalog } from '../lib/agents';
@@ -15,7 +16,7 @@ const empty = (harness: string): AgentDefinition => ({
   max_seconds: 120,
   max_output_bytes: 1048576,
 });
-function Editor({ workspace, project }: { workspace: string; project: string }) {
+function Editor({ workspace, project, userId }: { workspace: string; project: string; userId:string }) {
   const [drafts, setDrafts] = useState<AgentDraft[]>([]),
     [catalog, setCatalog] = useState<ProfileCatalog | null>(null),
     [existing, setExisting] = useState<AgentDraft | null>(null),
@@ -168,7 +169,7 @@ function Editor({ workspace, project }: { workspace: string; project: string }) 
           </label>
           <label>
             Harness
-            <input data-testid="agent-harness" value={definition.harness} readOnly />
+            {catalog?.remote_sessions_supported?<select data-testid="agent-harness" required value={definition.harness} onChange={e=>setDefinition({...definition,harness:e.target.value})}><option value="">Wybierz harness</option>{['opencode','codex','claude'].map(h=><option key={h} value={h}>{h}</option>)}</select>:<input data-testid="agent-harness" value={definition.harness} readOnly />}
           </label>
           {!catalog?.configured_harness && (
             <p role="alert">
@@ -282,8 +283,9 @@ function Editor({ workspace, project }: { workspace: string; project: string }) 
             Dodaj umiejętność
           </button>
           <h3>Dozwolone narzędzia MCP</h3>
+          <ScopedToolPicker workspace={workspace} project={project} userId={userId} disabled={(definition.mcp?.length??0)>=32} onPin={pin=>setDefinition(current=>({...current,schema_version:2,mcp:[...(current.mcp??[]).filter(p=>p.provider_id!==pin.provider_id||p.name!==pin.name),pin]}))}/>
           <p className="muted">Przypięcie narzędzia znajdziesz w katalogu prywatnego połączenia MCP. Profil przechowuje dostawcę i wersję definicji; połączenie konta wybiera właściciel sesji.</p>
-          {!!definition.mcp?.length && <p role="status">Allowlista zostanie zapisana w wersji agenta. Przy tworzeniu lokalnej sesji wybierzesz prywatne połączenia. Każde wywołanie wymaga jednorazowej zgody.</p>}
+          {!!definition.mcp?.length && <p role="status">Allowlista zostanie zapisana w wersji agenta. Przy tworzeniu sesji wybierzesz prywatne połączenia lub granty. Każde wywołanie wymaga jednorazowej zgody.</p>}
           {(definition.mcp ?? []).map((tool,index)=><div className="agent-skill" key={index} data-testid="agent-mcp-tool">
             <label>Dostawca MCP (ID)<input required maxLength={64} pattern="[A-Za-z0-9_\-]+" value={tool.provider_id} onChange={e=>setDefinition({...definition,mcp:definition.mcp?.map((t,i)=>i===index?{...t,provider_id:e.target.value}:t)})}/></label>
             <label>Nazwa narzędzia<input required maxLength={256} value={tool.name} onChange={e=>setDefinition({...definition,mcp:definition.mcp?.map((t,i)=>i===index?{...t,name:e.target.value}:t)})}/></label>
@@ -335,7 +337,7 @@ export function AgentBuilder({ userId }: { userId: string }) {
       <h1>Agenci</h1>
       <p>Edytuj szkic, a następnie jawnie opublikuj niezmienną wersję do uruchamiania sesji.</p>
       <AgentScope userId={userId}>
-        {(w, p) => <Editor key={`${w}:${p}`} workspace={w} project={p} />}
+        {(w, p) => <Editor userId={userId} key={`${w}:${p}`} workspace={w} project={p} />}
       </AgentScope>
     </>
   );

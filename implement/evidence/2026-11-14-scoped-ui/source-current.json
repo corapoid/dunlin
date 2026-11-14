@@ -1,0 +1,59 @@
+{
+  "rust": {
+    "source_sha256": "2827f3e8ccf62b2661fb4f2de579b835484d4b562d7da82253bdea89052ecf13",
+    "inputs": [
+      "Cargo.toml",
+      "Cargo.lock",
+      "apps",
+      "crates",
+      "vendor",
+      "tests/fixtures",
+      "scripts/install-harness.sh"
+    ]
+  },
+  "frontend": {
+    "source_sha256": "f4b50e73c97fb3e5f934210fa7f28338c50b97f718e553532b3796d6d5b2689d",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog"
+    ]
+  },
+  "typecheck": {
+    "source_sha256": "19d5ed9b07b9d28dd898794f172ea2bf3db22dcc1203ee1da00e537c5f208a85",
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog",
+      "apps/web/tsconfig.json",
+      "apps/web/vite.config.ts"
+    ]
+  },
+  "tooling": {
+    "source_sha256": "7c74a343053519754b4ebb9f782239080b6c29898a6633245e4a674a36aff467",
+    "inputs": [
+      "scripts",
+      ".github",
+      "README.md",
+      "CONTRIBUTING.md",
+      "docs",
+      "web/src"
+    ]
+  },
+  "build": {
+    "inputs": [
+      "apps/web/src",
+      "apps/web/tests",
+      "apps/web/package.json",
+      "tests/fixtures/web-catalog",
+      "apps/web/tsconfig.json",
+      "apps/web/vite.config.ts",
+      "apps/web/index.html",
+      "apps/web/postcss.config.mjs",
+      "apps/web/REUI-LICENSE.txt"
+    ],
+    "source_sha256": "803fd74d425f3f21d00e6b550730f05fca3761736881e563e0c19b7996283569"
+  }
+}

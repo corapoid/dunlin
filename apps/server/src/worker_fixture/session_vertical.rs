@@ -13,6 +13,7 @@ use std::{fs, os::unix::fs::PermissionsExt};
 mod mcp_browser;
 mod mcp_failure;
 mod mcp_form;
+mod scoped_http;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
@@ -615,9 +616,30 @@ async fn production_browser_acceptance_runtime_remote_mcp_product_urls_cancel() 
 async fn production_browser_acceptance_runtime_remote_mcp_product_urls_revoke() {
     session_journal(Some("urls-revoke")).await;
 }
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_scoped_http() {
+    session_journal(Some("scoped-complete")).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_scoped_http_deny() {
+    session_journal(Some("scoped-deny")).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_scoped_http_revoke() {
+    session_journal(Some("scoped-revoke")).await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires provisioned real bubblewrap/pidfd worker runtime runner"]
+async fn production_browser_acceptance_runtime_remote_scoped_http_lost_reply() {
+    session_journal(Some("scoped-lost")).await;
+}
 async fn session_journal(mode: Option<&str>) {
     let mcp = mode.is_some();
-    let denied = mode == Some("deny");
+    let scoped = mode.is_some_and(|m| m.starts_with("scoped-"));
+    let denied = matches!(mode, Some("deny" | "scoped-deny"));
     let urls = mode.is_some_and(|m| m.starts_with("urls"));
     let forms = urls || mode.is_some_and(|m| m.starts_with("forms"));
     let no_effects = denied
@@ -638,7 +660,8 @@ async fn session_journal(mode: Option<&str>) {
         None
     };
     let mut fixture = fixture_with_broker_transport(true, true, false, mcp).await;
-    let provider = mcp.then(super::mcp_provider::Provider::new);
+    let scoped_http = scoped.then(|| scoped_http::Endpoint::new(&mut fixture.state, mode.unwrap()));
+    let provider = (mcp && !scoped).then(super::mcp_provider::Provider::new);
     if let Some(provider) = &provider {
         if forms {
             provider.enable_forms(match mode.unwrap() {
@@ -657,7 +680,7 @@ async fn session_journal(mode: Option<&str>) {
             provider.hold_response();
         }
     }
-    let selections = provider
+    let mut selections = provider
         .as_ref()
         .map(|provider| provider.install(&mut fixture.state, &fixture.owner, &fixture.workspace))
         .into_iter()
@@ -714,7 +737,7 @@ async fn session_journal(mode: Option<&str>) {
     fs::set_permissions(&program, fs::Permissions::from_mode(0o700)).unwrap();
     fixture.client.exports_state_dir = Some(state_dir.clone());
     fixture.client.capabilities.sandbox = dunlin_domain::hosts::SandboxStrength::LinuxBubblewrap;
-    fixture.client.execution = Some(serde_json::from_value(json!({"enabled":true,"persistent_sessions":true,"mcp_broker":mcp,"harnesses":{"opencode":{"program":program,"args":[if denied {"native-mcp-deny"}else if no_effects {"native-mcp-tool-failed"}else if mcp {"native-mcp"}else{"persistent"}]}}})).unwrap());
+    fixture.client.execution = Some(serde_json::from_value(json!({"enabled":true,"persistent_sessions":true,"mcp_broker":mcp,"harnesses":{"opencode":{"program":program,"args":[if scoped && denied {"native-mcp-scoped-deny"}else if scoped {"native-mcp-scoped"}else if denied {"native-mcp-deny"}else if no_effects {"native-mcp-tool-failed"}else if mcp {"native-mcp"}else{"persistent"}]}}})).unwrap());
     let (profile, _definition, project) = {
         let store = fixture.state.store.lock().unwrap();
         let project = store
@@ -728,7 +751,11 @@ async fn session_journal(mode: Option<&str>) {
         let mut definition: dunlin_domain::agent::AgentDefinition = definition;
         if mcp {
             definition.schema_version = 2;
-            definition.mcp.push(super::mcp_provider::Provider::tool());
+            definition.mcp.push(if scoped {
+                scoped_http::Endpoint::tool()
+            } else {
+                super::mcp_provider::Provider::tool()
+            });
         }
         let draft = store
             .create_agent(&fixture.owner, &fixture.workspace, &project.id, definition)
@@ -847,6 +874,13 @@ async fn session_journal(mode: Option<&str>) {
             store.create_browser_session(&auth.device.id, 3600).unwrap()
         )
     };
+    if let Some(endpoint) = &scoped_http {
+        selections.push(
+            endpoint
+                .install(&fixture, &cookie, &project.id, &request.profile)
+                .await,
+        );
+    }
     let path = format!(
         "/v1/web/workspaces/{}/projects/{}/interactive-sessions",
         fixture.workspace, project.id
@@ -904,6 +938,9 @@ async fn session_journal(mode: Option<&str>) {
             })
             .await
             .expect("remote SDK consent deadline");
+            if let Some(endpoint) = &scoped_http {
+                endpoint.assert_before_approval(index - 1, denied);
+            }
             let option = tool.1["options"]
                 .as_array()
                 .unwrap()
@@ -918,6 +955,29 @@ async fn session_journal(mode: Option<&str>) {
             )
             .await;
             assert!(approved.get("error").is_none(), "{approved}");
+            if matches!(mode, Some("scoped-revoke" | "scoped-lost")) {
+                scoped_http::Failure {
+                    endpoint: scoped_http.as_ref().unwrap(),
+                    fixture: &fixture,
+                    cookie: &cookie,
+                    project: &project.id,
+                    selection: &selections[0],
+                    id: &id,
+                    path: &path,
+                    payload: &payload,
+                    root: &root,
+                    state_dir: &state_dir,
+                    faults: &faults,
+                    revoked: mode == Some("scoped-revoke"),
+                }
+                .verify(&mut socket, confirmation)
+                .await;
+                drop(socket);
+                fixture.state.worker_channels.shutdown().await;
+                let _ = tokio::time::timeout(Duration::from_secs(5), &mut task).await;
+                service.shutdown().await;
+                return;
+            }
             if matches!(mode, Some("forms-revoke" | "urls-revoke")) {
                 mcp_form::pending(&fixture, &id).await;
             }
@@ -1088,11 +1148,35 @@ async fn session_journal(mode: Option<&str>) {
         before
     );
     faults.assert_completed();
+    if let Some(endpoint) = &scoped_http {
+        endpoint.assert_success(&fixture, &id, &state_dir, &root, denied);
+    }
     if mode == Some("renew-race") {
         faults.assert_renew_terminal_race();
     }
     if !mcp && std::env::var("DUNLIN_REMOTE_SESSION_BROWSER").as_deref() == Ok("1") {
         session_browser(&fixture, &origin, &request, &project.id, &root, &state_dir).await;
+    }
+    if mode == Some("scoped-complete")
+        && std::env::var("DUNLIN_REMOTE_SESSION_BROWSER").as_deref() == Ok("1")
+    {
+        mcp_browser::run(
+            &fixture,
+            &origin,
+            &request,
+            &project.id,
+            &root,
+            &state_dir,
+            &selections,
+            &cookie,
+            None,
+            false,
+        )
+        .await;
+        scoped_http
+            .as_ref()
+            .unwrap()
+            .assert_browser(&fixture, &id, &state_dir, &root);
     }
     if let Some(provider) = &provider {
         assert_eq!(provider.calls(), if denied { 0 } else { 2 });

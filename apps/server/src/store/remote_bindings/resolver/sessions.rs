@@ -292,7 +292,16 @@ impl Store {
             ));
         }
         let mcp = mcp
-            .map(|input| input.prepare(self, owner, workspace, &profile.definition, &candidate))
+            .map(|input| {
+                input.prepare(
+                    self,
+                    owner,
+                    workspace,
+                    &profile.definition,
+                    &request.profile,
+                    &candidate,
+                )
+            })
             .transpose()?;
         if crate::worker_execution::profile_digest(&profile.definition)? != request.profile.digest {
             return Err(session_conflict());

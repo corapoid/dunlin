@@ -1,0 +1,75 @@
+{
+  "source_sha256": "418469e6b7979e43fc2d6f569f9a769112077d9045a1b84990e483ac0d48a41b",
+  "checks": [
+    {
+      "suite": "runtime",
+      "log": "runtime-first.log",
+      "exit_code": 0,
+      "log_sha256": "2e374bda313d335463abe4f893035ecfb38f3d4b1773afe619fcbfcb9ed15682",
+      "source_sha256": "418469e6b7979e43fc2d6f569f9a769112077d9045a1b84990e483ac0d48a41b",
+      "memory": {
+        "memory.peak": "3616817152",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "exit_code": 0,
+      "log_sha256": "af14d3fa247ce9790088a7e4d4df4e3169c98f2fbcd49ec82bdd39f100abafef",
+      "source_sha256": "418469e6b7979e43fc2d6f569f9a769112077d9045a1b84990e483ac0d48a41b",
+      "memory": {
+        "memory.peak": "2415919104",
+        "memory.events": "low 0\nhigh 0\nmax 8\noom 0\noom_kill 0\noom_group_kill 0"
+      }
+    }
+  ],
+  "runtime_acceptance": {
+    "passed": 4,
+    "filtered_out": 805,
+    "elapsed_seconds": 33.6,
+    "scenarios": [
+      "complete over two turns, lease renewal, stop/ACK and reservation release",
+      "deny: no keyring read, HTTP request or harness effect",
+      "lost HTTP reply: one request, unknown outcome, stop/ACK, no replay",
+      "grant revoke during HTTP: withheld result, one request, unknown outcome, stop/ACK, no replay"
+    ]
+  },
+  "baseline": {
+    "manifest": "../2026-11-14-scoped-runtime/verified-source.json",
+    "sha256": "fe374b2ddc4e4178d157934ff241db15b2383e66532e2e1a275a2da5ebb030a9",
+    "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+    "passed": {
+      "backend_regular": 896,
+      "relay_regular": 751,
+      "relay_separate_acceptance_ignored": 54,
+      "new_scoped_broker_tests": 7,
+      "mcp_http_vault_regular": 175,
+      "compile_fail": 2,
+      "production_cli_acceptance": 1
+    },
+    "not_rerun_in_this_increment": true
+  },
+  "production_source_equivalence": {
+    "file": "production-source-equivalence.json",
+    "sha256": "fc643e834df9bfc24a81d0e46fecda8b31f40ad9aa89414cc3e96b3a12284457"
+  },
+  "limits": [
+    "The real production runner/bridge/proxy and sandbox paths are exercised with synthetic TLS/WSS host fixtures",
+    "Keyring uses MemoryStore; HTTP dialer pins loopback and fixture CA; public resolver/IP restrictions are unchanged and not tested by this dialer",
+    "No real accounts, OS keyring, tailnet or deployed hosts",
+    "Local target identity, grant UI, full kill switch/retention and E5.3 remain open"
+  ],
+  "milestone": {
+    "completed": 21,
+    "total": 68,
+    "E5.3": "open",
+    "execution_supported": false
+  },
+  "local_checks": {
+    "results": "local-results.json",
+    "results_sha256": "3f8b984a6c51b5fb7d0dd5fec3449c232f0528460adbcb372ca9fc4f34c43bd8",
+    "log": "local-checks.log",
+    "log_sha256": "8c7b55b5deb62f34e8f9f2fb619b5f13921983ed8d32f7564d6e122616cb70cb"
+  }
+}

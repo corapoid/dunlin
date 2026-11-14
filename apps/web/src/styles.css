@@ -178,3 +178,11 @@ code { overflow-wrap: anywhere; font-size: 0.875em; }
 .mcp-input { min-width: 0; }
 .mcp-input input, .mcp-input select { width: 100%; min-width: 0; max-width: 100%; }
 .mcp-input > div { margin-block: 0.75rem; }
+
+.scoped-secrets { max-width:54rem; min-width:0; }
+.scoped-secrets fieldset { min-width:0; border:1px solid var(--border); border-radius:.5rem; padding:1rem; margin:1rem 0; }
+.scoped-secrets select,.scoped-secrets textarea { width:100%; min-width:0; }
+.scoped-secrets li { overflow-wrap:anywhere; padding:.75rem; margin:.5rem 0; border:1px solid var(--border); border-radius:.5rem; }
+.scoped-secrets li button { display:block; margin-top:.5rem; }
+.scoped-secrets .team-checkbox { display:flex; align-items:center; gap:.5rem; }
+.scoped-secrets input[type="checkbox"] { width:1rem; min-height:1rem; padding:0; }

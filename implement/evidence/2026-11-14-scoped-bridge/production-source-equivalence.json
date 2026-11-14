@@ -1,0 +1,12 @@
+{
+  "current_source_sha256": "418469e6b7979e43fc2d6f569f9a769112077d9045a1b84990e483ac0d48a41b",
+  "restored_source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+  "restored_tracked_files": [
+    "apps/server/src/worker_fixture/session_vertical.rs",
+    "apps/server/src/worker_execution/runtime/fixtures/session_agent.py"
+  ],
+  "removed_new_file": "apps/server/src/worker_fixture/session_vertical/scoped_http.rs",
+  "baseline": "../2026-11-14-scoped-runtime/verified-source.json",
+  "scope": "Exact full-source equality to accepted baseline after replacing only the three acceptance-fixture files; no production code changes in this increment.",
+  "restored_from_commit": "4597a7e96354a9974ba82db14610301ab7d5475c"
+}

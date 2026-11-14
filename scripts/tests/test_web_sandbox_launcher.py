@@ -90,7 +90,7 @@ class WorkspaceTests(unittest.TestCase):
 class RuntimeBrowserTests(unittest.TestCase):
     def test_browser_opt_in_is_exclusive_and_cannot_hide_behind_another_filter(self):
         self.assertFalse(launcher.runtime_browser_enabled(types.SimpleNamespace(suite="runtime")))
-        for selected in [None, "production_browser_acceptance_runtime_remote_session_journal", "production_browser_acceptance_runtime_remote_mcp_product_pipeline", "production_browser_acceptance_runtime_remote_mcp_product_urls", "production_browser_acceptance_runtime_mcp_oauth_revocation", "production_browser_acceptance_runtime_remote_"]:
+        for selected in [None, "production_browser_acceptance_runtime_remote_session_journal", "production_browser_acceptance_runtime_remote_mcp_product_pipeline", "production_browser_acceptance_runtime_remote_scoped_http", "production_browser_acceptance_runtime_remote_mcp_product_urls", "production_browser_acceptance_runtime_mcp_oauth_revocation", "production_browser_acceptance_runtime_remote_"]:
             self.assertTrue(launcher.runtime_browser_enabled(types.SimpleNamespace(suite="runtime", runtime_browser=True, rust_test=selected)))
         for suite, selected in [("browser", None), ("server", None), ("runtime", "production_browser_acceptance_runtime_worker_execution")]:
             with self.subTest(suite=suite, selected=selected), self.assertRaises(ValueError):

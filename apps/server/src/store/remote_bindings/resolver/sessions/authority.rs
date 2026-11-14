@@ -43,6 +43,12 @@ impl RemoteMcpScope {
         }
         let scope = Self {
             pins: SessionPins {
+                secret_target: dunlin_vault::scoped::Binding {
+                    workspace: snapshot.workspace.clone(),
+                    project: snapshot.project.clone(),
+                    host: saved.binding.host_id.clone(),
+                },
+                profile: snapshot.open.profile.clone(),
                 session: id.into(),
                 workspace: snapshot.workspace.clone(),
                 owner: snapshot.owner.clone(),
@@ -83,7 +89,10 @@ impl RemoteMcpScope {
         let snapshot = store.remote_session_snapshot(&self.pins.session)?;
         let saved = store.session_pins(&self.pins.session)?;
         let private = saved.mcp.as_ref().ok_or_else(denied)?;
-        if snapshot.owner != self.pins.owner
+        if snapshot.open.profile != self.pins.profile
+            || snapshot.project != self.pins.secret_target.project
+            || saved.binding.host_id != self.pins.secret_target.host
+            || snapshot.owner != self.pins.owner
             || snapshot.workspace != self.pins.workspace
             || snapshot.device != self.pins.starter_device
             || snapshot.lease.epoch != self.pins.lease.epoch

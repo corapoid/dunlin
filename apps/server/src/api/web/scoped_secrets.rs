@@ -112,7 +112,7 @@ pub(in crate::api) async fn list(
         })
         .map_err(error)?;
     Ok(private_response(Json(
-        json!({"credentials":credentials,"execution_supported":false}),
+        json!({"credentials":credentials,"execution_supported":scoped_secrets::execution_supported(&state,&proof.binding.host)}),
     )))
 }
 pub(in crate::api) async fn install(
@@ -204,7 +204,7 @@ pub(in crate::api) async fn tool_catalog(
         .definition_digest()
         .map_err(|_| ApiError::internal("Scoped tool schema unavailable"))?;
     Ok(private_response(Json(
-        json!({"provider_prefix":dunlin_vault::scoped::tool::PROVIDER_PREFIX,"tool":tool,"definition_digest":digest,"principal_kinds":[Principal::Human,Principal::Service],"execution_supported":false}),
+        json!({"provider_prefix":dunlin_vault::scoped::tool::PROVIDER_PREFIX,"tool":tool,"definition_digest":digest,"principal_kinds":[Principal::Human,Principal::Service],"execution_supported":scoped_secrets::execution_supported(&state,&proof.binding.host)}),
     )))
 }
 pub(in crate::api) async fn grants(
@@ -303,6 +303,6 @@ pub(in crate::api) async fn available(
         })
         .map_err(error)?;
     Ok(private_response(Json(
-        json!({"bindings":grants,"execution_supported":false}),
+        json!({"bindings":grants,"execution_supported":scoped_secrets::execution_supported(&state,&binding.host)}),
     )))
 }

@@ -24,7 +24,7 @@ pub(super) async fn run(
         .unwrap()
         .0;
     let input = json!({"origin":origin,"ownerCode":code,"workspace":fixture.workspace,"project":project,
-        "binding":request.binding,"profile":request.profile,"selection":selections[0],"form_action":form_action});
+        "binding":request.binding,"profile":request.profile,"selection":selections[0],"form_action":form_action,"host":fixture.host,"user":fixture.owner});
     let mut child = tokio::process::Command::new("node")
         .arg(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -61,6 +61,11 @@ pub(super) async fn run(
             name.to_ascii_uppercase(),
             result[name].as_str().unwrap()
         );
+    }
+    for name in ["scopedDesktop", "scopedMobile"] {
+        if let Some(value) = result[name].as_str() {
+            println!("SCOPED_UI_IMAGE_{name} {value}");
+        }
     }
     let id = result["session_id"].as_str().unwrap();
     let (status, stopped) = fixture_http(

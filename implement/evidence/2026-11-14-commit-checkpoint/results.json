@@ -1,0 +1,43 @@
+{
+  "suites": {
+    "server": {
+      "exit_code": 0,
+      "source_sha256": "ae8ef41432cc96284d91099e764227da1a80a5abcb5e198b1e9977186f19f187",
+      "log": "server.log",
+      "log_sha256": "30b4886dbd19e81331329467c6505c71e8a069000e3842d9e1f5b79e4a29a727"
+    },
+    "frontend": {
+      "exit_code": 0,
+      "source_sha256": "a26ebff8284e8c40d0556cd2aff4ea1fdd7ea75c7764911c3c6d8fc7b3013c75",
+      "log": "frontend.log",
+      "log_sha256": "52b42b32f93883a07c94f1efd520ed9ee252a54f1e653a2c4cd1dec8e26d0db9"
+    },
+    "typecheck": {
+      "exit_code": 0,
+      "source_sha256": "7d46b8293904a3381c0f4677cf927fbc8700ce9afec444db90d7339e825b70fd",
+      "log": "typecheck.log",
+      "log_sha256": "28dfdcff26643b7b6d4461977e6f6d73461846073bccc8b973637d3be9b6d377"
+    },
+    "build": {
+      "exit_code": 0,
+      "source_sha256": "2738d5c6be696d61f4d31326541e30ac7649165e26f111757fa0e3b2a83bf4e0",
+      "log": "build.log",
+      "log_sha256": "eaac0c34a44c1191b80e6d44c3c491adb8a312edbee597d802b4a5fe2c51a5b3"
+    },
+    "clippy": {
+      "exit_code": 0,
+      "source_sha256": "ae8ef41432cc96284d91099e764227da1a80a5abcb5e198b1e9977186f19f187",
+      "log": "clippy.log",
+      "log_sha256": "7274d258276fbb7f063c09d0a35520f334b8fa5625cee1981d537142d076c133"
+    }
+  },
+  "backend_passed": 901,
+  "backend_acceptance_ignored": 58,
+  "frontend_passed": 163,
+  "launcher_passed": 18,
+  "documentation_files": 122,
+  "limitations": [
+    "Local runtime/browser acceptance remains open.",
+    "Earlier remote runtime acceptance remains bound to its own evidence manifests."
+  ]
+}

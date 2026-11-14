@@ -1,0 +1,103 @@
+{
+  "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+  "checks": [
+    {
+      "suite": "server",
+      "log": "server-second.log",
+      "exit_code": 0,
+      "log_sha256": "f4f446bfbaccda1dfa398344881d019e1d169916519169e6c4026d25e838f3b0",
+      "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+      "memory_peak_bytes": 3683586048,
+      "test_summaries": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 751 passed; 0 failed; 54 ignored; 0 measured; 0 filtered out; finished in 201.26s",
+        "test result: ok. 80 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.76s",
+        "test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        "test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.51s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "suite": "clippy",
+      "log": "clippy-final.log",
+      "exit_code": 0,
+      "log_sha256": "f9250f7c9403fa0d7b6d6a0ffdfa18827d8418fb1935bf6bc7b4009b4e608c9b",
+      "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+      "memory_peak_bytes": 2364579840,
+      "test_summaries": []
+    },
+    {
+      "suite": "mcp",
+      "log": "mcp-final.log",
+      "exit_code": 0,
+      "log_sha256": "bc031593dc0550cdeae9f92ea6ee237065b8108e8ab67ce3e1efb53633997e1b",
+      "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+      "memory_peak_bytes": 1238106112,
+      "test_summaries": [
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s",
+        "test result: ok. 116 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.23s",
+        "test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s"
+      ]
+    },
+    {
+      "suite": "runtime",
+      "log": "runtime-final.log",
+      "exit_code": 0,
+      "log_sha256": "04bc6dd1a382ed69d4b255efc1a3bc9a6202b5a88a9f402e583af08807cc3b80",
+      "source_sha256": "9f7ce0a893e5db399db4d1bc0d989c125094c6466d968f86e491dcfcd5130e23",
+      "memory_peak_bytes": 3616567296,
+      "test_summaries": [
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 804 filtered out; finished in 0.11s"
+      ]
+    }
+  ],
+  "passed": {
+    "backend_regular": 896,
+    "relay_regular": 751,
+    "relay_separate_acceptance_ignored": 54,
+    "new_scoped_broker_tests": 7,
+    "mcp_http_vault_regular": 175,
+    "compile_fail": 2,
+    "production_cli_acceptance": 1
+  },
+  "acceptance_scope": [
+    "Production scoped HTTP broker path exercised with real SQL/SDK approvals and controlled host authority, keyring and HTTP executor",
+    "Production CLI schema49 legacy recovery regression"
+  ],
+  "not_accepted": [
+    "Dedicated scoped HTTP acceptance over production runner bridge",
+    "Local host identity mapping and grant selection UI",
+    "Service principal workflow execution",
+    "Full E5.3 kill switch and retention acceptance",
+    "Real keyring, accounts and tailnet"
+  ],
+  "diagnostics": [
+    {
+      "log": "clippy-first.log",
+      "exit_code": 125,
+      "reason": "macOS temporary source path not mounted in Colima; no target compilation"
+    },
+    {
+      "log": "clippy-second.log",
+      "exit_code": 101,
+      "reason": "Backend visibility and Tokio/std Instant conversion; corrected"
+    },
+    {
+      "log": "server-first.log",
+      "exit_code": 0,
+      "reason": "Earlier snapshot compilation only; selected zero scoped tests"
+    }
+  ],
+  "milestone": {
+    "E5.3": "open",
+    "completed": 21,
+    "total": 68,
+    "execution_supported": false
+  }
+}

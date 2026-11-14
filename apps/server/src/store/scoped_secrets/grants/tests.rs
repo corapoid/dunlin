@@ -494,6 +494,7 @@ fn schema_48_upgrade_preserves_credentials_and_rejects_a_foreign_grant_table() {
         let path = dir.path().join("db");
         let store = Store::open(&path).unwrap();
         let (proof, _) = setup(&store);
+        crate::store::scoped_secrets::local::fixture_v49(&store).unwrap();
         store
             .connection
             .execute_batch("DROP TABLE scoped_secret_grants; PRAGMA user_version=48;")
