@@ -11,6 +11,47 @@ try {
   await page.goto(f.origin);
   await page.getByLabel('Jednorazowy kod parowania').fill(f.ownerCode);
   await page.getByRole('button',{name:'Połącz bezpiecznie',exact:true}).click();
+  let builderDesktop=null,builderMobile=null;
+  if(f.recipe) {
+    await page.getByRole('button',{name:'Agenci',exact:true}).click();
+    await page.getByTestId('agent-workspace').selectOption(f.workspace);
+    await page.getByTestId('agent-project').selectOption(f.project);
+    await page.getByTestId('agent-name').fill('Local recipe browser builder');
+    assert.equal(await page.getByTestId('agent-harness').inputValue(),'opencode');
+    await page.getByTestId('agent-model').fill('fixture-model');
+    await page.getByTestId('agent-mode').fill('plan');
+    await page.getByTestId('agent-instructions').fill('Run the approved fixed recipe.');
+    await page.getByLabel('Limit czasu (sekundy)',{exact:true}).fill('60');
+    await page.getByLabel('Limit wyjścia (bajty)',{exact:true}).fill('65536');
+    await page.getByText('Dodaj narzędzie z poświadczeniem',{exact:true}).click();
+    await page.getByTestId('scoped-tool-host').selectOption('local');
+    // Verify the UI's unsupported state with an explicit capability response,
+    // then remove the override before publishing or executing anything.
+    const recipeCatalog=/\/scoped-secret-tool\?kind=recipe$/;
+    await page.route(recipeCatalog,async route=>{const response=await route.fetch();await route.fulfill({response,json:{...await response.json(),execution_supported:false}});});
+    await page.getByTestId('scoped-tool-kind').selectOption('recipe');
+    await page.getByTestId('scoped-tool-slot').fill('local');
+    await page.getByTestId('scoped-tool-unsupported').waitFor();
+    assert.equal(await page.getByTestId('scoped-tool-add').isDisabled(),true);
+    assert.equal(await page.getByTestId('agent-mcp-tool').count(),0);
+    await page.unroute(recipeCatalog);
+    await page.getByTestId('scoped-tool-kind').selectOption('http');
+    await page.getByTestId('scoped-tool-kind').selectOption('recipe');
+    await page.getByTestId('scoped-tool-add').click();
+    await page.getByTestId('agent-mcp-tool').waitFor();
+    builderDesktop=(await page.screenshot({fullPage:true})).toString('base64');
+    await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    builderMobile=(await page.screenshot({fullPage:true})).toString('base64');
+    await page.setViewportSize({width:1440,height:1000});
+    await page.getByTestId('agent-save').click();
+    await page.getByRole('status').filter({hasText:'Szkic zapisany.'}).waitFor();
+    await page.getByTestId('agent-publish').click();
+    await page.getByRole('status').filter({hasText:'Opublikowano wersję 1.'}).waitFor();
+    const profiles=await (await page.request.get(`${f.origin}/v1/web/workspaces/${f.workspace}/projects/${f.project}/agent-profiles`)).json();
+    const created=profiles.profiles.find(p=>p.definition.name==='Local recipe browser builder');
+    assert.ok(created);assert.equal(created.definition.mcp.length,1);assert.equal(created.definition.mcp[0].name,'recipe');
+    f.profile={agent_id:created.agent_id,version:created.version,digest:created.digest};
+  }
   await page.getByRole('button',{name:'Poświadczenia',exact:true}).click();
   await page.getByTestId('agent-workspace').selectOption(f.workspace);
   await page.getByTestId('agent-project').selectOption(f.project);
@@ -18,6 +59,7 @@ try {
   await page.getByTestId('scoped-credential').locator('option[value="local-api"]').waitFor({state:'attached'});
   await page.getByTestId('scoped-credential').selectOption('local-api');
   await page.getByTestId('scoped-value').fill('local-runtime-private-value');
+  if(f.recipe) {await page.getByText('Zaawansowana polityka HTTP i receptur CLI',{exact:true}).click();await page.getByTestId('scoped-policy').fill(JSON.stringify(f.policy));}
   await page.getByTestId('scoped-domain').fill('api.example.com');
   await page.getByTestId('scoped-path').fill('/items');
   await page.getByTestId('scoped-save').click();
@@ -26,8 +68,12 @@ try {
   const cleanupReceipt=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/scoped-secrets/local-api/cleanup'));
   await page.getByTestId('scoped-cleanup').click();
   const cleanupResponse=await cleanupReceipt;assert.equal(cleanupResponse.status(),200);
-  const counts=await cleanupResponse.json();assert.equal(counts.retained,1);assert.equal(counts.deleted_history,1);assert.equal(counts.pending_writes,0);
   await page.getByRole('status').filter({hasText:'Partia sprzątania zakończona.'}).waitFor();
+  // Inspect the durable result with a read after the app decoded the receipt.
+  // Chromium may evict a finished fetch body from CDP during the UI reload;
+  // this GET never reissues cleanup or any other mutation.
+  const retained=await page.request.get(`${f.origin}/v1/web/workspaces/${f.workspace}/projects/${f.project}/hosts/local/scoped-secrets/local-api/retention`);
+  assert.equal(retained.status(),200);const counts=await retained.json();assert.equal(counts.retained,1);assert.equal(counts.deleted_history,1);assert.equal(counts.pending_writes,0);
   await page.waitForFunction(()=>document.body.innerText.includes('Przechowywane: 1.')&&document.body.innerText.includes('Historia usunięć: 1.'));
   assert.equal(await page.getByTestId('scoped-value').inputValue(),'');
   await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0);});
@@ -38,12 +84,17 @@ try {
   await page.setViewportSize({width:1440,height:1000});
   await page.getByTestId('scoped-profile').selectOption(f.profile.agent_id);
   await page.getByTestId('scoped-slot').selectOption('dunlin-secret-local');
+  if(f.recipe) {assert.equal(await page.getByTestId('scoped-readonly').isDisabled(),true);assert.equal(await page.getByTestId('scoped-readonly').isChecked(),false);await page.getByTestId('scoped-recipe-write').waitFor();}
+  const grantDesktop=(await page.screenshot({fullPage:true})).toString('base64');
+  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  const grantMobile=(await page.screenshot({fullPage:true})).toString('base64');
+  await page.setViewportSize({width:1440,height:1000});
   await page.locator('[data-testid^="scoped-revoke-"]').click();
   await page.getByRole('status').filter({hasText:'Grant odwołano.'}).waitFor();
   const grantReceipt=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/scoped-secrets/local-api/grants'));
   await page.getByTestId('scoped-grant-save').click();
   const response=await grantReceipt;assert.equal(response.status(),200);const grant=await response.json();
-  assert.equal(grant.revision,3);assert.equal(grant.active,true);
+  assert.equal(grant.revision,f.recipe?1:3);assert.equal(grant.active,true);assert.equal(grant.read_only,!f.recipe);
   await page.getByRole('status').filter({hasText:'Grant zapisano'}).waitFor();
   await page.getByRole('button',{name:'Sesje',exact:true}).click();
   await page.getByTestId('session-create').locator('summary').click();
@@ -60,23 +111,24 @@ try {
   await page.getByTestId('session-create-submit').click();
   const acceptedResponse=await admission;assert.equal(acceptedResponse.status(),202);const accepted=await acceptedResponse.json();
   const body=acceptedResponse.request().postDataJSON();assert.deepEqual(body.profile,f.profile);
-  assert.deepEqual(body.mcp_connections,[{provider_id:'dunlin-secret-local',connection_id:grant.id,revision:3}]);
+  assert.deepEqual(body.mcp_connections,[{provider_id:'dunlin-secret-local',connection_id:grant.id,revision:grant.revision}]);
   assert.equal(body.target?.kind??'local','local');
   const id=accepted.session.id;
   await page.getByTestId('session-created-id').filter({hasText:id}).waitFor();
   await page.locator(`[data-testid="ahp-session"][data-session-uri="ahp-session:/${id}"]`).click();
-  await page.getByTestId('ahp-prompt').fill('Use local scoped HTTP from Chromium');await page.getByTestId('ahp-send').click();
+  const prompt=f.recipe?'Use local scoped recipe from Chromium':'Use local scoped HTTP from Chromium';
+  await page.getByTestId('ahp-prompt').fill(prompt);await page.getByTestId('ahp-send').click();
   await page.getByTestId('ahp-permission').waitFor();
-  assert.deepEqual(JSON.parse(await page.getByTestId('ahp-tool').locator('pre').innerText()),{method:'GET',url:'https://api.example.com/items'});
+  assert.deepEqual(JSON.parse(await page.getByTestId('ahp-tool').locator('pre').innerText()),f.recipe?{recipe:'check',params:{item:'approved'}}:{method:'GET',url:'https://api.example.com/items'});
   await page.getByTestId('ahp-tool-approve').click();
   await page.getByTestId('ahp-permission').waitFor({state:'detached'});
   await page.getByTestId('ahp-cancel-turn').waitFor({state:'detached'});
-  await page.getByTestId('ahp-transcript').locator('.ahp-text').filter({hasText:/reply:[\s\S]*Use local scoped HTTP from Chromium/}).waitFor();
+  await page.getByTestId('ahp-transcript').locator('.ahp-text').filter({hasText:/^reply:/}).filter({hasText:prompt}).waitFor();
   for(const secret of ['local-runtime-private-value','scoped-secret:','DUNLIN_MCP_TOKEN'])assert.ok(!(await page.locator('body').innerText()).includes(secret));
   const desktop=(await page.screenshot({fullPage:true})).toString('base64');
   await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   const mobile=(await page.screenshot({fullPage:true})).toString('base64');
   assert.deepEqual(errors,[]);await context.close();
-  process.stdout.write(JSON.stringify({status:'passed',session:accepted.session,desktop,mobile,retentionDesktop,retentionMobile})+'\n');
+  process.stdout.write(JSON.stringify({status:'passed',session:accepted.session,desktop,mobile,retentionDesktop,retentionMobile,grantDesktop,grantMobile,...(f.recipe?{builderDesktop,builderMobile}:{})})+'\n');
 } catch(e) {if(page)console.error('Visible UI:',(await page.locator('body').innerText()).slice(0,6000));throw e;}
 finally {await browser.close();}

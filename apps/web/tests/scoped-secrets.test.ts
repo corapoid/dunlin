@@ -49,3 +49,25 @@ test('retention exposes bounded counts only and cleanup is one explicit revision
   for(const changed of [{...counts,reference:'private'},{...counts,deleted_history:513},{...counts,pending_writes:4},{...counts,deleting:2},{...counts,eligible:-1}])await assert.rejects(client(async()=>json(changed)).retention('work.api'));
   let writes=0;await assert.rejects(client(async()=>{writes++;throw new Error('lost private receipt');}).cleanup({credential:'work.api',revision:4,state:'active'}));assert.equal(writes,1);
 });
+
+test('scoped tool catalog pins the requested tool kind and preserves unsupported capability',async()=>{
+  const {secretProviders}=await import('../src/lib/scoped-secrets.ts');
+  const digest='b'.repeat(64);const requests:string[]=[];
+  const c=client(async(url)=>{requests.push(String(url));return json({provider_prefix:'dunlin-secret-',tool:{name:String(url).includes('?kind=recipe')?'recipe':'http'},definition_digest:digest,execution_supported:!String(url).includes('?kind=recipe')});});
+  assert.deepEqual(await c.tool('api'),{provider_id:'dunlin-secret-api',name:'http',definition_digest:digest});
+  assert.deepEqual(await c.catalog('recipe'),{kind:'recipe',definition_digest:digest,execution_supported:false});
+  assert.deepEqual(await c.tool('cli',undefined,'recipe'),{provider_id:'dunlin-secret-cli',name:'recipe',definition_digest:digest});
+  assert.equal(requests[0],'/v1/web/workspaces/workspace/projects/project/hosts/host/scoped-secret-tool');
+  assert.ok(requests.slice(1).every(url=>url.endsWith('/scoped-secret-tool?kind=recipe')));
+  // A profile can share one credential between HTTP and CLI. It must have one
+  // grant selection, with write required even when HTTP was pinned first.
+  const pins=[{provider_id:'dunlin-secret-api',name:'http',definition_digest:digest},{provider_id:'dunlin-secret-api',name:'recipe',definition_digest:digest},{provider_id:'dunlin-secret-other',name:'http',definition_digest:digest},{provider_id:'external',name:'recipe',definition_digest:digest}];
+  assert.deepEqual(secretProviders(pins),[{provider_id:'dunlin-secret-api',requires_write:true,label:'HTTP + receptury CLI'},{provider_id:'dunlin-secret-other',requires_write:false,label:'HTTP'}]);
+  assert.deepEqual(secretProviders([...pins].reverse()).find(p=>p.provider_id==='dunlin-secret-api'),secretProviders(pins)[0]);
+});
+test('recipe catalog rejects a substituted HTTP pin or missing capability instead of silently falling back',async()=>{
+  const valid={provider_prefix:'dunlin-secret-',tool:{name:'recipe'},definition_digest:'a'.repeat(64),execution_supported:true};
+  for(const value of [{...valid,tool:{name:'http'}},{...valid,definition_digest:'bad'},{...valid,provider_prefix:'other-'},{...valid,execution_supported:undefined},{...valid,execution_supported:'true'}]) {
+    let calls=0;await assert.rejects(client(async()=>{calls++;return json(value);}).catalog('recipe'));assert.equal(calls,1);
+  }
+});

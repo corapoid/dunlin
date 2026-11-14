@@ -87,7 +87,7 @@ try {
     await page.getByLabel('Instrukcje umiejętności',{exact:true}).fill('literal-skill');
     await page.getByLabel('Limit czasu (sekundy)',{exact:true}).fill('60');
     await page.getByLabel('Limit wyjścia (bajty)',{exact:true}).fill('65536');
-    await page.getByText('Dodaj dostęp HTTP z poświadczeniem',{exact:true}).click();
+    await page.getByText('Dodaj narzędzie z poświadczeniem',{exact:true}).click();
     await page.getByTestId('scoped-tool-host').selectOption(fixture.host);
     await page.getByTestId('scoped-tool-slot').fill('browser');
     await page.getByTestId('scoped-tool-add').click();

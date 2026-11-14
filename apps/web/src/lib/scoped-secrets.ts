@@ -4,8 +4,19 @@ export type ProfileRef = Readonly<{agent_id:string;version:number;digest:string}
 export type SecretStatus = Readonly<{credential:string;revision:number;state:'installing'|'active'|'disabled'}>;
 export type SecretGrant = Readonly<{id:string;credential:string;principal_kind:'human'|'service';principal_id:string;profile:ProfileRef;provider_id:string;revision:number;active:boolean;credential_revision:number;read_only:boolean}>;
 export type GrantInput = Readonly<{expected_revision:number;credential_revision:number;principal_kind:'human';principal_id:string;profile:ProfileRef;provider_id:string;read_only:boolean}>;
+export type SecretToolKind='http'|'recipe';
+export type SecretToolCatalog=Readonly<{kind:SecretToolKind;definition_digest:string;execution_supported:boolean}>;
 export const SECRET_PREFIX='dunlin-secret-';
 export const isSecretProvider=(value:string)=>/^dunlin-secret-[A-Za-z0-9_-]+$/.test(value)&&value.length<=64;
+/** One grant covers all pinned tools of a provider; CLI always requires write access. */
+export function secretProviders(pins:readonly AgentMcpTool[]) {
+  const grouped=new Map<string,Set<SecretToolKind>>();
+  for(const pin of pins) {
+    if(!isSecretProvider(pin.provider_id)||(pin.name!=='http'&&pin.name!=='recipe'))continue;
+    const kinds=grouped.get(pin.provider_id)??new Set<SecretToolKind>();kinds.add(pin.name);grouped.set(pin.provider_id,kinds);
+  }
+  return [...grouped].map(([provider_id,kinds])=>({provider_id,requires_write:kinds.has('recipe'),label:[kinds.has('http')?'HTTP':'',kinds.has('recipe')?'receptury CLI':''].filter(Boolean).join(' + ')}));
+}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_.:-]{1,128}$/.test(v)&&v!=='.'&&v!=='..';
 const pathId=(v:string)=>/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -60,10 +71,15 @@ export class ScopedSecretsClient {
   }
   private credential(value:string) {if(!id(value))invalid();return `/scoped-secrets/${encodeURIComponent(value)}`;}
   async statuses(signal?:AbortSignal) {const v=await this.request('/scoped-secrets',signal);if(!object(v)||!exact(v,['credentials','execution_supported'])||typeof v.execution_supported!=='boolean')return invalid();return {credentials:rows(v.credentials,128,decodeSecretStatus,r=>r.credential),execution_supported:v.execution_supported};}
-  async tool(slot:string,signal?:AbortSignal):Promise<AgentMcpTool> {
-    if(!isSecretProvider(SECRET_PREFIX+slot))invalid();const v=await this.request('/scoped-secret-tool',signal);
-    if(!object(v)||v.provider_prefix!==SECRET_PREFIX||!object(v.tool)||v.tool.name!=='http'||typeof v.definition_digest!=='string'||!/^[a-f0-9]{64}$/.test(v.definition_digest))return invalid();
-    return {provider_id:SECRET_PREFIX+slot,name:'http',definition_digest:v.definition_digest};
+  async catalog(kind:SecretToolKind='http',signal?:AbortSignal):Promise<SecretToolCatalog> {
+    if(kind!=='http'&&kind!=='recipe')return invalid();
+    const v=await this.request('/scoped-secret-tool'+(kind==='recipe'?'?kind=recipe':''),signal);
+    if(!object(v)||v.provider_prefix!==SECRET_PREFIX||!object(v.tool)||v.tool.name!==kind||typeof v.definition_digest!=='string'||!/^[a-f0-9]{64}$/.test(v.definition_digest)||typeof v.execution_supported!=='boolean')return invalid();
+    return {kind,definition_digest:v.definition_digest,execution_supported:v.execution_supported};
+  }
+  async tool(slot:string,signal?:AbortSignal,kind:SecretToolKind='http'):Promise<AgentMcpTool> {
+    if(!isSecretProvider(SECRET_PREFIX+slot))invalid();const v=await this.catalog(kind,signal);
+    return {provider_id:SECRET_PREFIX+slot,name:v.kind,definition_digest:v.definition_digest};
   }
   async grants(credential:string,signal?:AbortSignal) {const v=await this.request(this.credential(credential)+'/grants',signal);if(!object(v)||!exact(v,['grants']))return invalid();const result=rows(v.grants,256,decodeSecretGrant,r=>r.id);if(result.some(g=>g.credential!==credential))return invalid();return result;}
   async available(profile:ProfileRef,signal?:AbortSignal) {

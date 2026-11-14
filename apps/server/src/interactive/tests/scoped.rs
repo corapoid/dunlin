@@ -87,6 +87,7 @@ struct ScopedFixture {
     native: String,
     profile: ProfileRef,
     recipe_program: Option<std::path::PathBuf>,
+    policy: dunlin_domain::vault::SecretPolicy,
 }
 impl ScopedFixture {
     async fn new() -> Self {
@@ -187,7 +188,7 @@ impl ScopedFixture {
                 crate::scoped_secrets::Install {
                     credential: "local-api".into(),
                     expected_revision: 0,
-                    policy,
+                    policy: policy.clone(),
                     value: Zeroizing::new(VALUE.into()),
                 },
             )
@@ -256,6 +257,7 @@ impl ScopedFixture {
             native,
             profile,
             recipe_program,
+            policy,
         }
     }
     async fn approve(&self) {
@@ -457,6 +459,9 @@ async fn production_browser_acceptance_runtime_local_scoped_recipe_complete() {
     assert_eq!(f.executor.calls.load(Ordering::Acquire), 0);
     f.assert_private();
     stop(&f.f, &f.session).await;
+    if std::env::var("DUNLIN_REMOTE_SESSION_BROWSER").as_deref() == Ok("1") {
+        browser(f).await;
+    }
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires production proxy and Linux bubblewrap"]
@@ -541,7 +546,8 @@ async fn browser(mut f: ScopedFixture) {
             .create_pairing_code(&f.f.auth.user.id, 600)
             .unwrap()
             .0;
-    let input = json!({"origin":origin,"ownerCode":code,"workspace":f.f.workspace,"project":f.f.project,"profile":f.profile});
+    let recipe = f.recipe_program.is_some();
+    let input = json!({"origin":origin,"ownerCode":code,"workspace":f.f.workspace,"project":f.f.project,"profile":f.profile,"recipe":recipe,"policy":f.policy});
     let mut child = tokio::process::Command::new("node")
         .arg(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -571,9 +577,21 @@ async fn browser(mut f: ScopedFixture) {
     );
     let result: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(result["status"], "passed");
-    for name in ["desktop", "mobile", "retentionDesktop", "retentionMobile"] {
+    let kind = if recipe { "recipe" } else { "http" };
+    let mut images = vec![
+        "desktop",
+        "mobile",
+        "retentionDesktop",
+        "retentionMobile",
+        "grantDesktop",
+        "grantMobile",
+    ];
+    if recipe {
+        images.extend(["builderDesktop", "builderMobile"]);
+    }
+    for name in images {
         println!(
-            "LOCAL_SCOPED_UI_IMAGE_{name} {}",
+            "LOCAL_SCOPED_UI_IMAGE_{kind}_{name} {}",
             result[name].as_str().unwrap()
         );
     }
@@ -590,7 +608,16 @@ async fn browser(mut f: ScopedFixture) {
     };
     until(&f.f, || profiles::completed(&f.f, &session, 1)).await;
     assert_eq!(f.secrets.reads.load(Ordering::Acquire), 2);
-    assert_eq!(f.executor.calls.load(Ordering::Acquire), 2);
+    assert_eq!(
+        f.executor.calls.load(Ordering::Acquire),
+        if recipe { 0 } else { 2 }
+    );
+    if recipe {
+        assert_eq!(
+            std::fs::read_to_string(f.f.dir.path().join("checkout/recipe-effect")).unwrap(),
+            "approved\napproved\n"
+        );
+    }
     assert_eq!(f.secrets.deletes.load(Ordering::Acquire), 1);
     f.session = session;
     f.assert_private();
