@@ -4,6 +4,7 @@ use dunlin_session_runtime::SessionPhase;
 mod admission;
 mod checkout;
 mod profiles;
+mod scoped;
 mod targets;
 struct Fixture {
     state: AppState,

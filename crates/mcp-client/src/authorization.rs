@@ -19,6 +19,20 @@ impl DispatchGuard {
             denied: Arc::new(AtomicBool::new(false)),
         }
     }
+    pub(crate) fn watch(
+        &self,
+        agent: &dunlin_http::Agent,
+    ) -> Result<dunlin_http::Cancellation, Error> {
+        self.check()?;
+        let guard = self.clone();
+        agent.watch(move || guard.check().is_ok()).map_err(|_| {
+            if self.denied.load(Ordering::Acquire) {
+                Error::Unauthorized
+            } else {
+                Error::Transport
+            }
+        })
+    }
     pub(crate) fn check(&self) -> Result<(), Error> {
         if self.denied.load(Ordering::Acquire) || !(self.check)() {
             self.denied.store(true, Ordering::Release);

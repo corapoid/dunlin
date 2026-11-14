@@ -1,0 +1,75 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    }
+  },
+  "runs": {
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "log_sha256": "3eaacbca50e9befc1181379e282d1bc18f7c93c6a6543460dcb8829beb6fd491"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "log_sha256": "45dc97ad55633ccd553700f6f2e1b4215ea389be28d32984593951b9e6b00977"
+    },
+    "runtime-remote-final.log": {
+      "exit_code": 0,
+      "source_sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "log_sha256": "bc60adbe6982729ce7fd5771f99277afcd2de8dc24722dd0317ccca69a58fde2"
+    },
+    "runtime-local-final.log": {
+      "exit_code": 0,
+      "source_sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "log_sha256": "4b672e0bef2a6ccc056834303c2817bf6dd088ecbbd7cd2de065ca36a3d05751"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "d5203238291d4562a048c0d8dceebed2af149b654332d8f1e341cda7f23ffd7f",
+      "log_sha256": "5a1574ae659dd53a589828d4d44a51c0f669c247c2f86990c353f99a0d33298c"
+    }
+  },
+  "results": {
+    "backend_passed": 908,
+    "backend_acceptance_ignored": 61,
+    "mcp_http_vault_passed": 183,
+    "compile_fail_passed": 3,
+    "runtime_remote_browser_passed": 27,
+    "runtime_local_browser_passed": 3
+  },
+  "frontend_reused": {
+    "proof": "frontend-unchanged.json",
+    "sha256": "cb92fc5e79854871dc69db01167cb716dbc48c07e3c4960166d5d1094b6c74b8",
+    "baseline": "../2026-11-14-scoped-retention/verified-source.json"
+  },
+  "local_checks": "local-results.json",
+  "local_checks_sha256": "37c5b306cf002a5e21a4f2b65a0ef246a9985bbffa166d8cb9d71e6bb3152b4f",
+  "diagnostics": {
+    "mcp-first.log": {
+      "exit_code": 101,
+      "reason": "Tests passed; Clippy collapsible_if corrected."
+    },
+    "runtime-remote-first.log": {
+      "exit_code": 1,
+      "reason": "Fixture referenced undeclared dependency; corrected via vault public re-export."
+    }
+  },
+  "limitations": [
+    "DNS/connect in progress are bounded by timeouts; shutdown prevents use of late sockets.",
+    "Already accepted remote effects cannot be undone.",
+    "Remaining OAuth AS flows and recipes/service workflows are open.",
+    "Controlled fixtures; no real accounts, keyring or tailnet acceptance.",
+    "E5.3 and remaining E5-E10 are open."
+  ]
+}

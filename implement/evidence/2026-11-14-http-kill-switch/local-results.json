@@ -1,0 +1,59 @@
+{
+  "rust_files": [
+    "apps/server/src/api.rs",
+    "apps/server/src/api/web/scoped_secrets.rs",
+    "apps/server/src/api/web/tests/scoped_secrets.rs",
+    "apps/server/src/interactive/mcp/runtime/scoped/tests.rs",
+    "apps/server/src/interactive/tests.rs",
+    "apps/server/src/interactive/tests/profiles.rs",
+    "apps/server/src/interactive/tests/scoped.rs",
+    "apps/server/src/scoped_secrets.rs",
+    "apps/server/src/store.rs",
+    "apps/server/src/store/scoped_secrets.rs",
+    "apps/server/src/store/scoped_secrets/local.rs",
+    "apps/server/src/store/scoped_secrets/retention.rs",
+    "apps/server/src/store/scoped_secrets/retention/tests.rs",
+    "apps/server/src/worker_fixture/session_vertical/scoped_http.rs",
+    "crates/http/src/cancel.rs",
+    "crates/http/src/cancel/tests.rs",
+    "crates/http/src/lib.rs",
+    "crates/mcp-client/src/authorization.rs",
+    "crates/mcp-client/src/cancellation_tests.rs",
+    "crates/mcp-client/src/lib.rs",
+    "crates/mcp-client/src/negotiated.rs",
+    "crates/mcp-client/src/tests.rs",
+    "crates/vault/src/access.rs",
+    "crates/vault/src/broker.rs",
+    "crates/vault/src/http.rs",
+    "crates/vault/src/http/cancellation_tests.rs",
+    "crates/vault/src/scoped.rs",
+    "crates/vault/src/scoped/cleanup.rs"
+  ],
+  "checks": [
+    {
+      "check": "rustfmt",
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "check": "docs",
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation.\n"
+    },
+    {
+      "check": "diff",
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "check": "node-syntax",
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "check": "python-ast",
+      "exit_code": 0,
+      "files": 3
+    }
+  ]
+}

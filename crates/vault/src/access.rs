@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct LiveAccess(Arc<State>);
@@ -40,6 +40,11 @@ impl LiveAccess {
 
     pub fn revoke(&self) {
         self.0.denied.store(true, Ordering::Release);
+    }
+
+    /// Remaining I/O budget, never a substitute for `allowed`.
+    pub fn remaining(&self) -> Duration {
+        self.0.deadline.saturating_duration_since(Instant::now())
     }
 }
 

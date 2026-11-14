@@ -120,6 +120,7 @@ pub struct Client<'a> {
     endpoint: String,
     bearer: &'a str,
     agent: Agent,
+    _cancellation: Option<dunlin_http::Cancellation>,
     session: Option<String>,
     version: String,
     next_id: u64,
@@ -162,15 +163,21 @@ impl<'a> Client<'a> {
     ) -> Result<Self, Error> {
         validate_endpoint(endpoint)?;
         validate_credential(bearer)?;
+        let agent = AgentBuilder::new()
+            .try_proxy_from_env(false)
+            .redirects(0)
+            .build();
+        let cancellation = guard
+            .as_ref()
+            .map(|guard| guard.watch(&agent))
+            .transpose()?;
         let mut client = Self {
             catalog: Default::default(),
             guard,
             endpoint: endpoint.into(),
             bearer,
-            agent: AgentBuilder::new()
-                .try_proxy_from_env(false)
-                .redirects(0)
-                .build(),
+            agent,
+            _cancellation: cancellation,
             session: None,
             version: VERSION.into(),
             next_id: 1,
@@ -219,7 +226,9 @@ impl<'a> Client<'a> {
         if let Some(session) = &self.session {
             request = request.set("Mcp-Session-Id", session);
         }
-        let response = request.send_bytes(&bytes).map_err(|error| match error {
+        let response = request.send_bytes(&bytes);
+        authorize(self.guard.as_ref())?;
+        let response = response.map_err(|error| match error {
             dunlin_http::Error::Status(401 | 403, _) => Error::Unauthorized,
             dunlin_http::Error::Status(404, _) if self.session.is_some() => Error::SessionExpired,
             dunlin_http::Error::Status(status, _) => Error::Http(status),
@@ -248,9 +257,9 @@ impl<'a> Client<'a> {
             }
             self.session = Some(session.into());
         }
-        let result = decode_response(response, id)?;
+        let result = decode_response(response, id);
         authorize(self.guard.as_ref())?;
-        Ok(result)
+        result
     }
 
     pub fn tools(&mut self) -> Result<Vec<Tool>, Error> {
@@ -345,6 +354,12 @@ impl<'a> Client<'a> {
     }
 
     pub fn close(&mut self) -> Result<(), Error> {
+        let result = self.close_inner();
+        self.agent.shutdown();
+        self._cancellation.take();
+        result
+    }
+    fn close_inner(&mut self) -> Result<(), Error> {
         self.initialized = false;
         let Some(session) = self.session.take() else {
             return Ok(());
@@ -364,6 +379,12 @@ impl<'a> Client<'a> {
             Err(dunlin_http::Error::Status(404 | 405, _)) => Ok(()),
             _ => Err(Error::Transport),
         }
+    }
+}
+
+impl Drop for Client<'_> {
+    fn drop(&mut self) {
+        self.agent.shutdown();
     }
 }
 
@@ -462,3 +483,6 @@ fn decode_response(response: Response, id: u64) -> Result<Value, Error> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cancellation_tests;

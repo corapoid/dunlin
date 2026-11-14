@@ -299,6 +299,10 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   platform pozostają E10; ogólne scoped secrets i Builder/A2A w E5.3–E5.5.
   Aktualny zakres: [mcp-client.md](mcp-client.md), wyniki w [progress.md](progress.md).
 - [ ] E5.3 Katalog narzędzi MCP, allowlisty, scoped secrets i kill switch.
+  Przerywanie guarded HTTP/MCP/JSON/SSE po utracie uprawnień wdrożone;
+  backend908, biblioteki183+3, runtime remote27/local3 z Chromium i Clippy PASS.
+  [Manifest odbioru](evidence/2026-11-14-http-kill-switch/verified-source.json).
+  Pozostałe AS oraz recipes/service workflow nadal otwarte.
   Dziennik runtime ma oddzielne jednorazowe zgody MCP z przypięciem całego
   wywołania, blokadą replay i hostową przestrzenią tool IDs chronioną przed ACP.
   SDK zgód ma74 testy PASS. Schema2 profilu przechowuje dokładne allowlisty
@@ -324,8 +328,14 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   frontend163, backend896, TypeScript/build/Clippy PASS. Nowy profil i grant
   utworzone w UI są użyte w tej samej ścieżce; obsłużono utracony receipt zapisu.
   Schema50 dodaje lokalne powiązanie credential i grantów; ponowny backend901
-  PASS obejmuje5 nowych testów tego magazynu. Pełny odbiór lokalnego runtime
-  i kill switch/retencja pozostają otwarte. API deklaruje skonfigurowany
+  PASS obejmuje5 nowych testów tego magazynu. Lokalny runtime/proxy i Chromium
+  mają osobny odbiór3 PASS: wykonanie, native revoke po odczycie i binding revoke
+  podczas HTTP. Migracja51 i UI retencji odzyskują limit przez potwierdzone
+  delete starych kopert, zachowują niepewne write i ograniczają bezpieczną
+  historię do512 wpisów/workspace. Odbiór backend908, MCP176+3, frontend164
+  i Chromium+runtime3 PASS. Realny keyring/HTTP i pełny kill switch oraz
+  recipes/service workflow pozostają otwarte.
+  API deklaruje skonfigurowany
   interfejs human sessions; to nie jest authority wykonania.
   Wspólny rdzeń ma hostowy adapter authority i testy niezmienności pinów oraz
   zachowania pojemności po anulowaniu waitera. Proponowany kontrakt v5 wiąże

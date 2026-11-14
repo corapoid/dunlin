@@ -48,6 +48,16 @@ struct Executor {
     hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 impl HttpExecutor for Executor {
+    fn execute_guarded(
+        &self,
+        plan: &HttpPlan,
+        access: &dunlin_vault::access::LiveAccess,
+    ) -> std::result::Result<HttpOutput, String> {
+        if !access.allowed() {
+            return Err("fixture authority denied".into());
+        }
+        self.execute(plan)
+    }
     fn execute(&self, plan: &HttpPlan) -> std::result::Result<HttpOutput, String> {
         assert!(
             plan.headers

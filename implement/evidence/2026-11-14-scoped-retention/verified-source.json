@@ -1,0 +1,132 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "570badd371a35dcaf3f03fee9be238a44a46fe91fce68956176d0d23aaec063b",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    },
+    "frontend": {
+      "sha256": "11b651250fc42e811f1d7c4ccafa74d2837e887defeb26e4b4e80eeff8ca3e49",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog"
+      ]
+    },
+    "typecheck": {
+      "sha256": "8c995222593c3a2f7fe855d83df1ec371d683b562d23a2863ed2b986e5365527",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts"
+      ]
+    },
+    "build": {
+      "sha256": "c1d7ad410b018d7c27e0a623b6e902cfe8ada07436848ac9978022dd47239101",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/index.html",
+        "apps/web/postcss.config.mjs",
+        "apps/web/REUI-LICENSE.txt"
+      ]
+    }
+  },
+  "runs": {
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "570badd371a35dcaf3f03fee9be238a44a46fe91fce68956176d0d23aaec063b",
+      "log_sha256": "d1f6a6dca37265faeb4d3fdb12ac0430f7f85545cc65b646de86723ed0391626"
+    },
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "570badd371a35dcaf3f03fee9be238a44a46fe91fce68956176d0d23aaec063b",
+      "log_sha256": "30df000e4c6f55fa2c4a964a0dc3aa1ac615b5a3f211a83e6d173d448e638198"
+    },
+    "browser-final.log": {
+      "exit_code": 0,
+      "source_sha256": "570badd371a35dcaf3f03fee9be238a44a46fe91fce68956176d0d23aaec063b",
+      "log_sha256": "88ce041dd7d71293f3bb223794da649d51397d96fce26786d86f66abe7dcdeec"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "570badd371a35dcaf3f03fee9be238a44a46fe91fce68956176d0d23aaec063b",
+      "log_sha256": "708246b0374044366e42ee4fee5d9c6716b8ecfe5d1afe6713d4181fc43fae84"
+    },
+    "frontend-final.log": {
+      "exit_code": 0,
+      "source_sha256": "11b651250fc42e811f1d7c4ccafa74d2837e887defeb26e4b4e80eeff8ca3e49",
+      "log_sha256": "bbebbb2b9e38e7e278f9688ca909335e2a0a5547e9f154839d9d708a6c17d135"
+    },
+    "typecheck-final.log": {
+      "exit_code": 0,
+      "source_sha256": "8c995222593c3a2f7fe855d83df1ec371d683b562d23a2863ed2b986e5365527",
+      "log_sha256": "21cf3b8472e13bf46101c25943ad1c570be2f0972cfc5180f1410a24eda0e391"
+    },
+    "build-final.log": {
+      "exit_code": 0,
+      "source_sha256": "c1d7ad410b018d7c27e0a623b6e902cfe8ada07436848ac9978022dd47239101",
+      "log_sha256": "9a9735793cba393fe5abb2c5eff7f1c7d5ae8062b2dfb4c02f8774012de8b141"
+    }
+  },
+  "results": {
+    "backend_passed": 908,
+    "relay_passed": 763,
+    "backend_acceptance_ignored": 61,
+    "mcp_http_vault_passed": 176,
+    "compile_fail_passed": 3,
+    "runtime_browser_passed": 3,
+    "frontend_passed": 164
+  },
+  "images": {
+    "desktop.png": {
+      "sha256": "a3bf69f0c15516c037a8ae24546ab6ecb3199c105f3d10c3b3a405cf44456e2e",
+      "visually_inspected": false
+    },
+    "mobile.png": {
+      "sha256": "6d9ea89e1dc1b2ce047b856cf24e700d90fdcd4cced8285a60682b608942f8a9",
+      "visually_inspected": false
+    },
+    "retentionDesktop.png": {
+      "sha256": "74a095ee4746eb5476beb1ce87bad9d00b88ba4dc0e3345c293165f978177294",
+      "visually_inspected": true
+    },
+    "retentionMobile.png": {
+      "sha256": "a963456ae67a278c92d4229e2c9c05260d01d4818c788d68e2cae4480f4f1a36",
+      "visually_inspected": true
+    }
+  },
+  "local_checks": "local-results.json",
+  "local_checks_sha256": "f5d3300355a03cec023e1b4d48992f6787fbb0b3975ae52963a476108f6d98ab",
+  "diagnostics": {
+    "server-first.log": {
+      "exit_code": 101,
+      "reason": "Migration constant visibility and rusqlite u64 conversion; corrected."
+    },
+    "server-second-stopped.log": {
+      "exit_code": 130,
+      "reason": "Intentionally interrupted own launcher to replace the snapshot after identifying a logout-fixture cookie-header/token bug; not a test result."
+    }
+  },
+  "limitations": [
+    "Keyring and HTTP are controlled substitutes; no real account, external service, keyring or tailnet acceptance.",
+    "Unacknowledged writes remain retained and count against capacity.",
+    "Local deletion does not revoke the key at its provider.",
+    "Full transport kill switch, recipes/service workflows and remaining E5-E10 are open."
+  ]
+}

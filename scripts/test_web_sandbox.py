@@ -55,7 +55,7 @@ def runtime_browser_enabled(args):
     if enabled and (args.suite != "runtime" or getattr(args, "rust_test", None) not in {
         None, "production_browser_acceptance_runtime_remote_session_journal",
         "production_browser_acceptance_runtime_remote_mcp_product_pipeline",
-        "production_browser_acceptance_runtime_remote_scoped_http",
+        "production_browser_acceptance_runtime_remote_scoped_http", "production_browser_acceptance_runtime_local_scoped_http",
         "production_browser_acceptance_runtime_remote_mcp_product_urls",
         "production_browser_acceptance_runtime_mcp_oauth_revocation",
         "production_browser_acceptance_runtime_remote_",

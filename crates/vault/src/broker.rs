@@ -180,7 +180,13 @@ impl<'a> Broker<'a> {
             } => {
                 self.check_use(access, &secret, &policy, false)?;
                 dispatched = true;
-                let result = http::refresh_oauth(self.http, token_url, client_id, value.as_str());
+                let result = http::refresh_oauth_with_access(
+                    self.http,
+                    token_url,
+                    client_id,
+                    value.as_str(),
+                    access,
+                );
                 self.check_use(access, &secret, &policy, true)?;
                 match result {
                     Ok(token) => token,
@@ -215,7 +221,10 @@ impl<'a> Broker<'a> {
         )
         .then_some(injection_value.as_str());
         self.check_use(access, &secret, &policy, dispatched)?;
-        let result = self.http.execute(&plan);
+        let result = match access {
+            Some(access) => self.http.execute_guarded(&plan, access),
+            None => self.http.execute(&plan),
+        };
         self.check_use(access, &secret, &policy, true)?;
         let mut output = match result {
             Ok(output) => output,
@@ -658,6 +667,16 @@ mod tests {
     }
 
     impl HttpExecutor for FakeHttp {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, plan: &HttpPlan) -> Result<HttpOutput, String> {
             *self.plan.lock().unwrap() = Some(plan.clone());
             Ok(HttpOutput {
@@ -686,6 +705,16 @@ mod tests {
 
     struct AlwaysFailHttp;
     impl HttpExecutor for AlwaysFailHttp {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, _plan: &HttpPlan) -> Result<HttpOutput, String> {
             Err("fixture failed".into())
         }
@@ -876,6 +905,16 @@ mod tests {
         fail: bool,
     }
     impl HttpExecutor for RevokeHttp {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, _: &HttpPlan) -> Result<HttpOutput, String> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             self.granted.store(false, Ordering::Release);
@@ -995,6 +1034,16 @@ mod tests {
 
     struct PolicyChangingHttp<'a>(&'a CountingStore, &'a Secret, &'a SecretPolicy);
     impl HttpExecutor for PolicyChangingHttp<'_> {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, _: &HttpPlan) -> Result<HttpOutput, String> {
             let mut policy = self.2.clone();
             policy.project_ids.clear();

@@ -129,7 +129,7 @@ DROP TABLE temp._scoped_grants_v49;DROP TABLE temp._scoped_references_v49;DROP T
 pub(super) fn fixture_v49(store: &Store) -> rusqlite::Result<()> {
     let tx = store.connection.unchecked_transaction()?;
     tx.execute_batch("CREATE TEMP TABLE _c50 AS SELECT workspace,project,host,credential,revision,state,active_reference,staged_reference,updated_at,last_disable FROM scoped_credentials;
-CREATE TEMP TABLE _r50 AS SELECT * FROM scoped_secret_references;CREATE TEMP TABLE _g50 AS SELECT * FROM scoped_secret_grants;
+CREATE TEMP TABLE _r50 AS SELECT reference,workspace,project,host,credential,revision,sha256,writer_user,writer_device,browser_hash,membership_revision,grant_revision,host_revision,write_ack,activated,created_at FROM scoped_secret_references;CREATE TEMP TABLE _g50 AS SELECT * FROM scoped_secret_grants;
 DROP TABLE scoped_secret_grants;DROP TABLE scoped_secret_references;DROP TABLE scoped_credentials;")?;
     create_v48(&tx)?;
     tx.execute_batch(grants::SCHEMA)?;

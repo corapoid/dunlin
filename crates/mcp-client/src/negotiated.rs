@@ -37,6 +37,7 @@ struct Modern<'a> {
     endpoint: String,
     bearer: &'a str,
     agent: Agent,
+    _cancellation: Option<dunlin_http::Cancellation>,
     started: Instant,
     next_id: u64,
     discovery: Value,
@@ -51,6 +52,7 @@ struct Modern<'a> {
 impl Drop for Modern<'_> {
     fn drop(&mut self) {
         self.signals.cancel();
+        self.agent.shutdown();
     }
 }
 
@@ -100,21 +102,34 @@ impl<'a> Client<'a> {
         crate::validate_endpoint(endpoint)?;
         crate::validate_credential(bearer)?;
         let started = Instant::now();
+        let agent = AgentBuilder::new()
+            .try_proxy_from_env(false)
+            .redirects(0)
+            .build();
+        crate::authorize(guard.as_ref())?;
+        let signals = Arc::<subscriptions::Signals>::default();
+        let checked_signals = signals.clone();
+        let checked_guard = guard.clone();
+        let cancellation = Some(
+            agent
+                .watch(move || {
+                    !checked_signals.cancelled() && crate::authorize(checked_guard.as_ref()).is_ok()
+                })
+                .map_err(|_| Error::Transport)?,
+        );
         let mut modern = Modern {
             guard: guard.clone(),
             endpoint: endpoint.into(),
             bearer,
-            agent: AgentBuilder::new()
-                .try_proxy_from_env(false)
-                .redirects(0)
-                .build(),
+            agent,
+            _cancellation: cancellation,
             started,
             next_id: 2,
             discovery: Value::Null,
             catalog: HashMap::new(),
             input_support,
             identity: Arc::default(),
-            signals: Arc::default(),
+            signals,
             catalog_epoch: 0,
             cache: cache::Cache::default(),
             unauthorized: false,
@@ -130,8 +145,9 @@ impl<'a> Client<'a> {
         let transport = match response.status() {
             200 => {
                 let received = Instant::now();
-                let discovery = crate::decode_response(response, 1)?;
+                let discovery = crate::decode_response(response, 1);
                 crate::authorize(modern.guard.as_ref())?;
+                let discovery = discovery?;
                 validate_discovery(&discovery)?;
                 if let Some(key) = cache::Key::new("server/discover", &json!({}))? {
                     modern.cache.put(
@@ -145,7 +161,9 @@ impl<'a> Client<'a> {
                 Transport::Modern(modern)
             }
             400 => {
-                let body = read_json(response)?;
+                let body = read_json(response);
+                crate::authorize(modern.guard.as_ref())?;
+                let body = body?;
                 if let Some(body) = body
                     && matches!(body["error"]["code"].as_i64(), Some(-32022..=-32020))
                 {
@@ -401,7 +419,12 @@ impl Modern<'_> {
         for (name, value) in &prepared.headers {
             request = request.set(name, value);
         }
-        let response = match request.send_bytes(&bytes) {
+        let response = request.send_bytes(&bytes);
+        crate::authorize(self.guard.as_ref())?;
+        if self.signals.cancelled() {
+            return Err(Error::Protocol);
+        }
+        let response = match response {
             Ok(response) => Ok(response),
             Err(dunlin_http::Error::Status(_, response)) => Ok(*response),
             Err(_) => Err(Error::Transport),
@@ -471,6 +494,7 @@ impl Modern<'_> {
             401 | 403 => Err(self.reject_auth()),
             status => Err(http_error(response, id, status)),
         };
+        crate::authorize(self.guard.as_ref())?;
         match result {
             Ok(value) => {
                 crate::authorize(self.guard.as_ref())?;

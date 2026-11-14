@@ -66,7 +66,7 @@ pub enum StoreError {
 
 pub type Result<T> = std::result::Result<T, StoreError>;
 
-pub(crate) const SCHEMA_VERSION: i64 = 50;
+pub(crate) const SCHEMA_VERSION: i64 = 51;
 
 const MAX_SESSIONS_PER_USER: i64 = 1000;
 
@@ -627,6 +627,12 @@ impl Store {
             let tx = self.connection.unchecked_transaction()?;
             scoped_secrets::migrate_local(&tx)?;
             tx.execute_batch("PRAGMA user_version=50;")?;
+            tx.commit()?;
+        }
+        if version < 51 {
+            let tx = self.connection.unchecked_transaction()?;
+            tx.execute_batch(scoped_secrets::RETENTION_MIGRATION)?;
+            tx.execute_batch("PRAGMA user_version=51;")?;
             tx.commit()?;
         }
         Ok(())

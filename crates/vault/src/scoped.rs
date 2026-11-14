@@ -13,7 +13,9 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 use zeroize::{Zeroize, Zeroizing};
 
+mod cleanup;
 pub mod tool;
+pub use cleanup::{CleanupClaim, CleanupJournal};
 
 const MAX_RECORD: usize = 65536;
 
@@ -459,7 +461,7 @@ impl<J: Journal> Credentials<J> {
             return Err(Error::Denied);
         }
         *dispatched = true;
-        let response = executor.execute(&plan);
+        let response = executor.execute_guarded(&plan, &permit.access);
         if !permit.access.allowed() {
             return Err(Error::OutcomeUnknown);
         }
@@ -617,6 +619,16 @@ mod tests {
         fail: bool,
     }
     impl HttpExecutor for TestHttp {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, plan: &HttpPlan) -> std::result::Result<HttpOutput, String> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             assert_eq!(
@@ -856,6 +868,16 @@ mod tests {
 
     struct ExpireHttp(Arc<AtomicI64>);
     impl HttpExecutor for ExpireHttp {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, _: &HttpPlan) -> std::result::Result<HttpOutput, String> {
             let expiry = self.0.load(Ordering::Acquire);
             assert!(

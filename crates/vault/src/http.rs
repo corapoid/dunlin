@@ -10,6 +10,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::Utc;
 use dunlin_domain::vault::{HttpMethod, Injection, Operation, SecretPolicy};
 use dunlin_http as ureq;
+pub use dunlin_http::Cancellation;
 use hmac::{Hmac, KeyInit, Mac};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,15 @@ impl Drop for HttpPlan {
 
 pub trait HttpExecutor: Send + Sync {
     fn execute(&self, plan: &HttpPlan) -> Result<HttpOutput, String>;
+    /// Implementors must actively interrupt blocking I/O on revocation. Merely
+    /// discarding the result afterwards is insufficient. Unsupported adapters deny.
+    fn execute_guarded(
+        &self,
+        _plan: &HttpPlan,
+        _access: &crate::access::LiveAccess,
+    ) -> std::result::Result<HttpOutput, String> {
+        Err("This HTTP executor does not support live cancellation".into())
+    }
 }
 
 /// Reject loopback, private, link-local and metadata addresses before connect.
@@ -478,6 +488,15 @@ pub fn refresh_oauth(
     client_id: &str,
     refresh_token: &str,
 ) -> Result<Zeroizing<String>, String> {
+    refresh_oauth_with_access(executor, token_url, client_id, refresh_token, None)
+}
+pub(crate) fn refresh_oauth_with_access(
+    executor: &dyn HttpExecutor,
+    token_url: &str,
+    client_id: &str,
+    refresh_token: &str,
+    access: Option<&crate::access::LiveAccess>,
+) -> Result<Zeroizing<String>, String> {
     let url = Url::parse(token_url).map_err(|_| "The OAuth token URL is invalid".to_string())?;
     if url.scheme() != "https"
         || !url.username().is_empty()
@@ -505,7 +524,10 @@ pub fn refresh_oauth(
         ],
         body: Some(body.into_bytes()),
     };
-    let output = executor.execute(&plan)?;
+    let output = match access {
+        Some(access) => executor.execute_guarded(&plan, access),
+        None => executor.execute(&plan),
+    }?;
     if !(200..300).contains(&output.status) {
         return Err(format!(
             "OAuth token refresh failed (HTTP {})",
@@ -651,79 +673,110 @@ impl UreqExecutor {
 
 impl HttpExecutor for UreqExecutor {
     fn execute(&self, plan: &HttpPlan) -> Result<HttpOutput, String> {
-        let mut request = self.agent.request(plan.method, &plan.url);
-        for (name, value) in &plan.headers {
-            request = request.set(name, value);
+        execute_agent(&self.agent, plan, None)
+    }
+    fn execute_guarded(
+        &self,
+        plan: &HttpPlan,
+        access: &crate::access::LiveAccess,
+    ) -> std::result::Result<HttpOutput, String> {
+        let agent = self.agent.isolated();
+        let live = access.clone();
+        let guard = agent.watch(move || live.allowed())?;
+        let remaining = access.remaining().min(Duration::from_secs(30));
+        if remaining.is_zero() || !access.allowed() {
+            return Err("HTTP authority was revoked".into());
         }
-        let result = match &plan.body {
-            Some(body) => request.send_bytes(body),
-            None => request.call(),
-        };
-        let response = match result {
-            Ok(response) => response,
-            Err(ureq::Error::Status(status, response)) => {
-                if (300..400).contains(&status) {
-                    return Err(
+        let result = execute_agent(&agent, plan, Some(remaining));
+        let allowed = guard.finish();
+        // Shutdown can look like EOF for a close-delimited response. Always
+        // discard that apparent success after a terminal cancellation.
+        if !allowed || !access.allowed() {
+            return Err("HTTP authority was revoked".into());
+        }
+        result
+    }
+}
+fn execute_agent(
+    agent: &ureq::Agent,
+    plan: &HttpPlan,
+    budget: Option<Duration>,
+) -> std::result::Result<HttpOutput, String> {
+    let mut request = agent.request(plan.method, &plan.url);
+    if let Some(budget) = budget {
+        request = request.timeout(budget);
+    }
+    for (name, value) in &plan.headers {
+        request = request.set(name, value);
+    }
+    let result = match &plan.body {
+        Some(body) => request.send_bytes(body),
+        None => request.call(),
+    };
+    let response = match result {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            if (300..400).contains(&status) {
+                return Err(
                         "The server attempted a redirect; Dunlin does not follow redirects with credentials"
                             .into(),
                     );
-                }
-                *response
             }
-            Err(ureq::Error::Transport(error)) => {
-                let reason = match error.kind() {
-                    ureq::ErrorKind::Dns => "DNS resolution failed",
-                    ureq::ErrorKind::ConnectionFailed => "the connection failed",
-                    ureq::ErrorKind::Io => "a network I/O error occurred",
-                    ureq::ErrorKind::InsecureRequestHttpsOnly => "the request was not HTTPS",
-                    ureq::ErrorKind::TooManyRedirects => "too many redirects",
-                    ureq::ErrorKind::InvalidUrl | ureq::ErrorKind::UnknownScheme => {
-                        "the URL was not supported"
-                    }
-                    _ => "the request failed",
-                };
-                // Do not copy ureq's transport error verbatim: it can contain
-                // the full URL, including query parameters.
-                return Err(format!("The request could not be completed: {reason}"));
-            }
-        };
-        let status = response.status();
-        let content_type = response.header("content-type").map(str::to_string);
-        let textual = content_type.as_deref().is_none_or(|value| {
-            let value = value.to_ascii_lowercase();
-            value.starts_with("text/")
-                || value.contains("json")
-                || value.contains("xml")
-                || value.contains("javascript")
-                || value.contains("x-www-form-urlencoded")
-                || value.contains("yaml")
-        });
-        let mut bytes = Vec::new();
-        response
-            .into_reader()
-            .take(MAX_RESPONSE_BODY as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "Could not read the response body".to_string())?;
-        let truncated = bytes.len() > MAX_RESPONSE_BODY;
-        if truncated {
-            bytes.truncate(MAX_RESPONSE_BODY);
+            *response
         }
-        let body = if textual {
-            String::from_utf8_lossy(&bytes).to_string()
-        } else {
-            format!(
-                "[binary response omitted: {} bytes{}]",
-                bytes.len(),
-                if truncated { ", truncated" } else { "" }
-            )
-        };
-        Ok(HttpOutput {
-            status,
-            content_type,
-            body,
-            truncated,
-        })
+        Err(ureq::Error::Transport(error)) => {
+            let reason = match error.kind() {
+                ureq::ErrorKind::Dns => "DNS resolution failed",
+                ureq::ErrorKind::ConnectionFailed => "the connection failed",
+                ureq::ErrorKind::Io => "a network I/O error occurred",
+                ureq::ErrorKind::InsecureRequestHttpsOnly => "the request was not HTTPS",
+                ureq::ErrorKind::TooManyRedirects => "too many redirects",
+                ureq::ErrorKind::InvalidUrl | ureq::ErrorKind::UnknownScheme => {
+                    "the URL was not supported"
+                }
+                _ => "the request failed",
+            };
+            // Do not copy ureq's transport error verbatim: it can contain
+            // the full URL, including query parameters.
+            return Err(format!("The request could not be completed: {reason}"));
+        }
+    };
+    let status = response.status();
+    let content_type = response.header("content-type").map(str::to_string);
+    let textual = content_type.as_deref().is_none_or(|value| {
+        let value = value.to_ascii_lowercase();
+        value.starts_with("text/")
+            || value.contains("json")
+            || value.contains("xml")
+            || value.contains("javascript")
+            || value.contains("x-www-form-urlencoded")
+            || value.contains("yaml")
+    });
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .take(MAX_RESPONSE_BODY as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read the response body".to_string())?;
+    let truncated = bytes.len() > MAX_RESPONSE_BODY;
+    if truncated {
+        bytes.truncate(MAX_RESPONSE_BODY);
     }
+    let body = if textual {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        format!(
+            "[binary response omitted: {} bytes{}]",
+            bytes.len(),
+            if truncated { ", truncated" } else { "" }
+        )
+    };
+    Ok(HttpOutput {
+        status,
+        content_type,
+        body,
+        truncated,
+    })
 }
 
 /// Replace the exact credential and common encodings in a response or error.
@@ -865,6 +918,16 @@ mod tests {
     }
 
     impl HttpExecutor for FakeExecutor {
+        fn execute_guarded(
+            &self,
+            plan: &HttpPlan,
+            access: &crate::access::LiveAccess,
+        ) -> std::result::Result<HttpOutput, String> {
+            if !access.allowed() {
+                return Err("fixture authority denied".into());
+            }
+            self.execute(plan)
+        }
         fn execute(&self, plan: &HttpPlan) -> Result<HttpOutput, String> {
             *self.seen.lock().unwrap() =
                 Some((plan.method.to_string(), plan.url.clone(), plan.body.clone()));
@@ -1099,3 +1162,6 @@ mod tests {
         assert!(matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
     }
 }
+
+#[cfg(test)]
+mod cancellation_tests;

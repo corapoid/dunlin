@@ -2,7 +2,7 @@ use super::*;
 use crate::store::agents::AgentVersion;
 use dunlin_domain::agent::{AGENT_SCHEMA_VERSION, AgentDefinition, AgentSkill};
 
-fn definition(instructions: &str) -> AgentDefinition {
+pub(super) fn definition(instructions: &str) -> AgentDefinition {
     AgentDefinition {
         schema_version: AGENT_SCHEMA_VERSION,
         name: "Published local fixture".into(),
@@ -21,7 +21,7 @@ fn definition(instructions: &str) -> AgentDefinition {
         max_output_bytes: 1024 * 1024,
     }
 }
-fn publish(f: &Fixture, definition: AgentDefinition) -> AgentVersion {
+pub(super) fn publish(f: &Fixture, definition: AgentDefinition) -> AgentVersion {
     let store = f.state.store.lock().unwrap();
     let draft = store
         .create_agent(&f.auth.user.id, &f.workspace, &f.project, definition)
@@ -36,7 +36,7 @@ fn publish(f: &Fixture, definition: AgentDefinition) -> AgentVersion {
         )
         .unwrap()
 }
-fn reference(version: &AgentVersion) -> ProfileRef {
+pub(super) fn reference(version: &AgentVersion) -> ProfileRef {
     ProfileRef {
         agent_id: version.agent_id.clone(),
         version: version.version,
@@ -87,7 +87,7 @@ fn starts(f: &Fixture) -> usize {
 fn received(f: &Fixture) -> String {
     std::fs::read_to_string(f.dir.path().join("checkout/received-prompts")).unwrap_or_default()
 }
-fn completed(f: &Fixture, session: &Session, count: usize) -> bool {
+pub(super) fn completed(f: &Fixture, session: &Session, count: usize) -> bool {
     let store = f.state.store.lock().unwrap();
     let context = store
         .team_project_context(&f.workspace, &f.project, &f.auth.user.id)

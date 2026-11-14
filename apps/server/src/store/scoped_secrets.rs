@@ -3,6 +3,7 @@
 use super::Store;
 mod grants;
 mod local;
+mod retention;
 use crate::mcp_oauth::BrowserProof;
 use dunlin_domain::{
     collaboration::{AuthorityStamp, Permission},
@@ -12,6 +13,8 @@ use dunlin_vault::scoped::{Binding, Candidate, Error, Result, Version, WriteClai
 pub(super) use grants::SCHEMA as GRANTS_SCHEMA;
 pub(crate) use grants::{Grant, GrantRequest, Principal};
 pub(super) use local::migrate as migrate_local;
+pub(super) use retention::MIGRATION as RETENTION_MIGRATION;
+pub(crate) use retention::Retention;
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Serialize;
 
@@ -206,12 +209,12 @@ impl Store {
         }
         let references: i64 = tx
             .query_row(
-                "SELECT count(*) FROM scoped_secret_references WHERE workspace=?1",
+                "SELECT count(*) FROM scoped_secret_references WHERE workspace=?1 AND cleanup_state!='deleted'",
                 [&b.workspace],
                 |r| r.get(0),
             )
             .map_err(storage)?;
-        let own:i64=tx.query_row("SELECT count(*) FROM scoped_secret_references WHERE workspace=?1 AND project=?2 AND host=?3 AND credential=?4",params![b.workspace,b.project,b.host,candidate.credential],|r|r.get(0)).map_err(storage)?;
+        let own:i64=tx.query_row("SELECT count(*) FROM scoped_secret_references WHERE workspace=?1 AND project=?2 AND host=?3 AND credential=?4 AND cleanup_state!='deleted'",params![b.workspace,b.project,b.host,candidate.credential],|r|r.get(0)).map_err(storage)?;
         let credentials: i64 = tx
             .query_row(
                 "SELECT count(*) FROM scoped_credentials WHERE workspace=?1 AND project=?2",
@@ -277,7 +280,7 @@ impl Store {
             return Err(Error::Denied);
         }
         let tx = self.scoped_secret_cut(proof, true, identity)?;
-        let acknowledged:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scoped_secret_references WHERE reference=?1 AND revision=?2 AND sha256=?3 AND write_ack=1 AND writer_user=?4 AND writer_device=?5 AND browser_hash=?6 AND membership_revision=?7 AND grant_revision=?8 AND host_revision=?9)",params![c.reference,claim.revision() as i64,c.sha256,proof.browser.user,proof.browser.device,proof.browser.session_hash,proof.stamp.membership_revision as i64,proof.stamp.grant_revision as i64,proof.host_revision as i64],|r|r.get(0)).map_err(storage)?;
+        let acknowledged:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scoped_secret_references WHERE reference=?1 AND revision=?2 AND sha256=?3 AND write_ack=1 AND cleanup_state='retained' AND writer_user=?4 AND writer_device=?5 AND browser_hash=?6 AND membership_revision=?7 AND grant_revision=?8 AND host_revision=?9)",params![c.reference,claim.revision() as i64,c.sha256,proof.browser.user,proof.browser.device,proof.browser.session_hash,proof.stamp.membership_revision as i64,proof.stamp.grant_revision as i64,proof.host_revision as i64],|r|r.get(0)).map_err(storage)?;
         if !acknowledged {
             return Err(Error::Conflict);
         }

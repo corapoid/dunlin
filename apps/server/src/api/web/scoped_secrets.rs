@@ -306,3 +306,50 @@ pub(in crate::api) async fn available(
         json!({"bindings":grants,"execution_supported":scoped_secrets::execution_supported(&state,&binding.host)}),
     )))
 }
+
+pub(in crate::api) async fn retention(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace, project, host, credential)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let proof = proof(
+        &state,
+        &headers,
+        Binding {
+            workspace,
+            project,
+            host,
+        },
+        false,
+    )?;
+    let store = state.store.lock().map_err(|_| super::unavailable())?;
+    let result = store
+        .scoped_secret_retention(&proof, &credential, &|store| {
+            scoped_secrets::identity(&state, store, &proof)
+        })
+        .map_err(error)?;
+    Ok(private_response(Json(result)))
+}
+pub(in crate::api) async fn cleanup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace, project, host, credential)): Path<(String, String, String, String)>,
+    Json(request): Json<Disable>,
+) -> Result<Response, ApiError> {
+    let proof = proof(
+        &state,
+        &headers,
+        Binding {
+            workspace,
+            project,
+            host,
+        },
+        true,
+    )?;
+    let result = state
+        .scoped_secrets
+        .cleanup(state.clone(), proof, credential, request.expected_revision)
+        .await
+        .map_err(error)?;
+    Ok(private_response(Json(result)))
+}

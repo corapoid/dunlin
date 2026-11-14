@@ -33,6 +33,12 @@ export class ScopedSecretError extends Error {
   constructor(status:number) {super(status===401?'Sesja wygasła.':status===403||status===404?'Brak dostępu do poświadczeń w tym zakresie.':status===409?'Stan zmienił się lub wynik zapisu jest niepewny. Odśwież stan przed kolejną zmianą.':status===400?'Niepoprawna polityka lub dane poświadczenia.':'Nie udało się potwierdzić operacji poświadczenia. Odśwież stan przed kolejną zmianą.');this.status=status;}
 }
 function aborted(signal?:AbortSignal) {if(signal?.aborted)throw new DOMException('Aborted','AbortError');}
+export type SecretRetention=Readonly<{retained:number;pending_writes:number;eligible:number;deleting:number;deleted_history:number}>;
+function retention(v:unknown):SecretRetention {
+  const keys=['retained','pending_writes','eligible','deleting','deleted_history'];
+  if(!object(v)||!exact(v,keys)||keys.some(k=>!rev(v[k],0))||Number(v.deleted_history)>512||Number(v.pending_writes)>Number(v.retained)||Number(v.eligible)>Number(v.retained)||Number(v.deleting)>Number(v.eligible))return invalid();
+  return v as SecretRetention;
+}
 export class ScopedSecretsClient {
   private base:string;
   private userId:string;
@@ -67,6 +73,8 @@ export class ScopedSecretsClient {
     if(result.some(g=>!g.active||g.principal_kind!=='human'||g.principal_id!==this.userId||!sameProfile(g.profile,p)))return invalid();
     return {bindings:result,execution_supported:v.execution_supported};
   }
+  async retention(credential:string,signal?:AbortSignal) {return retention(await this.request(this.credential(credential)+'/retention',signal));}
+  async cleanup(row:SecretStatus,signal?:AbortSignal) {row=decodeSecretStatus(row);return retention(await this.request(this.credential(row.credential)+'/cleanup',signal,{expected_revision:row.revision}));}
   async install(credential:string,expected:number,policy:unknown,value:string,signal?:AbortSignal) {
     if(!rev(expected,0)||expected===Number.MAX_SAFE_INTEGER||!value||new TextEncoder().encode(value).length>16384||!object(policy))invalid();
     const v=await this.request(this.credential(credential),signal,{expected_revision:expected,policy,value});

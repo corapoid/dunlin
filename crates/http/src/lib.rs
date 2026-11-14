@@ -6,13 +6,15 @@
 //! No retries are added here, especially for remote mutations.
 use std::{fmt, io::Read, sync::Arc, time::Duration};
 use ureq::RequestExt;
+mod cancel;
+pub use cancel::Cancellation;
 
 pub use ureq::Error as ResolverError;
 pub use ureq::unversioned::resolver::Resolver;
 pub use ureq::{config, http, unversioned};
 
 #[derive(Clone)]
-pub struct Agent(ureq::Agent);
+pub struct Agent(ureq::Agent, Option<SharedResolver>);
 
 pub struct AgentBuilder {
     config: config::ConfigBuilder<ureq::typestate::AgentScope>,
@@ -101,18 +103,46 @@ impl AgentBuilder {
 
     pub fn build(self) -> Agent {
         let config = self.config.build();
-        Agent(match self.resolver {
+        let resolver = self.resolver;
+        let agent = match resolver.clone() {
             Some(resolver) => ureq::Agent::with_parts(
                 config,
                 unversioned::transport::DefaultConnector::default(),
                 resolver,
             ),
             None => config.new_agent(),
-        })
+        };
+        Agent(agent, resolver)
     }
 }
 
 impl Agent {
+    /// Fresh connection pool retaining this agent's TLS/proxy/DNS policy.
+    /// A request-specific shutdown must never affect another session's pool.
+    pub fn isolated(&self) -> Self {
+        let config = self.0.config().clone();
+        let agent = match self.1.clone() {
+            Some(resolver) => ureq::Agent::with_parts(
+                config,
+                unversioned::transport::DefaultConnector::default(),
+                resolver,
+            ),
+            None => config.new_agent(),
+        };
+        Self(agent, self.1.clone())
+    }
+    /// Terminal for this agent and its clones, including active TLS/body I/O.
+    /// DNS/connect are bounded by their timeouts; late sockets cannot be used.
+    pub fn shutdown(&self) {
+        self.0.clone().shutdown();
+    }
+    pub fn watch(
+        &self,
+        authorize: impl Fn() -> bool + Send + Sync + 'static,
+    ) -> Result<Cancellation, String> {
+        let agent = self.clone();
+        Cancellation::new(authorize, move || agent.shutdown())
+    }
     pub fn request(&self, method: &str, url: &str) -> Request {
         Request {
             agent: self.clone(),

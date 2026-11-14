@@ -46,6 +46,25 @@ struct Dialer {
 }
 impl HttpExecutor for Dialer {
     fn execute(&self, plan: &HttpPlan) -> Result<HttpOutput, String> {
+        self.run(plan, None)
+    }
+    fn execute_guarded(
+        &self,
+        plan: &HttpPlan,
+        access: &dunlin_vault::access::LiveAccess,
+    ) -> Result<HttpOutput, String> {
+        self.run(plan, Some(access))
+    }
+}
+impl Dialer {
+    fn run(
+        &self,
+        plan: &HttpPlan,
+        access: Option<&dunlin_vault::access::LiveAccess>,
+    ) -> Result<HttpOutput, String> {
+        if access.is_some_and(|access| !access.allowed()) {
+            return Err("fixture authority denied".into());
+        }
         assert_eq!(plan.method, "GET");
         assert_eq!(plan.url, "https://worker.tail123.ts.net/items");
         assert!(plan.body.is_none());
@@ -57,65 +76,83 @@ impl HttpExecutor for Dialer {
         socket
             .set_write_timeout(Some(Duration::from_secs(5)))
             .unwrap();
-        let client = rustls::ClientConnection::new(
-            self.config.clone(),
-            rustls::pki_types::ServerName::try_from("worker.tail123.ts.net").unwrap(),
-        )
-        .unwrap();
-        let mut stream = rustls::StreamOwned::new(client, socket);
-        let mut request = String::from(
-            "GET /items HTTP/1.1\r\nHost: worker.tail123.ts.net\r\nConnection: close\r\n",
-        );
-        for (name, value) in &plan.headers {
-            request.push_str(&format!("{name}: {value}\r\n"));
+        let guard = if let Some(access) = access {
+            let live = access.clone();
+            let socket = socket.try_clone().unwrap();
+            Some(dunlin_vault::http::Cancellation::new(
+                move || live.allowed(),
+                move || {
+                    let _ = socket.shutdown(std::net::Shutdown::Both);
+                },
+            )?)
+        } else {
+            None
+        };
+        let result = (|| {
+            let client = rustls::ClientConnection::new(
+                self.config.clone(),
+                rustls::pki_types::ServerName::try_from("worker.tail123.ts.net").unwrap(),
+            )
+            .unwrap();
+            let mut stream = rustls::StreamOwned::new(client, socket);
+            let mut request = String::from(
+                "GET /items HTTP/1.1\r\nHost: worker.tail123.ts.net\r\nConnection: close\r\n",
+            );
+            for (name, value) in &plan.headers {
+                request.push_str(&format!("{name}: {value}\r\n"));
+            }
+            request.push_str("\r\n");
+            stream
+                .write_all(request.as_bytes())
+                .map_err(|_| "fixture write")?;
+            stream.flush().map_err(|_| "fixture flush")?;
+            let mut reader = BufReader::new(stream);
+            let mut first = String::new();
+            reader
+                .read_line(&mut first)
+                .map_err(|_| "fixture lost response")?;
+            if first != "HTTP/1.1 200 OK\r\n" {
+                return Err("fixture lost response".into());
+            }
+            let mut length = None;
+            let mut content_type = None;
+            loop {
+                let mut line = String::new();
+                let n = reader.read_line(&mut line).map_err(|_| "fixture header")?;
+                if n == 0 {
+                    return Err("fixture EOF".into());
+                }
+                if line == "\r\n" {
+                    break;
+                }
+                let (name, value) = line.split_once(':').ok_or("fixture header")?;
+                if name.eq_ignore_ascii_case("content-length") {
+                    length = Some(
+                        value
+                            .trim()
+                            .parse::<usize>()
+                            .map_err(|_| "fixture length")?,
+                    );
+                }
+                if name.eq_ignore_ascii_case("content-type") {
+                    content_type = Some(value.trim().into());
+                }
+            }
+            let length = length.ok_or("fixture length")?;
+            assert!(length < 4096);
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).map_err(|_| "fixture body")?;
+            Ok(HttpOutput {
+                status: 200,
+                content_type,
+                body: String::from_utf8(body).unwrap(),
+                truncated: false,
+            })
+        })();
+        if guard.is_some_and(|guard| !guard.finish()) {
+            return Err("fixture HTTP revoked".into());
         }
-        request.push_str("\r\n");
-        stream
-            .write_all(request.as_bytes())
-            .map_err(|_| "fixture write")?;
-        stream.flush().map_err(|_| "fixture flush")?;
-        let mut reader = BufReader::new(stream);
-        let mut first = String::new();
-        reader
-            .read_line(&mut first)
-            .map_err(|_| "fixture lost response")?;
-        if first != "HTTP/1.1 200 OK\r\n" {
-            return Err("fixture lost response".into());
-        }
-        let mut length = None;
-        let mut content_type = None;
-        loop {
-            let mut line = String::new();
-            let n = reader.read_line(&mut line).map_err(|_| "fixture header")?;
-            if n == 0 {
-                return Err("fixture EOF".into());
-            }
-            if line == "\r\n" {
-                break;
-            }
-            let (name, value) = line.split_once(':').ok_or("fixture header")?;
-            if name.eq_ignore_ascii_case("content-length") {
-                length = Some(
-                    value
-                        .trim()
-                        .parse::<usize>()
-                        .map_err(|_| "fixture length")?,
-                );
-            }
-            if name.eq_ignore_ascii_case("content-type") {
-                content_type = Some(value.trim().into());
-            }
-        }
-        let length = length.ok_or("fixture length")?;
-        assert!(length < 4096);
-        let mut body = vec![0; length];
-        reader.read_exact(&mut body).map_err(|_| "fixture body")?;
-        Ok(HttpOutput {
-            status: 200,
-            content_type,
-            body: String::from_utf8(body).unwrap(),
-            truncated: false,
-        })
+        result
     }
 }
 pub(super) struct Endpoint {
@@ -123,6 +160,7 @@ pub(super) struct Endpoint {
     calls: Arc<AtomicUsize>,
     hold: Arc<(Mutex<bool>, std::sync::Condvar)>,
     stop: Arc<AtomicBool>,
+    closed: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
 impl Endpoint {
@@ -149,6 +187,9 @@ impl Endpoint {
             .with_no_client_auth();
         let calls = Arc::new(AtomicUsize::new(0));
         let stop = Arc::new(AtomicBool::new(false));
+        let closed = Arc::new(AtomicBool::new(false));
+        let peer_closed = closed.clone();
+        let kill = mode == "scoped-revoke";
         let hold = Arc::new((
             Mutex::new(mode == "scoped-revoke"),
             std::sync::Condvar::new(),
@@ -172,6 +213,7 @@ impl Endpoint {
                 socket
                     .set_write_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
+                let peer = socket.try_clone().unwrap();
                 let mut stream = rustls::StreamOwned::new(
                     rustls::ServerConnection::new(server.clone()).unwrap(),
                     socket,
@@ -194,6 +236,18 @@ impl Endpoint {
                         .any(|l| l.eq_ignore_ascii_case(&format!("Authorization: Bearer {VALUE}")))
                 );
                 count.fetch_add(1, Ordering::AcqRel);
+                if kill {
+                    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                    let mut byte = [0; 1];
+                    let result = peer.peek(&mut byte);
+                    if matches!(result, Ok(0))
+                        || matches!(result,Err(ref e) if e.kind()==std::io::ErrorKind::ConnectionReset)
+                    {
+                        peer_closed.store(true, Ordering::Release);
+                        continue;
+                    }
+                    break;
+                }
                 let guard = held.0.lock().unwrap();
                 let (_guard, timeout) = held
                     .1
@@ -227,6 +281,7 @@ impl Endpoint {
             calls,
             hold,
             stop,
+            closed,
             thread: Some(thread),
         }
     }
@@ -393,6 +448,13 @@ impl Failure<'_> {
             )
             .await;
             assert_eq!(status, 200, "{result}");
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while !self.endpoint.closed.load(Ordering::Acquire) {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("revocation must close the actual TLS socket before fixture response/release");
             self.endpoint.release();
         }
         tokio::time::timeout(Duration::from_secs(15), async {

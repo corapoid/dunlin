@@ -3,7 +3,7 @@ import { AgentScope } from './AgentScope';
 import { readHosts, type Host } from '../lib/hosts';
 import { readProfiles, type AgentVersion, type AgentMcpTool } from '../lib/agents';
 import { decodeMembers, teamRequest, type Membership } from '../lib/teams';
-import { ScopedSecretsClient, SECRET_PREFIX, isSecretProvider, sameProfile, type SecretStatus, type SecretGrant } from '../lib/scoped-secrets';
+import { ScopedSecretsClient, SECRET_PREFIX, isSecretProvider, sameProfile, type SecretStatus, type SecretRetention, type SecretGrant } from '../lib/scoped-secrets';
 
 export function ScopedToolPicker({workspace,project,userId,onPin,disabled=false}:{workspace:string;project:string;userId:string;onPin:(pin:AgentMcpTool)=>void;disabled?:boolean}) {
   const [open,setOpen]=useState(false),[hosts,setHosts]=useState<Host[]>([]),[host,setHost]=useState(''),[slot,setSlot]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -18,13 +18,15 @@ function HostSecrets({workspace,project,host,userId}:{workspace:string;project:s
   const [selected,setSelected]=useState(''),[name,setName]=useState(''),[domain,setDomain]=useState(''),[prefix,setPrefix]=useState('/'),[advanced,setAdvanced]=useState('');
   const [profileId,setProfileId]=useState(''),[principal,setPrincipal]=useState(userId),[slot,setSlot]=useState(''),[readOnly,setReadOnly]=useState(true);
   const [reload,setReload]=useState(0),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[needsReload,setNeedsReload]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const [retention,setRetention]=useState<SecretRetention|null>(null);
   const secret=useRef<HTMLInputElement>(null),alive=useRef(true),mutation=useRef<AbortController|null>(null);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;mutation.current?.abort();if(secret.current)secret.current.value='';};},[]);
   useEffect(()=>{
-    const c=new AbortController();setLoading(true);setError('');setStatuses([]);setGrants([]);setProfiles([]);setMembers([]);
+    const c=new AbortController();setLoading(true);setError('');setStatuses([]);setGrants([]);setProfiles([]);setMembers([]);setRetention(null);
     Promise.all([client.statuses(c.signal),readProfiles(workspace,project,c.signal),teamRequest(`/v1/web/workspaces/${workspace}/members`,c.signal).then(v=>decodeMembers(v,workspace))]).then(async([list,catalog,people])=>{
       const saved=selected?await client.grants(selected,c.signal):[];
-      if(!c.signal.aborted){setStatuses(list.credentials);setProfiles(catalog.profiles);setMembers(people.filter(m=>m.active));setGrants(saved);setNeedsReload(false);}
+      const history=selected?await client.retention(selected,c.signal):null;
+      if(!c.signal.aborted){setStatuses(list.credentials);setProfiles(catalog.profiles);setMembers(people.filter(m=>m.active));setGrants(saved);setRetention(history);setNeedsReload(false);}
     }).catch(e=>{if(!c.signal.aborted){setNeedsReload(true);setError(e instanceof Error?e.message:'Nie udało się odczytać poświadczeń.');}}).finally(()=>{if(!c.signal.aborted)setLoading(false);});
     return()=>c.abort();
   },[client,workspace,project,selected,reload]);
@@ -61,6 +63,7 @@ function HostSecrets({workspace,project,host,userId}:{workspace:string;project:s
       <details><summary>Zaawansowana polityka HTTP</summary><p>Pełna polityka zastępuje powyższe ustawienia. Umożliwia inne metody, sposób uwierzytelnienia i nazwane operacje. Zakres projektu musi pozostać bieżący.</p><textarea data-testid="scoped-policy" value={advanced} onChange={e=>setAdvanced(e.target.value)} maxLength={32768} rows={6}/></details>
       <button data-testid="scoped-save" className="primary">{credential?'Zastąp poświadczenie':'Zapisz poświadczenie'}</button></fieldset></form>
     {credential&&<div><p>Wersja {credential.revision}. {credential.state==='installing'?'Zapis trwa lub wynik jest niepewny. Wyłączenie odetnie możliwość aktywacji tego zapisu.':''}</p><button data-testid="scoped-disable" disabled={disabled||credential.state==='disabled'} onClick={()=>void mutate(signal=>client.disable(credential,signal),'Poświadczenie wyłączono. Powiązane sesje utracą dostęp przy sprawdzeniu uprawnień.')}>Wyłącz poświadczenie</button></div>}
+    {credential&&retention&&<section><h3>Lokalne koperty poświadczenia</h3><p>Przechowywane: {retention.retained}. Niepotwierdzone zapisy: {retention.pending_writes}. Do usunięcia: {retention.eligible}. Rozpoczęte sprzątanie: {retention.deleting}. Historia usunięć: {retention.deleted_history}.</p><p>Usuwamy do 16 starych kopert w jednej partii. Niepotwierdzone zapisy pozostają zachowane. Usunięcie koperty nie odwołuje klucza u dostawcy.</p><button type="button" data-testid="scoped-cleanup" disabled={disabled||retention.eligible===0} onClick={()=>void mutate(signal=>client.cleanup(credential,signal),'Partia sprzątania zakończona. Sprawdź liczbę pozostałych kopert.')}>Usuń stare lokalne koperty</button></section>}
     {credential&&<><h3>Dostęp profili i użytkowników</h3><ul data-testid="scoped-grants">{grants.map(g=><li key={g.id}>{g.principal_id} · {g.profile.agent_id} v{g.profile.version} · {g.provider_id} · {g.active&&g.credential_revision===credential.revision?'przyznany':'odwołany lub wymaga ponownego przypisania'}{g.read_only?' · tylko odczyt':''}<button type="button" data-testid={`scoped-revoke-${g.id}`} disabled={disabled||!g.active} onClick={()=>void mutate(signal=>client.revoke(g,signal),'Grant odwołano.')}>Odwołaj grant</button></li>)}</ul>
       <form onSubmit={e=>{e.preventDefault();if(!ref||!credential)return;void mutate(signal=>client.setGrant(credential.credential,{expected_revision:previous?.revision??0,credential_revision:credential.revision,principal_kind:'human',principal_id:principal,profile:ref,provider_id:slot,read_only:readOnly},signal),'Grant zapisano dla wskazanej wersji profilu i poświadczenia.');}}><fieldset disabled={disabled||credential.state!=='active'}><legend>Przypisz dostęp</legend><p>Użytkownik musi mieć prawo wyświetlania projektu i tworzenia sesji. Zmiana wersji profilu lub poświadczenia wymaga ponownego przypisania.</p>
         <label>Opublikowany profil<select data-testid="scoped-profile" required value={profileId} onChange={e=>{setProfileId(e.target.value);setSlot('');setReadOnly(true);}}><option value="">Wybierz profil</option>{profiles.filter(p=>p.definition.mcp?.some(t=>isSecretProvider(t.provider_id))).map(p=><option key={p.agent_id} value={p.agent_id}>{p.definition.name} · wersja {p.version}</option>)}</select></label>

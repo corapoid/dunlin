@@ -353,6 +353,8 @@ pub(crate) fn check_host_account_policy(state: &AppState, user: &User) -> Result
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/retention",get(web::scoped_secrets::retention).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
+        .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/cleanup",post(web::scoped_secrets::cleanup).layer(DefaultBodyLimit::max(1024)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secret-tool", get(web::scoped_secrets::tool_catalog).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/secret-bindings", get(web::scoped_secrets::available).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))
         .route("/v1/web/workspaces/{id}/projects/{project}/hosts/{host}/scoped-secrets/{credential}/grants", get(web::scoped_secrets::grants).post(web::scoped_secrets::set_grant).layer(DefaultBodyLimit::max(4096)).layer(axum::middleware::map_response(web::scoped_secrets::private_headers)))

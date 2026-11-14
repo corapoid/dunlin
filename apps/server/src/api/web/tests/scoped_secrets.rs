@@ -19,6 +19,9 @@ struct Secrets {
     writes: Mutex<Vec<String>>,
     reads: AtomicUsize,
     lose_ack: AtomicBool,
+    deletes: Mutex<Vec<String>>,
+    lose_delete_ack: AtomicBool,
+    after_delete: Mutex<Option<Box<dyn FnOnce() + Send>>>,
     after_write: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 impl SecretStore for Secrets {
@@ -38,8 +41,16 @@ impl SecretStore for Secrets {
         }
         Ok(())
     }
-    fn delete(&self, _: &str) -> Result<(), String> {
-        panic!("no implicit cleanup")
+    fn delete(&self, id: &str) -> Result<(), String> {
+        self.values.delete(id)?;
+        self.deletes.lock().unwrap().push(id.into());
+        if let Some(hook) = self.after_delete.lock().unwrap().take() {
+            hook();
+        }
+        if self.lose_delete_ack.swap(false, Ordering::AcqRel) {
+            return Err("fixture private delete error".into());
+        }
+        Ok(())
     }
     fn get_policy(&self, _: &str) -> Result<Zeroizing<String>, String> {
         panic!("no split policy")
@@ -595,4 +606,108 @@ async fn scoped_secret_grant_api_rejects_wrong_profile_source_version_and_extra_
     let (_, grants) = request(&s, "GET", &path, Value::Null).await;
     assert!(grants["grants"].as_array().unwrap().is_empty());
     assert_eq!(s.secrets.reads.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn scoped_cleanup_api_deletes_only_retired_acknowledged_envelopes_and_retries_lost_delete_ack()
+ {
+    let s = scope().await;
+    let path = format!("{}/work-api", s.base);
+    for rev in 0..3 {
+        assert_eq!(
+            request(&s, "POST", &path, save(&s, rev)).await.0,
+            StatusCode::OK
+        );
+    }
+    let cleanup = format!("{path}/cleanup");
+    let retention = format!("{path}/retention");
+    let (status, counts) = request(&s, "GET", &retention, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(counts["eligible"], 2);
+    assert_eq!(
+        request(&s, "POST", &cleanup, json!({"expected_revision":2}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    s.secrets.lose_delete_ack.store(true, Ordering::Release);
+    assert_eq!(
+        request(&s, "POST", &cleanup, json!({"expected_revision":3}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let counts = request(&s, "GET", &retention, Value::Null).await.1;
+    assert_eq!(counts["retained"], 3);
+    assert_eq!(counts["deleted_history"], 0);
+    let (status, counts) = request(&s, "POST", &cleanup, json!({"expected_revision":3})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(counts["retained"], 1);
+    assert_eq!(counts["deleted_history"], 2);
+    let writes = s.secrets.writes.lock().unwrap();
+    let current = writes.last().unwrap();
+    assert!(s.secrets.values.get(current).is_ok());
+    assert!(writes[..2].iter().all(|r| s.secrets.values.get(r).is_err()));
+    assert!(!s.secrets.deletes.lock().unwrap().contains(current));
+    assert_eq!(s.secrets.reads.load(Ordering::Acquire), 0);
+}
+#[tokio::test]
+async fn scoped_cleanup_api_keeps_unknown_writer_and_records_delete_fact_after_logout_without_returning_status()
+ {
+    let s = scope().await;
+    let path = format!("{}/work-api", s.base);
+    s.secrets.lose_ack.store(true, Ordering::Release);
+    assert_eq!(
+        request(&s, "POST", &path, save(&s, 0)).await.0,
+        StatusCode::CONFLICT
+    );
+    for rev in 1..3 {
+        assert_eq!(
+            request(&s, "POST", &path, save(&s, rev)).await.0,
+            StatusCode::OK
+        );
+    }
+    let state = s.state.clone();
+    let cookie = s.cookie.split_once('=').unwrap().1.to_owned();
+    *s.secrets.after_delete.lock().unwrap() = Some(Box::new(move || {
+        state
+            .store
+            .lock()
+            .unwrap()
+            .remove_browser_session(&cookie)
+            .unwrap()
+    }));
+    assert_eq!(
+        request(
+            &s,
+            "POST",
+            &format!("{path}/cleanup"),
+            json!({"expected_revision":3})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(s.secrets.deletes.lock().unwrap().len(), 1);
+    {
+        let writes = s.secrets.writes.lock().unwrap();
+        assert!(s.secrets.values.get(&writes[0]).is_ok());
+        assert!(s.secrets.values.get(&writes[1]).is_err());
+        assert!(s.secrets.values.get(&writes[2]).is_ok());
+    }
+    let cookie = paired_cookie(&s.state, &s.owner).await;
+    let (status, counts) = send(
+        &s,
+        "GET",
+        &format!("{path}/retention"),
+        &cookie,
+        Value::Null,
+        "https://build.tail123.ts.net",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(counts["deleted_history"], 1);
+    assert_eq!(counts["pending_writes"], 1);
+    assert_eq!(counts["retained"], 2);
 }

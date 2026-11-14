@@ -41,3 +41,11 @@ test('late success after cancellation and oversized metadata are rejected',async
   await assert.rejects(client(async()=>new Response(' '.repeat(1048577))).statuses());
   await assert.rejects(client(async()=>json({credentials:[{credential:'work.api',revision:1,state:'active'},{credential:'work.api',revision:2,state:'active'}],execution_supported:true})).statuses());
 });
+
+test('retention exposes bounded counts only and cleanup is one explicit revision-pinned request',async()=>{
+  const counts={retained:3,pending_writes:1,eligible:1,deleting:0,deleted_history:512};let calls=0;
+  const c=client(async(url,init)=>{calls++;if(String(url).endsWith('/cleanup'))assert.deepEqual(JSON.parse(String(init?.body)),{expected_revision:4});return json(counts);});
+  assert.deepEqual(await c.retention('work.api'),counts);assert.deepEqual(await c.cleanup({credential:'work.api',revision:4,state:'active'}),counts);assert.equal(calls,2);
+  for(const changed of [{...counts,reference:'private'},{...counts,deleted_history:513},{...counts,pending_writes:4},{...counts,deleting:2},{...counts,eligible:-1}])await assert.rejects(client(async()=>json(changed)).retention('work.api'));
+  let writes=0;await assert.rejects(client(async()=>{writes++;throw new Error('lost private receipt');}).cleanup({credential:'work.api',revision:4,state:'active'}));assert.equal(writes,1);
+});

@@ -161,7 +161,21 @@ impl Mock {
                 if let Some(hook) = reply.before_reply {
                     hook();
                 }
-                write!(socket, "HTTP/1.1 {} Mock\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n{session}\r\n{response_body}", reply.status, response_body.len()).unwrap();
+                let sent = write!(
+                    socket,
+                    "HTTP/1.1 {} Mock\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n{session}\r\n{response_body}",
+                    reply.status,
+                    response_body.len()
+                );
+                if let Err(error) = sent {
+                    assert!(
+                        matches!(
+                            error.kind(),
+                            std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                        ),
+                        "fixture reply failed: {error}"
+                    );
+                }
             }
         });
         Self {

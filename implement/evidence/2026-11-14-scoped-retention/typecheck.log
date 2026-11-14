@@ -1,0 +1,1 @@
+Sandbox suite=typecheck container=dunlin-check-80670f96f50346f2a921ad080fc6ba06 image=sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d platform=linux/arm64 memory=512m scratch=128m file_size=134217728 wall=60s source_sha256=300ac0abc9707848fcb8370f18cad890616fdb944e9863a1770cbda6f7db2629

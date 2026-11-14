@@ -5869,3 +5869,159 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
 - Końcowy root all-targets Clippy PASS1m58s dla tego samego source ae8ef414;
   peak2380681216B/max0/OOM0. Ponowny snapshot potwierdza bieżące wejścia Rust.
   [Wyniki kontroli checkpointu](evidence/2026-11-14-commit-checkpoint/results.json).
+
+## 2026-11-14 — E5.3: lokalny scoped HTTP przez proces i Chromium
+
+- Poprzedni krok utworzył i wypchnął7bb363d na jawną prośbę właściciela;
+  stan repozytorium był czysty. Cel E0–E10 nadal aktywny.
+- Dodano3 scenariusze z rzeczywistym lokalnym aktorem, native checkout authority
+  oraz produkcyjnym proxy stdio --mcp-tools. Pamięciowy keyring i kontrolowany
+  HttpExecutor zastępują zewnętrzne poświadczenia i sieć.
+- Przed zgodą SDK jest0 odczytów keyringu i0 wywołań HTTP. Positive wykonuje
+  dokładnie1 HTTP i odbiera zredagowany wynik. Odebranie native grant po keyring
+  read blokuje HTTP; odwołanie local binding podczas HTTP odrzuca odpowiedź.
+  Oba przypadki przerywają aktora, pozostawiają turę Unknown i nie dostarczają
+  wyniku do procesu. Prompty i projekcja AHP nie zawierają wartości ani referencji.
+- Pierwszy runtime3 PASS1,47s dla source98290b3f. Następny wariant Chromium
+  wykonał HTTP i wyświetlił odpowiedź, lecz zakończył się błędem selektora testu:
+  regex nie obejmował wielowierszowych instrukcji/skills. Poprawiono wyłącznie
+  selektor; log błędu pozostaje dowodem diagnostycznym.
+- **Końcowy runtime+Chromium3 PASS6,70s**,814 filtered, sourcea2ef3f30.
+  UI wybiera local, odwołuje grant1→2 i ponownie nadaje2→3, następnie tworzy
+  sesję z dokładnym profilem/grantem3 i zatwierdza HTTP przez AHP. Dwa poprawne
+  wywołania (runtime i UI) dają dokładnie2 keyring reads/HTTP; sesje są zatrzymane.
+  Desktop/mobile oceniono wizualnie; test potwierdza brak poziomego overflow.
+  Peak3685601280B/max0/OOM0; scratch65%,564536KiB wolnego.
+- Niezależne odtworzenie wyłącznie plików fixture daje identyczny sourceae8ef414
+  z checkpointu7bb363d: kod produkcyjny i pozostałe fixtures bez zmian.
+  Backend901 i frontend163 nie są deklarowane jako ponownie uruchomione.
+  CI contract14 i launcher18 PASS. Końcowy root Clippy w toku.
+- E5.3 pozostaje otwarte: retencja scoped references, pełny kill switch,
+  recipes/service workflow i pozostałe kryteria E5–E10 wymagają dalszej pracy.
+  Realny keyring/HTTP/DNS, tailnet i konta nie są objęte tym kontrolowanym odbiorem.
+  Formalnie21/68=30,9%; ten przyrost pozostaje lokalny, bez automatycznego commita.
+- **Końcowy root all-targets Clippy PASS2m02s** dla identycznego sourcea2ef3f30;
+  peak2415919104B/max12/OOM0 (osiągnięty limit cgroup, bez OOM). Ponowny
+  niezależny snapshot potwierdza aktualne wejścia Rust. Rustfmt3, Python AST3,
+  Node syntax, docs122 i diff check PASS.
+  [Manifest odbioru lokalnego runtime/UI](evidence/2026-11-14-scoped-local/verified-source.json).
+
+## 2026-11-14 — E5.3: retencja scoped envelopes, odbiór w toku
+
+- Poprzedni przyrost odebrał lokalny runtime/proxy i Chromium3 oraz root Clippy;
+  był postępem. Jego zmiany pozostają lokalne po wcześniejszym commicie7bb363d.
+  Cel E0–E10 pozostaje aktywny, formalnie21/68=30,9%.
+- Migracja51 dodaje trwały zamiar i receipt delete oraz kursor partii. Retencja
+  wymaga write_ack jednorazowego, zakończonego writera i chroni active/staged.
+  Niepotwierdzone write nie wygasają po czasie, restarcie ani odczycie keyringu.
+  Disabled może atomowo odłączyć wskaźniki; stary claim nie odzyskuje publikacji.
+- Cleanup obejmuje do16 kopert, przypina pełny scope/wersję/SHA/nonce i świeże
+  uprawnienia przed każdym delete. Factual ACK zostaje także po logout, lecz
+  zwrócenie wyniku wymaga świeżej tożsamości. Brak ACK nie odzyskuje limitu.
+  Jawny retry usuwa ten sam niezmienny slot; nie ponawia set ani aktywacji.
+- Kursor jest trwały i cykliczny, także po utracie receipt/restartach. Aktywny
+  limit256/4096 nie obejmuje potwierdzonych delete; bezpieczna historia ma512
+  wpisów na workspace. REST nie przyjmuje referencji, SDK losuje nowe sloty.
+- Dodano prywatne endpointy liczników/cleanup i UI z expected revision, brakiem
+  automatycznego retry oraz opisem, że lokalny delete nie oznacza AS revoke.
+  Testy obejmują620 generacji z niepewnym writerem, ochronę active/staged,
+  restart i fairness, odwołanie managera, migrację/collision, lost delete ACK,
+  logout po efekcie i brak odczytów wartości w cleanup.
+- Frontend164 i TypeScript PASS. Pierwszy backend exit101 wykrył widoczność
+  stałej migracji i brak FromSql dla u64; użyto kontrolowanej konwersji liczb.
+  Drugi snapshot41ae50e4 zatrzymano świadomie sygnałem INT/exit130 podczas
+  kompilacji po wykryciu błędu fixture logout (nagłówek zamiast tokena cookie).
+  Nie jest to wynik testów. Fixture poprawiono; końcowy odbiór Rust w toku.
+- Scenariusz Chromium obróci lokalny credential, usunie poprzednią kopertę
+  przez UI, sprawdzi liczniki i użyje nowej generacji z grantem3 w realnej sesji.
+  Keyring i HTTP pozostają kontrolowanymi zastępnikami, bez realnych kont/usług.
+
+- **Końcowy backend908 PASS**:763 relay+1 identity+80 SDK+27 terminal+37 usage;
+  61 oddzielnych acceptance ignored. Wszystkie7 nowych przypadków SQL/API PASS,
+  relay210,66s; peak3663912960B/max0/OOM0, scratch62%,602256KiB wolnego.
+  **MCP/HTTP/vault176+3 compile-fail PASS**, package Clippy PASS26,52s,
+  peak1336229888B/max0/OOM0. Ten sam source570badd3 dla obu suite.
+- **Końcowy frontend164, TypeScript i build PASS** (build1,52s), z własnymi
+  narrow snapshots. Trwa Chromium z rzeczywistą rotacją/cleanup i sesją,
+  następnie root Clippy. Nie deklarujemy jeszcze ich wyniku.
+
+- **Runtime+Chromium3 PASS6,62s**,821 filtered, source570badd3 jak backend/MCP.
+  UI rotuje credential1→2, usuwa dokładnie1 starą kopertę i widzi retained1,
+  history1/pending0; potem odwołuje/nadaje grant i używa nowej generacji w sesji.
+  Łącznie2 odczyty keyringu i2 HTTP (runtime oraz UI), bez wartości w procesie
+  i AHP; aktualna koperta działa po cleanup. Desktop/mobile retencji obejrzano,
+  input wartości jest pusty i brak poziomego overflow.
+  Peak3758096384B/max266/OOM0 (osiągnięty limit cgroup, bez OOM), scratch65%,
+  564232KiB wolnego. Trwa końcowy root all-targets Clippy.
+
+- **Końcowy root all-targets Clippy PASS2m01s**, source570badd3,
+  peak2389884928B/max0/OOM0. Niezależne snapshoty potwierdzają bieżące wejścia
+  wszystkich7 suite; logi i4 obrazy są związane SHA w
+  [manifeście odbioru](evidence/2026-11-14-scoped-retention/verified-source.json).
+  Rustfmt14, Python AST3, Node syntax, docs122 i diff check PASS.
+- Odbiór kontrolowanej retencji ukończony. E5.3 nadal otwarte: pełny kill switch
+  musi obejmować faktyczne przerwanie transportu, a recipes/service workflow
+  wymagają osobnego podłączenia. Potem pozostają dalsze punkty E5–E10.
+  Nie użyto realnego keyringu, kont, usług ani tailnetu; niepotwierdzone write
+  nadal są celowo zachowane. Formalnie21/68=30,9%. Bez nowego commita/pusha.
+
+## 2026-11-14 — E5.3: przerwanie HTTP/MCP/SSE, odbiór lokalny zakończony
+
+- Poprzedni przyrost wdrożył i odebrał retencję (backend908, MCP176+3,
+  frontend164, runtime/Chromium3, Clippy). To postęp; zmiany pozostają lokalne.
+  Cel E0–E10 nadal aktywny, formalnie21/68=30,9%.
+- Wspólny HTTP ma terminalny Cancellation guard i osobne poole z zachowaniem
+  polityki TLS/proxy/DNS. Watchdog zamyka sockety co25ms po odmowie, jest
+  dołączany do końca odczytu body i jest zatrzymywany/joinowany także przy unwind.
+  Brak authority lub panic callbacka nie może zwrócić pozornego sukcesu.
+- UreqExecutor wspiera guarded execution, pozostały budżet operacji i kontrolę
+  EOF po shutdown. Nieobsługujący anulowania adapter odmawia. Scoped HTTP oraz
+  legacy guarded vault/refresh używają tej ścieżki; synchroniczne fakes jawnie
+  deklarują swój testowy wariant. Zdalny TLS fixture ma rzeczywisty shutdown FD.
+- Guarded MCP modern i legacy utrzymuje watchdog przez klienta, także podczas
+  JSON/SSE. Zamknięcie właściciela zamyka niezależne subskrypcje. Odmowa
+  pozostaje terminalna po regrant, bez ponownego tools/call. Łagodne EOF
+  anulowanego body nie jest sukcesem; odmowa ma pierwszeństwo przed błędem I/O.
+- **Biblioteki183+3 compile-fail PASS** (HTTP9+MCP118+vault56), package Clippy
+  PASS27,12s; peak1230901248B/max0/OOM0. Testy obejmują opóźniony resolver,
+  brak późnego requestu, izolację pooli, zablokowane nagłówki/body/TLS, deadline,
+  modern/legacy JSON/SSE oraz zamknięcie subskrypcji po revoke/owner close.
+  Pierwszy wariant181+3 miał1 uwagę Clippy collapsible_if; poprawiono ją.
+  Kolejne zaakceptowane snapshoty rozszerzały zakres o MCP i subskrypcje.
+- Zaostrzony scenariusz remote scoped revoke czeka na zamknięcie prawdziwego
+  TLS socketu przed release/odpowiedzią fixture. Trwa szerszy odbiór runtime
+  remote z Chromium; pełny backend i root Clippy pozostają do potwierdzenia.
+- DNS/connect mają timeout i budżet, nie są bezpośrednio przerywane; shutdown
+  odrzuca późny socket przed requestem. Nie cofamy już wykonanego HTTP u
+  dostawcy. Pozostałe AS, recipes/service workflow oraz realne konta/keyring/
+  tailnet nie są objęte tym odbiorem. E5.3 pozostaje otwarte.
+
+- Pierwszy build runtime nie wykonał testów: fixture próbował odwołać się
+  bezpośrednio do dunlin_http, którego server nie deklaruje jako zależności.
+  Cancellation udostępniono przez istniejący moduł HTTP vaulta; bez nowych deps.
+- **Szerszy remote runtime+Chromium27 PASS302,06s**,797 filtered,
+  source d5203238. Obejmuje broker/runner/proxy, modern/legacy, form/URL i4
+  scoped cases. Scoped revoke potwierdza rzeczywiste zamknięcie TLS przed
+  odpowiedzią fixture, unknown bez replay, stop/ACK i zwolnienie rezerwacji.
+  Peak3694346240B/max0/OOM0, scratch65%,563772KiB wolnego.
+- **Backend908 PASS** (763 relay+1 identity+80 SDK+27 terminal+37 usage),
+  61 acceptance ignored; relay213,78s, peak3727368192B/max0/OOM0,
+  scratch62%,601844KiB wolnego. Source d5203238 jak runtime. Przy okazji test
+  retencji rzeczywiście zapełnia teraz globalny audyt i sprawdza jego Limit
+  przed claim/ACK, zamiast sugerować ten zakres samą nazwą testu.
+- Frontend164/TypeScript/build pozostają przypisane do poprzedniego przyrostu;
+  niezależne narrow snapshots potwierdziły identyczne wejścia. Nie uruchamiano
+  ich ponownie. Trwa lokalny runtime, następnie root Clippy i końcowy MCP.
+
+- **Lokalny runtime+Chromium3 PASS6,67s**,821 filtered, source d5203238.
+  Rotacja/cleanup, grant3 i realny proces/proxy pozostają zgodne z nowym
+  kontraktem execute_guarded; native revoke i binding revoke nie zwracają wyniku.
+  Peak3758096384B/max127/OOM0 (limit cgroup osiągnięty, bez OOM), scratch65%,
+  563772KiB wolnego.
+- **Root all-targets Clippy PASS2m01s** dla d5203238,
+  peak2415919104B/max29/OOM0 (limit cgroup osiągnięty, bez OOM).
+  Końcowy zestaw bibliotek dla tego samego snapshotu: **183+3 PASS**,
+  package Clippy PASS27,53s; peak1244631040B/max0/OOM0.
+- Końcowy [manifest źródeł i wyników](evidence/2026-11-14-http-kill-switch/verified-source.json)
+  wiąże wszystkie pięć odbiorów Rust z d5203238 i sumami logów. E5.3 pozostaje
+  otwarte; ten odbiór nie zamyka pozostałych AS ani recipes/service workflow.

@@ -6,7 +6,10 @@ use crate::{
 };
 use dunlin_domain::vault::SecretPolicy;
 use dunlin_vault::{
-    scoped::{Candidate, Credentials, Error, Journal, Result, Version, WriteClaim},
+    scoped::{
+        Candidate, CleanupClaim, CleanupJournal, Credentials, Error, Journal, Result, Version,
+        WriteClaim,
+    },
     store::SecretStore,
 };
 use std::sync::Arc;
@@ -76,6 +79,48 @@ impl Service {
             return credentials.http(permit, input, executor.as_ref());
         }
         credentials.http(permit, input, &dunlin_vault::http::UreqExecutor::new())
+    }
+    pub(crate) async fn cleanup(
+        &self,
+        state: AppState,
+        proof: Proof,
+        credential: String,
+        expected: u64,
+    ) -> Result<crate::store::scoped_secrets::Retention> {
+        let slot = self
+            .slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Limit)?;
+        let backend = self.backend.clone();
+        tokio::task::spawn_blocking(move || {
+            let _slot = slot;
+            let claims = {
+                let store = state.store.lock().map_err(|_| Error::Storage)?;
+                store.scoped_secret_cleanup_claims(&proof, &credential, expected, &|store| {
+                    identity(&state, store, &proof)
+                })?
+            };
+            let journal = Arc::new(BrowserJournal {
+                state: state.clone(),
+                proof: proof.clone(),
+            });
+            let credentials = match backend {
+                Some(backend) => Credentials::new(journal, backend),
+                None => Credentials::relay(journal),
+            };
+            // An uncertain delete keeps its durable intent. A subsequent explicit
+            // request may retry this same immutable retired slot, never its writer.
+            for claim in claims {
+                credentials.cleanup(claim)?;
+            }
+            let store = state.store.lock().map_err(|_| Error::Storage)?;
+            store.scoped_secret_retention(&proof, &credential, &|store| {
+                identity(&state, store, &proof)
+            })
+        })
+        .await
+        .map_err(|_| Error::OutcomeUnknown)?
     }
     pub(crate) async fn install(
         &self,
@@ -191,5 +236,21 @@ pub(crate) fn execution_supported(state: &AppState, host: &str) -> bool {
         local_execution_supported(state)
     } else {
         remote_execution_supported(state)
+    }
+}
+
+impl CleanupJournal for BrowserJournal {
+    fn check_cleanup(&self, claim: &CleanupClaim) -> Result<()> {
+        let store = self.state.store.lock().map_err(|_| Error::Storage)?;
+        store.scoped_secret_cleanup_check(&self.proof, claim, &|store| {
+            identity(&self.state, store, &self.proof)
+        })
+    }
+    fn acknowledge_cleanup(&self, claim: &CleanupClaim) -> Result<()> {
+        self.state
+            .store
+            .lock()
+            .map_err(|_| Error::Storage)?
+            .scoped_secret_cleanup_ack(&self.proof, claim)
     }
 }

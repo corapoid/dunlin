@@ -214,7 +214,66 @@ Nie ma zapisów credential value do localStorage/sessionStorage.
 Schema50 pozwala wskazać cel `local` przez istniejące powiązanie projektu
 z lokalnym checkoutem. Nie tworzy wpisu workera. Grant przypina rewizję tego
 powiązania i wymaga aktualnego native grant; rebind wymaga jawnego ponownego
-nadania dostępu. UI udostępnia ten cel, lecz pełny odbiór lokalnego procesu
-i przeglądarki pozostaje otwarty. Marker lokalnego execution_supported wymaga
+nadania dostępu. Kontrolowany odbiór lokalnego procesu, proxy stdio i Chromium
+ma3 scenariusze PASS: wykonanie po zgodzie, native revoke po keyring read oraz
+binding revoke podczas HTTP. UI odwołuje i ponownie nadaje grant, a jego nowa
+rewizja trafia do rzeczywistej sesji. Keyring i HttpExecutor są zastępnikami
+testowymi; realne usługi pozostają osobnym odbiorem. Marker execution_supported wymaga
 Unix, experimental_interactive_runtime i rozpoznanego skonfigurowanego harnessu;
 nie zastępuje kontroli filesystemu, sesji, tury, lease ani jednorazowej zgody.
+
+## Retencja lokalnych kopert — migracja51
+
+Administrator z ManageProject i ManageHosts może odczytać liczniki przez
+`GET .../scoped-secrets/{credential}/retention` i jawnie zlecić partię przez
+`POST .../scoped-secrets/{credential}/cleanup` z expected_revision.
+Odpowiedzi zawierają wyłącznie liczniki, bez wartości, polityki i referencji.
+UI pokazuje pojemność, niepotwierdzone zapisy, rozpoczęte sprzątanie i historię.
+Usunięcie lokalnej koperty nie potwierdza odwołania klucza u dostawcy.
+
+Partia obejmuje do16 referencji. Warunkiem jest write_ack dokładnego,
+jednorazowego writera: synchroniczny set zakończył się przed ACK i nie jest
+ponawiany. Sam activated, wiek lub restart nie wystarczają. Aktywna i staged
+referencja pozostają chronione; disabled może atomowo odłączyć swoje wskaźniki.
+Niepotwierdzone write pozostają w limicie, także po wyłączeniu credential.
+
+Trwały zamiar cleanup przypina pełny scope, wersję, SHA i nonce. Przed każdym
+delete ponownie sprawdzana jest tożsamość i bieżące uprawnienia zarządzającego.
+Faktyczny delete ACK jest zachowany także po logout; wynik dla przeglądarki
+wymaga świeżej kontroli. Utrata delete lub ACK nie zwalnia pojemności. Kolejne
+jawne sprzątanie może ponowić delete tego samego wycofanego, niezmiennego slotu.
+Nie powtarza zapisu sekretu ani jego publikacji.
+
+Kursor partii jest trwały i cykliczny. Limit256 na credential i4096 na workspace
+obejmuje nieusunięte referencje; po delete ACK limit jest odzyskiwany. Osobna
+historia zawiera maksymalnie512 bezpiecznie usuniętych wpisów na workspace.
+Przycinanie dotyczy tylko potwierdzonych delete po zakończeniu writera. REST
+nigdy nie przyjmuje referencji do zapisu; SDK zawsze losuje nowy slot. Stare
+claims po usunięciu metadanych nie mogą aktywować referencji lub wznowić zapisu.
+Status odbioru i jego granice są w [progress.md](progress.md).
+
+## Przerywanie transportu po utracie authority
+
+Chroniony HTTP vaulta używa osobnego poola klienta dla każdego wywołania.
+Watchdog sprawdza live authority co25ms i zamyka sockety po odmowie lub końcu
+budżetu, także podczas TLS, oczekiwania na nagłówki i odczytu body. Nie zamyka
+połączeń innych sesji. Czas żądania jest ograniczony pozostałym budżetem operacji.
+EOF po shutdown nie jest dowodem pełnej odpowiedzi: końcowy fence odrzuca
+pozorny sukces. Nie ma automatycznego ponawiania operacji.
+
+Własny HttpExecutor musi jawnie zaimplementować execute_guarded i faktyczne
+anulowanie blokującego I/O. Domyślna implementacja odmawia chronionego wykonania.
+Legacy guarded vault stosuje ten sam kontrakt także do refresh przed HTTP.
+Scoped runtime nadal wymaga pełnego grantu i jednorazowego permitu SDK.
+
+Guarded MCP modern/legacy utrzymuje watchdog przez życie klienta i odczyt
+odpowiedzi. Zamknięcie właściciela modern zamyka również sockety niezależnych
+subskrypcji SSE. Odmowa DispatchGuard pozostaje terminalna po regrant. Jego
+callback może być wywoływany współbieżnie; powinien sprawdzać bieżące authority
+bez trzymania blokady przez HTTP i bez wykonywania własnego sieciowego I/O.
+
+Trwający systemowy DNS lub TCP connect nie jest przerywany przez shutdown.
+Obowiązują timeout i budżet; socket zakończony po shutdown nie może wysłać
+żądania. Zamknięcie transportu nie cofa wcześniejszego efektu u dostawcy.
+Pozostałe przepływy AS, recipes/service workflow i pełny odbiór kill switcha
+pozostają odrębnymi kryteriami E5.3/E10; status testów jest w progress.md.

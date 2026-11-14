@@ -1,0 +1,15 @@
+{
+  "current_source_sha256": "a2ef3f30073f4e575f6df8003fb1594da5bbf112dfc0f1ff2a2ffb5219ff72eb",
+  "baseline_source_sha256": "ae8ef41432cc96284d91099e764227da1a80a5abcb5e198b1e9977186f19f187",
+  "baseline_commit": "7bb363dc282cf77a28a5a170227417a74f1d3bdb",
+  "restored_fixture_files": [
+    "apps/server/src/interactive/tests.rs",
+    "apps/server/src/interactive/tests/profiles.rs",
+    "apps/server/src/interactive/tests/fake_acp.py"
+  ],
+  "removed_new_fixtures": [
+    "apps/server/src/interactive/tests/scoped.rs",
+    "apps/web/e2e/local-scoped-session.mjs"
+  ],
+  "conclusion": "Only acceptance fixtures changed among Rust suite source inputs; production code and other fixtures match the accepted 901-test baseline."
+}

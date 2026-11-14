@@ -1,0 +1,65 @@
+{
+  "source_sha256": "a2ef3f30073f4e575f6df8003fb1594da5bbf112dfc0f1ff2a2ffb5219ff72eb",
+  "source_inputs": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "apps",
+    "crates",
+    "vendor",
+    "tests/fixtures",
+    "scripts/install-harness.sh"
+  ],
+  "runs": {
+    "runtime-first.log": {
+      "exit_code": 0,
+      "source_sha256": "98290b3f0922e35beaf073264c764e21464f233fea7ecfc37429644d3b2020b6",
+      "log_sha256": "cb65a476b12a2ccde8856ccca11f0a66923c588dab7df48848017645359e27d5"
+    },
+    "browser-first.log": {
+      "exit_code": 101,
+      "source_sha256": "551e6c4ba72c63f4d5aeae872bdb60316c720ec8c6e4323247a09800576b1df5",
+      "log_sha256": "003a5701afc8f9782529eb5f6b8b5986a7c2bf6ce947585c89e05db3187c41d0"
+    },
+    "browser-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a2ef3f30073f4e575f6df8003fb1594da5bbf112dfc0f1ff2a2ffb5219ff72eb",
+      "log_sha256": "26d7172beaaa6dd4baf9aa8bc0e0fc61b56b56ccff75d02bcd7e4fb912a8d7ef"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a2ef3f30073f4e575f6df8003fb1594da5bbf112dfc0f1ff2a2ffb5219ff72eb",
+      "log_sha256": "62ce44e07c22dc7c524bbdaff39492c1f9ab8a88c077d546439df0aaba571613"
+    }
+  },
+  "runtime_passed": 3,
+  "runtime_filtered": 814,
+  "browser_included_in": "production_browser_acceptance_runtime_local_scoped_http_complete",
+  "tooling": {
+    "ci_contract_passed": 14,
+    "launcher_passed": 18,
+    "log": "tooling.log",
+    "log_sha256": "fc79c33404443c53416fbf0bb5f3d42429bda6ac8529f7f647f267dfb0db6426"
+  },
+  "images": {
+    "desktop.png": {
+      "sha256": "3c92e7b98afc271dd93558949717134e19ecc1f9e5de28122d3fa0c60daed159",
+      "visually_inspected": true
+    },
+    "mobile.png": {
+      "sha256": "e0249530fe9f1cc40190b15dffb3fdb1d05ff47ca63f244b1ea1d7785cc1b515",
+      "visually_inspected": true
+    }
+  },
+  "production_source_equivalence": "production-source-equivalence.json",
+  "baseline_reused": {
+    "manifest": "../2026-11-14-commit-checkpoint/results.json",
+    "backend_passed": 901,
+    "frontend_passed": 163,
+    "rerun": false
+  },
+  "limitations": [
+    "Controlled memory keyring and HTTP executor; no real accounts, keyring, external HTTP or tailnet acceptance.",
+    "Scoped retention, full kill switch, recipes/service workflow and remaining E5-E10 are open."
+  ],
+  "diagnostic": "First browser run reached completed HTTP and agent reply; the multiline text selector timed out. Only the test selector changed for the successful rerun."
+}
