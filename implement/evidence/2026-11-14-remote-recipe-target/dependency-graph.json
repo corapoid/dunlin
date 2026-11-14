@@ -1,0 +1,11 @@
+{
+  "baseline_commit": "f1d292691c7f42f0e90dbd8e8a7d193f90111616",
+  "package_versions_and_checksums_unchanged": true,
+  "package_count": 963,
+  "domain_new_runtime_edges": [
+    "hex",
+    "sha2 0.11.1"
+  ],
+  "serde_json_promoted_from_dev": true,
+  "reason": "The same semantic template digest is needed by vault and runner policy; no vault-to-wire dependency or custom SHA implementation. Cargo --locked --offline acceptance verifies lock consistency."
+}

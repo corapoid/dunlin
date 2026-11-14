@@ -166,3 +166,52 @@ Lokalne polecenie operatora migruje schema1 do schema2 atomowo. Peer-request
 obsługiwana wyłącznie jako metadane, bez snapshotu polityki wykonania. Ten etap
 nie implementuje durable dispatch/inbox/outbox, execution lease ani executora;
 kolejne zależności opisuje [plan wykonania](worker-execution-plan.md).
+
+
+## Nazwane receptury operatora — schema 3
+
+Schema 3 wymaga `mcp_broker:true` oraz jawnej listy `recipes` (1–16 wpisów).
+Nie dodaje obsługi sekretów CLI do v5 ani nie włącza prywatnego wykonania.
+Pozwala przygotować osobną konfigurację runnera przed wdrożeniem transportu.
+Schema 1 i 2 odrzucają pole recipes; null, pusta lista i powtórzone nazwy są
+odrzucane. Wszystkie wcześniejsze ograniczenia izolacji i budżetów pozostają.
+
+Każdy wpis zawiera `program` — znormalizowaną bezwzględną ścieżkę wybraną przez
+operatora runnera — oraz `template`:
+
+```json
+{
+  "program": "/opt/dunlin/bin/deploy",
+  "template": {
+    "name": "deploy",
+    "program_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "args": ["--environment", "{environment}"],
+    "env_var": "API_TOKEN",
+    "parameters": [
+      {"name": "environment", "required": true, "max_len": 32, "allow_leading_dash": false}
+    ],
+    "timeout_secs": 30
+  }
+}
+```
+
+To fragment konfiguracji; przykładowy hash należy zastąpić SHA-256 rzeczywistego
+obrazu programu. Receptura wymaga wszystkich jawnych pól template/parameter.
+Nazwy, argumenty i parametry podlegają wspólnym regułom Recipe; zarezerwowane
+nazwy środowiska są odrzucane przez ten sam walidator, którego używa lokalny
+izolowany executor. Timeout nie może przekroczyć max_seconds operatora.
+Template ma dodatkowy limit16KiB, cała polityka pozostaje ograniczona do32KiB.
+Program z checkoutu lub istniejący symlink prowadzący do niego uniemożliwia
+rejestrację/rebind. Sam zapis konfiguracji nie dowodzi istnienia pliku,
+niezmiennego obrazu ani faktycznie działającej izolacji; wykonawca musi je
+ponownie potwierdzić przez świeżą authority i przechwycony obraz.
+
+`dunlin.worker.recipe-template.v1` wiąże nazwę, SHA-256 obrazu, argumenty,
+parametry, zmienną sekretu i timeout. Digest nie zawiera ścieżki programu na
+kontrolerze, ID poświadczenia ani opisowych metadanych. Runner wybiera własną
+ścieżkę z polityki operatora. Fingerprint całej polityki nadal obejmuje surowe
+bajty, w tym tę ścieżkę; zmiana konfiguracji wymaga rebind i świeżych grantów.
+Nazwany template nie jest pozwoleniem na użycie credential ani dowodem sesji.
+Prywatny transport musi osobno wiązać operację i credential z żywym kanałem,
+bootstrapem runnera, sesją/turą, eksportem/revision i checkout stamp oraz chronić
+jednorazowość i unknown outcome. Ten transport i jego ledger pozostają otwarte.

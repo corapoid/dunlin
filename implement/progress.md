@@ -6189,7 +6189,7 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
   Formalnie nadal21/68. Nie tworzono commita/push w tej kontynuacji.
 
 
-### 2026-11-14 — E5.3: lokalny adapter receptur Linux, odbiór w toku
+### 2026-11-14 — E5.3: lokalny adapter receptur Linux, odbiór kontrolowany
 
 - Poprzedni turn: postęp — rdzeń RecipePermit/Target/Authority, grupy procesów,
   biblioteki198+5, backend911, lokalna regresja HTTP3 i Clippy PASS, manifest8acfc5c0.
@@ -6223,3 +6223,253 @@ Ten cykl realizuje dalszy fragment pełnego celu E0–E10, bez zmiany definicji 
   finalny runtime od wcześniejszych snapshotów bibliotek/Clippy. Pełny backend
   jest jeszcze w toku; końcowy MCP/root Clippy nie był ponawiany.
   Rustfmt32, Python AST i dokumentacja122 PASS.
+
+- Kontynuacja po checkpointach d924398/f1d2926: potwierdzono żywy proces
+  regresji backendu (PID24422/session22084), bez restartowania sprawdzania.
+  Niezależnie przeliczony source058e11ae jest identyczny z runtime i backendem;
+  trzy snapshots frontend/typecheck/build pozostają identyczne z retencją.
+  Kolejność po odbiorze: (1) Builder z wyborem HTTP/recipe i czytelnym
+  unsupported celu; (2) grupowanie pinów jednego providera i grant wymagający
+  zapisu dla recipe; (3) Chromium przez produkcyjny lokalny proxy z recepturą.
+
+- Końcowy backend **913 PASS** (relay768+identity1+SDK80+terminal27+usage37),
+  67 acceptance ignored, source058e11ae jak runtime7. Peak3749646336B/max0/OOM0;
+  scratch62%,601036KiB wolnego. Sesja22084 zamknięta exit0. Końcowe biblioteki
+  i package Clippy uruchomione osobno po zakończeniu backendu.
+
+- Końcowe biblioteki **200+5 compile-fail PASS** (HTTP9+MCP121+vault70),
+  package Clippy PASS27,29s, peak1280933888B/max0/OOM0. Root selected all-targets
+  Clippy także PASS; wszystkie cztery końcowe odbiory mają snapshot058e11ae
+  zaakceptowanego f1d2926. Manifest zastąpił stan checkpointu w toku.
+  Następny przyrost UI ma osobny snapshot i nie jest objęty tym starym odbiorem.
+
+
+### 2026-11-14 — E5.3: katalog receptur w Builderze i granty, odbiór kontrolowany
+
+- Builder pozwala wybrać HTTP lub recipe z prywatnego katalogu. Pin pochodzi
+  z odpowiedzi dla dokładnego workspace/projektu/hosta/użytkownika/rodzaju;
+  abort i porównanie zakresu odrzucają późną odpowiedź poprzedniego wyboru.
+  execution_supported=false pokazuje unsupported i blokuje dodanie narzędzia.
+- Granty grupują HTTP i recipe jednego providera w jeden wybór. Obecność recipe
+  wymusza read_only=false także po zmianie użytkownika; backend zachowuje własne
+  sprawdzenia. Politykę receptury można zapisać w zaawansowanym formularzu JSON.
+- Frontend166 PASS. TypeScript początkowo odrzucił testowe toReversed jako
+  niedostępne dla obecnego ES targetu; poprawiono test, TypeScript/build PASS.
+  Launcher18, składnia obu E2E i rustfmt zmienionego fixture PASS.
+- Trwa runtime7 z Chromium (sourcec1d3b38f): HTTP zachowuje własny scenariusz;
+  recipe tworzy nowy profil w Builderze, sprawdza kontrolowany unsupported,
+  usuwa override i dalej używa realnego katalogu/API/proxy/bubblewrap.
+  Zapis polityki/grantu i zgoda pochodzą z UI. Efekt CLI oraz brak wywołań HTTP
+  sprawdza backend fixture. Keyring pozostaje kontrolowany, bez realnych kont.
+- Nie tworzono kolejnego commita ani push; aktywny cel E0–E10 i E5.3 są otwarte.
+
+- Pierwszy Chromium sourcec1d3b38f:5 PASS/2 FAIL, bez OOM. Oba błędy były
+  w nowym E2E: lokalny agent-harness jest readonly input (nie select), a tekst
+  promptu pasował jednocześnie do promptu i odpowiedzi. Poprawiono asercję
+  pola oraz selektor wymagający prefiksu reply:. Log zachowano jako
+  runtime-before-selector-fix; cały lokalny runtime7/Chromium uruchomiono
+  ponownie, bez zmiany kodu produkcyjnego po tym nieudanym przebiegu.
+
+- Ponowny Chromium sourcea4ec93ee:6 PASS/1 FAIL. Receptura przeszła całą
+  ścieżkę Builder→policy→grant→zgoda→CLI (osiem zrzutów i backendowe sprawdzenie
+  efektu, zero HTTP). W HTTP CDP nie udostępnił treści zakończonego fetch cleanup
+  podczas odświeżania formularza. Asercja sprawdza teraz status operacji, sukces
+  UI po odczycie receipt i trwałe liczniki osobnym GET retention; cleanup nie
+  jest ponawiany. Log i osiem PNG zachowano; trzeci pełny runtime7 w toku.
+
+- Trzeci pełny runtime/Chromium **7 PASS16,57s**,828 filtered, source74fef8b8;
+  obie ścieżki browser HTTP/recipe PASS,14 zrzutów desktop/mobile zapisane bez
+  zmiany pikseli. Base64 przeniesiono z logu do PNG; hash oryginalnego logu
+  zachowano. Peak3701235712B/max0/OOM0, scratch65%,562796KiB wolnego.
+  Backend potwierdza drugie, oczekiwane wykonanie receptury z nowej sesji UI,
+  dwa odczyty keyringu łącznie z wcześniejszym wykonaniem runtime, zero HTTP
+  dla CLI i jedno usunięcie starej koperty. Nie powtarzano cleanup ani SDK zgody.
+- Obejrzano Builder i granty na390px oraz desktop i sesję receptury; kontrolki
+  mieszczą się w szerokości. Zrzut full-page przy zachowanym scroll offset może
+  pokazać przesunięte elementy fixed (nawigacja/skip link); to nie jest pełny
+  odbiór a11y ani zachowania sticky/focus E10. Końcowy root Clippy w toku.
+
+- Końcowy root selected all-targets Clippy **PASS2m08s**, source74fef8b8 jak
+  runtime7/Chromium. Peak2415919104B/max85/OOM0 (limit osiągnięty bez OOM).
+  Niezależnie przeliczono wszystkie input snapshots oraz sumy14 finalnych PNG;
+  [manifest UI](evidence/2026-11-14-recipe-ui/verified-source.json) odróżnia
+  udany odbiór od obu wcześniejszych nieudanych E2E i błędu ES targetu.
+- Produkcyjny Rust nie zmienił się po f1d2926; backend913 i biblioteki200+5
+  pozostają bazowym odbiorem tamtego snapshotu. Nowy fixture jest objęty
+  aktualnym runtime i Clippy. Frontend166, TypeScript/build, launcher18,
+  rustfmt fixture, składnia E2E/Python, dokumentacja122 i whitespace PASS.
+- E5.3 nadal otwarte,21/68 formalnie. Kolejne trzy zadania: prywatny kontrakt
+  receptur runnera z polityką operatora i dowodem celu; adapter macOS oraz
+  jawne assets/linked metadata; powiązanie usługowego użycia z workflow i jego
+  durable admission. Nie użyto prawdziwych kont/usług/tailnetu, nie wykonano
+  kolejnego commita ani push po checkpointach d924398/f1d2926.
+
+
+### 2026-11-14 — E5.3: wspólny template i polityka operatora receptur runnera
+
+- Poprzedni goal turn był postępem: zamknięty odbiór f1d2926 oraz UI receptur,
+  frontend166/TypeScript/build/runtime7 z Chromium/Clippy PASS. Cel E0–E10 aktywny.
+- Dodano sekret-free RecipeTemplate z domeną digestu i konwersją ze znanej
+  polityki credential. Pin nie zależy od controller-local program path, ID,
+  opisu ani timestamp; obejmuje wszystkie semantyczne pola wykonania.
+- Schema3 operatora wymaga mcp_broker:true i1–16 unikalnych templates. Parse
+  odrzuca null/brak/puste/duplikaty, złe piny, env, timeout i obce pola. Program
+  wybiera operator; rejestracja odmawia programu wewnątrz eksportu/symlinku do niego.
+- Wspólny walidator nazw env przeniesiono bez zmiany reguł z LinuxRecipeExecutor
+  do domain; template i executor używają tej samej implementacji. W pierwszym
+  domain run był błąd formatowania makra assert_ne w nowym teście; poprawiono.
+  Ostatni domain/protocol **97 PASS** (50domain+47protocol), source24e78879,
+  peak572346368B/max0/OOM0. Wcześniejsze97PASS miało helper po mod tests; przeniesiono
+  go przed moduł. Dopiero rozpoczęty backend przerwano jawnie przed ponownym
+  startem dla końcowego snapshotu; nie był to timeout ani nieudany odbiór testów.
+- Testy magazynu sprawdzają zmianę pinu, niezgodność settings, rebind, invalidację
+  grantów i historycznej authority oraz zapis nowej polityki. Trwa pełny backend.
+- Nie podłączono private RPC/secret payload, Hello/negocjacji, operacyjnego
+  ledgeru ani remote executora. V5 MCP nie otrzymało prawa do sekretów CLI;
+  remote recipe pozostaje unsupported. E5.3/E10 i21/68 bez zmiany.
+
+- Końcowy backend **916 PASS** (771relay+1identity+80SDK+27terminal+37usage),
+  67 acceptance ignored, source24e78879 jak kontrakty97. Wszystkie3 nowe testy
+  polityki PASS. Peak3703754752B/max0/OOM0, scratch62%,600540KiB wolnego.
+  Sesja4507 zakończona exit0; uruchomiono MCP/HTTP/vault i package Clippy.
+
+- Biblioteki HTTP/MCP/vault **200+5 compile-fail PASS** (9+121+70),
+  package Clippy PASS26,98s, source24e78879. Peak1323106304B/max0/OOM0.
+  Root selected all-targets Clippy uruchomiono po zakończeniu bibliotek.
+
+- Root selected all-targets Clippy **PASS2m02s**, source24e78879;
+  peak2381266944B/max0/OOM0. Cztery końcowe logi (97/916/200+5/Clippy) mają ten
+  sam niezależnie przeliczony snapshot; [manifest](evidence/2026-11-14-runner-recipe-policy/verified-source.json)
+  zachowuje także nieudany pierwszy test i celowo przerwany początkowy backend.
+- Funkcja env executora ma identyczne ciało jak w f1d2926; brak nowego transportu
+  wykonania, więc nie ponawiano runtime/Chromium. Frontend166/TypeScript/build
+  pozostają wcześniejszym odbiorem UI ze zweryfikowanymi niezmienionymi wejściami.
+  Rustfmt7, dokumentacja122 i whitespace PASS. Bez commita/push.
+- Następne konkretne podłączenia: negocjacja i opaque remote checkout target;
+  prywatny nonce/fingerprint ledger z brakiem replay po utracie ACK; daemonowy
+  executor z redakcją przed odpowiedzią i przerwaniem po utracie uprawnień.
+  Nie wolno zastąpić tych dowodów samym settings digest ani boolean capability.
+
+
+### 2026-11-14 — E5.3: remote target bez ścieżki kontrolera i oddzielny executor
+
+- Poprzedni goal turn był postępem: policy3/template97/backend916/biblioteki200+5
+  i Clippy PASS, bez włączenia zdalnych sekretów. Cel E0–E10 pozostaje aktywny.
+- RecipeTarget rozdziela Local i RemoteRecipeTarget. Remote ma binding,
+  channel/turn stamps, export ID/revision oraz checkout stamp, bez cwd.
+  Lokalny input digest zachowuje dawne bajty; remote ma inną domenę i pełne piny.
+- Credentials ma oddzielne recipe i recipe_remote. Zły rodzaj executora odmawia
+  przed keyringiem; RemoteRecipePlan nie ma controller path/cwd ani Deserialize.
+  Guard, one-use i Unknown pozostają wspólne. Redakcję obu strumieni wydzielono
+  dla adaptera przed prywatną odpowiedzią oraz powtórnej ochrony kontrolera.
+- Template przeniesiono do domain, zachowując eksport protokołu i format pinów.
+  SHA2/hex były już w workspace; dodano krawędzie domain, JSON promowano z dev.
+  Lockfile nie zmienia wersji pakietów. Pierwszy run wykrył brak normalnych
+  zależności domain, drugi testowe assert_eq wymagające Debug dla Binding;
+  poprawiono bez dodawania Debug do wrażliwych typów. Dodano stały wektor pinu.
+- Testy bibliotek **205+7 compile-fail PASS** (HTTP9+MCP121+vault75). Sprawdzają
+  kind mismatch przed odczytem, zmienione binding/fence, brak lokalnej ścieżki,
+  usunięty obraz kontrolera, prywatny Basic redaction, jednorazowość i revoke/
+  lost ACK/adapter failure. Package Clippy w toku. To kontrolowany adapter,
+  nie prawdziwy remote proces/transport; runtime/catalog remote nadal unsupported.
+
+- Package Clippy PASS26,83s, peak1232404480B/max0/OOM0. Końcowa domena/protokół
+  **97 PASS** (53domain+44protocol;3 testy template przeniesiono do domain),
+  w tym stały SHA vector; peak565510144B/max0/OOM0. Backend **916 PASS**
+  (771relay+1identity+80SDK+27terminal+37usage),67 acceptance ignored,
+  peak3692519424B/max0/OOM0, scratch62%,600776KiB wolnego. Wszystkie mają
+  snapshot982933db. Sekwencyjny runner rozpoczął lokalny runtime7 bez Chromium.
+
+- Lokalny runtime **7 PASS**,831 filtered, source982933db, bez Chromium.
+  Produkcyjny relay/proxy/bubblewrap zachowuje HTTP i recepturę, deny, program
+  pin changed, replay receipt bez nowego efektu i revoke potomka setsid.
+  Peak3758096384B/max117/OOM0 (osiągnięto limit, bez OOM), scratch65%,
+  564696KiB wolnego. Następnie rozpoczęto root Clippy. Katalog wymaga osobnego
+  session-level preflight w przyszłym remote adapterze: prawdziwy turn stamp
+  można tworzyć dopiero dla tools/call, nie dla początkowego tools/list.
+
+- Root selected all-targets Clippy **PASS1m59s**, source982933db,
+  peak2415919104B/max16/OOM0. Wszystkie5 końcowych odbiorów mają ten sam
+  niezależnie przeliczony snapshot. [Manifest celu remote](evidence/2026-11-14-remote-recipe-target/verified-source.json)
+  zachowuje oba początkowe błędy kompilacji oraz wyniki sekwencji kontenerów.
+- Rustfmt13, dokumentacja122 i whitespace PASS. Frontend166/TypeScript/build
+  nie ponawiane:3 narrow snapshots pozostają identyczne z odbiorem UI.
+  Zestaw pakietów/wersji/checksum lockfile identyczny z HEAD, jedynie nowe
+  normalne krawędzie domain i promocja JSON. Bez commita/push i bez kont/usług.
+- Nadal brakuje realnego private RPC/secret payload i jego negocjacji, świeżego
+  hostowego mapowania wszystkich stamps, jednorazowego ledgeru runnera i
+  daemonowego wykonawcy. Nie traktujemy kontrolowanego adaptera jako gotowego
+  remote runtime. Następny krok: session-level preflight katalogu, negocjacja
+  prywatnych operacji oraz ich durable admission bez ponowienia po utracie ACK.
+  E5.3/E10 i cel E0–E10 aktywne; formalnie21/68 bez zmiany.
+
+
+### 2026-11-14 — E5.3: session preflight katalogu i prywatne metadane v6
+
+- Poprzedni goal turn był postępem: rozdzielone target/plany Local/Remote,
+  97/916/205+7/runtime7 i Clippy PASS. Cel E0–E10 pozostaje aktywny.
+- Authority ma oddzielne recipe_catalog, domyślnie unsupported. Local deleguje
+  do bieżącej kontroli target/executor; Broker kataloguje przez session-level
+  interfejs, dispatch zachowuje świeży target po zgodzie. Nowy test nie tworzy
+  żadnej queued/active tury w SQL, a callbacki turn/recipe_target panikują, gdyby
+  katalog próbował je wywołać. Sprawdza także zero keyring/HTTP i odmowę po stop.
+- Dodano osobne kodeki Hello6/OpenRecipeSession/PrepareRecipe, jawne przecięcie
+  limitów i nowe domeny fingerprintów. Metadata binduje nonce, pełny TurnFence,
+  descriptor, dokładny pin narzędzia/profilu, template/credential stamps, params
+  i budżety. Obce/podmienione scope i allowlista są odrzucane; stare kodeki nie
+  akceptują v6, a metadata odrzuca pola wartości/cwd/program.
+- Pierwszy kontrakt102 PASS; następnie dodano niezależną kontrolę pinu narzędzia
+  w profilu. Po wzmocnieniu testu katalogu do braku tury także w SQL jawnie
+  przerwano własną sekwencję backendu. Kontener/child zakończone; własny wrapper
+  wymagał sprzątnięcia po reentrant Popen.wait w handlerze sygnału (exit137).
+  To przerwanie dla zmiany źródła, nie timeout ani wynik testów; nie dublowano
+  ciężkich kontenerów. Dalej użyto pojedynczych uchwytów exec.
+- Końcowa domena/protokół **102 PASS** (53+49), source5652144c,
+  peak598970368B/max0/OOM0. Trwa pełny backend ze wzmocnionym testem. Brak
+  nowego payloadu wartości, ledgeru, obsługi v6 WSS i prawdziwego remote executora;
+  sam poprawny DTO/digest/receipt nie przyznaje prawa wykonania.
+
+- Backend **917 PASS** (772relay+1identity+80SDK+27terminal+37usage),
+  67 acceptance ignored, source5652144c. Nowy test katalogu bez tury SQL PASS.
+  Peak3728658432B/max0/OOM0, scratch62%,599136KiB wolnego. Następnie bieżące
+  biblioteki **205+7 compile-fail PASS** (9HTTP+121MCP+75vault), package Clippy
+  PASS26,38s, peak1325010944B/max0/OOM0, ten sam snapshot. Powtórzono biblioteki
+  zamiast opierać bieżące twierdzenie na historycznym szerokim snapshotcie.
+  Rozpoczęto lokalny runtime7, bez Chromium.
+
+- Lokalny runtime **7 PASS4,28s**,832 filtered, source5652144c, bez Chromium.
+  Produkcyjny relay/proxy/bubblewrap zachowuje HTTP/CLI, deny, zmieniony obraz,
+  replay zgody i revoke potomka setsid. Peak3682852864B/max0/OOM0, scratch65%,
+  563044KiB wolnego. Root Clippy rozpoczęto po zakończeniu runtime.
+- Audyt raw logu982933db skorygował wcześniejszy pomocniczy runtime_filtered
+  z828 na831 w manifeście poprzedniego przyrostu; siedem PASS oraz hash logu
+  i źródeł pozostają bez zmiany. Nowy filtered832 wynika z dodania testu katalogu.
+
+- Root selected all-targets Clippy **PASS2m03s**, source5652144c,
+  peak2415919104B/max112/OOM0. Wszystkie5 końcowych odbiorów mają identyczny,
+  niezależnie przeliczony snapshot. [Manifest v6](evidence/2026-11-14-private-recipe-v6/verified-source.json)
+  rozróżnia końcowe wyniki i oba wcześniejsze102 PASS oraz przerwany backend.
+- Liczniki wyników/filtered pobrano bezpośrednio z raw logów; Rustfmt6,
+  dokumentacja122 i whitespace PASS. Frontend166/TypeScript/build nie ponawiano,
+  trzy wąskie snapshots wejść pozostały identyczne z odbiorem UI.
+- Osobny recipe_catalog jest podłączony do bieżącego Local brokera. Hello6,
+  private open i operation metadata nie aktywują WSS; remote pozostaje
+  unsupported. Pozostałe kolejne prace: worker nonce/fingerprint ledger i
+  oryginalny opaque lease, prywatny payload/daemon executor, potem opt-in v6
+  w obu transportach i odbiór z rzeczywistym fixture runnera. Cel E0–E10 i E5.3
+  aktywne,21/68 formalnie, bez commita/push i bez prawdziwych kont/usług.
+
+
+### 2026-11-14 — checkpoint na żądanie użytkownika: commit i push
+
+- Zapisano UI receptur i testy w bbfe164 oraz podstawy remote policy/target/v6
+  w 1329a14. Dokumentacja i dowody odbioru stanowią osobny commit checkpointu.
+- Przed commitem niezależnie przeliczono bieżące snapshots Rust, frontend,
+  TypeScript i build: identyczne z zaakceptowanymi wynikami. Sprawdzono hashe
+  pięciu końcowych logów v6. Nie uruchamiano ponownie ciężkich testów.
+- Bieżące kontrole: dokumentacja122, launcher18, whitespace i rustfmt wszystkich
+  22 zmienionych/nowych plików Rust PASS. Globalny cargo fmt --all --check
+  wskazuje wcześniejszą kolejność modułów w niezmienianym mcp_oauth.rs;
+  plik pozostawiono poza zakresem checkpointu.
+- Checkpoint nie zamyka E5.3 ani E10. Ledger, payload i rzeczywisty transport
+  oraz daemonowy executor remote pozostają następnymi pracami.

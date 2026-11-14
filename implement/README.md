@@ -299,6 +299,14 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   platform pozostają E10; ogólne scoped secrets i Builder/A2A w E5.3–E5.5.
   Aktualny zakres: [mcp-client.md](mcp-client.md), wyniki w [progress.md](progress.md).
 - [ ] E5.3 Katalog narzędzi MCP, allowlisty, scoped secrets i kill switch.
+  Bieżący odbiór: osobny session-level preflight katalogu działa bez tury SQL.
+  Kodeki prywatnego v6 przypinają limity, scope, tool/profile/template oraz
+  nonce/fingerprint; nie aktywują jeszcze WSS ani przesyłania wartości.
+  Domain/protocol102, backend917, biblioteki205+7 compile-fail, lokalny runtime7
+  i root/package Clippy PASS dla source5652144c.
+  [Manifest metadanych v6](evidence/2026-11-14-private-recipe-v6/verified-source.json).
+  Następne: ledger private prepare/invoke, payload i daemonowy executor oraz
+  rzeczywista negocjacja WSS z opt-in obu stron. Remote recipe nadal unsupported.
   Przerywanie guarded HTTP/MCP/JSON/SSE po utracie uprawnień wdrożone;
   backend908, biblioteki183+3, runtime remote27/local3 z Chromium i Clippy PASS.
   [Manifest odbioru](evidence/2026-11-14-http-kill-switch/verified-source.json).
@@ -315,8 +323,32 @@ wymaganiami. Bez twierdzenia o zakończeniu prototypu AHP.
   Poprawiono sprzątanie grupy po wyjściu rodzica i panic watchdoga. Biblioteki198+5,
   backend911, regresja lokalnego scoped HTTP3 i Clippy PASS.
   [Manifest rdzenia receptur](evidence/2026-11-14-scoped-recipe-core/verified-source.json).
-  Adaptery runtime/runnera, katalog/UI receptur, service workflow i pełny odbiór
-  E5.3/E10 nadal otwarte.
+  Lokalny adapter Linux uruchamia receptury w bubblewrap z przypiętym obrazem
+  programu (sealed memfd), deskryptorem checkoutu i prywatnym HOME. Katalog API
+  oraz granty obsługują dokładny pin recipe i wymagają prawa zapisu. Lokalny
+  runtime HTTP+recipe7 PASS obejmuje canary hosta, odmowę, replay zgody bez
+  ponownego efektu, zmieniony obraz i odwołanie przy potomku setsid.
+  [Manifest lokalnych receptur](evidence/2026-11-14-local-recipe/verified-source.json).
+  Końcowy backend913, biblioteki200+5 compile-fail i root/package Clippy PASS
+  dla tego samego snapshotu058e11ae (f1d2926).
+  Builder udostępnia wybór HTTP/recipe, unsupported celu oraz pojedynczy grant
+  providera wymagający zapisu dla CLI. Chromium desktop/mobile i lokalny
+  runtime7 PASS obejmują nowy profil z UI, politykę, grant, zgodę i efekt CLI;
+  frontend166, TypeScript/build i końcowy Clippy PASS.
+  [Manifest UI receptur](evidence/2026-11-14-recipe-ui/verified-source.json).
+  Wspólny RecipeTemplate i polityka operatora schema3 przypinają obraz i
+  semantykę CLI niezależnie od ścieżki kontrolera. Rebind zmiany polityki
+  unieważnia stare granty. Domain/protocol97, backend916, biblioteki200+5
+  compile-fail i root/package Clippy PASS dla source24e78879.
+  [Manifest polityki runnera](evidence/2026-11-14-runner-recipe-policy/verified-source.json).
+  Rdzeń rozdziela Local i RemoteRecipeTarget bez controller cwd; osobny
+  RemoteRecipeExecutor nie ma lokalnego fallbacku. Pin template jest wspólną
+  semantyką domain. Domain/protocol97, backend916, biblioteki205+7 compile-fail,
+  lokalny runtime7 i root/package Clippy PASS dla source982933db.
+  [Manifest celu remote](evidence/2026-11-14-remote-recipe-target/verified-source.json).
+  To kontrolowany adapter biblioteczny; prywatne RPC/negocjacja/ledger receptur
+  runnera, native macOS, dodatkowe assets/linked metadata, service workflow
+  i pełny odbiór E5.3/E10 nadal otwarte.
   Dziennik runtime ma oddzielne jednorazowe zgody MCP z przypięciem całego
   wywołania, blokadą replay i hostową przestrzenią tool IDs chronioną przed ACP.
   SDK zgód ma74 testy PASS. Schema2 profilu przechowuje dokładne allowlisty

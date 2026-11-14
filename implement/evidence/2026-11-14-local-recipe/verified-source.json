@@ -1,43 +1,84 @@
 {
+  "accepted_commit": "f1d2926",
+  "snapshots": {
+    "rust": {
+      "sha256": "058e11ae7300cbbf7873e5c8405bd4e7fac1b46f9065f9c5960db6bc09643fc7",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ],
+      "independently_recomputed_before_UI_increment": true
+    }
+  },
   "runs": {
-    "clippy-first.log": {
-      "source_sha256": "dd7e0e1f8a792632383962834ac2dc97c6f9f299f38794f79e0495ae68a9055e",
-      "log_sha256": "455db027deb5a281be9e06dacd74b6bd5c89872c5d2634517ea3e29a23661a1b",
-      "status": "passed",
-      "scope": "intermediate snapshot; before final fixture and filesystem-slot refinements"
-    },
-    "mcp-first.log": {
-      "source_sha256": "2f44eb30dd2c4246a714a28083e9c790bb4c124a0ad80ee7dc0e03bc12704f78",
-      "log_sha256": "d0ae6a6f606497297cd0f3171f884553a85bd96e321c957aa7aabc7ee275ef2b",
-      "status": "passed",
-      "scope": "intermediate snapshot; before final fixture and filesystem-slot refinements"
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "058e11ae7300cbbf7873e5c8405bd4e7fac1b46f9065f9c5960db6bc09643fc7",
+      "log_sha256": "6bc29df3932814e86485d1543376a0f58ebacb209f4761ac074d9219e66c13cf"
     },
     "runtime-final.log": {
+      "exit_code": 0,
       "source_sha256": "058e11ae7300cbbf7873e5c8405bd4e7fac1b46f9065f9c5960db6bc09643fc7",
-      "log_sha256": "399fba454cacb59683e802b66f7b97ab8dbbd1df1193d01e68f7d5aa0f3b4725",
-      "status": "passed",
-      "scope": "final local HTTP and recipe runtime"
+      "log_sha256": "399fba454cacb59683e802b66f7b97ab8dbbd1df1193d01e68f7d5aa0f3b4725"
     },
-    "runtime-first.log": {
-      "source_sha256": "4f0c9977c24e51057eb1f626b851da2ea85656174766d1b9b81a6c7b495469a6",
-      "log_sha256": "6d05cc13811585a07f1c3461f074aa7b07a3d9d5d613870bf570b50c2f1f2f1b",
-      "status": "passed",
-      "scope": "intermediate snapshot; before final fixture and filesystem-slot refinements"
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "058e11ae7300cbbf7873e5c8405bd4e7fac1b46f9065f9c5960db6bc09643fc7",
+      "log_sha256": "5cc6769dfc66df5491f6941f6464aa859f0b542238a765ca22d0f9a6d7e7ed8b"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "058e11ae7300cbbf7873e5c8405bd4e7fac1b46f9065f9c5960db6bc09643fc7",
+      "log_sha256": "04ac0de3d4fbb519b67a46a955b04ef849dae08b175caff0957be115549cbcf6"
     }
   },
   "results": {
-    "runtime_passed": 7,
-    "runtime_filtered": 828,
+    "backend_passed": 913,
+    "relay_passed": 768,
+    "backend_acceptance_ignored": 67,
+    "http_mcp_vault_passed": 200,
+    "http_passed": 9,
+    "mcp_passed": 121,
+    "vault_passed": 70,
+    "compile_fail_passed": 5,
+    "local_scoped_http_recipe_runtime_passed": 7,
     "runtime_browser": false,
-    "intermediate_library_tests_passed": 200,
-    "intermediate_compile_fail_tests_passed": 5,
-    "intermediate_package_clippy": "passed",
-    "intermediate_root_clippy": "passed"
+    "package_clippy": "passed",
+    "root_selected_all_targets_clippy": "passed"
+  },
+  "frontend_reused": {
+    "proof": "frontend-unchanged.json",
+    "proof_sha256": "0c66ee96b011da13d8fba20162215aabd46bab2343478db655bd5f937d0d7375",
+    "rerun": false,
+    "scope": "Accepted f1d2926 backend increment only; subsequent UI changes have separate checks."
+  },
+  "intermediate": {
+    "mcp-first.log": {
+      "exit_code": 0,
+      "source_sha256": "2f44eb30dd2c4246a714a28083e9c790bb4c124a0ad80ee7dc0e03bc12704f78",
+      "log_sha256": "d0ae6a6f606497297cd0f3171f884553a85bd96e321c957aa7aabc7ee275ef2b"
+    },
+    "runtime-first.log": {
+      "exit_code": 0,
+      "source_sha256": "4f0c9977c24e51057eb1f626b851da2ea85656174766d1b9b81a6c7b495469a6",
+      "log_sha256": "6d05cc13811585a07f1c3461f074aa7b07a3d9d5d613870bf570b50c2f1f2f1b"
+    },
+    "clippy-first.log": {
+      "exit_code": 0,
+      "source_sha256": "dd7e0e1f8a792632383962834ac2dc97c6f9f299f38794f79e0495ae68a9055e",
+      "log_sha256": "455db027deb5a281be9e06dacd74b6bd5c89872c5d2634517ea3e29a23661a1b"
+    }
   },
   "limitations": [
-    "Final full backend regression was still running when this commit checkpoint was prepared.",
-    "Intermediate library and Clippy logs do not attest the final runtime source snapshot.",
-    "No native macOS, real-account/keyring, private remote recipe or Chromium acceptance.",
-    "Recipe UI, additional runtime assets/linked metadata, remote protocol and service workflow remain open; E5.3 and E0-E10 are incomplete."
+    "Linux-only production relay/proxy/bubblewrap with controlled in-memory keyring; no real accounts or external services.",
+    "No Chromium in these four runs; later UI increment is not covered by this accepted source snapshot.",
+    "No native macOS, host restart/resource-policy acceptance, private remote recipe protocol or operator policy acceptance.",
+    "Extra runtime assets/linked Git metadata, recipe UI acceptance and service workflow remain open.",
+    "E5.3 and E0-E10 remain incomplete; 21/68 formal checklist items complete."
   ]
 }

@@ -303,15 +303,19 @@ kill switcha pozostają kryteriami E5.3/E10; status testów jest w progress.md.
 Biblioteka vault udostępnia `permit_recipe`/`recipe`, osobny `RecipePermit` oraz
 statyczną definicję MCP `recipe`. Argumentami są nazwa i zadeklarowane parametry;
 credential, program, env i katalog roboczy wybiera host. Lokalny runtime Linux z włączonym sandboxem obsługuje również pin `recipe`.
-Katalog/API udostępnia go przez `scoped-secret-tool?kind=recipe`; interfejs Buildera,
-macOS, adapter zdalny i workflow wymagają dalszego podłączenia.
+Katalog/API udostępnia go przez `scoped-secret-tool?kind=recipe`. Builder pobiera
+przypiętą definicję HTTP lub recipe dla wskazanego celu i blokuje dodanie
+narzędzia przy execution_supported=false. Native macOS, adapter zdalny
+i workflow wymagają dalszego podłączenia.
 
-`RecipeTarget` opisuje binding workspace/project/host, canonical cwd i digest
-niezmiennego checkout stamp. Konstruktor sprawdza format; dowód pochodzi z
-wymaganego `RecipeAuthority::check_target`, wykonywanego przy admission, przed
-keyringiem, po I/O i przez live guard. HTTP authority samodzielnie nie wystarcza.
-Digest jednorazowej zgody ma osobną domenę `dunlin.scoped-recipe.v1` i wiąże
-pełny input z targetem. RecipePermit nie ma Deserialize ani Clone i nie jest
+`RecipeTarget` ma oddzielne warianty local i remote. Local opisuje binding
+workspace/project/host, canonical cwd i digest checkout stamp; remote nie ma
+lokalnej ścieżki. Konstruktor sprawdza format; dowód pochodzi z wymaganego
+`RecipeAuthority::check_target`, wykonywanego przy admission, przed keyringiem,
+po I/O i przez live guard. HTTP authority samodzielnie nie wystarcza.
+Lokalny digest zachowuje dotychczasowe bajty/domenę `dunlin.scoped-recipe.v1`.
+Remote ma osobną domenę `dunlin.scoped-recipe.remote.v1` i wiąże pełny input,
+binding, channel/turn stamps, export ID/revision i checkout stamp. RecipePermit nie ma Deserialize ani Clone i nie jest
 zamienny z permit HTTP. Zmiana inputu, checkoutu, hosta, wersji credential lub
 read-only odcina wykonanie. Zużytego request ID nie wolno przywrócić po regrant.
 
@@ -396,4 +400,149 @@ zasobów na docelowej maszynie. Programy korzystają z udostępnionego systemowe
 runtime; dodatkowe assets i linked Git metadata wymagają jawnego rozwiązania
 przez adapter. Remote authority nadal odmawia receptur do czasu negocjacji
 prywatnej capabilities/protokołu i polityki operatora; nie wykonuje ich na
-kontrolerze dla zdalnego celu. UI i service workflow pozostają otwarte.
+kontrolerze dla zdalnego celu. Service workflow pozostaje otwarty.
+
+
+## Konfiguracja receptury w interfejsie
+
+W Builderze wybierz „Dodaj narzędzie z poświadczeniem”, lokalny cel, rodzaj
+„Receptura CLI” i nazwę dostępu. Definicja narzędzia i digest pochodzą z katalogu
+serwera dla aktualnego zakresu; odpowiedź poprzedniego zakresu nie może dodać
+pinu. Brak obsługi na celu blokuje dodanie narzędzia. Opublikuj profil osobną
+akcją, następnie zapisz poświadczenie i jego pełną politykę w zaawansowanym
+formularzu JSON. Polityka receptury wskazuje program, SHA-256, nazwę zmiennej,
+argumenty, parametry i timeout; model nie wybiera tych ustawień przy wywołaniu.
+
+W poświadczeniach wybierz opublikowany profil i użytkownika. HTTP i recipe
+współdzielą jeden grant providera. Każdy taki dostęp obejmujący recipe wymaga
+prawa zapisu; opcja „Tylko odczyt HTTP” jest wyłączona. Nie znosi to osobnej,
+jednorazowej zgody właściciela sesji na pełne wywołanie ani kontroli backendu.
+W sesji wybierz ten grant i zatwierdź rzeczywiste argumenty receptury w AHP.
+
+Kontrolowany odbiór Chromium przechodzi przez utworzenie i publikację nowego
+profilu, zapis polityki, grant, utworzenie sesji, zgodę i wykonanie CLI. Backend
+sprawdza liczbę efektów, odczytów keyringu, brak HTTP fallback i brak sekretu
+w transkrypcie. Oddzielne scenariusze sprawdzają deny, zmieniony program,
+revoke działającego potomka i HTTP. Keyring jest pamięciowy; realne konta,
+native macOS, prywatny remote i odbiór E10 pozostają poza tym sprawdzeniem.
+
+
+## Wspólny pin i polityka runnera — przygotowanie prywatnych receptur
+
+RecipeTemplate opisuje wyłącznie konfigurację bez wartości poświadczenia.
+Digest ma domenę `dunlin.worker.recipe-template.v1`; obejmuje obraz programu,
+argv template, parametry, zmienną i timeout. Różne lokalne ścieżki tego samego
+przypiętego programu mogą mieć ten sam pin. ID credential, jego wersję i pełny
+cel musi osobno wiązać jednorazowa operacja; zgodność template nie jest authority.
+
+Operator może zapisać politykę schema3 z jawnymi recipes. Domyślna schema1 ani
+MCP-only schema2 nie upoważniają do tego rozszerzenia. Nowa lista jest przypięta
+raw settings digest do eksportu, więc rebind odcina wcześniejsze granty i lease.
+[Format i granice polityki](worker-exports.md#nazwane-receptury-operatora--schema-3).
+Nie dodano jeszcze prywatnej komendy, negocjacji transportu, przekazania wartości,
+ledgeru jednorazowej operacji ani hostowego adaptera remote. Authority nadal
+odmawia recipe dla zdalnego celu. Kolejny krok to negocjowany prywatny kanał
+z dowodem faktycznego runnera/checkoutu, zamiast wykonania na kontrolerze.
+
+Pozostałe podłączenie prywatnego wykonania ma zachować następujące granice:
+
+- Negocjacja musi być osobna od MCP-only v5 i od samego zapisu polityki3.
+  Serwer i runner wymagają własnego opt-in oraz faktycznej implementacji,
+  z ofertą ograniczeń i bez fallbacku do local ani starszego protokołu.
+- RecipeTarget rozdziela już local cwd i RemoteRecipeTarget. Kontroler nie zna
+  canonical root runnera i nie może zastąpić go własną ścieżką ani fikcyjnym
+  katalogiem. Hostowy adapter musi jeszcze budować channel/turn/checkout stamps
+  z rzeczywistego worker boot, channel fence, sesji/tury i export/revision;
+  runner wybiera swój captured FD i sandbox-visible cwd z zaufanego adaptera.
+- Wartość trafia dopiero po jednorazowym admission/zgodzie do prywatnego
+  wykonawcy daemonu runnera. Nie trafia do ACP, konfiguracji MCP harnessu,
+  publicznego DTO, pliku projektu ani trwałego ledgeru. Dane operacji wymagają
+  maskowanego Debug, ograniczeń i sprzątania buforów. Obcy lub nieobsługiwany
+  kanał nie może wyzwolić odczytu keyringu ani otrzymać wartości.
+- Runner niezależnie porównuje semantyczny template z własną polityką oraz
+  bieżące granty i checkout. Przed spawn przechwytuje obraz z weryfikacją SHA,
+  używa sandboxa i live guarda, a utrata lease/kanału/grantu kończy jego drzewo.
+  Wynik należy zredagować przed odpowiedzią i utrwalić wyłącznie bezpieczny
+  fakt zakończenia. Sam ograniczony stdout nie dowodzi braku credential.
+- Trwały nonce/fingerprint należy zużyć przed efektem. Powtórzony packet lub
+  receipt nie uruchamia programu; utracony ACK pozostaje Unknown. Odczyt stanu
+  operacji po reconnect nie może wymagać ponownego przesłania sekretu ani
+  implicit retry. Recovery nie odtwarza żywego pozwolenia z wire/SQL.
+
+To wymagania następnego przyrostu, a nie opis już działającego transportu.
+
+
+## Oddzielny plan zdalnego wykonania — rdzeń biblioteczny
+
+RecipeTemplate i reguły parametrów znajdują się w domain, a moduł protokołu
+pozostawia ich wspólny eksport. Digest/domena/JSON pinów operatora nie zmieniają
+się po tym przeniesieniu; stały wektor SHA-256 sprawdza format. Serde JSON oraz
+istniejące w workspace sha2/hex są zależnościami normalnymi domain, ponieważ
+pin jest semantyką współdzieloną przez vault i operatora, niezależną od transportu.
+Nie wprowadzono nowej wersji zewnętrznego pakietu ani zależności vault od protokołu.
+
+RemoteRecipeTarget nie ma Deserialize i nie zawiera cwd. Jego konstruktor
+sprawdza tylko kształt; nie wytwarza authority ze stampów ani metadanych SQL/wire.
+RecipeAuthority nadal musi potwierdzać cały target w każdym świeżym sprawdzeniu.
+Plan lokalny obsługuje wyłącznie RecipeExecutor, a zdalny — osobny interfejs
+RemoteRecipeExecutor. Niewłaściwy rodzaj jest odrzucany przed keyring read,
+bez fallbacku. Jednorazowość, odwołanie dostępu oraz Unknown po możliwym efekcie
+lub utracie completion pozostają wspólne.
+
+`Credentials::recipe_remote` buduje RemoteRecipePlan wyłącznie z przypiętej
+koperty i targetu. Plan zawiera template, zatwierdzone params, timeout oraz
+wartość w buforze Zeroizing; nie zawiera ścieżki programu ani cwd kontrolera.
+Debug pomija wartość i treść parametrów. Zaufany adapter otrzymuje LiveAccess
+bez opcjonalnego/unguarded wariantu. Musi zweryfikować rzeczywisty cel, wykonać
+program na runnerze i skorzystać z redakcji obu strumieni przed prywatną
+odpowiedzią. Udostępniona redakcja uwzględnia także Basic username:value,
+ogranicza rozmiar i zeroizuje przejściowe bufory. Kontroler redaguje ponownie
+przed publikacją rezultatu do MCP.
+
+Odbiór biblioteczny z kontrolowanym adaptorem nie jest odbiorem transportu ani
+prawdziwego runnera. Serwerowy Remote authority nadal odmawia recipe. Brakuje
+negocjacji, prywatnego payloadu/RPC, wiązania rzeczywistych fence i ledgeru
+zdalnej operacji oraz integracji wykonawcy daemonu.
+
+Podłączenie katalogu wymaga osobnego sprawdzenia gotowości na poziomie sesji:
+lista tools/list może powstać przed pierwszą turą. Nie wolno tworzyć fikcyjnego
+turn stamp w celu pokazania recipe. Zdalny target z rzeczywistym turn stamp
+powstaje dopiero dla tools/call i musi odpowiadać zweryfikowanemu BrokerScope
+tej operacji. Sama obecność pinu w katalogu ani historical session receipt
+nie upoważniają do przesłania sekretu. Authority ma osobny recipe_catalog;
+local zachowuje dotychczasowe sprawdzenie executora, a domyślna implementacja
+odmawia. Hostowy remote preflight pozostaje do podłączenia po negocjacji WSS.
+
+
+## Prywatny kontrakt v6 — kodeki metadanych, przed podłączeniem WSS
+
+`worker::recipe::private` ma osobne Hello6, OpenRecipeSessionCommand oraz
+PrepareRecipe. Dotychczasowe kodeki v1–v5 odrzucają te koperty. Nie dodano flag
+aktywacji ani obsługi v6 do obecnego endpointu lub klienta, więc sam kodek nie
+negocjuje kanału i nie pozwala przesłać wartości. Do rzeczywistego włączenia
+potrzebny jest działający ledger i daemonowy executor oraz opt-in obu stron.
+
+RecipeLimits wymagają jawnego limitu pending1–4, secret bytes1–16384,
+serialized reply bytes1024–262144 oraz timeout1–120000ms. Wybrany limit nie może
+przekroczyć oferty żadnej strony ani właściwego budżetu brokera. To górne
+limity; nie są obietnicą przedłużenia aktualnej tury/lease ani wolnego slotu.
+Open fingerprint ma domenę v6 i przypina całe open oraz oba zestawy limitów;
+odczyt jego historycznego receipt nie tworzy żywego pozwolenia.
+
+RecipeOperation zawiera tylko korelację i wejście operacji: nonce, TurnFence,
+ExportDescriptor, dokładny AgentMcpTool, nazwę/digest template, credential stamp,
+zatwierdzone params, timeout/reply budget i fingerprint. Nie zawiera wartości,
+ścieżki programu ani cwd. Debug pomija params i credential stamp. Metadane
+mają limit64KiB, params8KiB. Wartość wymaga osobnego ograniczonego efemerycznego
+payloadu; dodanie pól value/secret do PrepareRecipe jest odrzucane.
+
+Fingerprint operacji ma osobną domenę i wiąże wszystkie wymienione pola.
+validate_for_turn porównuje faktyczny turn/descriptor, sprawdza dokładną
+allowlistę przypiętej definicji profilu i wybrane limity. To weryfikacja danych,
+nie authority. Runtime musi jeszcze potwierdzić channel guard, oryginalne
+monotonic leases, własny grant i checkout oraz dopasować operator template.
+Dopiero trwałe zużycie nonce/fingerprint i własny opaque handle mogą dopuścić
+payload i efekt. Ledger powinien utrwalać bezpieczne piny/status/fingerprint,
+nie surowe params, wartość ani pełny blob metadanych. Powtórzenie po utracie ACK
+nie może odtworzyć pozwolenia. Redakcja poprzedza ograniczanie odpowiedzi;
+niepewne/truncated bufory i prywatny result codec wymagają osobnego odbioru.

@@ -1,0 +1,14 @@
+{
+  "raw_log_sha256": "44831f8b08b19259b07437573069a6f13ba6d0a9aed64d4ebe4761844f8f981d",
+  "images": {
+    "recipe_desktop-before-cleanup-check.png": "c9dc0a3fe2ce62cb9127d14f892a4f661acde4cde0ad6b22263579fb266f90bf",
+    "recipe_mobile-before-cleanup-check.png": "63d233411098790ce5f44234f2c78fdf5ba866f948847b37bf139279e331afcb",
+    "recipe_retentionDesktop-before-cleanup-check.png": "698af9c38c047b0e8c74cd6ced8a69ca3b649e1c30f64c3010f2833580ad6dfc",
+    "recipe_retentionMobile-before-cleanup-check.png": "462c29983e8888299f1f4cdaa7dad24a84fe965641ea9068a914934899c94ef0",
+    "recipe_grantDesktop-before-cleanup-check.png": "39d54f8105790ea0a92a58bc1bcb7903751e98f77e04e5ee6b3d293468153093",
+    "recipe_grantMobile-before-cleanup-check.png": "fabddda4cc5286c3f6582755c9ca49a56a508bb2e028ea60c48733020a098030",
+    "recipe_builderDesktop-before-cleanup-check.png": "8c5ec9a814a743548b5733c487b74af43ad64d346457e920e586311adff29a5a",
+    "recipe_builderMobile-before-cleanup-check.png": "1bae69a05fa9534f77480c2705fdb76843639001b2b916d930de8830b3c51b73"
+  },
+  "result": "6 passed, 1 failed; recipe browser passed, HTTP CDP cleanup body unavailable"
+}

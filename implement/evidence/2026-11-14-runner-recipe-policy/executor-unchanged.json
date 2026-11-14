@@ -1,0 +1,7 @@
+{
+  "baseline": "../2026-11-14-recipe-ui/verified-source.json",
+  "baseline_commit_before_UI": "f1d2926",
+  "env_validation_body_identical": true,
+  "body_sha256": "6d49e0ba82b60349443ba6b07c400176cc8e85b7f7a2c1d1c9c69e294a80434f",
+  "reason": "The Linux executor calls the exact former function body now shared from domain. No new executable transport or private secret payload is enabled; runtime/browser was not rerun in this policy-only increment."
+}

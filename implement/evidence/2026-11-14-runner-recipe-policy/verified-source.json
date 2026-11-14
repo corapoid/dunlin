@@ -1,0 +1,85 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ],
+      "independently_recomputed": true
+    }
+  },
+  "runs": {
+    "domain-final.log": {
+      "exit_code": 0,
+      "source_sha256": "24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8",
+      "log_sha256": "69236f07c0b37eac91baa5a8f5e265eb536ba5c7ca27e4c7dc63f640fe4aff86"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8",
+      "log_sha256": "4858f1fec14e9b6f798590ed38e55f32902c75622ca90b25f5e4b357be6c28fe"
+    },
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8",
+      "log_sha256": "91e78f4e97bb08f0a60788eced24324f2c0ba1a6b4c7a7583cd31fb32040f986"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8",
+      "log_sha256": "cb98d0ec11f850bed31a3ada21ac7bed4ce5fefb49064595fccf966ddeee87d4"
+    }
+  },
+  "results": {
+    "domain_passed": 50,
+    "protocol_passed": 47,
+    "backend_passed": 916,
+    "relay_passed": 771,
+    "backend_acceptance_ignored": 67,
+    "http_mcp_vault_passed": 200,
+    "compile_fail_passed": 5,
+    "package_clippy": "passed",
+    "root_selected_all_targets_clippy": "passed",
+    "runtime_browser_rerun": false
+  },
+  "proofs": {
+    "frontend-unchanged.json": "6e51f30deb4a17b4258b24265d9cf2d4511b8264ff540976b2050dff1d93f04a",
+    "executor-unchanged.json": "ff3cbee9d6676e6d064f6f15e7bb076898c08144be98904182cd70889774d130",
+    "local-results.json": "b2ce91097b76722b5919aa1d49f30d1c56e87a295a7dcfed25afe557fa598dff"
+  },
+  "intermediate": {
+    "domain-first-failed.log": {
+      "exit_code": 101,
+      "source_sha256": "f07d8e9cbe633557ef01290dfa9fadc26304a43d3d521464043de848fd3fb91c",
+      "log_sha256": "b56f83a7ab88e21370d13d498d1e7fc363c608e14ebe0ebf358a954ad36e2255",
+      "reason": "New test used a non-literal format argument in assert_ne; fixed before accepted tests."
+    },
+    "domain-before-helper-move.log": {
+      "exit_code": 0,
+      "source_sha256": "be153a452c52b5c7b16304e258e5c986de0bc3d122fd663ac17384fbbfeb816d",
+      "log_sha256": "cf0c9726c7dd36ecf7e888b9aeb018f5fd9d0012bc99c241a7e5d693249b52fe",
+      "reason": "97 passed before relocating shared helper ahead of test module."
+    },
+    "server-stopped-before-helper-move.log": {
+      "exit_code": 143,
+      "source_sha256": "be153a452c52b5c7b16304e258e5c986de0bc3d122fd663ac17384fbbfeb816d",
+      "log_sha256": "a8e63c9491c0a5ebfa3d06cdcf8b813bd3a3023124c7d03aec579d3ec09251da",
+      "reason": "Own newly started backend run explicitly stopped for helper declaration order correction; not a test result or observation timeout."
+    }
+  },
+  "limitations": [
+    "RecipeTemplate and operator schema3 are configuration foundations; no private command/payload, new handshake, negotiated recipe capability or remote executor is enabled.",
+    "MCP-only v5 remains insufficient for CLI credential delivery; remote recipe authority and catalog support remain unsupported.",
+    "Policy parsing/registering does not prove the program exists, image identity through spawn, execution isolation or current session/checkout authority.",
+    "Operator programs are checked against lexical/canonical checkout locations during registration/rebind; the future executor must independently capture and attest the actual image and checkout on dispatch.",
+    "The immutable semantic pin excludes controller-local path and credential metadata; future one-use operation must separately bind live channel/boot/session/turn, export/revision/checkout stamp and credential/version.",
+    "No real account, external service, tailnet, native macOS or remote CLI runtime acceptance.",
+    "Current frontend/runtime acceptance is reused only within the explicitly verified unchanged scopes; E5.3/E10 and project checklist remain open21/68."
+  ]
+}

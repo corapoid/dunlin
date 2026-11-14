@@ -1,0 +1,181 @@
+Sandbox suite=mcp container=dunlin-check-f89c32320a344860bead5911353a0abc image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=900s source_sha256=de0aec8e7fb59efa1348a504cb4c75fa5088a90e66fcc18479123cc8d3d236b8 codegen_units=8
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling syn v3.0.10
+   Compiling cfg-if v1.0.5
+   Compiling libc v0.2.191
+   Compiling synstructure v0.14.0
+   Compiling serde_core v1.0.229
+   Compiling find-msvc-tools v0.1.15
+   Compiling shlex v2.0.1
+   Compiling cc v1.11.1
+   Compiling zerofrom-derive v0.1.8
+   Compiling serde v1.0.229
+   Compiling zerofrom v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling serde_derive v1.0.229
+   Compiling stable_deref_trait v1.2.1
+   Compiling memchr v2.8.3
+   Compiling yoke v0.8.4
+   Compiling zerovec-derive v0.11.7
+   Compiling autocfg v1.5.1
+   Compiling itoa v1.0.19
+   Compiling zmij v1.0.23
+   Compiling num-traits v0.2.19
+   Compiling zerovec v0.11.9
+   Compiling displaydoc v0.2.7
+   Compiling serde_json v1.0.154
+   Compiling smallvec v1.16.5
+   Compiling ring v0.17.14
+   Compiling typenum v1.20.1
+   Compiling once_cell v1.21.4
+   Compiling hybrid-array v0.4.15
+   Compiling tinystr v0.8.5
+   Compiling writeable v0.6.4
+   Compiling percent-encoding v2.3.2
+   Compiling utf_types v1.0.0
+   Compiling litemap v0.8.3
+   Compiling zeroize v1.9.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling icu_locale_core v2.4.0
+   Compiling utf8_iter v1.1.0
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling getrandom v0.2.17
+   Compiling icu_normalizer_data v2.4.0
+   Compiling cmov v0.5.4
+   Compiling icu_properties_data v2.4.0
+   Compiling crc32fast v1.5.4
+   Compiling foldhash v0.2.0
+   Compiling untrusted v0.9.0
+   Compiling httparse v1.10.1
+   Compiling ctutils v0.4.8
+   Compiling icu_collections v2.4.0
+   Compiling icu_provider v2.4.0
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling num-integer v0.1.47
+   Compiling rustls v0.23.46
+   Compiling log v0.4.35
+   Compiling bytes v1.12.1
+   Compiling simd-adler32 v0.3.10
+   Compiling const-oid v0.10.2
+   Compiling adler2 v2.0.1
+   Compiling miniz_oxide v0.9.1
+   Compiling digest v0.11.3
+   Compiling http v1.5.0
+   Compiling rustls-webpki v0.103.16
+   Compiling parking_lot_core v0.9.12
+   Compiling subtle v2.6.1
+   Compiling getrandom v0.3.4
+   Compiling base64 v0.23.1
+   Compiling ref-cast v1.0.27
+   Compiling zerocopy v0.8.63
+   Compiling version_check v0.9.5
+   Compiling ahash v0.8.12
+   Compiling ureq-proto v0.7.1
+   Compiling flate2 v1.1.11
+   Compiling icu_properties v2.4.0
+   Compiling icu_normalizer v2.4.0
+   Compiling num-bigint v0.4.8
+   Compiling webpki-roots v1.0.11
+   Compiling aho-corasick v1.1.5
+   Compiling cpufeatures v0.3.1
+   Compiling ref-cast-impl v1.0.27
+   Compiling regex-syntax v0.8.11
+   Compiling scopeguard v1.2.0
+   Compiling utf8-zero v0.8.1
+   Compiling getrandom v0.4.3
+   Compiling rand_core v0.10.1
+   Compiling ureq v3.5.1
+   Compiling lock_api v0.4.14
+   Compiling regex-automata v0.4.18
+   Compiling sha2 v0.11.1
+   Compiling num-rational v0.4.2
+   Compiling idna_adapter v1.2.2
+   Compiling num-iter v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling hex v0.4.3
+   Compiling equivalent v1.0.3
+   Compiling unicode-general-category v1.1.0
+   Compiling thiserror v2.0.21
+   Compiling bit-vec v0.8.0
+   Compiling allocator-api2 v0.2.21
+   Compiling borrow-or-share v0.2.4
+   Compiling fluent-uri v0.4.1
+   Compiling hashbrown v0.16.1
+   Compiling bit-set v0.8.0
+   Compiling num v0.4.3
+   Compiling parking_lot v0.12.5
+   Compiling idna v1.1.0
+   Compiling thiserror-impl v2.0.21
+   Compiling lazy_static v1.5.1
+   Compiling pkg-config v0.3.34
+   Compiling vcpkg v0.2.15
+   Compiling vsimd v0.8.0
+   Compiling micromap v0.3.0
+   Compiling outref v0.5.2
+   Compiling uuid-simd v0.8.0
+   Compiling referencing v0.46.10
+   Compiling libsqlite3-sys v0.39.1
+   Compiling fraction v0.15.4
+   Compiling fancy-regex v0.17.0
+   Compiling regex v1.13.1
+   Compiling dunlin-http v0.2.0 (/repo/crates/http)
+   Compiling chacha20 v0.10.2
+   Compiling form_urlencoded v1.2.2
+   Compiling email_address v0.2.9
+   Compiling bytecount v0.6.9
+   Compiling num-cmp v0.1.0
+   Compiling data-encoding v2.11.1
+   Compiling bitflags v2.13.2
+   Compiling jsonschema v0.46.0
+   Compiling url v2.5.8
+   Compiling rand v0.10.3
+   Compiling hashbrown v0.17.1
+   Compiling hashlink v0.12.2
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling rustix v1.1.6
+   Compiling rusqlite v0.41.1
+   Compiling dunlin-mcp-client v0.2.0 (/repo/crates/mcp-client)
+   Compiling dunlin-artifacts v0.2.0 (/repo/crates/artifacts)
+   Compiling dunlin-knowledge v0.2.0 (/repo/crates/knowledge)
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+error[E0432]: unresolved import `sha2`
+ --> crates/domain/src/vault/recipe_template.rs:9:5
+  |
+9 | use sha2::{Digest, Sha256};
+  |     ^^^^ use of unresolved module or unlinked crate `sha2`
+  |
+  = help: if you wanted to use a crate named `sha2`, use `cargo add sha2` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+  --> crates/domain/src/vault/recipe_template.rs:80:12
+   |
+80 |         if serde_json::to_vec(self)
+   |            ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+   |
+   = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+   --> crates/domain/src/vault/recipe_template.rs:132:19
+    |
+132 |         let raw = serde_json::to_vec(&("dunlin.worker.recipe-template.v1", self))
+    |                   ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+    |
+    = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `hex` in this scope
+   --> crates/domain/src/vault/recipe_template.rs:134:12
+    |
+134 |         Ok(hex::encode(Sha256::digest(raw)))
+    |            ^^^ use of unresolved module or unlinked crate `hex`
+    |
+    = help: if you wanted to use a crate named `hex`, use `cargo add hex` to add it to your `Cargo.toml`
+
+Some errors have detailed explanations: E0432, E0433.
+For more information about an error, try `rustc --explain E0432`.
+error: could not compile `dunlin-domain` (lib) due to 4 previous errors
+Sandbox memory: {"memory.peak": "991113216", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

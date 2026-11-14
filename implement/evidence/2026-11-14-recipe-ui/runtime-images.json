@@ -1,0 +1,21 @@
+{
+  "raw_log_sha256": "745ea7d0b03529481046f807769ed345085883ad5293ce3a469e932d5fc6ccd6",
+  "normalization": "Inline base64 images extracted verbatim to PNG, with references replacing the base64 in runtime-final.log. No test output omitted.",
+  "images": {
+    "http_desktop.png": "0b96c4ea51131115e89f5544f15c308bad553e3e6cb26f44a5a788f6098fc2bf",
+    "http_mobile.png": "a32168107ebc825fd8f186ae746b2843edf0db2c93454f99bbb52066fe114130",
+    "http_retentionDesktop.png": "e0fbe53b11bc9b4d2453ab4736ee19856ef18b3d88ee8c3d4821c9b298a4a18e",
+    "http_retentionMobile.png": "48f98a16fda12e9f08705fd810dfe5c06027b2c2678f4ae379d4235fd3ea662f",
+    "http_grantDesktop.png": "b81a0de23f4b352654fff9163183a9e73ede43a2b797b08433b14b0698dd1fb1",
+    "http_grantMobile.png": "730fe84e175326d2866725c3f6913a324cbf5aadf958ff6074ab50340f4c49a7",
+    "recipe_desktop.png": "1cf325e8f488c0688bb6ed2576f9209cf3fbb6e421dff26786885212827c4d51",
+    "recipe_mobile.png": "369324020fc5fb74ca52db876e992d4aa1777967d71738bddbb00e61824ed31f",
+    "recipe_retentionDesktop.png": "f71dcc5a55d151cc76d6a7a256209e5e54491f4697e4c337c63c723c7e169c70",
+    "recipe_retentionMobile.png": "1aa880d58eb878ede00bc4c53d784ff26385a1b998b8acb549f01023eab4b7d8",
+    "recipe_grantDesktop.png": "b89c4972cb4cedefa4298c318ec197dec35b558c6a936bcbbfc1192107c8d80b",
+    "recipe_grantMobile.png": "6604f26ecf464e78a98750fd39ff2938646117a1bcb2aa29e05ee1c59806ef5c",
+    "recipe_builderDesktop.png": "445095ee34d26ef052c320a8876f518659f171e25e4588447feab0854e51de45",
+    "recipe_builderMobile.png": "d95bd4aad5c32445dc78ae95b0fb274167e8ea3191e35ca3f17c2aa979820dfa"
+  },
+  "result": "7 passed; both HTTP and recipe Chromium branches passed"
+}

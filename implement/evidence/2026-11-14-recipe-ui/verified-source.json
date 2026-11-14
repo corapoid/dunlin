@@ -1,0 +1,145 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "74fef8b86d1104f30116634d718ad186e463ef60eae866bccda325200c56f5cf",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ]
+    },
+    "frontend": {
+      "sha256": "c99ca6d5d47f6924f7eb40645be704380e0e38149297a679794599005720b415",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog"
+      ]
+    },
+    "typecheck": {
+      "sha256": "f0dee8cb702b235697ed43889cb0ae05353c2d579ebcea11eb33b20b720d225e",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts"
+      ]
+    },
+    "build": {
+      "sha256": "a2f57970da9b477b4af4241be3316a21c107eb68162765e0c1697d9c4199d193",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/index.html",
+        "apps/web/postcss.config.mjs",
+        "apps/web/REUI-LICENSE.txt"
+      ]
+    },
+    "launcher": {
+      "sha256": "d0a7233c535a8ae8e815df06f10d85a0c96fc9a58e986852d6188ad122b1c232",
+      "inputs": [
+        "scripts/test_web_sandbox.py",
+        "scripts/tests/test_web_sandbox_launcher.py"
+      ]
+    }
+  },
+  "runs": {
+    "frontend-final.log": {
+      "exit_code": 0,
+      "source_sha256": "c99ca6d5d47f6924f7eb40645be704380e0e38149297a679794599005720b415",
+      "log_sha256": "5f4d1543f81ef69b990e9573c9ca173269b4bc9a390c1e195180dce222c63c08"
+    },
+    "typecheck-final.log": {
+      "exit_code": 0,
+      "source_sha256": "f0dee8cb702b235697ed43889cb0ae05353c2d579ebcea11eb33b20b720d225e",
+      "log_sha256": "9190d1bb2257e0e9880dacd454eca5b02c883ac52040a832e29b3dd4a5e70642"
+    },
+    "build-final.log": {
+      "exit_code": 0,
+      "source_sha256": "a2f57970da9b477b4af4241be3316a21c107eb68162765e0c1697d9c4199d193",
+      "log_sha256": "f7b4e674ea0b3a1f4993d93570da6ced0e3f7f884e9caaf7c6d03adb01b65be2"
+    },
+    "runtime-final.log": {
+      "exit_code": 0,
+      "source_sha256": "74fef8b86d1104f30116634d718ad186e463ef60eae866bccda325200c56f5cf",
+      "log_sha256": "5d3767a4810b6cfc19e3b202485777f949d16dd6e9182a333e9a97ab3ebb82d9"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "74fef8b86d1104f30116634d718ad186e463ef60eae866bccda325200c56f5cf",
+      "log_sha256": "a635d728eada42419bfbfd162a03652712ec3a5fe9f375c5a53791266304a1d4"
+    }
+  },
+  "results": {
+    "frontend_passed": 166,
+    "typecheck": "passed",
+    "build": "passed",
+    "local_runtime_passed": 7,
+    "runtime_filtered": 828,
+    "runtime_browser": true,
+    "chromium_branches": [
+      "local HTTP",
+      "local recipe with new Builder profile"
+    ],
+    "screenshots": 14,
+    "root_selected_all_targets_clippy": "passed",
+    "launcher_unit_tests_passed": 18
+  },
+  "backend_baseline": {
+    "accepted_commit": "f1d2926",
+    "manifest": "../2026-11-14-local-recipe/verified-source.json",
+    "manifest_sha256": "b7464d47cc8c812e7e92804386ea5e2622ae994c623e81a7c2278df15c1fdc77",
+    "backend_passed": 913,
+    "http_mcp_vault_passed": 200,
+    "compile_fail_passed": 5,
+    "rerun": false,
+    "reason": "Production Rust unchanged; only local runtime/Chromium test fixture changed and was compiled/executed in this increment. Current root Clippy covers the changed fixture."
+  },
+  "artifacts": {
+    "runtime-images.json": "cb74d242ffeab1f470867f6a7ecfe008b5f513aa88b6d28119f1117c765ada13",
+    "verified-inputs.json": "0e403c3b74fd4782416186531b488d6a6b32f901499d4067b85b9c628bfc35b9",
+    "local-results.json": "cd5917d70a9ffccc669bba09b63d7a79945c3015b59363dbf05a09bc68a1413e"
+  },
+  "intermediate": {
+    "typecheck-before-es-fix.log": {
+      "exit_code": 2,
+      "source_sha256": "372c37fb302351f6d930a07b0fcacc8dc829d85561d11192df0031ef4a531da0",
+      "log_sha256": "2999f91f4daf10c3123189502230c34e4140cc5cbafd1205804a7dd09033c137",
+      "reason": "Test used toReversed outside configured ES target; replaced with copy/reverse."
+    },
+    "runtime-before-selector-fix.log": {
+      "exit_code": 101,
+      "source_sha256": "c1d3b38f893267ea9d416226035881c323c644a1284cfc9c81307afa5b0c4967",
+      "log_sha256": "e0bd63dbd93844951ee33812fa76ae98947655a6b42ae90b81db51dd0dc6978b",
+      "reason": "5 pass/2 fail; incorrect select for readonly harness and ambiguous prompt/reply locator."
+    },
+    "runtime-before-cleanup-state-check.log": {
+      "exit_code": 101,
+      "source_sha256": "a4ec93ee83131f1e1c614d0956e88bab36033bc602b9da8b0cd1e26959180859",
+      "log_sha256": "032e787ba92709488e7459efb346eea79731af29a30c953215677fc29d57230f",
+      "reason": "6 pass/1 fail; complete recipe browser passed. HTTP CDP did not expose completed cleanup fetch body. Assertion now checks app success plus durable read without replay.",
+      "images_manifest": "runtime-before-cleanup-images.json",
+      "images_manifest_sha256": "91728b8771f73d28b7ef9765f2a1e9281b5c3d773c67fd8dd824ccecfbdae82e"
+    }
+  },
+  "limitations": [
+    "Controlled Linux relay/proxy/bubblewrap and in-memory keyring; no real account/service/tailnet acceptance.",
+    "Recipe policy uses the advanced JSON editor; program/hash/environment are operator configuration, never model-selected arguments.",
+    "Recipe-only provider browser path is covered; mixed HTTP+recipe provider grouping is covered by frontend tests, not a separate live mixed-provider session.",
+    "Unsupported UI branch uses a controlled execution_supported=false response; override is removed before publishing and execution. Positive path uses actual backend.",
+    "Screenshots have full-page fixed-position capture artifacts at nonzero scroll offset; target controls and automated width checks are covered, full sticky/focus/a11y and other browser engines remain open.",
+    "Native macOS, private remote recipe protocol/operator policy, additional assets/linked metadata, workflow integration and E5.3/E10 acceptance remain open.",
+    "Formal checklist remains21/68; this is a verified E5.3 increment, not project completion."
+  ]
+}

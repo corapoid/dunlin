@@ -1,0 +1,94 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ],
+      "independently_recomputed": true
+    }
+  },
+  "runs": {
+    "domain-final.log": {
+      "exit_code": 0,
+      "source_sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "log_sha256": "bf2c9efb469bc2948d2adec78895986fe1a04462729606166f12d389c64ed9a7"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "log_sha256": "b16d8c068a9c7126f039c53fe4ab1bd9cd50b96e34f7076a12c40c5e83b3a5c2"
+    },
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "log_sha256": "0a4cff8ed40673c333ad1e76f2ec8eec2e7124f0350ef269450169289c166e4f"
+    },
+    "runtime-final.log": {
+      "exit_code": 0,
+      "source_sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "log_sha256": "2cd456c24d335fd8d01d59ba8452fb21421b837bbfa28156c85701385259a3ae"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "5652144c8141d474374eef4477e66f2f555fe81b3034c7507777998cc37b8df6",
+      "log_sha256": "dd5036b7232f83b26f69a301769c27fe98eb95454b8bc4967d062ae9c763eb5a"
+    }
+  },
+  "results": {
+    "domain_passed": 53,
+    "protocol_passed": 49,
+    "backend_passed": 917,
+    "relay_passed": 772,
+    "backend_acceptance_ignored": 67,
+    "http_mcp_vault_passed": 205,
+    "compile_fail_passed": 7,
+    "local_scoped_http_recipe_runtime_passed": 7,
+    "runtime_filtered": 832,
+    "runtime_browser": false,
+    "package_clippy": "passed",
+    "root_selected_all_targets_clippy": "passed"
+  },
+  "proofs": {
+    "frontend-unchanged.json": "cba41c8c08a2912754a4561b2f93a3b3be9f55aedf04189d80034d737cf21136",
+    "local-results.json": "00e01886be8b0109a9d0a9c2fe25c176613a10f156e45a357ed7663aed7849d4"
+  },
+  "intermediate": {
+    "domain-before-tool-pin.log": {
+      "exit_code": 0,
+      "source_sha256": "49e8ab7177fb8a4f61bd77c62eb083ed966baee1fe4a83806fa373c307018584",
+      "log_sha256": "04c12675e690b8260a7ff65f2a6f904ab8b6628ff2c2ecf32ccf38d79d3b5ab2",
+      "reason": "102 passed before adding the independent exact profile-tool allowlist check."
+    },
+    "domain-before-no-sql-turn.log": {
+      "exit_code": 0,
+      "source_sha256": "a0a92bedfc739ea2ef5a1be10b3eb83d2d7fce1927df9f0763fc9b7c739af97f",
+      "log_sha256": "f8e4cc9ef9808a42ad926e00f407169b685c013d6031a6c68f962459cb50142b",
+      "reason": "102 passed before strengthening the server catalog fixture to have no SQL turn."
+    },
+    "server-stopped-before-no-sql-turn.log": {
+      "exit_code": null,
+      "source_sha256": "a0a92bedfc739ea2ef5a1be10b3eb83d2d7fce1927df9f0763fc9b7c739af97f",
+      "log_sha256": "954000cd22e3f41f0eb81a2df8786b28d6a7426d713b34d90e8192ebb854a4ae",
+      "status": "intentionally stopped; no test result claimed",
+      "wrapper_exit_code": 137,
+      "reason": "Own verification stopped to strengthen the no-SQL-turn test. Child/container had terminated, but the wrapper re-entered Popen.wait in its signal handler; only the stranded wrapper was force-stopped. Final tests used individual exec handles."
+    }
+  },
+  "limitations": [
+    "Hello6/OpenRecipeSession/PrepareRecipe are proposal codecs and metadata validation only. Current WSS/controller/worker selection does not activate v6.",
+    "No secret payload, actual v6 transport, private prepared-operation ledger or daemon CLI executor is enabled.",
+    "Metadata validation/fingerprint/receipt does not establish verified peer, current channel, live monotonic session/turn leases, operator template permission or one-use dispatch authority.",
+    "Profile allowlist and exact context/limits are checked by helpers against caller-supplied expected data; the future runtime must supply the actual trusted pinned state, not echo request fields.",
+    "The catalog test has no queued/active SQL turn and panics on turn/target access, with zero keyring/HTTP. Its trusted host adapter is controlled; the remote preflight remains unsupported.",
+    "Local runtime uses production relay/proxy/bubblewrap with controlled keyring and HTTP substitutes; no Chromium, native macOS, real tailnet/account/service or private remote CLI acceptance.",
+    "Worker ledger must persist safe pins/status/fingerprint, not raw parameter/value blobs; private reply redaction/truncation and payload cancellation require real integration acceptance.",
+    "Formal checklist remains21/68, E5.3/E10 and full E0-E10 goal remain open."
+  ]
+}

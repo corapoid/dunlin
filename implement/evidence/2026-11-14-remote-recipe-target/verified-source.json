@@ -1,0 +1,91 @@
+{
+  "snapshots": {
+    "rust": {
+      "sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "apps",
+        "crates",
+        "vendor",
+        "tests/fixtures",
+        "scripts/install-harness.sh"
+      ],
+      "independently_recomputed": true
+    }
+  },
+  "runs": {
+    "mcp-final.log": {
+      "exit_code": 0,
+      "source_sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "log_sha256": "ccb871d83a1edb0ce36af8ee965c4abae8377b33c8b963ff4521574386a28772"
+    },
+    "domain-final.log": {
+      "exit_code": 0,
+      "source_sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "log_sha256": "388c006a6f676a8c22bdd81822bca82b5dcdd2652376af106e5c0f45aaf8c7f7"
+    },
+    "server-final.log": {
+      "exit_code": 0,
+      "source_sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "log_sha256": "0ae5b8539b0ccd4bc9942d97583626eb1b2d290119e39d26e75ad640f2fcc029"
+    },
+    "runtime-final.log": {
+      "exit_code": 0,
+      "source_sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "log_sha256": "0f94eea137d09ae532734ba5813e32fc6aa946bc62dee84cfe4ccb4ef0bf074e"
+    },
+    "clippy-final.log": {
+      "exit_code": 0,
+      "source_sha256": "982933db34d36ac0bec29dd926830ddf015f86c18ef7e49ef436ba4332491c7f",
+      "log_sha256": "8460a833aca9c9178d65bd0ccc85768407c683e0091a8baaab10a11e0a33173d"
+    }
+  },
+  "results": {
+    "domain_passed": 53,
+    "protocol_passed": 44,
+    "backend_passed": 916,
+    "relay_passed": 771,
+    "backend_acceptance_ignored": 67,
+    "http_mcp_vault_passed": 205,
+    "http_passed": 9,
+    "mcp_passed": 121,
+    "vault_passed": 75,
+    "compile_fail_passed": 7,
+    "local_scoped_http_recipe_runtime_passed": 7,
+    "runtime_filtered": 831,
+    "runtime_browser": false,
+    "package_clippy": "passed",
+    "root_selected_all_targets_clippy": "passed"
+  },
+  "proofs": {
+    "frontend-unchanged.json": "0bf61691bdbe2178bdb38410666d596d5ca79299e33ac41dd2a78dd09cf3b441",
+    "dependency-graph.json": "0745c8bb3757120bfed5ad4c648c0872486cda3983577ae547bfdb0f16d1d4b5",
+    "local-results.json": "c31d75d18d80fa7bc38c9e082e49e1971390e221a9f4e5b4b24e7bd293d94f9a",
+    "sequence-results.json": "cbe982fcf4c90bf320e5022fcb4968b963710ca0a80024d3f39163c5fc23966b"
+  },
+  "intermediate": {
+    "mcp-before-domain-deps.log": {
+      "exit_code": 101,
+      "source_sha256": "de0aec8e7fb59efa1348a504cb4c75fa5088a90e66fcc18479123cc8d3d236b8",
+      "log_sha256": "524cf0159350b96ca265adb8ad78349dcd4c1d6c75e32d782e930d1e56ded062",
+      "reason": "Moved semantic template needs normal serde_json/sha2/hex domain dependencies; fixed manifest/lock edges without package version changes."
+    },
+    "mcp-before-binding-assertion-fix.log": {
+      "exit_code": 101,
+      "source_sha256": "8e0b17922937bf7e227e89ef2bc662977a0138e8b5c68d98e5149fd50d208cdf",
+      "log_sha256": "5ba1c3d565495bca33f9d9922fbe8fbb3e9d469da0fee2b189bdd11850488cc2",
+      "reason": "New assert_eq required Debug on intentionally non-Debug Binding; comparison changed without widening Debug exposure. Before final authority-guard/vector/negative binding extensions."
+    }
+  },
+  "limitations": [
+    "Remote core execution uses a controlled adapter. No actual private RPC/payload, negotiated remote recipe capability, one-use worker operation ledger or daemon recipe adapter is enabled.",
+    "RemoteRecipeTarget constructor validates shape only. A trusted adapter must derive complete stamps from actual live channel/worker boot/turn/export/grant/checkout and check them at every use.",
+    "Remote server authority and recipe catalog support remain unsupported until the private adapter and session-level catalog preflight are integrated. Tools/list must not invent an active turn.",
+    "Local runtime regression uses production relay/proxy/bubblewrap with controlled keyring and HTTP substitutes; it does not attest an actual remote recipe process.",
+    "RemoteRecipePlan has no controller path/cwd and no Deserialize. Typed executor mismatch is denied before secret read; adapters must still attest the target and retain live cancellation/redaction through real execution.",
+    "A redaction method is supplied for trusted adapter use before response; future wire/daemon integration must actually enforce this. Controller repeats redaction before publishing.",
+    "No Chromium rerun, real account/service/tailnet, native macOS or private remote CLI acceptance.",
+    "Workflow/service use, extra assets/linked metadata, E5.3/E10 and full project checklist remain open21/68."
+  ]
+}

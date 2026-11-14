@@ -1,0 +1,148 @@
+Sandbox suite=domain container=dunlin-check-bc6786a5ba2247e5a2e6b4fd7a62f757 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=900s source_sha256=24e78879f0d924bcddb39e8c3da373d0fc73ba4853476ee92e611480e2335be8 codegen_units=8
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.10
+   Compiling serde v1.0.229
+   Compiling typenum v1.20.1
+   Compiling zmij v1.0.23
+   Compiling hybrid-array v0.4.15
+   Compiling serde_derive v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling libc v0.2.191
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.19
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling const-oid v0.10.2
+   Compiling digest v0.11.3
+   Compiling cpufeatures v0.3.1
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling cfg-if v1.0.5
+   Compiling sha2 v0.11.1
+   Compiling hex v0.4.3
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+    Finished `test` profile [unoptimized] target(s) in 19.56s
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_domain-5945d23b31c73a6b)
+
+running 50 tests
+test agent::tests::bounded_definition_roundtrips_and_renders_exact_versioned_literal_context ... ok
+test agent::tests::mcp_policy_requires_schema_two_exact_unique_pins_and_keeps_legacy_bytes ... ok
+test agent::tests::schema_and_runtime_limits_are_explicit_and_encoded_worst_case_fits_transport ... ok
+test agent::tests::unknown_execution_fields_and_unversioned_or_external_skills_are_rejected ... ok
+test agent::tests::utf8_byte_limits_controls_duplicates_and_combined_instruction_budget_are_enforced ... ok
+test binding::tests::explicit_targets_reject_ambiguous_kinds_paths_fields_and_unsafe_revisions ... ok
+test collaboration::tests::authority_revision_or_membership_change_invalidates_approval ... ok
+test collaboration::tests::explicit_session_share_still_requires_current_project_authority ... ok
+test collaboration::tests::grant_cannot_escalate_a_viewer_to_execution ... ok
+test collaboration::tests::grant_revision_change_alone_requires_review_again ... ok
+test collaboration::tests::owner_still_needs_a_project_grant ... ok
+test collaboration::tests::ownership_transfer_is_not_an_admin_permission ... ok
+test collaboration::tests::reject_cross_workspace_project_or_user_authority ... ok
+test collaboration::tests::separation_of_duties_is_explicit_and_enforced ... ok
+test collaboration::tests::service_cannot_approve_even_with_admin_role ... ok
+test collaboration::tests::sharing_requires_owner_and_a_granted_recipient ... ok
+test collaboration::tests::workspace_owner_does_not_inherit_another_users_private_transcript ... ok
+test collaboration::tests::workspace_permissions_cannot_be_smuggled_through_project_grants ... ok
+test hosts::tests::canonical_origin_rejects_credentials_paths_ports_lan_ssh_and_parser_ambiguities ... ok
+test hosts::tests::fixed_harnesses_capacity_and_report_bounds_are_enforced ... ok
+test hosts::tests::untrusted_report_intersection_is_a_ceiling_not_verified_execution_authority ... ok
+test hosts::tests::wire_roundtrips_and_cannot_set_trusted_flags_or_commands ... ok
+test jobs::tests::budgets_and_explicit_modes_are_required ... ok
+test project_settings::tests::clearing_overrides_and_reparenting_recompute_without_copying_inherited_values ... ok
+test project_settings::tests::corrupt_ancestry_is_never_partially_applied ... ok
+test project_settings::tests::deep_hierarchy_is_resolved_iteratively ... ok
+test project_settings::tests::environment_has_entry_and_byte_limits ... ok
+test project_settings::tests::environment_is_literal_and_preserves_values ... ok
+test project_settings::tests::hierarchy_merges_per_key_and_reports_each_values_origin ... ok
+test project_settings::tests::invalid_environment_never_echoes_input ... ok
+test project_settings::tests::merged_environment_is_bounded_even_if_each_layer_is_valid ... ok
+test project_settings::tests::models_are_scoped_to_harness_and_blank_restores_default ... ok
+test relay::tests::only_tailscale_dns_names_are_supported ... ok
+test task_budget::tests::final_reserved_request_may_grant_tools_but_expiry_and_scope_changes_may_not ... ok
+test task_budget::tests::fresh_but_changed_acp_accounting_does_not_authorize_tools ... ok
+test task_budget::tests::released_tombstone_cannot_be_forgotten_to_revive_an_older_assignment ... ok
+test task_budget::tests::shared_requests_and_retries_reserve_before_send_and_survive_restart ... ok
+test task_budget::tests::time_root_and_cost_counter_reset_fail_closed ... ok
+test task_budget::tests::unknown_stale_reset_currency_and_child_costs_are_never_zero ... ok
+test vault::tests::recipe_templates_are_closed_and_validate_parameters ... ok
+test vault::tests::ttl_is_bounded_and_managed_summaries_hide_values ... ok
+test workflow::tests::a_later_data_producer_cannot_feed_an_earlier_step ... ok
+test workflow::tests::arbitrary_cycles_are_rejected ... ok
+test workflow::tests::duplicate_unknown_and_disconnected_nodes_are_rejected ... ok
+test workflow::tests::input_binding_types_and_ownership_are_checked ... ok
+test workflow::tests::numeric_widening_is_allowed_but_not_boolean_coercion ... ok
+test workflow::tests::repeat_requires_a_boolean_result_and_an_iteration_limit ... ok
+test workflow::tests::review_cannot_have_zero_required_approvals ... ok
+test workflow::tests::unknown_versions_and_unbounded_execution_are_rejected ... ok
+test workflow::tests::valid_graph_and_serialization_round_trip ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/scratch/target/debug/deps/dunlin_relay_protocol-029a18c169f6e0cd)
+
+running 47 tests
+test tests::pairing_preserves_the_existing_v1_shape ... ok
+test tests::project_preserves_the_existing_v1_shape ... ok
+test tests::session_accepts_legacy_missing_optional_device_fields ... ok
+test web::tests::shared_browser_fixture_matches_rust_contract ... ok
+test web::tests::snapshots_round_trip_without_paths_or_credentials ... ok
+test web::tests::subscription_is_versioned_and_rejects_undeclared_authority ... ok
+test worker::execution::tests::ack_rejection_keeps_exact_negative_correlation_fields_and_closed_error_code ... ok
+test worker::execution::tests::admission_rejects_service_or_read_only_grants_unpinned_profiles_and_budget_expansion ... ok
+test worker::execution::tests::durable_outcome_ack_reply_binds_current_channel_original_fence_identity_and_digest ... ok
+test worker::execution::tests::mcp_profiles_require_broker_support_before_worker_execution ... ok
+test worker::execution::tests::receipt_epochs_safe_sequences_and_terminal_record_correspondence_are_checked ... ok
+test worker::execution::tests::reconciliation_and_outcome_ack_preserve_historical_fences_without_renewing ... ok
+test worker::execution::tests::separate_v3_contract_roundtrips_without_accepting_execution_in_legacy_payload_parsers ... ok
+test worker::execution::tests::strict_shapes_reject_arbitrary_authority_execution_and_renewal_fields_at_every_boundary ... ok
+test worker::execution::tests::text_limits_count_utf8_bytes_and_encoded_frames_remain_bounded_after_escaping ... ok
+test worker::execution::tests::v3_rate_budget_is_shared_and_keeps_legacy_protocol_limits_unchanged ... ok
+test worker::recipe::tests::digest_pins_all_execution_semantics_but_not_controller_local_metadata_or_paths ... ok
+test worker::recipe::tests::template_renders_only_declared_parameters_to_individual_argv_elements ... ok
+test worker::recipe::tests::templates_reject_ambient_config_missing_pins_unknown_fields_and_ambiguous_parameters ... ok
+test worker::session::broker::open::tests::broker_open_pins_entire_payload_and_offer_and_cannot_enter_v4_admission ... ok
+test worker::session::broker::open::tests::broker_receipt_correlation_checks_v5_hash_before_accepting_historical_metadata ... ok
+test worker::session::broker::open::tests::hello5_requires_explicit_version_and_bounded_offer_and_is_never_legacy_hello ... ok
+test worker::session::broker::tests::bounded_unicode_reply_roundtrips_without_splitting_utf8_or_exceeding_frames ... ok
+test worker::session::broker::tests::call_scope_alias_and_bounded_arguments_cannot_be_bypassed_by_metadata ... ok
+test worker::session::broker::tests::catalog_request_is_session_scoped_and_v4_never_accepts_broker_frames ... ok
+test worker::session::broker::tests::rejections_require_the_complete_request_reference_even_for_unknown_outcome ... ok
+test worker::session::broker::tests::reply_assembly_poisoning_prevents_reorder_replay_header_changes_and_corruption ... ok
+test worker::session::broker::tests::request_reference_binds_both_boots_entire_session_turn_and_exact_operation ... ok
+test worker::session::tests::canonical_turn_hash_has_external_sha256_golden_and_excludes_only_self_fingerprint ... ok
+test worker::session::tests::conservative_budgets_and_safe_counters_reject_overflow ... ok
+test worker::session::tests::exact_session_receipt_and_turn_pins_prevent_cross_session_or_epoch_use ... ok
+test worker::session::tests::historical_fences_are_only_explicit_query_and_negative_ack_paths ... ok
+test worker::session::tests::historical_replay_preserves_original_hashes_without_enabling_positive_old_channel_events ... ok
+test worker::session::tests::mcp_profiles_require_broker_support_before_session_open ... ok
+test worker::session::tests::open_and_event_hashes_cover_immutable_pins_and_chain_without_self_digest ... ok
+test worker::session::tests::output_chain_rejects_future_missing_and_wrong_session_references ... ok
+test worker::session::tests::replay_empty_end_and_byte_bounded_partial_pages_are_explicit ... ok
+test worker::session::tests::replay_rejects_wrong_anchors_sessions_hashes_missing_history_and_correlation ... ok
+test worker::session::tests::rpc_replies_and_rejections_correlate_all_operations_without_consuming_other_waiters ... ok
+test worker::session::tests::strict_fields_human_grant_and_encoded_byte_limits_are_enforced ... ok
+test worker::session::tests::turn_completion_never_claims_process_stop_or_releases_session_reservation ... ok
+test worker::session::tests::typed_roundtrips_keep_v3_codecs_separate_from_negotiated_v4_hello ... ok
+test worker::tests::frame_byte_limits_unknown_fields_and_unsupported_versions_fail_before_use ... ok
+test worker::tests::hello_ready_heartbeat_and_controller_frames_roundtrip_as_metadata_only ... ok
+test worker::tests::identifiers_nonces_and_signed_integer_limits_are_explicit ... ok
+test worker::tests::metadata_v2_is_bounded_path_free_and_requires_matching_active_grants ... ok
+test worker::tests::proof_frames_bind_all_identity_fields_but_cannot_assert_trusted_verification ... ok
+
+test result: ok. 47 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+   Doc-tests dunlin_domain
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests dunlin_relay_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Sandbox memory: {"memory.peak": "572346368", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

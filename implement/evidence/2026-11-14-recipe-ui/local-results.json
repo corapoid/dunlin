@@ -1,0 +1,69 @@
+{
+  "checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "apps/server/src/interactive/tests/scoped.rs"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "node",
+        "--check",
+        "apps/web/e2e/local-scoped-session.mjs"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "node",
+        "--check",
+        "apps/web/e2e/remote-mcp-session.mjs"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation.\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "check": "Python AST of launcher and launcher tests",
+      "exit_code": 0
+    },
+    {
+      "check": "launcher unittest",
+      "exit_code": 0,
+      "passed": 18,
+      "evidence": "Executed before runtime acceptance; recorded in tool transcript. Not rerun after E2E-only selector changes."
+    }
+  ],
+  "visual_inspection": [
+    "recipe_builderDesktop-before-cleanup-check.png",
+    "recipe_builderMobile-before-cleanup-check.png",
+    "recipe_grantMobile-before-cleanup-check.png",
+    "recipe_mobile-before-cleanup-check.png",
+    "recipe_builderMobile.png",
+    "recipe_grantMobile.png"
+  ],
+  "visual_scope": "Inspected recipe fields/grant controls, readable within 390px. Automated width checks cover all screenshots. Full-page screenshots with nonzero scroll can place fixed navigation/skip link at the capture scroll offset; this is not full sticky/focus/a11y acceptance."
+}

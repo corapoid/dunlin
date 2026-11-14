@@ -1,0 +1,44 @@
+{
+  "baseline": "../2026-11-14-recipe-ui/verified-source.json",
+  "rerun": false,
+  "reason": "No frontend source/test/build input changed in remote target/library refactor.",
+  "snapshots": {
+    "frontend": {
+      "sha256": "c99ca6d5d47f6924f7eb40645be704380e0e38149297a679794599005720b415",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog"
+      ],
+      "unchanged": true
+    },
+    "typecheck": {
+      "sha256": "f0dee8cb702b235697ed43889cb0ae05353c2d579ebcea11eb33b20b720d225e",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts"
+      ],
+      "unchanged": true
+    },
+    "build": {
+      "sha256": "a2f57970da9b477b4af4241be3316a21c107eb68162765e0c1697d9c4199d193",
+      "inputs": [
+        "apps/web/src",
+        "apps/web/tests",
+        "apps/web/package.json",
+        "tests/fixtures/web-catalog",
+        "apps/web/tsconfig.json",
+        "apps/web/vite.config.ts",
+        "apps/web/index.html",
+        "apps/web/postcss.config.mjs",
+        "apps/web/REUI-LICENSE.txt"
+      ],
+      "unchanged": true
+    }
+  }
+}

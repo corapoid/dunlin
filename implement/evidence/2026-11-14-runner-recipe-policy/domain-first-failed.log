@@ -1,0 +1,38 @@
+Sandbox suite=domain container=dunlin-check-688d909064694795b1a37e682dd747d2 image=sha256:9aaa5f269b7e81e2d30d40f6a8404dab8fd1c35d64d77c2966868efb13b6b0ab platform=linux/arm64 memory=1536m scratch=768m file_size=134217728 wall=900s source_sha256=f07d8e9cbe633557ef01290dfa9fadc26304a43d3d521464043de848fd3fb91c codegen_units=8
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.10
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.229
+   Compiling typenum v1.20.1
+   Compiling hybrid-array v0.4.15
+   Compiling serde_derive v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling libc v0.2.191
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.19
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling const-oid v0.10.2
+   Compiling digest v0.11.3
+   Compiling cpufeatures v0.3.1
+   Compiling dunlin-domain v0.2.0 (/repo/crates/domain)
+   Compiling cfg-if v1.0.5
+   Compiling sha2 v0.11.1
+   Compiling hex v0.4.3
+   Compiling dunlin-relay-protocol v0.2.0 (/repo/crates/relay-protocol)
+error: format argument must be a string literal
+  --> crates/relay-protocol/src/worker/recipe/tests.rs:52:13
+   |
+52 |             key
+   |             ^^^
+   |
+help: you might be missing a string literal to format with
+   |
+52 |             "{}", key
+   |             +++++
+
+error: could not compile `dunlin-relay-protocol` (lib test) due to 1 previous error
+Sandbox memory: {"memory.peak": "509509632", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"}

@@ -1,0 +1,45 @@
+{
+  "rust_files": [
+    "apps/server/src/interactive/mcp/authority.rs",
+    "apps/server/src/interactive/mcp/runtime.rs",
+    "apps/server/src/interactive/mcp/runtime/scoped/tests.rs",
+    "crates/relay-protocol/src/worker/recipe.rs",
+    "crates/relay-protocol/src/worker/recipe/private.rs",
+    "crates/relay-protocol/src/worker/recipe/private/tests.rs"
+  ],
+  "checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "apps/server/src/interactive/mcp/authority.rs",
+        "apps/server/src/interactive/mcp/runtime.rs",
+        "apps/server/src/interactive/mcp/runtime/scoped/tests.rs",
+        "crates/relay-protocol/src/worker/recipe.rs",
+        "crates/relay-protocol/src/worker/recipe/private.rs",
+        "crates/relay-protocol/src/worker/recipe/private/tests.rs"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation.\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": ""
+    }
+  ]
+}

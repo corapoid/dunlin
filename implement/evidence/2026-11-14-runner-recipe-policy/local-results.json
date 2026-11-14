@@ -1,0 +1,37 @@
+{
+  "checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "crates/domain/src/vault.rs",
+        "crates/vault/src/recipe/isolated.rs",
+        "crates/relay-protocol/src/worker.rs",
+        "crates/relay-protocol/src/worker/recipe.rs",
+        "crates/relay-protocol/src/worker/recipe/tests.rs",
+        "apps/server/src/worker_exports/policy.rs",
+        "apps/server/src/worker_exports/policy/tests.rs"
+      ],
+      "exit_code": 0,
+      "evidence": "Executed after final helper relocation, before accepted domain run; recorded in tool transcript."
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation."
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    }
+  ]
+}

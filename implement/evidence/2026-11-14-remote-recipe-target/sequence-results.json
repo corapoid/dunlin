@@ -1,0 +1,29 @@
+{
+  "active": null,
+  "results": [
+    {
+      "suite": "domain",
+      "exit_code": 0,
+      "seconds": 22.49,
+      "log": "/tmp/dunlin-remote-target-domain-final.log"
+    },
+    {
+      "suite": "server",
+      "exit_code": 0,
+      "seconds": 452.91,
+      "log": "/tmp/dunlin-remote-target-server-final.log"
+    },
+    {
+      "suite": "runtime",
+      "exit_code": 0,
+      "seconds": 240.49,
+      "log": "/tmp/dunlin-remote-target-runtime-final.log"
+    },
+    {
+      "suite": "clippy",
+      "exit_code": 0,
+      "seconds": 123.07,
+      "log": "/tmp/dunlin-remote-target-clippy-final.log"
+    }
+  ]
+}

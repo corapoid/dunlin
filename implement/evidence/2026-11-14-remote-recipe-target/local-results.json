@@ -1,0 +1,59 @@
+{
+  "rust_files": [
+    "crates/domain/src/vault.rs",
+    "crates/domain/src/vault/recipe_template.rs",
+    "crates/domain/src/vault/recipe_template/tests.rs",
+    "crates/relay-protocol/src/worker/recipe.rs",
+    "crates/vault/src/recipe.rs",
+    "crates/vault/src/recipe/redaction.rs",
+    "crates/vault/src/recipe/remote.rs",
+    "crates/vault/src/scoped.rs",
+    "crates/vault/src/scoped/recipe.rs",
+    "crates/vault/src/scoped/recipe/target.rs",
+    "crates/vault/src/scoped/recipe/tests.rs",
+    "crates/vault/src/scoped/recipe/tests/remote.rs",
+    "apps/server/src/interactive/mcp/authority.rs"
+  ],
+  "checks": [
+    {
+      "command": [
+        "rustfmt",
+        "--edition",
+        "2024",
+        "--check",
+        "crates/domain/src/vault.rs",
+        "crates/domain/src/vault/recipe_template.rs",
+        "crates/domain/src/vault/recipe_template/tests.rs",
+        "crates/relay-protocol/src/worker/recipe.rs",
+        "crates/vault/src/recipe.rs",
+        "crates/vault/src/recipe/redaction.rs",
+        "crates/vault/src/recipe/remote.rs",
+        "crates/vault/src/scoped.rs",
+        "crates/vault/src/scoped/recipe.rs",
+        "crates/vault/src/scoped/recipe/target.rs",
+        "crates/vault/src/scoped/recipe/tests.rs",
+        "crates/vault/src/scoped/recipe/tests/remote.rs",
+        "apps/server/src/interactive/mcp/authority.rs"
+      ],
+      "exit_code": 0,
+      "output": ""
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/check_docs.py"
+      ],
+      "exit_code": 0,
+      "output": "Documentation check passed: 122 Markdown files; local links, anchors and navigation.\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": ""
+    }
+  ]
+}
