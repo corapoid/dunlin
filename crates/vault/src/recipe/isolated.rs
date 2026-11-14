@@ -35,7 +35,10 @@ impl LinuxRecipeExecutor {
         Ok(Self { cwd, directory })
     }
     fn prepare(&self, plan: &RecipePlan, access: &LiveAccess) -> Result<Command, String> {
-        if !access.allowed() || self.cwd != plan.cwd || !secret_env(&plan.env_var) {
+        if !access.allowed()
+            || self.cwd != plan.cwd
+            || !dunlin_domain::vault::valid_recipe_secret_env(&plan.env_var)
+        {
             return Err("Recipe target or environment is unavailable".into());
         }
         trusted_bwrap()?;
@@ -145,50 +148,6 @@ impl RecipeExecutor for LinuxRecipeExecutor {
         let command = self.prepare(plan, &access)?;
         run_command(command, plan.timeout.min(access.remaining()), Some(access))
     }
-}
-fn secret_env(name: &str) -> bool {
-    if name.is_empty()
-        || !name
-            .bytes()
-            .enumerate()
-            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))
-    {
-        return false;
-    }
-    let key = name.to_ascii_uppercase();
-    ![
-        "PATH",
-        "HOME",
-        "SHELL",
-        "USER",
-        "LOGNAME",
-        "TMPDIR",
-        "TMP",
-        "TEMP",
-        "LANG",
-        "ENV",
-        "BASH_ENV",
-        "BASHOPTS",
-        "SHELLOPTS",
-        "ZDOTDIR",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-        "NODE_EXTRA_CA_CERTS",
-        "PYTHONPATH",
-        "PYTHONHOME",
-        "PYTHONSTARTUP",
-        "PERL5OPT",
-        "PERL5LIB",
-        "RUBYOPT",
-        "RUBYLIB",
-        "AWS_CONFIG_FILE",
-        "AWS_SHARED_CREDENTIALS_FILE",
-        "AWS_WEB_IDENTITY_TOKEN_FILE",
-    ]
-    .contains(&key.as_str())
-        && !["LD_", "DYLD_", "XDG_", "LC_", "GIT_"]
-            .iter()
-            .any(|prefix| key.starts_with(prefix))
 }
 fn trusted_bwrap() -> Result<(), String> {
     // Root-owned, non-writable system paths form the trusted launcher boundary.

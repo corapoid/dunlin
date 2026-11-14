@@ -15,7 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod cleanup;
 mod recipe;
-pub use recipe::{RecipeAuthority, RecipePermit, RecipeTarget};
+pub use recipe::{RecipeAuthority, RecipePermit, RecipeTarget, RemoteRecipeTarget};
 pub mod tool;
 pub use cleanup::{CleanupClaim, CleanupJournal};
 

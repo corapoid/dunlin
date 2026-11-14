@@ -485,3 +485,149 @@ fn linked_policy_requires_explicit_repository_wide_write_ack_and_fresh_execute_g
             .is_ok()
     );
 }
+
+fn recipe_policy() -> serde_json::Value {
+    let mut value: serde_json::Value = serde_json::from_slice(RAW).unwrap();
+    value["schema_version"] = serde_json::json!(3);
+    value["mcp_broker"] = serde_json::json!(true);
+    value["recipes"] = serde_json::json!([{"program":"/opt/dunlin/deploy","template":{"name":"deploy","program_sha256":"a".repeat(64),"args":["{environment}"],"env_var":"API_TOKEN","parameters":[{"name":"environment","required":true,"max_len":32,"allow_leading_dash":false}],"timeout_secs":30}}]);
+    value
+}
+#[test]
+fn recipe_policy_requires_explicit_schema3_templates_and_cannot_upgrade_legacy_implicitly() {
+    let original = recipe_policy();
+    let raw = serde_json::to_vec(&original).unwrap();
+    let parsed = PolicySnapshot::parse(raw.clone()).unwrap();
+    assert!(parsed.permits_mcp_broker().unwrap());
+    assert_eq!(parsed.raw, raw);
+    for version in [1, 2] {
+        let mut value = original.clone();
+        value["schema_version"] = serde_json::json!(version);
+        assert!(PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).is_err());
+    }
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!([]),
+        serde_json::json!(false),
+    ] {
+        let mut policy = original.clone();
+        policy["recipes"] = value;
+        assert!(PolicySnapshot::parse(serde_json::to_vec(&policy).unwrap()).is_err());
+    }
+    for key in ["recipes", "mcp_broker"] {
+        let mut value = original.clone();
+        value.as_object_mut().unwrap().remove(key);
+        assert!(PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).is_err());
+    }
+    let mut duplicate = original.clone();
+    let recipe = duplicate["recipes"][0].clone();
+    duplicate["recipes"].as_array_mut().unwrap().push(recipe);
+    assert!(PolicySnapshot::parse(serde_json::to_vec(&duplicate).unwrap()).is_err());
+    for (field, value) in [
+        ("program_sha256", serde_json::json!("bad")),
+        ("env_var", serde_json::json!("HOME")),
+        ("timeout_secs", serde_json::json!(61)),
+        ("secret", serde_json::json!("private")),
+    ] {
+        let mut policy = original.clone();
+        policy["recipes"][0]["template"][field] = value;
+        assert!(
+            PolicySnapshot::parse(serde_json::to_vec(&policy).unwrap()).is_err(),
+            "{field}"
+        );
+    }
+}
+#[test]
+fn recipe_policy_change_rebinds_settings_and_invalidates_existing_export_authority() {
+    let f = Fixture::new();
+    let store = f.store();
+    let mut value = recipe_policy();
+    let policy = PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).unwrap();
+    let checkout = f.checkout(policy.digest());
+    let export = store
+        .register_captured_with_policy(&f.scope, "Recipe", &checkout, Some(&policy))
+        .unwrap();
+    store
+        .set_grant(
+            &f.scope,
+            &export.id,
+            &principal(),
+            &[ExportPermission::Read, ExportPermission::Execute],
+            true,
+            None,
+        )
+        .unwrap();
+    let candidate = store
+        .candidate(
+            &f.scope,
+            &export.id,
+            &principal(),
+            ExportPermission::Execute,
+        )
+        .unwrap()
+        .validate_filesystem()
+        .unwrap();
+    let authority = store.authorize_validated(&f.scope, candidate).unwrap();
+    value["recipes"][0]["template"]["program_sha256"] = serde_json::json!("b".repeat(64));
+    let changed = PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).unwrap();
+    assert_ne!(policy.digest(), changed.digest());
+    assert!(
+        store
+            .rebind_captured_with_policy(
+                &f.scope,
+                &export.id,
+                1,
+                "Bad settings",
+                &checkout,
+                Some(&changed)
+            )
+            .is_err()
+    );
+    let recaptured = f.checkout(changed.digest());
+    let rebound = store
+        .rebind_captured_with_policy(
+            &f.scope,
+            &export.id,
+            1,
+            "New pin",
+            &recaptured,
+            Some(&changed),
+        )
+        .unwrap();
+    assert_eq!(rebound.revision, 2);
+    assert!(!store.grants(&f.scope, &export.id).unwrap()[0].active);
+    assert!(store.revalidate_authority(&f.scope, &authority).is_err());
+    let restored = store
+        .policy_snapshot(&export.id, changed.digest())
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.raw, changed.raw);
+}
+#[cfg(unix)]
+#[test]
+fn recipe_policy_cannot_select_a_program_inside_the_export_or_a_symlink_to_it() {
+    use std::os::unix::fs::symlink;
+    let f = Fixture::new();
+    let mut value = recipe_policy();
+    let root = f.dir.path().join("checkout");
+    std::fs::create_dir_all(&root).unwrap();
+    let script = root.join("deploy");
+    std::fs::write(&script, "fixture").unwrap();
+    let link = f.dir.path().join("outside-link");
+    symlink(&script, &link).unwrap();
+    for path in [script, link] {
+        value["recipes"][0]["program"] = serde_json::json!(path.to_str().unwrap());
+        let policy = PolicySnapshot::parse(serde_json::to_vec(&value).unwrap()).unwrap();
+        let checkout = f.checkout(policy.digest());
+        assert!(
+            f.store()
+                .register_captured_with_policy(
+                    &f.scope,
+                    "Untrusted program",
+                    &checkout,
+                    Some(&policy)
+                )
+                .is_err()
+        );
+    }
+}

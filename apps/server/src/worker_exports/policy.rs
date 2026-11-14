@@ -23,6 +23,23 @@ struct ExecutionPolicy {
         deserialize_with = "explicit_mcp_broker"
     )]
     mcp_broker: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "explicit_recipes"
+    )]
+    recipes: Option<Vec<RecipeProgram>>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecipeProgram {
+    program: String,
+    template: dunlin_relay_protocol::worker::recipe::RecipeTemplate,
+}
+fn explicit_recipes<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Vec<RecipeProgram>>, D::Error> {
+    Vec::<RecipeProgram>::deserialize(deserializer).map(Some)
 }
 fn explicit_mcp_broker<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
@@ -47,8 +64,12 @@ impl PolicySnapshot {
         let policy: ExecutionPolicy = serde_json::from_slice(&raw)?;
         let unique: std::collections::BTreeSet<_> = policy.harnesses.iter().collect();
         if !matches!(
-            (policy.schema_version, policy.mcp_broker),
-            (1, None) | (2, Some(true))
+            (
+                policy.schema_version,
+                policy.mcp_broker,
+                policy.recipes.as_ref()
+            ),
+            (1, None, None) | (2, Some(true), None) | (3, Some(true), Some(_))
         ) || !policy.sandbox_required
             || policy.harnesses.is_empty()
             || policy.harnesses.len() > 3
@@ -63,6 +84,20 @@ impl PolicySnapshot {
         {
             return Err(Error::Invalid("Unsupported execution policy"));
         }
+        if let Some(recipes) = &policy.recipes {
+            let names: std::collections::BTreeSet<_> =
+                recipes.iter().map(|r| &r.template.name).collect();
+            if recipes.is_empty()
+                || recipes.len() > 16
+                || names.len() != recipes.len()
+                || recipes.iter().any(|r| {
+                    r.template.timeout_secs > policy.max_seconds
+                        || r.template.validate_program(&r.program).is_err()
+                })
+            {
+                return Err(Error::Invalid("Invalid operator recipe templates"));
+            }
+        }
         let digest = hex::encode(Sha256::digest(&raw));
         Ok(Self { raw, digest })
     }
@@ -73,6 +108,18 @@ impl PolicySnapshot {
         {
             return Err(Error::Invalid(
                 "Linked execution policy requires explicit repository-wide metadata write acknowledgement",
+            ));
+        }
+        if parsed.recipes.as_ref().is_some_and(|recipes| {
+            recipes.iter().any(|r| {
+                let program = Path::new(&r.program);
+                program.starts_with(checkout.canonical_root())
+                    || std::fs::canonicalize(program)
+                        .is_ok_and(|p| p.starts_with(checkout.canonical_root()))
+            })
+        }) {
+            return Err(Error::Invalid(
+                "Operator recipe programs must be outside the exported checkout",
             ));
         }
         if self.digest != checkout.settings_digest() {
@@ -87,7 +134,7 @@ impl PolicySnapshot {
     }
     pub(super) fn permits_mcp_broker(&self) -> Result<bool> {
         let policy: ExecutionPolicy = serde_json::from_slice(&self.raw)?;
-        Ok(policy.schema_version == 2 && policy.mcp_broker == Some(true))
+        Ok(matches!(policy.schema_version, 2 | 3) && policy.mcp_broker == Some(true))
     }
     #[cfg(unix)]
     pub fn load(path: &Path) -> Result<Self> {

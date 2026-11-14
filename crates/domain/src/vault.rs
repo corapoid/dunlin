@@ -7,6 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod recipe_template;
+pub use recipe_template::{RecipeTemplate, TemplateParameter};
+
 /// Internal namespace marker for secrets created by Dunlin. The literal prefix
 /// is never shown in the UI or to the model.
 pub const SECRET_NAMESPACE: &str = "dunlin";
@@ -855,6 +858,52 @@ pub fn normalize_ttl(ttl_secs: i64) -> Result<i64, String> {
         ));
     }
     Ok(ttl_secs)
+}
+
+/// Reject reserved loader/runtime/config names for recipe secret injection.
+pub fn valid_recipe_secret_env(name: &str) -> bool {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| b.is_ascii_alphabetic() || b == b'_' || (i > 0 && b.is_ascii_digit()))
+    {
+        return false;
+    }
+    let key = name.to_ascii_uppercase();
+    ![
+        "PATH",
+        "HOME",
+        "SHELL",
+        "USER",
+        "LOGNAME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "LANG",
+        "ENV",
+        "BASH_ENV",
+        "BASHOPTS",
+        "SHELLOPTS",
+        "ZDOTDIR",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "NODE_EXTRA_CA_CERTS",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "PYTHONSTARTUP",
+        "PERL5OPT",
+        "PERL5LIB",
+        "RUBYOPT",
+        "RUBYLIB",
+        "AWS_CONFIG_FILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+    ]
+    .contains(&key.as_str())
+        && !["LD_", "DYLD_", "XDG_", "LC_", "GIT_"]
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
 }
 
 #[cfg(test)]

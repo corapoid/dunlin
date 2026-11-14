@@ -81,6 +81,11 @@ pub(crate) trait Authority: Send + Sync {
             state,
         }))
     }
+    /// Session-level catalog readiness. This must not invent an active turn.
+    /// Execution still requires a fresh target/executor after SDK consent.
+    fn recipe_catalog(&self, _state: &AppState, _deadline: Instant) -> Result<()> {
+        Err("mcp_recipe_target_unsupported")
+    }
     fn recipe_target(
         &self,
         _state: &AppState,
@@ -150,6 +155,11 @@ impl Authority for Local {
     fn context_in_transaction(&self, state: &AppState, store: &Store) -> Result<AccessContext> {
         context_in_transaction(state, store, &self.task)
     }
+    fn recipe_catalog(&self, state: &AppState, deadline: Instant) -> Result<()> {
+        let target = self.recipe_target(state, deadline)?;
+        self.recipe_executor(state, &target, deadline)?;
+        self.check(state, deadline)
+    }
     fn recipe_target(
         &self,
         state: &AppState,
@@ -199,8 +209,14 @@ impl Authority for Local {
                     .checkout
                     .open_recipe_root()
                     .map_err(|_| "mcp_recipe_target_unavailable")?;
-                dunlin_vault::recipe::LinuxRecipeExecutor::new(target.cwd().into(), root)
-                    .map_err(|_| "mcp_recipe_sandbox_unavailable")?
+                dunlin_vault::recipe::LinuxRecipeExecutor::new(
+                    target
+                        .local_cwd()
+                        .ok_or("mcp_recipe_target_changed")?
+                        .into(),
+                    root,
+                )
+                .map_err(|_| "mcp_recipe_sandbox_unavailable")?
             };
             self.check(state, deadline)?;
             Ok(Arc::new(executor))

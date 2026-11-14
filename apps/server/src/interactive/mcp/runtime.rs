@@ -264,9 +264,7 @@ impl Broker {
             let tools = if matches!(&bound.backend, Backend::Scoped(_, _)) {
                 let mut tools = vec![dunlin_vault::scoped::tool::http()];
                 if bound.tools.iter().any(|pin| pin.name == "recipe") {
-                    let target = self.authority.recipe_target(&self.state, deadline)?;
-                    self.authority
-                        .recipe_executor(&self.state, &target, deadline)?;
+                    self.authority.recipe_catalog(&self.state, deadline)?;
                     tools.push(dunlin_vault::scoped::tool::recipe());
                 }
                 tools

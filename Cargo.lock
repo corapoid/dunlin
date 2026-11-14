@@ -1797,8 +1797,10 @@ dependencies = [
 name = "dunlin-domain"
 version = "0.2.0"
 dependencies = [
+ "hex",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
 ]
 
 [[package]]

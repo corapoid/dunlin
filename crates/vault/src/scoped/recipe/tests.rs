@@ -81,7 +81,10 @@ impl Authority for AuthorityFixture {
 impl RecipeAuthority for AuthorityFixture {
     fn check_target(&self, _: &UseScope, _: &Version, target: &RecipeTarget) -> Result<()> {
         if *target != self.target
-            || (self.deny_marker.load(Ordering::Acquire) && target.cwd.join("started").exists())
+            || (self.deny_marker.load(Ordering::Acquire)
+                && target
+                    .local_cwd()
+                    .is_some_and(|cwd| cwd.join("started").exists()))
         {
             Err(Error::Denied)
         } else {
@@ -244,8 +247,12 @@ fn executor() -> Executor {
 fn target_input_and_read_only_are_fenced_and_consumed_recipe_cannot_replay() {
     let f = Fixture::new("#!/bin/sh\nexit 0\n", true);
     let execute = executor();
-    let mut other = f.authority.target.clone();
-    other.checkout_stamp = "c".repeat(64);
+    let other = RecipeTarget::new(
+        f.authority.target.binding().clone(),
+        f.authority.target.local_cwd().unwrap().into(),
+        "c".repeat(64),
+    )
+    .unwrap();
     assert!(matches!(
         f.credentials.permit_recipe(
             scope(),
@@ -386,8 +393,20 @@ fn live_target_revocation_kills_a_real_recipe_group_and_records_unknown() {
     );
     assert_eq!(result, Err(Error::OutcomeUnknown));
     assert!(start.elapsed() < Duration::from_secs(5));
-    assert!(f.authority.target.cwd.join("started").exists());
-    assert!(!f.authority.target.cwd.join("escaped").exists());
+    assert!(
+        f.authority
+            .target
+            .local_cwd()
+            .is_some_and(|cwd| cwd.join("started").exists())
+    );
+    assert!(
+        !f.authority
+            .target
+            .local_cwd()
+            .unwrap()
+            .join("escaped")
+            .exists()
+    );
     assert_eq!(
         *f.authority.outcomes.lock().unwrap(),
         vec![Completion::Unknown]
@@ -502,3 +521,5 @@ fn basic_authorization_echo_is_redacted_from_recipe_output() {
     assert_eq!(output.stdout, "Basic [REDACTED]");
     assert_eq!(output.stderr, "[REDACTED]");
 }
+
+mod remote;

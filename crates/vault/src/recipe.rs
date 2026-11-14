@@ -130,6 +130,11 @@ mod isolated;
 #[cfg(target_os = "linux")]
 pub use isolated::LinuxRecipeExecutor;
 
+mod redaction;
+pub(crate) use redaction::redact_output;
+mod remote;
+pub use remote::{RemoteRecipeExecutor, RemoteRecipePlan};
+
 pub struct CommandExecutor;
 
 impl RecipeExecutor for CommandExecutor {

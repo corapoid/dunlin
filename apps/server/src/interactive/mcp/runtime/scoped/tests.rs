@@ -81,6 +81,8 @@ struct Host {
     pins: SessionPins,
     turn: Mutex<String>,
     stop: AtomicBool,
+    catalog_only: bool,
+    catalog_checks: AtomicUsize,
 }
 impl Authority for Host {
     fn pins(&self) -> &SessionPins {
@@ -108,7 +110,19 @@ impl Authority for Host {
     fn context_in_transaction(&self, state: &AppState, store: &Store) -> Result<AccessContext> {
         self.context(state, store)
     }
+    fn recipe_catalog(&self, state: &AppState, deadline: Instant) -> Result<()> {
+        self.check(state, deadline)?;
+        if !self.catalog_only {
+            return Err("fixture_recipe_unsupported");
+        }
+        self.catalog_checks.fetch_add(1, Ordering::AcqRel);
+        Ok(())
+    }
+    fn recipe_target(&self, _state: &AppState, _deadline: Instant) -> Result<scoped::RecipeTarget> {
+        panic!("catalog must not construct an execution target")
+    }
     fn turn(&self) -> Result<TurnScope> {
+        assert!(!self.catalog_only, "catalog must not request a turn");
         Ok(TurnScope {
             id: self.turn.lock().unwrap().clone(),
             deadline: Instant::now() + Duration::from_secs(30),
@@ -130,6 +144,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_recipe_catalog(false).await
+    }
+    async fn with_recipe_catalog(recipe: bool) -> Self {
         let store = Store::open_in_memory().unwrap();
         let proof = crate::store::scoped_secrets::testing_scope(&store);
         let secrets = Arc::new(Secrets::default());
@@ -162,7 +179,12 @@ impl Fixture {
             .unwrap();
         let (grant, connections, pins, turn) = {
             let store = state.store.lock().unwrap();
-            let definition:dunlin_domain::agent::AgentDefinition=serde_json::from_value(json!({"schema_version":2,"name":"HTTP consumer","harness":"claude","model":"fixture","mode":"execute","skills":[],"mcp":[{"provider_id":"dunlin-secret-api","name":"http","definition_digest":scoped::tool::http().definition_digest().unwrap()}],"max_seconds":60,"max_output_bytes":65536})).unwrap();
+            let tool = if recipe {
+                scoped::tool::recipe()
+            } else {
+                scoped::tool::http()
+            };
+            let definition:dunlin_domain::agent::AgentDefinition=serde_json::from_value(json!({"schema_version":2,"name":"HTTP consumer","harness":"claude","model":"fixture","mode":"execute","skills":[],"mcp":[{"provider_id":"dunlin-secret-api","name":tool.name,"definition_digest":tool.definition_digest().unwrap()}],"max_seconds":60,"max_output_bytes":65536})).unwrap();
             let draft = store
                 .create_agent(
                     &proof.browser.user,
@@ -192,7 +214,7 @@ impl Fixture {
                 principal_id: proof.browser.user.clone(),
                 profile: profile.clone(),
                 provider_id: "dunlin-secret-api".into(),
-                read_only: true,
+                read_only: !recipe,
             };
             let grant = store
                 .scoped_secret_set_grant(&proof, "api", &request, &|_| Ok(()))
@@ -235,10 +257,16 @@ impl Fixture {
                 .create(&a, &proof.binding.workspace, &proof.binding.project)
                 .unwrap();
             let lease = j.acquire(&a, &session.id, 0, "fixture-worker").unwrap();
-            let turn = j.enqueue(&a, &session.id, "prompt-1", "Use HTTP").unwrap();
-            j.claim_next(&a, &session.id, &lease).unwrap();
-            j.transition(&a, &session.id, &lease, &turn, TurnPhase::Running)
-                .unwrap();
+            let turn = if recipe {
+                // The initial catalog must work before any queued or active turn.
+                String::new()
+            } else {
+                let turn = j.enqueue(&a, &session.id, "prompt-1", "Use HTTP").unwrap();
+                j.claim_next(&a, &session.id, &lease).unwrap();
+                j.transition(&a, &session.id, &lease, &turn, TurnPhase::Running)
+                    .unwrap();
+                turn
+            };
             let pins = SessionPins {
                 session: session.id,
                 workspace: proof.binding.workspace.clone(),
@@ -256,6 +284,8 @@ impl Fixture {
             pins,
             turn: Mutex::new(turn),
             stop: AtomicBool::new(false),
+            catalog_only: recipe,
+            catalog_checks: AtomicUsize::new(0),
         });
         let broker = Broker::prepare(
             state,
@@ -471,4 +501,25 @@ async fn scoped_http_denied_permission_never_reads_secret_or_dispatches() {
     assert_eq!(value["isError"], true);
     assert_eq!(f.secrets.reads.load(Ordering::Acquire), 0);
     assert_eq!(f.executor.calls.load(Ordering::Acquire), 0);
+}
+
+#[tokio::test]
+async fn recipe_catalog_uses_only_session_preflight_without_target_turn_or_keyring() {
+    let f = Fixture::with_recipe_catalog(true).await;
+    let tools = f
+        .broker
+        .request("before-turn", "tools/list", json!({}))
+        .unwrap();
+    assert_eq!(tools["tools"].as_array().unwrap().len(), 1);
+    assert!(tools["tools"][0]["inputSchema"]["properties"]["recipe"].is_object());
+    assert_eq!(f.host.catalog_checks.load(Ordering::Acquire), 1);
+    assert_eq!(f.secrets.reads.load(Ordering::Acquire), 0);
+    assert_eq!(f.executor.calls.load(Ordering::Acquire), 0);
+    f.host.stop.store(true, Ordering::Release);
+    assert!(
+        f.broker
+            .request("revoked", "tools/list", json!({}))
+            .is_err()
+    );
+    assert_eq!(f.secrets.reads.load(Ordering::Acquire), 0);
 }

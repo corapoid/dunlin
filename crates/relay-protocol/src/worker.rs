@@ -9,6 +9,8 @@ pub const WORKER_PROTOCOL_VERSION: u16 = 1;
 pub const WORKER_EXPORT_SUBPROTOCOL: &str = "dunlin.worker.v2";
 pub const WORKER_EXPORT_PROTOCOL_VERSION: u16 = 2;
 mod execution;
+/// Named CLI template metadata only; no existing transport accepts CLI secrets.
+pub mod recipe;
 pub use execution::{
     AttemptFence, ChannelFence, ExecutionBudgets, ExecutionCancelDisposition, ExecutionCommand,
     ExecutionControllerMessage, ExecutionErrorCode, ExecutionIdentity, ExecutionOutcome,
